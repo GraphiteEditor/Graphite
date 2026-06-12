@@ -22,8 +22,6 @@ pub enum ConversionError {
 	DeclarationNotFound(ResourceId),
 	#[error("Deserialization error: {0}")]
 	DeserializationError(String),
-	#[error("Node {node:?} has {inputs} inputs but {attributes} input-attribute entries")]
-	InputAttributeCountMismatch { node: NodeId, inputs: usize, attributes: usize },
 	#[error("Network {network} has two nodes mapping to runtime ID {runtime_id}")]
 	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
 	#[error("Network {network} references node {referenced}, which lives in a different network")]
@@ -126,14 +124,6 @@ fn convert_network(
 		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
 		let runtime_id = RuntimeNodeId(local_id);
 
-		if node.inputs.len() != node.inputs_attributes.len() {
-			return Err(ConversionError::InputAttributeCountMismatch {
-				node: global_id,
-				inputs: node.inputs.len(),
-				attributes: node.inputs_attributes.len(),
-			});
-		}
-
 		if let Some(collector) = node_collector.as_mut()
 			&& let Some(entry) = extract_ui_metadata(node, metadata_path, runtime_id)
 		{
@@ -208,7 +198,7 @@ fn extract_ui_metadata(node: &crate::Node, network_path: &[RuntimeNodeId], local
 	let pinned = node.attributes.get_or(node::ui::PINNED, false);
 	let output_names: Vec<String> = node.attributes.get_or_default(node::ui::OUTPUT_NAMES);
 
-	let input_metadata: Vec<InputMetadataEntry> = node.inputs_attributes.iter().map(extract_input_metadata).collect();
+	let input_metadata: Vec<InputMetadataEntry> = node.inputs.iter().map(|slot| &slot.attributes).map(extract_input_metadata).collect();
 
 	let entry = NodeMetadataEntry {
 		network_path: network_path.to_vec(),
@@ -258,8 +248,7 @@ fn convert_node(
 	let inputs = node
 		.inputs
 		.iter()
-		.zip(node.inputs_attributes.iter())
-		.map(|(slot, input_attrs)| convert_input(context.registry, node.network, &slot.input, input_attrs))
+		.map(|slot| convert_input(context.registry, node.network, &slot.input, &slot.attributes))
 		.collect::<Result<Vec<_>, _>>()?;
 
 	// Defaults must match `DocumentNode::default()` (and the `set_if_not_default` calls in `from_runtime`).
@@ -277,7 +266,7 @@ fn convert_node(
 
 fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
-		NodeInput::Node { node_id, output_index } => {
+		NodeInput::Node { id: node_id, index: output_index } => {
 			let referenced = registry.node_instances.get(node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
 
 			// Runtime references are local to one network. A cross-network reference would remap to a
@@ -292,7 +281,7 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(*node_id);
 			GraphCraftNodeInput::Node {
 				node_id: RuntimeNodeId(local_id),
-				output_index: *output_index,
+				output_index: *output_index as usize,
 			}
 		}
 		NodeInput::Value { value, exposed } => {
@@ -303,15 +292,16 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 			}
 		}
 		NodeInput::Scope(s) => GraphCraftNodeInput::Scope(s.clone()),
-		NodeInput::Import { import_idx } => GraphCraftNodeInput::Import {
+		NodeInput::Import { index: import_idx } => GraphCraftNodeInput::Import {
 			import_type: input_attributes.get_or(node::input::IMPORT_TYPE, Type::Generic(Cow::Borrowed("T"))),
-			import_index: *import_idx,
+			import_index: *import_idx as usize,
 		},
 		NodeInput::Reflection => GraphCraftNodeInput::Reflection(
 			input_attributes
 				.get_typed(node::REFLECTION_METADATA)
 				.ok_or_else(|| ConversionError::DeserializationError("Missing reflection_metadata in input_attributes".to_string()))?,
 		),
+		NodeInput::Other => unreachable!(),
 	})
 }
 

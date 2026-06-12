@@ -365,16 +365,15 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(doc_node: &DocumentNode, locatio
 	let timestamp = TimeStamp::ORIGIN;
 
 	let mut inputs = Vec::with_capacity(doc_node.inputs.len());
-	let mut inputs_attributes = Vec::with_capacity(doc_node.inputs.len());
 	for (input_index, input) in doc_node.inputs.iter().enumerate() {
+		let mut input_attrs = convert_input_attributes(input)?;
+		write_ui_input_attributes(&mut input_attrs, ctx.metadata, metadata_path, runtime_node_id, input_index, timestamp)?;
+
 		inputs.push(InputSlot {
 			input: convert_input(input, parent_path, network_id, ctx.peer)?,
 			timestamp,
+			attributes: input_attrs,
 		});
-
-		let mut input_attrs = convert_input_attributes(input)?;
-		write_ui_input_attributes(&mut input_attrs, ctx.metadata, metadata_path, runtime_node_id, input_index, timestamp)?;
-		inputs_attributes.push(input_attrs);
 	}
 
 	// For nested networks, append this node onto the metadata path.
@@ -408,7 +407,6 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(doc_node: &DocumentNode, locatio
 	Ok(Node {
 		implementation,
 		inputs,
-		inputs_attributes,
 		attributes,
 		network: network_id,
 	})
@@ -493,15 +491,15 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 fn convert_input(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, network_id: NetworkId, peer: PeerId) -> Result<NodeInput, ConversionError> {
 	Ok(match input {
 		GraphCraftNodeInput::Node { node_id, output_index } => NodeInput::Node {
-			node_id: child_path(parent_path, network_id, node_id.0).to_global_id(peer),
-			output_index: *output_index,
+			id: child_path(parent_path, network_id, node_id.0).to_global_id(peer),
+			index: *output_index as u32,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
 			let value = serde_json::to_value(&**tagged_value).map_err(|e| ConversionError::SerializationError(format!("{e:?}")))?;
 			NodeInput::Value { value, exposed: *exposed }
 		}
 		GraphCraftNodeInput::Scope(s) => NodeInput::Scope(s.clone()),
-		GraphCraftNodeInput::Import { import_index, .. } => NodeInput::Import { import_idx: *import_index },
+		GraphCraftNodeInput::Import { import_index, .. } => NodeInput::Import { index: *import_index as u32 },
 		GraphCraftNodeInput::Reflection(_) => NodeInput::Reflection,
 		// GPU-specific; not modeled in the Registry format.
 		GraphCraftNodeInput::Inline(_) => return Err(ConversionError::UnsupportedImplementation),

@@ -2,14 +2,16 @@ use crate::{
 	CrdtError, Delta, ExportSlot, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
 	apply_attribute_delta, mint_node_id, reverse_attribute_delta,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Document {
 	/// Working registry: retired state with the current hot ops applied on top. This is what live
 	/// reads and `registry()` observe, and what undo/redo force-apply against.
-	pub(crate) registry: Registry,
+	pub(crate) working_registry: Registry,
+	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
+	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
+	pub(crate) hot_log: Vec<HotOp>,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it, stamping fields at the fresh `T_retire`. Kept equal
@@ -18,12 +20,9 @@ pub struct Document {
 	/// working registry keeps the staging-time timestamps. Benign while the local monotonic clock makes
 	/// new edits win
 	pub(crate) retired_snapshot: Registry,
-	pub(crate) history: HashMap<Rev, Delta>,
-	/// Live broadcast stream — applied to the registry on receive, GC'd at retirement.
-	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
-	pub(crate) hot_log: Vec<HotOp>,
-	/// User's cursor in their local chain.
+	/// User's cursor in their local history chain.
 	pub(crate) head: Rev,
+	pub(crate) history: HashMap<Rev, Delta>,
 	/// Revs undone past (most-recent last), so `redo` can re-apply them. Local-view state the DAG can't
 	/// recover (a parent may have several children). A new edit while non-empty clears it.
 	pub(crate) redo_stack: Vec<Rev>,
@@ -47,11 +46,11 @@ impl Document {
 		mint_node_id(self.peer, self.next_node_counter)
 	}
 
-	pub(crate) fn restore_node_from_history(&mut self, target: RegistryTarget, old_node_id: NodeId) -> Result<(), CrdtError> {
+	pub(crate) fn restore_node_from_history(&mut self, target: RegistryTarget, node_id: NodeId) -> Result<(), CrdtError> {
 		let delta = self
 			.history_iter()
-			.find(|d| matches!(d.reverse, RegistryDelta::AddNode { id, .. } if id == old_node_id))
-			.ok_or(CrdtError::NodeNotInHistory(old_node_id))?
+			.find(|d| matches!(d.reverse, RegistryDelta::AddNode { id, .. } if id == node_id))
+			.ok_or(CrdtError::NodeNotInHistory(node_id))?
 			.clone();
 		self.revert_delta(target, delta)
 	}
@@ -83,22 +82,16 @@ impl Document {
 	/// Apply a live broadcast op. Updates the registry via LWW and appends to the hot log.
 	/// Doesn't touch history or `head` — hot ops are transient.
 	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.apply_hot_op_with(hot_op, false)
+		self.apply_op(hot_op.op.clone(), hot_op.timestamp)?;
+		self.hot_log.push(hot_op);
+		Ok(())
 	}
 
 	/// Replay a hot op recovered from persisted state. Idempotent on structural ops so that
 	/// re-applying an op whose effect is already reflected in the registry is a no-op rather
 	/// than an error.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.apply_hot_op_with(hot_op, true)
-	}
-
-	fn apply_hot_op_with(&mut self, hot_op: HotOp, idempotent: bool) -> Result<(), CrdtError> {
-		if idempotent {
-			self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
-		} else {
-			self.apply_op(hot_op.op.clone(), hot_op.timestamp)?;
-		}
+		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())
 	}
@@ -106,7 +99,7 @@ impl Document {
 	/// Apply a retired commit. Idempotent on structural ops (AddNode/AddNetwork on existing
 	/// targets, Remove on missing ones) since hot ops already produced the structural state.
 	/// The point is to bump field timestamps to T_retire via the LWW arms.
-	pub fn apply_retired_delta(&mut self, delta: Delta) -> Result<(), CrdtError> {
+	pub fn apply_delta(&mut self, delta: Delta) -> Result<(), CrdtError> {
 		for parent in &delta.parents {
 			if !self.history.contains_key(parent) {
 				return Err(CrdtError::NotFoundInHistory(*parent));
@@ -120,14 +113,14 @@ impl Document {
 	/// The registry an apply reads and writes, resolved from the explicit [`RegistryTarget`].
 	fn registry_mut(&mut self, target: RegistryTarget) -> &mut Registry {
 		match target {
-			RegistryTarget::Working => &mut self.registry,
+			RegistryTarget::Working => &mut self.working_registry,
 			RegistryTarget::Snapshot => &mut self.retired_snapshot,
 		}
 	}
 
 	fn registry_ref(&self, target: RegistryTarget) -> &Registry {
 		match target {
-			RegistryTarget::Working => &self.registry,
+			RegistryTarget::Working => &self.working_registry,
 			RegistryTarget::Snapshot => &self.retired_snapshot,
 		}
 	}
@@ -167,47 +160,43 @@ impl Document {
 
 		let registry = self.registry_mut(target);
 		match op {
-			RegistryDelta::AddNode { id: node_id, node } => {
-				if registry.node_instances.contains_key(&node_id) {
+			RegistryDelta::AddNode { id, node } => {
+				if registry.node_instances.contains_key(&id) {
 					if idempotent {
 						// Hot ops already created this node; skip rather than error.
 						return Ok(());
 					}
-					return Err(CrdtError::NodeAlreadyExists(node_id));
+					return Err(CrdtError::NodeAlreadyExists(id));
 				}
-				registry.node_instances.insert(node_id, node);
+				registry.node_instances.insert(id, node);
 			}
-			RegistryDelta::RemoveNode { id: node_id, .. } => {
-				registry.node_instances.remove(&node_id);
+			RegistryDelta::RemoveNode { id, .. } => {
+				registry.node_instances.remove(&id);
 			}
-			RegistryDelta::ChangeNodeInput { id: node_id, index, new_input } => {
-				let node = registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let slot = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
-				if force || timestamp > slot.timestamp {
-					slot.input = new_input;
-					slot.timestamp = timestamp;
+			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
+				if force || timestamp > input.timestamp {
+					input.input = new_input;
+					input.timestamp = timestamp;
 				}
 			}
-			RegistryDelta::ChangeNodeAttribute { id: node_id, delta } => {
-				let node = registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
+			RegistryDelta::ChangeNodeAttribute { id, delta } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				apply_attribute_delta(delta, timestamp, force, &mut node.attributes);
 			}
-			RegistryDelta::ChangeNodeInputAttribute { id: node_id, index: input_idx, delta } => {
-				let node = registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let input_attributes = node.inputs_attributes.get_mut(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
-				apply_attribute_delta(delta, timestamp, force, input_attributes);
+			RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
+				apply_attribute_delta(delta, timestamp, force, &mut input.attributes);
 			}
-			RegistryDelta::SetNetworkExport {
-				id: network,
-				index: slot,
-				export: export_target,
-			} => {
-				let net = registry.networks.get_mut(&network).ok_or(CrdtError::NetworkDoesNotExist(network))?;
-				let slot_idx = slot as usize;
+			RegistryDelta::SetNetworkExport { id, index, export } => {
+				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
+				let slot_idx = index as usize;
 
 				if slot_idx >= net.exports.len() {
 					if slot_idx >= MAX_EXPORT_SLOTS {
-						return Err(CrdtError::ExportSlotOutOfBounds(slot));
+						return Err(CrdtError::ExportSlotOutOfBounds(index));
 					}
 					net.exports.resize(
 						slot_idx + 1,
@@ -220,36 +209,26 @@ impl Document {
 
 				let existing = &mut net.exports[slot_idx];
 				if force || timestamp > existing.timestamp {
-					existing.target = export_target;
+					existing.target = export;
 					existing.timestamp = timestamp;
 				}
 			}
-			RegistryDelta::AddNetwork { id: network, network: contents } => {
-				if registry.networks.contains_key(&network) {
+			RegistryDelta::AddNetwork { id, network: contents } => {
+				if registry.networks.contains_key(&id) {
 					if idempotent {
 						return Ok(());
 					}
-					return Err(CrdtError::NetworkAlreadyExists(network));
+					return Err(CrdtError::NetworkAlreadyExists(id));
 				}
-				registry.networks.insert(network, contents);
+				registry.networks.insert(id, contents);
 			}
-			RegistryDelta::RemoveNetwork { id: network, .. } => {
-				registry.networks.remove(&network);
+			RegistryDelta::RemoveNetwork { id, .. } => {
+				registry.networks.remove(&id);
 			}
-			RegistryDelta::ChangeNetworkAttribute { id: network, delta } => {
-				let net = registry.networks.get_mut(&network).ok_or(CrdtError::NetworkDoesNotExist(network))?;
+			RegistryDelta::ChangeNetworkAttribute { id, delta } => {
+				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
 				apply_attribute_delta(delta, timestamp, force, &mut net.attributes);
 			}
-			RegistryDelta::ChangeDocumentAttribute { delta } => {
-				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes);
-			}
-			RegistryDelta::RegisterPeer { peer, user } => match registry.peer_users.get(&peer) {
-				Some(existing) if *existing != user => return Err(CrdtError::PeerRegistrationConflict(peer)),
-				Some(_) => {}
-				None => {
-					registry.peer_users.insert(peer, user);
-				}
-			},
 			RegistryDelta::SetResourceHash { id, hash } => {
 				let entry = registry.resources.entry(id).or_default();
 				if force || timestamp > entry.hash_timestamp {
@@ -277,6 +256,16 @@ impl Document {
 			RegistryDelta::RemoveResource { id, .. } => {
 				registry.resources.remove(&id);
 			}
+			RegistryDelta::RegisterPeer { peer, user } => match registry.peer_users.get(&peer) {
+				Some(existing) if *existing != user => return Err(CrdtError::PeerRegistrationConflict(peer)),
+				Some(_) => {}
+				None => {
+					registry.peer_users.insert(peer, user);
+				}
+			},
+			RegistryDelta::ChangeDocumentAttribute { delta } => {
+				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes);
+			}
 			RegistryDelta::Other(_) => {}
 		}
 		Ok(())
@@ -288,17 +277,17 @@ impl Document {
 	fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
 		match op {
 			RegistryDelta::AddNode { node, .. } => self.ensure_network_exists(target, node.network())?,
-			RegistryDelta::ChangeNodeInput { id: node_id, new_input, .. } => {
-				if let NodeInput::Node { node_id: referenced, .. } = new_input {
+			RegistryDelta::ChangeNodeInput { id, new_input, .. } => {
+				if let NodeInput::Node { id: referenced, .. } = new_input {
 					self.ensure_node_exists(target, *referenced)?;
 				}
-				self.ensure_node_exists(target, *node_id)?;
+				self.ensure_node_exists(target, *id)?;
 			}
-			RegistryDelta::ChangeNodeAttribute { id: node_id, .. } | RegistryDelta::ChangeNodeInputAttribute { id: node_id, .. } => self.ensure_node_exists(target, *node_id)?,
+			RegistryDelta::ChangeNodeAttribute { id, .. } | RegistryDelta::ChangeNodeInputAttribute { id, .. } => self.ensure_node_exists(target, *id)?,
 			RegistryDelta::SetNetworkExport {
 				id: network, export: export_target, ..
 			} => {
-				if let Some(NodeInput::Node { node_id: referenced, .. }) = export_target {
+				if let Some(NodeInput::Node { id: referenced, .. }) = export_target {
 					self.ensure_node_exists(target, *referenced)?;
 				}
 				self.ensure_network_exists(target, *network)?;
@@ -309,7 +298,7 @@ impl Document {
 		Ok(())
 	}
 
-	fn ensure_node_exists(&mut self, target: RegistryTarget, node_id: u64) -> Result<(), CrdtError> {
+	fn ensure_node_exists(&mut self, target: RegistryTarget, node_id: NodeId) -> Result<(), CrdtError> {
 		if !self.registry_ref(target).node_instances.contains_key(&node_id) {
 			self.restore_node_from_history(target, node_id)?;
 		}
@@ -353,11 +342,11 @@ impl Document {
 				ref delta,
 			} => {
 				let node = registry.node_instances.get(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let input_attributes = node.inputs_attributes().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
+				let input = node.inputs().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
 				RegistryDelta::ChangeNodeInputAttribute {
 					id: node_id,
 					index: input_idx,
-					delta: reverse_attribute_delta(delta, input_attributes),
+					delta: reverse_attribute_delta(delta, &input.attributes),
 				}
 			}
 			&RegistryDelta::SetNetworkExport { id: network, index: slot, .. } => {

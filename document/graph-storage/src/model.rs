@@ -6,7 +6,6 @@ use std::borrow::Cow;
 pub struct Node {
 	pub(crate) implementation: Implementation,
 	pub(crate) inputs: Vec<InputSlot>,
-	pub(crate) inputs_attributes: Vec<Attributes>,
 	pub(crate) attributes: Attributes,
 	pub(crate) network: NetworkId,
 }
@@ -17,9 +16,6 @@ impl Node {
 	}
 	pub fn inputs(&self) -> &[InputSlot] {
 		&self.inputs
-	}
-	pub fn inputs_attributes(&self) -> &[Attributes] {
-		&self.inputs_attributes
 	}
 	pub fn attributes(&self) -> &Attributes {
 		&self.attributes
@@ -39,13 +35,17 @@ impl Node {
 		if !self.inputs.iter().zip(&other.inputs).all(|(a, b)| a.input == b.input) {
 			return false;
 		}
-		if self.inputs_attributes.len() != other.inputs_attributes.len() {
-			return false;
-		}
-		if !self.inputs_attributes.iter().zip(&other.inputs_attributes).all(|(a, b)| attributes_value_equal(a, b)) {
-			return false;
-		}
 		attributes_value_equal(&self.attributes, &other.attributes)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn dummy() -> Self {
+		Self {
+			implementation: Implementation::ProtoNode(ResourceId::new()),
+			inputs: vec![],
+			attributes: Attributes::new(),
+			network: crate::ROOT_NETWORK,
+		}
 	}
 }
 
@@ -55,13 +55,14 @@ impl Node {
 pub struct InputSlot {
 	pub input: NodeInput,
 	pub timestamp: TimeStamp,
+	pub attributes: Attributes,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum NodeInput {
 	Node {
-		node_id: NodeId,
-		output_index: usize,
+		id: NodeId,
+		index: u32,
 	},
 	Value {
 		value: serde_json::Value,
@@ -69,10 +70,11 @@ pub enum NodeInput {
 	},
 	Scope(Cow<'static, str>),
 	Import {
-		import_idx: usize,
+		index: u32,
 	},
 	/// Marker; the `DocumentNodeMetadata` lives in `inputs_attributes`.
 	Reflection,
+	Other,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -137,7 +139,7 @@ mod tests {
 
 	fn target_slot(node_id: u64) -> ExportSlot {
 		ExportSlot {
-			target: Some(NodeInput::Node { node_id, output_index: 0 }),
+			target: Some(NodeInput::Node { id: node_id, index: 0 }),
 			timestamp: TimeStamp::ORIGIN,
 		}
 	}

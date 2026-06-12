@@ -30,6 +30,7 @@ pub use session::*;
 pub use to_runtime::Declarations;
 
 #[cfg(test)]
-mod crdt_tests;
-#[cfg(test)]
-mod round_trip_tests;
+mod tests {
+	mod crdt;
+	mod round_trip;
+}

@@ -655,14 +655,13 @@ fn node_input_f64_round_trips_bit_exact() {
 fn duplicate_runtime_node_id_is_rejected() {
 	use crate::AttributesWrite;
 	use crate::TimeStamp;
-	use crate::attr::NODE_ORIGINAL_NODE_ID;
 	use crate::to_runtime::ConversionError;
 
 	let (mut registry, declarations) = to_registry(&create_simple_network());
 
 	// Force both root-network nodes onto the same runtime ID.
 	for node in registry.node_instances.values_mut() {
-		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
+		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
 	}
 
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");
@@ -689,7 +688,7 @@ fn cross_network_reference_is_rejected() {
 		.values()
 		.flat_map(|node| node.inputs())
 		.find_map(|slot| match slot.input {
-			NodeInput::Node { node_id, .. } => Some(node_id),
+			NodeInput::Node { id: node_id, .. } => Some(node_id),
 			_ => None,
 		})
 		.expect("simple network has a node-to-node reference");
@@ -736,7 +735,7 @@ fn dangling_scope_injection_is_rejected() {
 		.get_mut(&root_network_id)
 		.expect("root network exists")
 		.attributes
-		.set_serialized(crate::attr::modname::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
+		.set_serialized(crate::attr::network::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
 		.expect("serialize injections");
 
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("dangling scope injection must error");

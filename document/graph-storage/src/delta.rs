@@ -55,10 +55,7 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 		// containing-network changes (a moved node has no in-place op either). `inputs_attributes` is
 		// checked too: the per-slot loops below `zip` only the shared prefix, so a length change there
 		// must force a remove + re-add rather than silently dropping the extra slots.
-		let structural_change = !nodes_have_same_implementation(from_node, to_node)
-			|| from_node.inputs.len() != to_node.inputs.len()
-			|| from_node.inputs_attributes.len() != to_node.inputs_attributes.len()
-			|| from_node.network != to_node.network;
+		let structural_change = !nodes_have_same_implementation(from_node, to_node) || from_node.inputs.len() != to_node.inputs.len() || from_node.network != to_node.network;
 		if structural_change {
 			deltas.push(RegistryDelta::RemoveNode {
 				id: node_id,
@@ -85,8 +82,8 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 			deltas.push(RegistryDelta::ChangeNodeAttribute { id: node_id, delta });
 		}
 
-		for (input_idx, (from_attrs, to_attrs)) in from_node.inputs_attributes.iter().zip(&to_node.inputs_attributes).enumerate() {
-			for delta in compute_attribute_deltas(from_attrs, to_attrs) {
+		for (input_idx, (from_input, to_input)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
+			for delta in compute_attribute_deltas(&from_input.attributes, &to_input.attributes) {
 				deltas.push(RegistryDelta::ChangeNodeInputAttribute {
 					id: node_id,
 					index: input_idx as u32,
@@ -221,7 +218,7 @@ fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) ->
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Attributes, ExportSlot, Implementation, Network, Node, NodeInput, TimeStamp};
+	use crate::{Attributes, ExportSlot, Network, Node, NodeInput, TimeStamp};
 
 	#[test]
 	fn test_compute_deltas_empty() {
@@ -240,16 +237,7 @@ mod tests {
 			let mut registry = Registry::default();
 			registry.networks.insert(0, Network::default());
 			for node_id in [50, 3, 17, 999, 1, 42, 8, 256, 100, 7] {
-				registry.node_instances.insert(
-					node_id,
-					Node {
-						implementation: Implementation::ProtoNode(ResourceId::new()),
-						inputs: vec![],
-						inputs_attributes: vec![],
-						attributes: Attributes::new(),
-						network: 0,
-					},
-				);
+				registry.node_instances.insert(node_id, Node::dummy());
 			}
 			registry
 		};
@@ -276,13 +264,7 @@ mod tests {
 		let from = Registry::default();
 
 		let mut to = from.clone();
-		let node = Node {
-			implementation: Implementation::ProtoNode(ResourceId::new()),
-			inputs: vec![],
-			inputs_attributes: vec![],
-			attributes: Attributes::new(),
-			network: 0,
-		};
+		let node = Node::dummy();
 		to.node_instances.insert(42, node);
 
 		let deltas = compute_deltas(&from, &to);
@@ -295,19 +277,17 @@ mod tests {
 	#[test]
 	fn compute_deltas_treats_inputs_attributes_length_change_as_structural() {
 		// Same implementation/inputs/network in both registries; only `inputs_attributes` length differs.
-		let base = Node {
-			implementation: Implementation::ProtoNode(ResourceId::new()),
-			inputs: vec![],
-			inputs_attributes: vec![Attributes::new()],
-			attributes: Attributes::new(),
-			network: 0,
-		};
+		let base = Node::dummy();
 
 		let mut from = Registry::default();
 		from.node_instances.insert(42, base.clone());
 
 		let mut to = from.clone();
-		to.node_instances.get_mut(&42).unwrap().inputs_attributes.push(Attributes::new());
+		to.node_instances.get_mut(&42).unwrap().inputs.push(crate::InputSlot {
+			input: NodeInput::Import { index: 0 },
+			timestamp: TimeStamp::ORIGIN,
+			attributes: Attributes::new(),
+		});
 
 		let deltas = compute_deltas(&from, &to);
 		assert!(
@@ -339,13 +319,7 @@ mod tests {
 	fn test_compute_deltas_remove_node() {
 		let mut from = Registry::default();
 
-		let node = Node {
-			implementation: Implementation::ProtoNode(ResourceId::new()),
-			inputs: vec![],
-			inputs_attributes: vec![],
-			attributes: Attributes::new(),
-			network: 0,
-		};
+		let node = Node::dummy();
 		from.node_instances.insert(42, node);
 
 		let to = Registry::default();
@@ -359,13 +333,7 @@ mod tests {
 	fn test_compute_deltas_modify_attribute() {
 		let mut from = Registry::default();
 
-		let mut node = Node {
-			implementation: Implementation::ProtoNode(ResourceId::new()),
-			inputs: vec![],
-			inputs_attributes: vec![],
-			attributes: Attributes::new(),
-			network: 0,
-		};
+		let mut node = Node::dummy();
 		let stamp = |counter: u64| TimeStamp { counter, peer: crate::PeerId(0) };
 		node.attributes.insert(
 			"test".to_string(),
@@ -421,7 +389,7 @@ mod tests {
 	#[test]
 	fn test_compute_deltas_network_changes() {
 		let make_slot = |id: u64| ExportSlot {
-			target: Some(NodeInput::Node { node_id: id, output_index: 0 }),
+			target: Some(NodeInput::Node { id, index: 0 }),
 			timestamp: TimeStamp::ORIGIN,
 		};
 
@@ -445,7 +413,7 @@ mod tests {
 			RegistryDelta::SetNetworkExport {
 				id: 0,
 				index: 2,
-				export: Some(NodeInput::Node { node_id: 3, .. }),
+				export: Some(NodeInput::Node { id: 3, .. }),
 				..
 			}
 		));

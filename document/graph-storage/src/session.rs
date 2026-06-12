@@ -28,7 +28,7 @@ impl Session {
 	pub fn with_peer(peer: PeerId) -> Self {
 		Self {
 			document: Document {
-				registry: Registry::default(),
+				working_registry: Registry::default(),
 				retired_snapshot: Registry::default(),
 				history: HashMap::new(),
 				hot_log: Vec::new(),
@@ -48,7 +48,7 @@ impl Session {
 	}
 
 	pub fn registry(&self) -> &Registry {
-		&self.document.registry
+		&self.document.working_registry
 	}
 
 	/// Diff the current registry against a fresh conversion of `network`, then commit each emitted
@@ -68,7 +68,7 @@ impl Session {
 		resources: &graphene_resource::ResourceRegistry,
 	) -> Result<(Vec<HotOp>, from_runtime::DeclarationBytes), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
-		let ops = crate::delta::compute_deltas(&self.document.registry, &conversion.registry);
+		let ops = crate::delta::compute_deltas(&self.document.working_registry, &conversion.registry);
 		let hot_ops = self.stage_ops(ops)?;
 		Ok((hot_ops, conversion.declaration_bytes))
 	}
@@ -99,7 +99,7 @@ impl Session {
 
 		let mut ops = Vec::new();
 		for id in ids {
-			let Some(entry) = self.document.registry.resources.get(&id) else { continue };
+			let Some(entry) = self.document.working_registry.resources.get(&id) else { continue };
 			if entry.has_embedded_source() {
 				continue;
 			}
@@ -115,7 +115,7 @@ impl Session {
 		}
 
 		let revs = self.commit_ops(ops, false)?;
-		self.document.registry = self.document.retired_snapshot.clone();
+		self.document.working_registry = self.document.retired_snapshot.clone();
 		Ok(revs)
 	}
 
@@ -132,7 +132,7 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		if !self.document.registry.peer_users.contains_key(&self.document.peer) {
+		if !self.document.working_registry.peer_users.contains_key(&self.document.peer) {
 			let user = UserId(self.document.peer.0);
 			pending.insert(0, RegistryDelta::RegisterPeer { peer: self.document.peer, user });
 		}
@@ -142,7 +142,6 @@ impl Session {
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
-				author: self.document.peer,
 			};
 			self.document.apply_hot_op(hot_op.clone())?;
 			staged.push(hot_op);
@@ -208,7 +207,7 @@ impl Session {
 				// The persisted snapshot is the retired state; hot ops (replayed by the caller after
 				// `load`) build the working registry on top, leaving `retired_snapshot` at retired.
 				retired_snapshot: registry.clone(),
-				registry,
+				working_registry: registry,
 				history,
 				hot_log: Vec::new(),
 				head,
@@ -236,7 +235,7 @@ impl Session {
 		}
 
 		// Pure retired-delta replay: no hot ops, so the working registry is fully retired.
-		session.document.retired_snapshot = session.document.registry.clone();
+		session.document.retired_snapshot = session.document.working_registry.clone();
 		Ok(session)
 	}
 
@@ -350,7 +349,7 @@ impl Session {
 
 		// Undo runs with an empty hot log, so keep the retired snapshot in lockstep with the rewound
 		// working registry (the next interaction's reverses are computed against it).
-		self.document.retired_snapshot = self.document.registry.clone();
+		self.document.retired_snapshot = self.document.working_registry.clone();
 		self.document.redo_stack.push(checkpoint);
 		Ok(checkpoint)
 	}
@@ -381,7 +380,7 @@ impl Session {
 		self.document.head = checkpoint;
 
 		// Redo runs with an empty hot log; keep the retired snapshot in lockstep with the working registry.
-		self.document.retired_snapshot = self.document.registry.clone();
+		self.document.retired_snapshot = self.document.working_registry.clone();
 		Ok(checkpoint)
 	}
 
@@ -392,7 +391,7 @@ impl Session {
 		let mut session = Self::with_peer(peer);
 		session.commit_ops(ops, false)?;
 		// No hot ops on this path, so the working registry must mirror the freshly-built snapshot.
-		session.document.registry = session.document.retired_snapshot.clone();
+		session.document.working_registry = session.document.retired_snapshot.clone();
 		Ok(session)
 	}
 
@@ -419,7 +418,7 @@ impl Session {
 	/// must keep this whole set alive, not just the current head's, or undo then redo loses declaration
 	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
-		let mut hashes: HashSet<ResourceHash> = self.document.registry.resources.values().filter_map(|entry| entry.hash).collect();
+		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
 
 		for delta in self.document.history.values() {
 			match &delta.kind {
@@ -510,7 +509,6 @@ impl Default for Session {
 pub struct HotOp {
 	pub op: RegistryDelta,
 	pub timestamp: TimeStamp,
-	pub author: PeerId,
 }
 
 #[derive(Debug, thiserror::Error)]

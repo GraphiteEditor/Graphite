@@ -124,9 +124,7 @@ fn collect_timestamps(registry: &Registry) -> HashMap<TimestampKey, TimeStamp> {
 	for (node_id, node) in &registry.node_instances {
 		for (i, slot) in node.inputs.iter().enumerate() {
 			out.insert(TimestampKey::NodeInput(*node_id, i), slot.timestamp);
-		}
-		for (i, attrs) in node.inputs_attributes.iter().enumerate() {
-			for (key, value) in attrs {
+			for (key, value) in &slot.attributes {
 				out.insert(TimestampKey::NodeInputAttribute(*node_id, i, key.clone()), value.timestamp);
 			}
 		}
