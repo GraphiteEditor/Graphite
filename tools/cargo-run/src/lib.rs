@@ -96,6 +96,12 @@ pub fn run_dev_server_in_frontend_dir(program: &str, args: &[&str]) -> Result<()
 	cmd.args(args);
 	cmd.current_dir(&frontend_dir);
 
+	// Cargo resolves a relative `CARGO_TARGET_DIR` against its working directory, which differs inside the watch
+	// loop, so descendant processes get the absolute form
+	if std::env::var_os("CARGO_TARGET_DIR").is_some() {
+		cmd.env("CARGO_TARGET_DIR", wasm::target_dir());
+	}
+
 	// On Windows, the supervisor is placed in its own process group which doesn't receive the console's Ctrl+C events.
 	// Instead, a console handler kills the entire process tree at once. A single Ctrl+C thereby shuts everything down
 	// silently and immediately, rather than letting each descendant process race to react to the event with its own
@@ -158,8 +164,14 @@ mod ctrl_c_windows {
 	}
 
 	pub fn install_handler(child_pid: u32) {
+		INTERRUPTED.store(false, Ordering::SeqCst);
 		CHILD_PID.store(child_pid, Ordering::SeqCst);
-		unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), 1) };
+
+		// Guards against the handler being registered (and thereby invoked) multiple times
+		static REGISTER: std::sync::Once = std::sync::Once::new();
+		REGISTER.call_once(|| {
+			unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), 1) };
+		});
 	}
 
 	pub fn interrupted() -> bool {

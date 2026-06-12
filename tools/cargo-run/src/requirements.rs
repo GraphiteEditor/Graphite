@@ -4,8 +4,17 @@ use std::process::Command;
 use crate::*;
 
 /// The Binaryen release version that [`install_binaryen`] downloads.
-/// NOTICE: keep in sync with the `BINARYEN_VERSION` pinned across the CI workflows.
+/// NOTICE: keep in sync with the `BINARYEN_VERSION` pinned across the CI workflows, and update `BINARYEN_SHA256` below.
 const BINARYEN_VERSION: &str = "129";
+/// The SHA-256 checksums of the pinned Binaryen release's tarballs, from the `.sha256` assets published beside them.
+const BINARYEN_SHA256: &[(&str, &str)] = &[
+	("x86_64-windows", "1405d2f51377859ccf5fcd2c59c0a8c5756373e691ca0eeb5219f646b743e3aa"),
+	("arm64-windows", "40db97baf6aa7c0d9d105a5745572a7a92ed345358b86ecf59f5410e9b2a856e"),
+	("arm64-macos", "d1bb014775ca3002506712b81b4406d126ff6845e8b2f343bc2696a1a88b7117"),
+	("x86_64-macos", "cc38897d3d93c968f24819fae210e04afd0146d0e2467e307207ea7e798a59b9"),
+	("x86_64-linux", "50b9fa62b9abea752da92ec57e0c555fee578760cd237c40107957715d2976ba"),
+	("aarch64-linux", "81d46b86b10876ab615eec67e09fcc5615115a7b189cfe3d466725ee36c46ac2"),
+];
 const WASM_OPT_INSTALL: &str = "automatically download Binaryen (wasm-opt) from its official GitHub releases";
 
 #[derive(Default, Clone)]
@@ -232,6 +241,7 @@ pub fn check(task: &Task) -> Result<(), Error> {
 fn install_binaryen() -> Result<(), Error> {
 	let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
 		("windows", "x86_64") => "x86_64-windows",
+		("windows", "aarch64") => "arm64-windows",
 		("macos", "aarch64") => "arm64-macos",
 		("macos", "x86_64") => "x86_64-macos",
 		("linux", "x86_64") => "x86_64-linux",
@@ -252,6 +262,14 @@ fn install_binaryen() -> Result<(), Error> {
 	download.args(["-sSfL", &url, "-o"]).arg(&tarball);
 	wasm::run_command(download)?;
 
+	let expected_sha256 = BINARYEN_SHA256.iter().find(|(p, _)| *p == platform).map(|(_, sha256)| *sha256);
+	let expected_sha256 = expected_sha256.expect("Every supported platform has a pinned checksum");
+	if let Err(error) = verify_sha256(&tarball, expected_sha256) {
+		let _ = std::fs::remove_file(&tarball);
+		print_published_binaryen_sha256();
+		return Err(error);
+	}
+
 	let mut extract = Command::new("tar");
 	extract.arg("-xzf").arg(&tarball).arg("-C").arg(&target_dir);
 	wasm::run_command(extract)?;
@@ -259,6 +277,64 @@ fn install_binaryen() -> Result<(), Error> {
 	let _ = std::fs::remove_file(&tarball);
 
 	use_managed_binaryen();
+	Ok(())
+}
+
+/// Prints a copy-pastable replacement for `BINARYEN_SHA256`, populated with the hashes published in the pinned
+/// release, for updating the code after bumping `BINARYEN_VERSION`.
+fn print_published_binaryen_sha256() {
+	eprintln!();
+	eprintln!("If `BINARYEN_VERSION` was just changed, update `BINARYEN_SHA256` with the hashes published in the release:");
+	eprintln!("const BINARYEN_SHA256: &[(&str, &str)] = &[");
+	for (platform, _) in BINARYEN_SHA256 {
+		let url = format!("https://github.com/WebAssembly/binaryen/releases/download/version_{BINARYEN_VERSION}/binaryen-version_{BINARYEN_VERSION}-{platform}.tar.gz.sha256");
+		let published = Command::new("curl")
+			.args(["-sSfL", &url])
+			.output()
+			.ok()
+			.filter(|output| output.status.success())
+			.and_then(|output| String::from_utf8_lossy(&output.stdout).split_whitespace().next().map(str::to_string));
+		eprintln!("\t(\"{platform}\", \"{}\"),", published.unwrap_or_else(|| "FAILED TO FETCH".to_string()));
+	}
+	eprintln!("];");
+}
+
+/// Verifies a file's SHA-256 checksum using the hashing tool that ships with each OS.
+fn verify_sha256(file: &std::path::Path, expected: &str) -> Result<(), Error> {
+	let mut hash = match std::env::consts::OS {
+		"windows" => {
+			let mut hash = Command::new("certutil");
+			hash.arg("-hashfile").arg(file).arg("SHA256");
+			hash
+		}
+		"macos" => {
+			let mut hash = Command::new("shasum");
+			hash.args(["-a", "256"]).arg(file);
+			hash
+		}
+		_ => {
+			let mut hash = Command::new("sha256sum");
+			hash.arg(file);
+			hash
+		}
+	};
+
+	let command_str = format!("{hash:?}");
+	let output = hash.output().map_err(|e| Error::Io(e, format!("Failed to run command {command_str}")))?;
+	if !output.status.success() {
+		return Err(Error::Command(command_str, output.status));
+	}
+
+	// The checksum is the output's only token of 64 hex digits, robust to each tool's surrounding text
+	let stdout = String::from_utf8_lossy(&output.stdout);
+	let found = stdout.split_whitespace().find(|token| token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit()));
+
+	if found.is_none_or(|found| !found.eq_ignore_ascii_case(expected)) {
+		eprintln!("Hash mismatch for '{}'!", file.display());
+		eprintln!("Expected: {expected}");
+		eprintln!("Actual:   {}", found.unwrap_or("(none)"));
+		return Err(Error::Io(std::io::Error::other("hash mismatch"), "Failed to verify the Binaryen download".into()));
+	}
 	Ok(())
 }
 

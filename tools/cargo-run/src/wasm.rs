@@ -54,10 +54,18 @@ pub fn build(release: bool, native: bool) -> Result<(), Error> {
 pub fn watch_shell_commands(release: bool) -> Vec<String> {
 	let profile_dir = if release { "release" } else { "debug" };
 
+	// Expressed relative to the wrapper directory when inside the workspace (always true unless `CARGO_TARGET_DIR`
+	// points elsewhere), avoiding absolute path prefixes which may contain spaces
+	let workspace_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
+	let target_dir = match target_dir().strip_prefix(&workspace_dir) {
+		Ok(within_workspace) => format!("../../{}", within_workspace.display()),
+		Err(_) => target_dir().display().to_string(),
+	};
+
 	let mut steps = vec![
 		format!("cargo {} --color=always", cargo_build_args(release, false).join(" ")),
 		format!(
-			"wasm-bindgen {} --out-dir pkg ../../target/{WASM_TARGET}/{profile_dir}/{OUT_NAME}.wasm",
+			"wasm-bindgen {} --out-dir pkg {target_dir}/{WASM_TARGET}/{profile_dir}/{OUT_NAME}.wasm",
 			wasm_bindgen_args(release).join(" ")
 		),
 	];
@@ -96,7 +104,12 @@ fn wasm_bindgen_args(release: bool) -> Vec<&'static str> {
 /// The workspace's cargo target directory, honoring the `CARGO_TARGET_DIR` environment variable.
 pub(crate) fn target_dir() -> PathBuf {
 	let workspace_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
-	std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| workspace_dir.join("target"))
+	match std::env::var_os("CARGO_TARGET_DIR") {
+		// Joining handles both forms: an absolute path replaces the workspace prefix entirely, while a relative path
+		// is resolved against the workspace root, matching how cargo resolves it when invoked from there
+		Some(custom_dir) => workspace_dir.join(custom_dir),
+		None => workspace_dir.join("target"),
+	}
 }
 
 /// Installs the Wasm target through rustup if it's missing. Any failure is ignored because rustup may not exist in
