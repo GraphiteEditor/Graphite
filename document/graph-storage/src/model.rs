@@ -32,7 +32,12 @@ impl Node {
 		if self.inputs.len() != other.inputs.len() {
 			return false;
 		}
-		if !self.inputs.iter().zip(&other.inputs).all(|(a, b)| a.input == b.input) {
+		if !self
+			.inputs
+			.iter()
+			.zip(&other.inputs)
+			.all(|(a, b)| a.input == b.input && attributes_value_equal(&a.attributes, &b.attributes))
+		{
 			return false;
 		}
 		attributes_value_equal(&self.attributes, &other.attributes)
@@ -127,8 +132,6 @@ pub struct ExportSlot {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProtoNode {
 	pub identifier: String,
-	pub code: Option<String>,
-	pub wasm: Option<Vec<u8>>,
 	pub attributes: Attributes,
 }
 

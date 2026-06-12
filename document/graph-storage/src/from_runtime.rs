@@ -546,8 +546,6 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 
 			let proto = ProtoNode {
 				identifier: identifier_str.clone(),
-				code: None,
-				wasm: None,
 				attributes: Default::default(),
 			};
 			// Content-address the declaration: serialize, hash, derive a deterministic id.

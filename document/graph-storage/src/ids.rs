@@ -1,6 +1,7 @@
 use crate::RegistryDelta;
 use serde::{Deserialize, Serialize};
 
+// TODO: Consider making these newtype wrappers around `u64`
 pub type NodeId = u64;
 pub type NetworkId = u64;
 /// Content-addressed identity for a `Delta`.
@@ -14,15 +15,6 @@ pub const ROOT_NETWORK: NetworkId = 0;
 /// Upper bound on a network's export slot count, guarding `SetExport` against a malicious or corrupted
 /// slot index forcing an unbounded `exports` allocation.
 pub(crate) const MAX_EXPORT_SLOTS: usize = 1 << 16;
-
-/// Unified storage-side position. The valid variants depend on `attr::UI_IS_LAYER`:
-/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute` or `Chain`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Position {
-	Absolute([i32; 2]),
-	Chain,
-	Stack(u32),
-}
 
 /// Per-device identity. Stable per `(device, document)`. Used for CRDT tiebreaking and `NodeId`
 /// scoping. Globally unique across all peers ever in a document.
@@ -70,14 +62,6 @@ impl LamportClock {
 	pub fn observe(&mut self, incoming: TimeStamp) {
 		self.counter = self.counter.max(incoming.counter);
 	}
-}
-
-pub fn mint_node_id(peer: PeerId, counter: u64) -> NodeId {
-	let bytes = rmp_serde::to_vec(&(peer, counter)).expect("(PeerId, counter) must serialize");
-	let digest = blake3::hash(&bytes);
-	let mut truncated = [0u8; 8];
-	truncated.copy_from_slice(&digest.as_bytes()[..8]);
-	NodeId::from_le_bytes(truncated)
 }
 
 /// Hash the identity-bearing fields of a `Delta` with blake3 and truncate to 128 bits.

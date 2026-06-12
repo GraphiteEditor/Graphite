@@ -1,4 +1,4 @@
-use crate::{PeerId, Priority, TimeStamp};
+use crate::{PeerId, TimeStamp};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -153,9 +153,88 @@ impl ResourceEntry {
 /// through the normal CmRDT path; bytes live in content-addressed storage keyed by [`ResourceHash`].
 pub type ResourceStore = HashMap<ResourceId, ResourceEntry>;
 
+/// Fractional priority for ordering a resource's source chain. New sources are inserted by picking
+/// a value strictly between two neighbors, so concurrent insertions elsewhere never collide; an
+/// exact tie between two peers inserting at the same gap is broken by `PeerId` in [`SourceKey`].
+/// `f64` precision is ample for the short fallback chains resources carry in practice.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[serde(try_from = "f64")]
+pub struct Priority(f64);
+
+impl Priority {
+	/// Rejects non-finite input. The field is private and deserialization routes through here, so a
+	/// `Priority` is always finite, keeping its `Ord`/`Hash`/`Eq` agreement sound.
+	pub fn new(value: f64) -> Result<Self, NonFinitePriority> {
+		if value.is_finite() { Ok(Self(value)) } else { Err(NonFinitePriority(value)) }
+	}
+
+	pub fn value(self) -> f64 {
+		self.0
+	}
+}
+
+impl TryFrom<f64> for Priority {
+	type Error = NonFinitePriority;
+	fn try_from(value: f64) -> Result<Self, Self::Error> {
+		Self::new(value)
+	}
+}
+
+/// A [`Priority`] was constructed from a `NaN` or infinite value.
+#[derive(Debug, thiserror::Error)]
+#[error("priority must be finite, got {0}")]
+pub struct NonFinitePriority(pub f64);
+
+// `total_cmp` drives `Ord`, `Hash`, and `Eq` together so `Priority` is a sound `BTree`/`Hash` key:
+// a derived `PartialEq` would disagree with this ordering on `-0.0` and `NaN`.
+impl PartialEq for Priority {
+	fn eq(&self, other: &Self) -> bool {
+		self.cmp(other) == std::cmp::Ordering::Equal
+	}
+}
+
+impl Eq for Priority {}
+
+impl Ord for Priority {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.0.total_cmp(&other.0)
+	}
+}
+
+impl PartialOrd for Priority {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl std::hash::Hash for Priority {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.0.to_bits().hash(state);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn priority_rejects_non_finite() {
+		assert!(Priority::new(f64::NAN).is_err());
+		assert!(Priority::new(f64::INFINITY).is_err());
+		assert!(Priority::new(-1.5).is_ok(), "negative finite priorities are valid");
+	}
+
+	/// Deserialization routes through `Priority::new`, so a non-finite value on disk is rejected rather
+	/// than silently producing an unsound map key. MessagePack (the storage format) can carry a
+	/// non-finite `f64`, unlike JSON, so this guards the real round-trip path.
+	#[test]
+	fn priority_deserialize_validates_finiteness() {
+		let finite = rmp_serde::to_vec(&3.5_f64).unwrap();
+		assert!(rmp_serde::from_slice::<Priority>(&finite).is_ok());
+
+		let non_finite = rmp_serde::to_vec(&f64::INFINITY).unwrap();
+		assert!(rmp_serde::from_slice::<Priority>(&non_finite).is_err(), "a non-finite priority on disk must be rejected");
+	}
 
 	/// `ResourceEntry`'s accessors rely on `sources` being sorted by `SourceKey`. Deserializing an
 	/// out-of-order chain (older writer, hand-edited file) must restore the invariant rather than leave

@@ -22,7 +22,7 @@ pub use crdt::*;
 pub use document::*;
 pub use from_runtime::{RuntimeConversion, decode_declaration, encode_declaration};
 pub use ids::*;
-pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource};
+pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
 pub use model::*;
 pub use registry::*;
 pub use resources::*;

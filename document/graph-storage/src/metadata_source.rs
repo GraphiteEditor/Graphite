@@ -8,8 +8,6 @@ use std::collections::HashMap;
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 
-use crate::Position;
-
 /// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeMetadataEntry {
@@ -121,3 +119,12 @@ pub trait NodeMetadataSource {
 pub struct NoMetadata;
 
 impl NodeMetadataSource for NoMetadata {}
+
+/// Unified storage-side position. The valid variants depend on `attr::node::ui::IS_LAYER`:
+/// layers use `Absolute` or `Stack`; non-layer nodes use `Absolute` or `Chain`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Position {
+	Absolute([i32; 2]),
+	Chain,
+	Stack(u32),
+}

@@ -6,12 +6,12 @@ use std::collections::HashMap;
 pub struct Registry {
 	pub node_instances: HashMap<NodeId, Node>,
 	pub networks: HashMap<NetworkId, Network>,
-	/// Append-only mapping from per-device `PeerId` to per-human `UserId`.
-	/// Registered by each device's first contribution via `RegistryDelta::RegisterPeer`.
-	pub peer_users: HashMap<PeerId, UserId>,
 	/// Content-addressable resources (images, fonts, eventually proto-node declarations) referenced
 	/// by `ResourceId`. See [`ResourceStore`].
 	pub resources: ResourceStore,
+	/// Append-only mapping from per-device `PeerId` to per-human `UserId`.
+	/// Registered by each device's first contribution via `RegistryDelta::RegisterPeer`.
+	pub peer_users: HashMap<PeerId, UserId>,
 	pub attributes: Attributes,
 }
 
