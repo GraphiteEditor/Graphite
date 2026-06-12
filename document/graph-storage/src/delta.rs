@@ -25,8 +25,8 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 	// resulting `Rev` chain) deterministic across runs.
 	for network_id in sorted(to_network_ids.difference(&from_network_ids)) {
 		deltas.push(RegistryDelta::AddNetwork {
-			network: network_id,
-			contents: to.networks[&network_id].clone(),
+			id: network_id,
+			network: to.networks[&network_id].clone(),
 		});
 	}
 
@@ -35,14 +35,14 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 
 	for node_id in sorted(from_node_ids.difference(&to_node_ids)) {
 		deltas.push(RegistryDelta::RemoveNode {
-			node_id,
+			id: node_id,
 			snapshot: from.node_instances[&node_id].clone(),
 		});
 	}
 
 	for node_id in sorted(to_node_ids.difference(&from_node_ids)) {
 		deltas.push(RegistryDelta::AddNode {
-			node_id,
+			id: node_id,
 			node: to.node_instances[&node_id].clone(),
 		});
 	}
@@ -60,8 +60,11 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 			|| from_node.inputs_attributes.len() != to_node.inputs_attributes.len()
 			|| from_node.network != to_node.network;
 		if structural_change {
-			deltas.push(RegistryDelta::RemoveNode { node_id, snapshot: from_node.clone() });
-			deltas.push(RegistryDelta::AddNode { node_id, node: to_node.clone() });
+			deltas.push(RegistryDelta::RemoveNode {
+				id: node_id,
+				snapshot: from_node.clone(),
+			});
+			deltas.push(RegistryDelta::AddNode { id: node_id, node: to_node.clone() });
 			continue;
 		}
 
@@ -71,27 +74,31 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 		for (input_idx, (from_slot, to_slot)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
 			if from_slot.input != to_slot.input {
 				deltas.push(RegistryDelta::ChangeNodeInput {
-					node_id,
-					input_idx,
+					id: node_id,
+					index: input_idx as u32,
 					new_input: to_slot.input.clone(),
 				});
 			}
 		}
 
 		for delta in compute_attribute_deltas(&from_node.attributes, &to_node.attributes) {
-			deltas.push(RegistryDelta::ChangeNodeAttribute { node_id, delta });
+			deltas.push(RegistryDelta::ChangeNodeAttribute { id: node_id, delta });
 		}
 
 		for (input_idx, (from_attrs, to_attrs)) in from_node.inputs_attributes.iter().zip(&to_node.inputs_attributes).enumerate() {
 			for delta in compute_attribute_deltas(from_attrs, to_attrs) {
-				deltas.push(RegistryDelta::ChangeNodeInputAttribute { node_id, input_idx, delta });
+				deltas.push(RegistryDelta::ChangeNodeInputAttribute {
+					id: node_id,
+					index: input_idx as u32,
+					delta,
+				});
 			}
 		}
 	}
 
 	for network_id in sorted(from_network_ids.difference(&to_network_ids)) {
 		deltas.push(RegistryDelta::RemoveNetwork {
-			network: network_id,
+			id: network_id,
 			snapshot: from.networks[&network_id].clone(),
 		});
 	}
@@ -108,28 +115,23 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 			let from_target = from_slot.and_then(|s| s.target.as_ref());
 			let to_target = to_slot.and_then(|s| s.target.as_ref());
 			if from_target != to_target {
-				deltas.push(RegistryDelta::SetExport {
-					network: network_id,
-					slot: slot_idx as u32,
-					target: to_target.cloned(),
+				deltas.push(RegistryDelta::SetNetworkExport {
+					id: network_id,
+					index: slot_idx as u32,
+					export: to_target.cloned(),
 				});
 			}
 		}
 
 		// Per-network attributes.
 		for delta in compute_attribute_deltas(&from_network.attributes, &to_network.attributes) {
-			deltas.push(RegistryDelta::ChangeNetworkAttribute { network: network_id, delta });
+			deltas.push(RegistryDelta::ChangeNetworkAttribute { id: network_id, delta });
 		}
 	}
 
 	// Document-level attributes (`ui::doc::*`, format version, ...).
 	for delta in compute_attribute_deltas(&from.attributes, &to.attributes) {
 		deltas.push(RegistryDelta::ChangeDocumentAttribute { delta });
-	}
-
-	// Public library export list (whole-list LWW).
-	if from.exported_nodes != to.exported_nodes {
-		deltas.push(RegistryDelta::SetExportedNodes { nodes: to.exported_nodes.clone() });
 	}
 
 	compute_resource_deltas(from, to, &mut deltas);
@@ -257,7 +259,7 @@ mod tests {
 			compute_deltas(&empty, registry)
 				.into_iter()
 				.filter_map(|delta| match delta {
-					RegistryDelta::AddNode { node_id, .. } => Some(node_id),
+					RegistryDelta::AddNode { id: node_id, .. } => Some(node_id),
 					_ => None,
 				})
 				.collect()
@@ -285,7 +287,7 @@ mod tests {
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1);
-		assert!(matches!(deltas[0], RegistryDelta::AddNode { node_id: 42, .. }));
+		assert!(matches!(deltas[0], RegistryDelta::AddNode { id: 42, .. }));
 	}
 
 	/// A change in `inputs_attributes` length is structural: the per-slot diff only `zip`s the shared
@@ -309,14 +311,14 @@ mod tests {
 
 		let deltas = compute_deltas(&from, &to);
 		assert!(
-			deltas.iter().any(|delta| matches!(delta, RegistryDelta::RemoveNode { node_id: 42, .. })) && deltas.iter().any(|delta| matches!(delta, RegistryDelta::AddNode { node_id: 42, .. })),
+			deltas.iter().any(|delta| matches!(delta, RegistryDelta::RemoveNode { id: 42, .. })) && deltas.iter().any(|delta| matches!(delta, RegistryDelta::AddNode { id: 42, .. })),
 			"an inputs_attributes length change must emit RemoveNode + AddNode, got {deltas:?}"
 		);
 	}
 
 	#[test]
 	fn test_compute_deltas_change_network_attribute() {
-		use crate::{AttributesExt, TimeStamp};
+		use crate::{AttributesWrite, TimeStamp};
 
 		let mut from = Registry::default();
 		from.networks.insert(0, Network::default());
@@ -327,7 +329,7 @@ mod tests {
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1, "a changed per-network attribute must emit one delta");
 		assert!(
-			matches!(&deltas[0], RegistryDelta::ChangeNetworkAttribute { network: 0, delta } if delta.key == "ui::nav::width"),
+			matches!(&deltas[0], RegistryDelta::ChangeNetworkAttribute { id: 0, delta } if delta.key == "ui::nav::width"),
 			"expected ChangeNetworkAttribute for ui::nav::width, got {:?}",
 			deltas[0]
 		);
@@ -350,7 +352,7 @@ mod tests {
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1);
-		assert!(matches!(deltas[0], RegistryDelta::RemoveNode { node_id: 42, .. }));
+		assert!(matches!(deltas[0], RegistryDelta::RemoveNode { id: 42, .. }));
 	}
 
 	#[test]
@@ -387,7 +389,7 @@ mod tests {
 		assert_eq!(deltas.len(), 1);
 		assert!(matches!(
 			&deltas[0],
-			RegistryDelta::ChangeNodeAttribute { node_id: 42, delta: AttributeDelta { key, value: Some(_) } } if key == "test"
+			RegistryDelta::ChangeNodeAttribute { id: 42, delta: AttributeDelta { key, value: Some(_) } } if key == "test"
 		));
 	}
 
@@ -440,10 +442,10 @@ mod tests {
 		assert_eq!(deltas.len(), 1);
 		assert!(matches!(
 			&deltas[0],
-			RegistryDelta::SetExport {
-				network: 0,
-				slot: 2,
-				target: Some(NodeInput::Node { node_id: 3, .. }),
+			RegistryDelta::SetNetworkExport {
+				id: 0,
+				index: 2,
+				export: Some(NodeInput::Node { node_id: 3, .. }),
 				..
 			}
 		));

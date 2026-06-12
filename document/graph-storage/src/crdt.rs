@@ -1,4 +1,4 @@
-use crate::{Attributes, AttributesExt, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
+use crate::{Attributes, AttributesWrite, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +14,9 @@ pub struct Delta {
 	pub parents: Vec<Rev>,
 	pub author: PeerId,
 	pub timestamp: TimeStamp,
-	pub delta_type: RegistryDelta,
+	pub kind: RegistryDelta,
 	pub reverse: RegistryDelta,
-	/// Local, mutable annotations on this commit (gesture-end marker, future commit messages / labels).
+	/// Local, mutable annotations on this commit (interaction-end marker, future commit messages / labels).
 	/// Deliberately excluded from `compute_rev`: relabeling a commit must not change its content-addressed
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default, skip_serializing_if = "Attributes::is_empty")]
@@ -24,32 +24,32 @@ pub struct Delta {
 }
 
 impl Delta {
-	pub fn new(parents: Vec<Rev>, author: PeerId, timestamp: TimeStamp, delta_type: RegistryDelta, reverse: RegistryDelta) -> Self {
-		let id = compute_rev(&parents, author, timestamp, &delta_type);
+	pub fn new(parents: Vec<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: RegistryDelta) -> Self {
+		let id = compute_rev(&parents, author, timestamp, &kind);
 		Self {
 			id,
 			parents,
 			author,
 			timestamp,
-			delta_type,
+			kind,
 			reverse,
 			attributes: Attributes::default(),
 		}
 	}
 
-	/// Mark this delta as the last op of a user gesture, so the undo cursor treats it as a checkpoint.
-	pub fn mark_gesture_end(&mut self, timestamp: TimeStamp) {
-		self.attributes.set(attr::GESTURE_END, serde_json::Value::Bool(true), timestamp);
+	/// Mark this delta as the last op of a user interaction, so the undo cursor treats it as a checkpoint.
+	pub fn mark_interaction_end(&mut self, timestamp: TimeStamp) {
+		self.attributes.set(attr::delta::INTERACTION_END, serde_json::Value::Bool(true), timestamp);
 	}
 
-	pub fn is_gesture_end(&self) -> bool {
-		self.attributes.get(attr::GESTURE_END).is_some_and(|marker| marker.value == serde_json::Value::Bool(true))
+	pub fn is_interaction_end(&self) -> bool {
+		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == serde_json::Value::Bool(true))
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
 	/// via `new`; differs only if `id` was tampered with or the hash derivation changed.
 	pub fn recomputed_id(&self) -> Rev {
-		compute_rev(&self.parents, self.author, self.timestamp, &self.delta_type)
+		compute_rev(&self.parents, self.author, self.timestamp, &self.kind)
 	}
 
 	/// Whether `id` matches the recomputed content hash. `Delta` deserializes without checking this
@@ -65,68 +65,65 @@ impl Delta {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RegistryDelta {
 	AddNode {
-		node_id: NodeId,
+		id: NodeId,
 		node: Node,
 	},
 	/// `snapshot` lets the reverse `AddNode` rebuild without reading the (already-removed) node from
 	/// the registry, mirroring `RemoveNetwork`.
 	RemoveNode {
-		node_id: NodeId,
+		id: NodeId,
 		snapshot: Node,
 	},
 	ChangeNodeInput {
-		node_id: NodeId,
-		input_idx: usize,
+		id: NodeId,
+		index: u32,
 		new_input: NodeInput,
 	},
 	ChangeNodeAttribute {
-		node_id: NodeId,
+		id: NodeId,
 		delta: AttributeDelta,
 	},
 	ChangeNodeInputAttribute {
-		node_id: NodeId,
-		input_idx: usize,
+		id: NodeId,
+		index: u32,
 		delta: AttributeDelta,
 	},
-	/// LWW per slot. `target == None` removes the slot.
-	SetExport {
-		network: NetworkId,
-		slot: u32,
-		target: Option<NodeInput>,
+	/// LWW per slot. `export == None` removes the slot.
+	SetNetworkExport {
+		id: NetworkId,
+		index: u32,
+		export: Option<NodeInput>,
 	},
 	/// Per-network attribute change, LWW per key. Mirrors `ChangeDocumentAttribute`.
 	ChangeNetworkAttribute {
-		network: NetworkId,
+		id: NetworkId,
 		delta: AttributeDelta,
 	},
 	AddNetwork {
-		network: NetworkId,
-		contents: Network,
+		id: NetworkId,
+		network: Network,
 	},
 	/// `snapshot` lets the reverse delta rebuild without re-walking history.
 	RemoveNetwork {
-		network: NetworkId,
+		id: NetworkId,
 		snapshot: Network,
 	},
-	/// Whole-list LWW; timestamp lives under `attr::EXPORTED_NODES_TS` on the document.
-	SetExportedNodes {
-		nodes: Vec<NodeId>,
-	},
-	ChangeDocumentAttribute {
-		delta: AttributeDelta,
-	},
-	/// Append-only registration of a device's `PeerId` against its owning `UserId`.
-	/// First write wins; conflicting re-registration errors. Duplicate identical registration
-	/// is a no-op. Not LWW — the mapping is forever.
-	RegisterPeer {
-		peer: PeerId,
-		user: UserId,
+	/// Register a whole resource entry at once. Overwrites any existing entry for `id`; the reverse
+	/// of `RemoveResource`, the way `AddNetwork` pairs with `RemoveNetwork`.
+	AddResource {
+		id: ResourceId,
+		entry: ResourceEntry,
 	},
 	/// LWW on a resource's resolved content hash. Creates the resource entry if absent.
 	/// Concurrent resolves agree by construction (the hash is content-derived), so LWW is safe.
 	SetResourceHash {
 		id: ResourceId,
 		hash: Option<ResourceHash>,
+	},
+	/// Remove a whole resource entry. `snapshot` is the state of the resource before it was removed.
+	RemoveResource {
+		id: ResourceId,
+		snapshot: ResourceEntry,
 	},
 	/// Add (or LWW-overwrite) one entry in a resource's source fallback chain. The source body is
 	/// type-erased; `key` carries the fractional priority + peer that order it. Add-wins: concurrent
@@ -141,17 +138,18 @@ pub enum RegistryDelta {
 		id: ResourceId,
 		key: SourceKey,
 	},
-	/// Register a whole resource entry at once. Overwrites any existing entry for `id`; the reverse
-	/// of `RemoveResource`, the way `AddNetwork` pairs with `RemoveNetwork`.
-	AddResource {
-		id: ResourceId,
-		entry: ResourceEntry,
+	/// Append-only registration of a device's `PeerId` against its owning `UserId`.
+	/// First write wins; conflicting re-registration errors. Duplicate identical registration
+	/// is a no-op. Not LWW — the mapping is forever.
+	RegisterPeer {
+		peer: PeerId,
+		user: UserId,
 	},
-	/// Remove a whole resource entry. `snapshot` is the state of the resource before it was removed.
-	RemoveResource {
-		id: ResourceId,
-		snapshot: ResourceEntry,
+	ChangeDocumentAttribute {
+		delta: AttributeDelta,
 	},
+	// Allow for future delta types without a model change
+	Other(serde_json::Value),
 }
 
 /// `value: None` means remove. The timestamp comes from the wrapping `Delta`.

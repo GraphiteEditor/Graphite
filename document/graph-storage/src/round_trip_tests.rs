@@ -588,7 +588,7 @@ fn resource_registry_round_trips_runtime_to_storage_to_runtime() {
 /// A resource present in the runtime cache but not referenced by any node is *not* snapshotted into the
 /// storage registry. This is the orphan case: undoing an image paste removes the node but the runtime
 /// keeps the resource alive for redo, so a later diff must not see the orphan as a new `AddResource`
-/// (which would resurface the undone paste as a phantom gesture). Regression guard for that divergence.
+/// (which would resurface the undone paste as a phantom interaction). Regression guard for that divergence.
 #[test]
 fn unreferenced_runtime_resource_is_not_snapshotted() {
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
@@ -653,16 +653,16 @@ fn node_input_f64_round_trips_bit_exact() {
 /// Conversion must reject this rather than silently collapse them and drop a node.
 #[test]
 fn duplicate_runtime_node_id_is_rejected() {
-	use crate::AttributesExt;
+	use crate::AttributesWrite;
 	use crate::TimeStamp;
-	use crate::attr::ORIGINAL_NODE_ID;
+	use crate::attr::NODE_ORIGINAL_NODE_ID;
 	use crate::to_runtime::ConversionError;
 
 	let (mut registry, declarations) = to_registry(&create_simple_network());
 
 	// Force both root-network nodes onto the same runtime ID.
 	for node in registry.node_instances.values_mut() {
-		node.attributes.set(ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
+		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
 	}
 
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");
@@ -721,7 +721,7 @@ fn scope_injections_round_trip() {
 /// network) must error rather than emit an injection pointing at a nonexistent runtime node.
 #[test]
 fn dangling_scope_injection_is_rejected() {
-	use crate::AttributesExt;
+	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
@@ -736,7 +736,7 @@ fn dangling_scope_injection_is_rejected() {
 		.get_mut(&root_network_id)
 		.expect("root network exists")
 		.attributes
-		.set_serialized(crate::attr::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
+		.set_serialized(crate::attr::modname::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
 		.expect("serialize injections");
 
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("dangling scope injection must error");

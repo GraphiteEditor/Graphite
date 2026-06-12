@@ -123,7 +123,7 @@ fn convert_network(
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
-		let local_id = node.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
+		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
 		let runtime_id = RuntimeNodeId(local_id);
 
 		if node.inputs.len() != node.inputs_attributes.len() {
@@ -174,7 +174,7 @@ fn convert_network(
 /// Rebuild a network's `scope_injections` from its serialized attribute blob, resolving each stored
 /// storage node ID back to its runtime-local ID. Mirrors `from_runtime::write_scope_injections`.
 fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes: &crate::Attributes) -> Result<FxHashMap<String, (RuntimeNodeId, Type)>, ConversionError> {
-	let Some(stored) = attributes.get_typed::<HashMap<String, (NodeId, Type)>>(SCOPE_INJECTIONS) else {
+	let Some(stored) = attributes.get_typed::<HashMap<String, (NodeId, Type)>>(network::SCOPE_INJECTIONS) else {
 		return Ok(FxHashMap::default());
 	};
 
@@ -191,7 +191,7 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 				});
 			};
 
-			let local_id = referenced.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(storage_id);
+			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(storage_id);
 			Ok((key, (RuntimeNodeId(local_id), ty)))
 		})
 		.collect()
@@ -201,12 +201,12 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 /// empty entries for unconverted-from-runtime nodes. `input_metadata` is always sized to match
 /// `node.inputs.len()` for a strict slot-by-slot rebuild; empty slots use `InputMetadataEntry::default()`.
 fn extract_ui_metadata(node: &crate::Node, network_path: &[RuntimeNodeId], local_id: RuntimeNodeId) -> Option<NodeMetadataEntry> {
-	let position: Option<Position> = node.attributes.get_typed(UI_POSITION);
-	let is_layer = node.attributes.get_or(UI_IS_LAYER, false);
-	let display_name: Option<String> = node.attributes.get_typed(UI_DISPLAY_NAME);
-	let locked = node.attributes.get_or(UI_LOCKED, false);
-	let pinned = node.attributes.get_or(UI_PINNED, false);
-	let output_names: Vec<String> = node.attributes.get_or_default(UI_OUTPUT_NAMES);
+	let position: Option<Position> = node.attributes.get_typed(node::ui::POSITION);
+	let is_layer = node.attributes.get_or(node::ui::IS_LAYER, false);
+	let display_name: Option<String> = node.attributes.get_typed(node::ui::DISPLAY_NAME);
+	let locked = node.attributes.get_or(node::ui::LOCKED, false);
+	let pinned = node.attributes.get_or(node::ui::PINNED, false);
+	let output_names: Vec<String> = node.attributes.get_or_default(node::ui::OUTPUT_NAMES);
 
 	let input_metadata: Vec<InputMetadataEntry> = node.inputs_attributes.iter().map(extract_input_metadata).collect();
 
@@ -228,7 +228,7 @@ fn extract_network_metadata(attributes: &crate::Attributes, network_path: &[Runt
 	NetworkMetadataEntry {
 		network_path: network_path.to_vec(),
 		network_id,
-		reference: attributes.get_typed(UI_REFERENCE),
+		reference: attributes.get_typed(node::ui::REFERENCE),
 	}
 }
 
@@ -236,13 +236,13 @@ fn extract_network_metadata(attributes: &crate::Attributes, network_path: &[Runt
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
 	let input_data: HashMap<String, serde_json::Value> = attributes
 		.iter()
-		.filter_map(|(key, value)| key.strip_prefix(UI_INPUT_DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
+		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
 		.collect();
 
 	InputMetadataEntry {
-		input_name: attributes.get_typed(UI_INPUT_NAME),
-		input_description: attributes.get_typed(UI_INPUT_DESCRIPTION),
-		widget_override: attributes.get_typed(UI_WIDGET_OVERRIDE),
+		input_name: attributes.get_typed(node::input::ui::NAME),
+		input_description: attributes.get_typed(node::input::ui::DESCRIPTION),
+		widget_override: attributes.get_typed(node::input::ui::WIDGET_OVERRIDE),
 		input_data,
 	}
 }
@@ -265,11 +265,11 @@ fn convert_node(
 	// Defaults must match `DocumentNode::default()` (and the `set_if_not_default` calls in `from_runtime`).
 	Ok(DocumentNode {
 		inputs,
-		call_argument: node.attributes.get_or(CALL_ARGUMENT, concrete!(core_types::Context)),
+		call_argument: node.attributes.get_or(node::CALL_ARGUMENT, concrete!(core_types::Context)),
 		implementation: convert_implementation(context, &node.implementation, metadata_path, runtime_node_id, node_collector, network_collector)?,
-		visible: node.attributes.get_or(VISIBLE, true),
-		skip_deduplication: node.attributes.get_or(SKIP_DEDUPLICATION, false),
-		context_features: node.attributes.get_or_default(CONTEXT_FEATURES),
+		visible: node.attributes.get_or(node::VISIBLE, true),
+		skip_deduplication: node.attributes.get_or(node::SKIP_DEDUPLICATION, false),
+		context_features: node.attributes.get_or_default(node::CONTEXT_FEATURES),
 		// Regenerated during compilation; not stored.
 		original_location: Default::default(),
 	})
@@ -289,7 +289,7 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 				});
 			}
 
-			let local_id = referenced.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(*node_id);
+			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(*node_id);
 			GraphCraftNodeInput::Node {
 				node_id: RuntimeNodeId(local_id),
 				output_index: *output_index,
@@ -304,12 +304,12 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 		}
 		NodeInput::Scope(s) => GraphCraftNodeInput::Scope(s.clone()),
 		NodeInput::Import { import_idx } => GraphCraftNodeInput::Import {
-			import_type: input_attributes.get_or(IMPORT_TYPE, Type::Generic(Cow::Borrowed("T"))),
+			import_type: input_attributes.get_or(node::input::IMPORT_TYPE, Type::Generic(Cow::Borrowed("T"))),
 			import_index: *import_idx,
 		},
 		NodeInput::Reflection => GraphCraftNodeInput::Reflection(
 			input_attributes
-				.get_typed(REFLECTION_METADATA)
+				.get_typed(node::REFLECTION_METADATA)
 				.ok_or_else(|| ConversionError::DeserializationError("Missing reflection_metadata in input_attributes".to_string()))?,
 		),
 	})

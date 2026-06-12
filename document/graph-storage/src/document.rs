@@ -1,6 +1,6 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp, Value,
-	apply_attribute_delta, attr, mint_node_id, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
+	apply_attribute_delta, mint_node_id, reverse_attribute_delta,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ impl Document {
 	pub(crate) fn restore_node_from_history(&mut self, target: RegistryTarget, old_node_id: NodeId) -> Result<(), CrdtError> {
 		let delta = self
 			.history_iter()
-			.find(|d| matches!(d.reverse, RegistryDelta::AddNode { node_id, .. } if node_id == old_node_id))
+			.find(|d| matches!(d.reverse, RegistryDelta::AddNode { id, .. } if id == old_node_id))
 			.ok_or(CrdtError::NodeNotInHistory(old_node_id))?
 			.clone();
 		self.revert_delta(target, delta)
@@ -61,7 +61,7 @@ impl Document {
 		// which is what we want to re-apply.
 		let delta = self
 			.history_iter()
-			.find(|d| matches!(&d.reverse, RegistryDelta::AddNetwork { network, .. } if *network == network_id))
+			.find(|d| matches!(d.reverse, RegistryDelta::AddNetwork { id, .. } if id == network_id))
 			.ok_or(CrdtError::NetworkNotInHistory(network_id))?
 			.clone();
 		self.revert_delta(target, delta)
@@ -71,13 +71,13 @@ impl Document {
 	/// ops are idempotent, and LWW arms assign the reverse value unconditionally even though it carries
 	/// the same timestamp as the forward op it undoes.
 	pub(crate) fn revert_delta(&mut self, target: RegistryTarget, mut delta: Delta) -> Result<(), CrdtError> {
-		std::mem::swap(&mut delta.delta_type, &mut delta.reverse);
+		std::mem::swap(&mut delta.kind, &mut delta.reverse);
 		for parent in &delta.parents {
 			if !self.history.contains_key(parent) {
 				return Err(CrdtError::NotFoundInHistory(*parent));
 			}
 		}
-		self.apply_op_with(target, delta.delta_type, delta.timestamp, ApplyMode::Force)
+		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
 	/// Apply a live broadcast op. Updates the registry via LWW and appends to the hot log.
@@ -112,7 +112,7 @@ impl Document {
 				return Err(CrdtError::NotFoundInHistory(*parent));
 			}
 		}
-		self.apply_op_idempotent(delta.delta_type.clone(), delta.timestamp)?;
+		self.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
 		self.history.insert(delta.id, delta);
 		Ok(())
 	}
@@ -167,7 +167,7 @@ impl Document {
 
 		let registry = self.registry_mut(target);
 		match op {
-			RegistryDelta::AddNode { node_id, node } => {
+			RegistryDelta::AddNode { id: node_id, node } => {
 				if registry.node_instances.contains_key(&node_id) {
 					if idempotent {
 						// Hot ops already created this node; skip rather than error.
@@ -177,27 +177,31 @@ impl Document {
 				}
 				registry.node_instances.insert(node_id, node);
 			}
-			RegistryDelta::RemoveNode { node_id, .. } => {
+			RegistryDelta::RemoveNode { id: node_id, .. } => {
 				registry.node_instances.remove(&node_id);
 			}
-			RegistryDelta::ChangeNodeInput { node_id, input_idx, new_input } => {
+			RegistryDelta::ChangeNodeInput { id: node_id, index, new_input } => {
 				let node = registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let slot = node.inputs.get_mut(input_idx).ok_or(CrdtError::InputIndexOutOfBounds(input_idx))?;
+				let slot = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
 				if force || timestamp > slot.timestamp {
 					slot.input = new_input;
 					slot.timestamp = timestamp;
 				}
 			}
-			RegistryDelta::ChangeNodeAttribute { node_id, delta } => {
+			RegistryDelta::ChangeNodeAttribute { id: node_id, delta } => {
 				let node = registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
 				apply_attribute_delta(delta, timestamp, force, &mut node.attributes);
 			}
-			RegistryDelta::ChangeNodeInputAttribute { node_id, input_idx, delta } => {
+			RegistryDelta::ChangeNodeInputAttribute { id: node_id, index: input_idx, delta } => {
 				let node = registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let input_attributes = node.inputs_attributes.get_mut(input_idx).ok_or(CrdtError::InputIndexOutOfBounds(input_idx))?;
+				let input_attributes = node.inputs_attributes.get_mut(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
 				apply_attribute_delta(delta, timestamp, force, input_attributes);
 			}
-			RegistryDelta::SetExport { network, slot, target: export_target } => {
+			RegistryDelta::SetNetworkExport {
+				id: network,
+				index: slot,
+				export: export_target,
+			} => {
 				let net = registry.networks.get_mut(&network).ok_or(CrdtError::NetworkDoesNotExist(network))?;
 				let slot_idx = slot as usize;
 
@@ -220,7 +224,7 @@ impl Document {
 					existing.timestamp = timestamp;
 				}
 			}
-			RegistryDelta::AddNetwork { network, contents } => {
+			RegistryDelta::AddNetwork { id: network, network: contents } => {
 				if registry.networks.contains_key(&network) {
 					if idempotent {
 						return Ok(());
@@ -229,23 +233,10 @@ impl Document {
 				}
 				registry.networks.insert(network, contents);
 			}
-			RegistryDelta::RemoveNetwork { network, .. } => {
+			RegistryDelta::RemoveNetwork { id: network, .. } => {
 				registry.networks.remove(&network);
 			}
-			RegistryDelta::SetExportedNodes { nodes } => {
-				let current_ts = registry.attributes.get(attr::EXPORTED_NODES_TS).map(|v| v.timestamp).unwrap_or(TimeStamp::ORIGIN);
-				if force || timestamp > current_ts {
-					registry.exported_nodes = nodes;
-					registry.attributes.insert(
-						attr::EXPORTED_NODES_TS.to_string(),
-						Value {
-							value: serde_json::Value::Null,
-							timestamp,
-						},
-					);
-				}
-			}
-			RegistryDelta::ChangeNetworkAttribute { network, delta } => {
+			RegistryDelta::ChangeNetworkAttribute { id: network, delta } => {
 				let net = registry.networks.get_mut(&network).ok_or(CrdtError::NetworkDoesNotExist(network))?;
 				apply_attribute_delta(delta, timestamp, force, &mut net.attributes);
 			}
@@ -286,6 +277,7 @@ impl Document {
 			RegistryDelta::RemoveResource { id, .. } => {
 				registry.resources.remove(&id);
 			}
+			RegistryDelta::Other(_) => {}
 		}
 		Ok(())
 	}
@@ -296,20 +288,22 @@ impl Document {
 	fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
 		match op {
 			RegistryDelta::AddNode { node, .. } => self.ensure_network_exists(target, node.network())?,
-			RegistryDelta::ChangeNodeInput { node_id, new_input, .. } => {
+			RegistryDelta::ChangeNodeInput { id: node_id, new_input, .. } => {
 				if let NodeInput::Node { node_id: referenced, .. } = new_input {
 					self.ensure_node_exists(target, *referenced)?;
 				}
 				self.ensure_node_exists(target, *node_id)?;
 			}
-			RegistryDelta::ChangeNodeAttribute { node_id, .. } | RegistryDelta::ChangeNodeInputAttribute { node_id, .. } => self.ensure_node_exists(target, *node_id)?,
-			RegistryDelta::SetExport { network, target: export_target, .. } => {
+			RegistryDelta::ChangeNodeAttribute { id: node_id, .. } | RegistryDelta::ChangeNodeInputAttribute { id: node_id, .. } => self.ensure_node_exists(target, *node_id)?,
+			RegistryDelta::SetNetworkExport {
+				id: network, export: export_target, ..
+			} => {
 				if let Some(NodeInput::Node { node_id: referenced, .. }) = export_target {
 					self.ensure_node_exists(target, *referenced)?;
 				}
 				self.ensure_network_exists(target, *network)?;
 			}
-			RegistryDelta::ChangeNetworkAttribute { network, .. } => self.ensure_network_exists(target, *network)?,
+			RegistryDelta::ChangeNetworkAttribute { id: network, .. } => self.ensure_network_exists(target, *network)?,
 			_ => {}
 		}
 		Ok(())
@@ -335,57 +329,59 @@ impl Document {
 	pub(crate) fn compute_reverse_delta(&self, target: RegistryTarget, delta: &RegistryDelta) -> Result<RegistryDelta, CrdtError> {
 		let registry = self.registry_ref(target);
 		Ok(match delta {
-			RegistryDelta::AddNode { node_id, node } => RegistryDelta::RemoveNode {
-				node_id: *node_id,
-				snapshot: node.clone(),
-			},
-			RegistryDelta::RemoveNode { node_id, snapshot } => RegistryDelta::AddNode {
-				node_id: *node_id,
-				node: snapshot.clone(),
-			},
-			&RegistryDelta::ChangeNodeInput { node_id, input_idx, .. } => {
+			RegistryDelta::AddNode { id: node_id, node } => RegistryDelta::RemoveNode { id: *node_id, snapshot: node.clone() },
+			RegistryDelta::RemoveNode { id: node_id, snapshot } => RegistryDelta::AddNode { id: *node_id, node: snapshot.clone() },
+			&RegistryDelta::ChangeNodeInput { id: node_id, index: input_idx, .. } => {
 				let node = registry.node_instances.get(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let slot = node.inputs().get(input_idx).ok_or(CrdtError::InputIndexOutOfBounds(input_idx))?;
+				let slot = node.inputs().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
 				RegistryDelta::ChangeNodeInput {
-					node_id,
-					input_idx,
+					id: node_id,
+					index: input_idx,
 					new_input: slot.input.clone(),
 				}
 			}
-			&RegistryDelta::ChangeNodeAttribute { node_id, ref delta } => {
+			&RegistryDelta::ChangeNodeAttribute { id: node_id, ref delta } => {
 				let node = registry.node_instances.get(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
 				RegistryDelta::ChangeNodeAttribute {
-					node_id,
+					id: node_id,
 					delta: reverse_attribute_delta(delta, node.attributes()),
 				}
 			}
-			&RegistryDelta::ChangeNodeInputAttribute { node_id, input_idx, ref delta } => {
+			&RegistryDelta::ChangeNodeInputAttribute {
+				id: node_id,
+				index: input_idx,
+				ref delta,
+			} => {
 				let node = registry.node_instances.get(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist(node_id))?;
-				let input_attributes = node.inputs_attributes().get(input_idx).ok_or(CrdtError::InputIndexOutOfBounds(input_idx))?;
+				let input_attributes = node.inputs_attributes().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
 				RegistryDelta::ChangeNodeInputAttribute {
-					node_id,
-					input_idx,
+					id: node_id,
+					index: input_idx,
 					delta: reverse_attribute_delta(delta, input_attributes),
 				}
 			}
-			&RegistryDelta::SetExport { network, slot, .. } => {
+			&RegistryDelta::SetNetworkExport { id: network, index: slot, .. } => {
 				// If the network is absent the forward op will resurrect it; the reverse is "set the export to None"
 				// since pre-forward there was no export to point at.
 				let export_target = registry.networks.get(&network).and_then(|net| net.exports.get(slot as usize)).and_then(|s| s.target.clone());
-				RegistryDelta::SetExport { network, slot, target: export_target }
+				RegistryDelta::SetNetworkExport {
+					id: network,
+					index: slot,
+					export: export_target,
+				}
 			}
-			RegistryDelta::AddNetwork { network, contents } => RegistryDelta::RemoveNetwork {
-				network: *network,
+			RegistryDelta::AddNetwork { id: network, network: contents } => RegistryDelta::RemoveNetwork {
+				id: *network,
 				snapshot: contents.clone(),
 			},
-			&RegistryDelta::RemoveNetwork { network, ref snapshot } => RegistryDelta::AddNetwork { network, contents: snapshot.clone() },
-			RegistryDelta::SetExportedNodes { .. } => RegistryDelta::SetExportedNodes {
-				nodes: registry.exported_nodes.clone(),
+			&RegistryDelta::RemoveNetwork { id: network, ref snapshot } => RegistryDelta::AddNetwork {
+				id: network,
+				network: snapshot.clone(),
 			},
-			&RegistryDelta::ChangeNetworkAttribute { network, ref delta } => {
+			&RegistryDelta::ChangeNetworkAttribute { id: network, ref delta } => {
 				let current = registry.networks.get(&network).map(|net| &net.attributes).ok_or(CrdtError::NetworkDoesNotExist(network))?;
 				RegistryDelta::ChangeNetworkAttribute {
-					network,
+					id: network,
 					delta: reverse_attribute_delta(delta, current),
 				}
 			}
@@ -431,6 +427,7 @@ impl Document {
 				let snapshot = registry.resources.get(&id).cloned().unwrap_or_default();
 				RegistryDelta::AddResource { id, entry: snapshot }
 			}
+			&RegistryDelta::Other(_) => RegistryDelta::Other(serde_json::Value::Null),
 		})
 	}
 

@@ -1,24 +1,8 @@
 use crate::from_runtime;
-use crate::{ApplyMode, AttributesExt, Delta, Document, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, AttributesWrite, Delta, Document, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-
-pub mod attrs {
-	pub const UI_NAV_PTZ: &str = "ui::nav::ptz";
-	pub const UI_NAV_TRANSFORM: &str = "ui::nav::transform";
-	pub const UI_NAV_WIDTH: &str = "ui::nav::width";
-	pub const UI_PREVIEWING: &str = "ui::previewing";
-
-	// Document-level editor chrome, stored in `Registry.attributes` (document scope). Each setting is
-	// its own key so concurrent edits to one don't clobber another.
-	pub const UI_DOC_PTZ: &str = "ui::doc::ptz";
-	pub const UI_DOC_RENDER_MODE: &str = "ui::doc::render_mode";
-	pub const UI_DOC_OVERLAYS: &str = "ui::doc::overlays";
-	pub const UI_DOC_RULERS_VISIBLE: &str = "ui::doc::rulers_visible";
-	pub const UI_DOC_SNAPPING: &str = "ui::doc::snapping";
-	pub const UI_DOC_COLLAPSED: &str = "ui::doc::collapsed";
-}
 
 /// A live editing session over a `Document`. Owns the document plus runtime collaboration
 /// state that isn't persisted (currently just peer heartbeat tracking).
@@ -202,7 +186,7 @@ impl Session {
 				}
 			}
 			let mode = if idempotent { ApplyMode::Idempotent } else { ApplyMode::Live };
-			self.document.apply_op_with(target, delta.delta_type.clone(), delta.timestamp, mode)?;
+			self.document.apply_op_with(target, delta.kind.clone(), delta.timestamp, mode)?;
 			self.document.history.insert(rev, delta);
 			self.document.head = rev;
 			produced.push(rev);
@@ -246,7 +230,7 @@ impl Session {
 
 		for delta in deltas {
 			let rev = delta.id;
-			session.document.apply_op_idempotent(delta.delta_type.clone(), delta.timestamp)?;
+			session.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
 			session.document.history.insert(rev, delta);
 			session.document.head = rev;
 		}
@@ -286,12 +270,12 @@ impl Session {
 		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
 	}
 
-	/// Mark a retired delta as the end of a user gesture, so the undo cursor treats it as a checkpoint.
-	/// Called once per gesture by the editor-facing commit path (not by resource/internal commits).
-	pub fn mark_gesture_end(&mut self, rev: Rev) {
+	/// Mark a retired delta as the end of a user interaction, so the undo cursor treats it as a checkpoint.
+	/// Called once per interaction by the editor-facing commit path (not by resource/internal commits).
+	pub fn mark_interaction_end(&mut self, rev: Rev) {
 		let timestamp = self.document.clock.tick();
 		if let Some(delta) = self.document.history.get_mut(&rev) {
-			delta.mark_gesture_end(timestamp);
+			delta.mark_interaction_end(timestamp);
 		}
 	}
 
@@ -307,27 +291,27 @@ impl Session {
 	/// after `last_broadcast_rev`). `head == 0` is the empty history; published commits aren't
 	/// silently undoable (that needs a forward reverse-delta op, deferred until transport lands).
 	///
-	/// The earliest gesture (the document's loaded/created base) is *not* undoable: undoing it would
+	/// The earliest interaction (the document's loaded/created base) is *not* undoable: undoing it would
 	/// rewind into the pre-base state, which legacy never offers (opening a document gives an empty undo
-	/// history). We detect "head is on the earliest gesture" by walking `head`'s gesture back along
-	/// first-parents and checking whether it bottoms out at the root with no earlier gesture boundary to
-	/// land on. If so, there is nothing before this gesture to undo to, so undo is disabled.
+	/// history). We detect "head is on the earliest interaction" by walking `head`'s interaction back along
+	/// first-parents and checking whether it bottoms out at the root with no earlier interaction boundary to
+	/// land on. If so, there is nothing before this interaction to undo to, so undo is disabled.
 	pub fn can_undo(&self) -> bool {
 		if self.document.head == 0 || self.document.last_broadcast_rev == Some(self.document.head) {
 			return false;
 		}
-		self.gesture_start_parent(self.document.head).is_some_and(|parent| parent != 0)
+		self.interaction_start_parent(self.document.head).is_some_and(|parent| parent != 0)
 	}
 
-	/// Walk the gesture containing `rev` back along first-parents to its first delta, returning that
-	/// delta's parent (the rev the cursor would rest on after undoing this gesture, or `0` for the root).
-	/// Mirrors the boundary condition in [`undo`](Self::undo): stop when the parent is a `gesture_end`
+	/// Walk the interaction containing `rev` back along first-parents to its first delta, returning that
+	/// delta's parent (the rev the cursor would rest on after undoing this interaction, or `0` for the root).
+	/// Mirrors the boundary condition in [`undo`](Self::undo): stop when the parent is a `interaction_end`
 	/// boundary or the root.
-	fn gesture_start_parent(&self, rev: Rev) -> Option<Rev> {
+	fn interaction_start_parent(&self, rev: Rev) -> Option<Rev> {
 		let mut current = rev;
 		loop {
 			let parent = self.document.history.get(&current)?.parents.first().copied().unwrap_or(0);
-			if parent == 0 || self.document.history.get(&parent).is_some_and(|d| d.is_gesture_end()) {
+			if parent == 0 || self.document.history.get(&parent).is_some_and(|d| d.is_interaction_end()) {
 				return Some(parent);
 			}
 			current = parent;
@@ -338,10 +322,10 @@ impl Session {
 		!self.document.redo_stack.is_empty()
 	}
 
-	/// Silent-zone undo of one *gesture*: revert deltas walking `head` back along first-parents until
-	/// it reaches the previous gesture boundary (a delta marked `gesture_end`) or the empty root. One
-	/// gesture spans several deltas (one `commit_from_runtime` batch), so undo reverts the whole run,
-	/// not a single delta — matching the legacy per-gesture undo granularity. The undone gesture's
+	/// Silent-zone undo of one *interaction*: revert deltas walking `head` back along first-parents until
+	/// it reaches the previous interaction boundary (a delta marked `interaction_end`) or the empty root. One
+	/// interaction spans several deltas (one `commit_from_runtime` batch), so undo reverts the whole run,
+	/// not a single delta — matching the legacy per-interaction undo granularity. The undone interaction's
 	/// `head` rev is pushed onto the redo stack. Reflog semantics: the DAG is never rewritten.
 	pub fn undo(&mut self) -> Result<Rev, CrdtError> {
 		if !self.can_undo() {
@@ -349,8 +333,8 @@ impl Session {
 		}
 		let checkpoint = self.document.head;
 
-		// Revert this gesture's last delta, then keep going back until `head` rests on the previous
-		// gesture's boundary (its `gesture_end` delta) or the root.
+		// Revert this interaction's last delta, then keep going back until `head` rests on the previous
+		// interaction's boundary (its `interaction_end` delta) or the root.
 		loop {
 			let rev = self.document.head;
 			let delta = self.document.history.get(&rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
@@ -359,19 +343,19 @@ impl Session {
 			self.document.revert_delta(RegistryTarget::Working, delta)?;
 			self.document.head = parent;
 
-			if parent == 0 || self.document.history.get(&parent).is_some_and(|d| d.is_gesture_end()) {
+			if parent == 0 || self.document.history.get(&parent).is_some_and(|d| d.is_interaction_end()) {
 				break;
 			}
 		}
 
 		// Undo runs with an empty hot log, so keep the retired snapshot in lockstep with the rewound
-		// working registry (the next gesture's reverses are computed against it).
+		// working registry (the next interaction's reverses are computed against it).
 		self.document.retired_snapshot = self.document.registry.clone();
 		self.document.redo_stack.push(checkpoint);
 		Ok(checkpoint)
 	}
 
-	/// Redo the most-recently-undone gesture: re-apply every delta from the current `head` forward to
+	/// Redo the most-recently-undone interaction: re-apply every delta from the current `head` forward to
 	/// (and including) the checkpoint rev, advancing `head` to it. Collects the forward span by walking
 	/// parents back from the checkpoint to `head` (the chain is linear in the silent solo zone).
 	pub fn redo(&mut self) -> Result<Rev, CrdtError> {
@@ -392,7 +376,7 @@ impl Session {
 		// Force-apply so each forward value wins the LWW tie against the reverse that undo force-applied
 		// at the same timestamp. Symmetric with `revert_delta`.
 		for delta in forward.into_iter().rev() {
-			self.document.force_apply_op(delta.delta_type.clone(), delta.timestamp)?;
+			self.document.force_apply_op(delta.kind.clone(), delta.timestamp)?;
 		}
 		self.document.head = checkpoint;
 
@@ -430,7 +414,7 @@ impl Session {
 	}
 
 	/// Every resource hash referenced by the current registry *or* anywhere in history. Undo removes a
-	/// gesture's `AddResource` from the working registry, so a redoable (or re-undoable) gesture's
+	/// interaction's `AddResource` from the working registry, so a redoable (or re-undoable) interaction's
 	/// resources no longer appear in `registry().resources` even though redo still needs them. Resource GC
 	/// must keep this whole set alive, not just the current head's, or undo then redo loses declaration
 	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot.
@@ -438,7 +422,7 @@ impl Session {
 		let mut hashes: HashSet<ResourceHash> = self.document.registry.resources.values().filter_map(|entry| entry.hash).collect();
 
 		for delta in self.document.history.values() {
-			match &delta.delta_type {
+			match &delta.kind {
 				RegistryDelta::AddResource { entry, .. } => hashes.extend(entry.hash),
 				RegistryDelta::RemoveResource { snapshot, .. } => hashes.extend(snapshot.hash),
 				_ => {}

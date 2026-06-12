@@ -6,41 +6,7 @@ use std::collections::BTreeMap;
 ///
 /// `ui::*` keys are namespaced per CRDT design so each value gets its own LWW timestamp. Per-input
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
-pub mod attr {
-	pub const CALL_ARGUMENT: &str = "call_argument";
-	pub const CONTEXT_FEATURES: &str = "context_features";
-	pub const IMPORT_TYPE: &str = "import_type";
-	pub const VISIBLE: &str = "visible";
-	pub const SKIP_DEDUPLICATION: &str = "skip_deduplication";
-	pub const REFLECTION_METADATA: &str = "reflection_metadata";
-	pub const ORIGINAL_NODE_ID: &str = "original_node_id";
-	pub const EXPORTED_NODES_TS: &str = "library::exported_nodes_ts";
-	/// Whole-map LWW of a network's `scope_injections` (`key -> (storage NodeId, Type)`), stored as a
-	/// serialized blob so its shape can evolve (e.g. dropping the `Type`) without a model change. The
-	/// node references use stable storage IDs, resolved back to runtime-local IDs on conversion.
-	pub const SCOPE_INJECTIONS: &str = "compute::scope_injections";
-
-	pub const UI_POSITION: &str = "ui::position";
-	pub const UI_IS_LAYER: &str = "ui::is_layer";
-	pub const UI_DISPLAY_NAME: &str = "ui::display_name";
-	pub const UI_LOCKED: &str = "ui::locked";
-	pub const UI_PINNED: &str = "ui::pinned";
-
-	pub const UI_INPUT_NAME: &str = "ui::input_name";
-	pub const UI_INPUT_DESCRIPTION: &str = "ui::input_description";
-	pub const UI_WIDGET_OVERRIDE: &str = "ui::widget_override";
-	/// Prefix for `InputPersistentMetadata::input_data` entries. Full key: `ui::input_data::<sub_key>`.
-	pub const UI_INPUT_DATA_PREFIX: &str = "ui::input_data::";
-
-	pub const UI_OUTPUT_NAMES: &str = "ui::output_names";
-	/// Lives on the *owning* node (the one with `Implementation::Network`), not on the nested network.
-	pub const UI_REFERENCE: &str = "ui::reference";
-
-	// Delta-level annotations (on `Delta.attributes`, not the registry). Local + mutable, excluded
-	// from the content-addressed `Rev`.
-	/// Marks the last delta of a user gesture, so the undo cursor steps per-gesture, not per-delta.
-	pub const GESTURE_END: &str = "compute::gesture_end";
-}
+pub mod attr;
 
 /// A type-erased attribute value paired with the timestamp at which it was last set.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -58,32 +24,27 @@ impl Value {
 pub type Attributes = BTreeMap<String, Value>;
 
 /// Write helpers for `Attributes`.
-pub trait AttributesExt {
+pub trait AttributesWrite {
 	/// Inserts a JSON value under `key`.
 	fn set(&mut self, key: &str, value: serde_json::Value, timestamp: TimeStamp);
 
 	/// Serializes `value` and inserts it under `key`.
-	fn set_serialized<T: serde::Serialize>(&mut self, key: &str, value: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error>;
-
-	/// Inserts only when `value != default`, so the read side falls back to the same default.
-	fn set_if_not_default<T: serde::Serialize + PartialEq>(&mut self, key: &str, value: &T, default: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error>;
-}
-
-impl AttributesExt for Attributes {
-	fn set(&mut self, key: &str, value: serde_json::Value, timestamp: TimeStamp) {
-		self.insert(key.to_string(), Value { value, timestamp });
-	}
-
 	fn set_serialized<T: serde::Serialize>(&mut self, key: &str, value: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error> {
 		self.set(key, serde_json::to_value(value)?, timestamp);
 		Ok(())
 	}
-
+	/// Inserts only when `value != default`, so the read side falls back to the same default.
 	fn set_if_not_default<T: serde::Serialize + PartialEq>(&mut self, key: &str, value: &T, default: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error> {
 		if value != default {
 			self.set_serialized(key, value, timestamp)?;
 		}
 		Ok(())
+	}
+}
+
+impl AttributesWrite for Attributes {
+	fn set(&mut self, key: &str, value: serde_json::Value, timestamp: TimeStamp) {
+		self.insert(key.to_string(), Value { value, timestamp });
 	}
 }
 

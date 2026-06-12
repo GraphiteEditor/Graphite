@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::attr::*;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
-use crate::{AttributesExt, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp};
+use crate::{AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp};
 
 fn map_serialization_error(key: &str) -> impl FnOnce(serde_json::Error) -> ConversionError + '_ {
 	move |e| ConversionError::SerializationError(format!("{key}: {e:?}"))
@@ -280,7 +280,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 			runtime_node_id: *runtime_node_id,
 		};
 		let mut node = convert_node(doc_node, location, registry, ctx)?;
-		node.attributes.set(ORIGINAL_NODE_ID, serde_json::json!(local_id), TimeStamp::ORIGIN);
+		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(local_id), TimeStamp::ORIGIN);
 		registry.node_instances.insert(global_id, node);
 	}
 
@@ -330,8 +330,8 @@ fn write_scope_injections(
 		.collect();
 
 	attributes
-		.set_serialized(SCOPE_INJECTIONS, &stored, timestamp)
-		.map_err(map_serialization_error("compute::scope_injections"))
+		.set_serialized(network::SCOPE_INJECTIONS, &stored, timestamp)
+		.map_err(map_serialization_error(network::SCOPE_INJECTIONS))
 }
 
 fn child_path(parent_path: Option<&NodePath>, network_id: NetworkId, local_id: NodeId) -> NodePath {
@@ -391,17 +391,17 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(doc_node: &DocumentNode, locatio
 	// Defaults match `DocumentNode::default()`; `to_runtime` rehydrates absent keys from the same defaults.
 	let mut attributes = crate::Attributes::new();
 	attributes
-		.set_if_not_default(CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
-		.map_err(map_serialization_error("call_argument"))?;
+		.set_if_not_default(node::CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
+		.map_err(map_serialization_error(node::CALL_ARGUMENT))?;
 	attributes
-		.set_if_not_default(CONTEXT_FEATURES, &doc_node.context_features, &ContextDependencies::default(), timestamp)
-		.map_err(map_serialization_error("context_features"))?;
+		.set_if_not_default(node::CONTEXT_FEATURES, &doc_node.context_features, &ContextDependencies::default(), timestamp)
+		.map_err(map_serialization_error(node::CONTEXT_FEATURES))?;
 	attributes
-		.set_if_not_default(VISIBLE, &doc_node.visible, &true, timestamp)
-		.map_err(map_serialization_error("visible"))?;
+		.set_if_not_default(node::VISIBLE, &doc_node.visible, &true, timestamp)
+		.map_err(map_serialization_error(node::VISIBLE))?;
 	attributes
-		.set_if_not_default(SKIP_DEDUPLICATION, &doc_node.skip_deduplication, &false, timestamp)
-		.map_err(map_serialization_error("skip_deduplication"))?;
+		.set_if_not_default(node::SKIP_DEDUPLICATION, &doc_node.skip_deduplication, &false, timestamp)
+		.map_err(map_serialization_error(node::SKIP_DEDUPLICATION))?;
 
 	write_ui_attributes(&mut attributes, ctx.metadata, metadata_path, runtime_node_id, timestamp)?;
 
@@ -422,14 +422,16 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
 	if let Some(position) = metadata.position(metadata_path, runtime_node_id) {
-		attributes.set_serialized(UI_POSITION, &position, timestamp).map_err(map_serialization_error("ui::position"))?;
+		attributes
+			.set_serialized(node::ui::POSITION, &position, timestamp)
+			.map_err(map_serialization_error(node::ui::POSITION))?;
 	}
 
 	// Bool flags are only emitted when true; absence reads as false.
 	for (key, value) in [
-		(UI_IS_LAYER, metadata.is_layer(metadata_path, runtime_node_id)),
-		(UI_LOCKED, metadata.locked(metadata_path, runtime_node_id)),
-		(UI_PINNED, metadata.pinned(metadata_path, runtime_node_id)),
+		(node::ui::IS_LAYER, metadata.is_layer(metadata_path, runtime_node_id)),
+		(node::ui::LOCKED, metadata.locked(metadata_path, runtime_node_id)),
+		(node::ui::PINNED, metadata.pinned(metadata_path, runtime_node_id)),
 	] {
 		if value {
 			attributes.set(key, serde_json::Value::Bool(true), timestamp);
@@ -439,15 +441,15 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	if let Some(name) = metadata.display_name(metadata_path, runtime_node_id)
 		&& !name.is_empty()
 	{
-		attributes.set(UI_DISPLAY_NAME, serde_json::Value::String(name.to_string()), timestamp);
+		attributes.set(node::ui::DISPLAY_NAME, serde_json::Value::String(name.to_string()), timestamp);
 	}
 
 	// One whole-vec attribute; per-slot LWW would be overkill for rename-on-output.
 	let output_names = metadata.output_names(metadata_path, runtime_node_id);
 	if !output_names.is_empty() {
 		attributes
-			.set_serialized(UI_OUTPUT_NAMES, &output_names, timestamp)
-			.map_err(map_serialization_error("ui::output_names"))?;
+			.set_serialized(node::ui::OUTPUT_NAMES, &output_names, timestamp)
+			.map_err(map_serialization_error(node::ui::OUTPUT_NAMES))?;
 	}
 
 	Ok(())
@@ -455,7 +457,7 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 
 fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(attributes: &mut crate::Attributes, metadata: &M, network_path: &[RuntimeNodeId], timestamp: TimeStamp) -> Result<(), ConversionError> {
 	if let Some(reference) = metadata.reference(network_path) {
-		attributes.set(UI_REFERENCE, serde_json::Value::String(reference.to_string()), timestamp);
+		attributes.set(node::ui::REFERENCE, serde_json::Value::String(reference.to_string()), timestamp);
 	}
 
 	Ok(())
@@ -477,12 +479,12 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 		}
 	};
 
-	non_empty_string(UI_INPUT_NAME, metadata.input_name(metadata_path, runtime_node_id, input_index), attributes);
-	non_empty_string(UI_INPUT_DESCRIPTION, metadata.input_description(metadata_path, runtime_node_id, input_index), attributes);
-	non_empty_string(UI_WIDGET_OVERRIDE, metadata.widget_override(metadata_path, runtime_node_id, input_index), attributes);
+	non_empty_string(node::input::ui::NAME, metadata.input_name(metadata_path, runtime_node_id, input_index), attributes);
+	non_empty_string(node::input::ui::DESCRIPTION, metadata.input_description(metadata_path, runtime_node_id, input_index), attributes);
+	non_empty_string(node::input::ui::WIDGET_OVERRIDE, metadata.widget_override(metadata_path, runtime_node_id, input_index), attributes);
 
 	for (sub_key, value) in metadata.input_data(metadata_path, runtime_node_id, input_index) {
-		attributes.set(&format!("{UI_INPUT_DATA_PREFIX}{sub_key}"), value, timestamp);
+		attributes.set(&format!("{prefix}{sub_key}", prefix = node::input::ui::DATA_PREFIX), value, timestamp);
 	}
 
 	Ok(())
@@ -512,12 +514,14 @@ fn convert_input_attributes(input: &GraphCraftNodeInput) -> Result<crate::Attrib
 
 	match input {
 		GraphCraftNodeInput::Import { import_type, .. } => {
-			attributes.set_serialized(IMPORT_TYPE, import_type, timestamp).map_err(map_serialization_error("import_type"))?;
+			attributes
+				.set_serialized(node::input::IMPORT_TYPE, import_type, timestamp)
+				.map_err(map_serialization_error(node::input::IMPORT_TYPE))?;
 		}
 		GraphCraftNodeInput::Reflection(metadata) => {
 			attributes
-				.set_serialized(REFLECTION_METADATA, metadata, timestamp)
-				.map_err(map_serialization_error("reflection_metadata"))?;
+				.set_serialized(node::REFLECTION_METADATA, metadata, timestamp)
+				.map_err(map_serialization_error(node::REFLECTION_METADATA))?;
 		}
 		_ => {}
 	}

@@ -6,9 +6,6 @@ use std::collections::HashMap;
 pub struct Registry {
 	pub node_instances: HashMap<NodeId, Node>,
 	pub networks: HashMap<NetworkId, Network>,
-	/// Public library API: nodes an importing document can reference.
-	/// `library::*` attributes on each referenced node carry its display name, category, docs.
-	pub exported_nodes: Vec<NodeId>,
 	/// Append-only mapping from per-device `PeerId` to per-human `UserId`.
 	/// Registered by each device's first contribution via `RegistryDelta::RegisterPeer`.
 	pub peer_users: HashMap<PeerId, UserId>,
@@ -26,9 +23,6 @@ impl Registry {
 	/// fresh `from_runtime` conversion), so a committed registry and a fresh conversion legitimately
 	/// differ there without it counting as drift.
 	pub fn value_equal(&self, other: &Self) -> bool {
-		if self.exported_nodes != other.exported_nodes {
-			return false;
-		}
 		if !resources_value_equal(&self.resources, &other.resources) {
 			return false;
 		}

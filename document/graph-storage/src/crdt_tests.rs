@@ -19,7 +19,7 @@ fn remove_node_op(node_id: NodeId) -> RegistryDelta {
 		attributes: crate::Attributes::new(),
 		network: ROOT_NETWORK,
 	};
-	RegistryDelta::RemoveNode { node_id, snapshot }
+	RegistryDelta::RemoveNode { id: node_id, snapshot }
 }
 
 /// Commit a single op to a document as a retired delta. Mints a fresh timestamp, links to
@@ -224,14 +224,14 @@ fn set_export_resurrects_absent_network() {
 	commit_op(
 		&mut document,
 		RegistryDelta::AddNetwork {
-			network: network_id,
-			contents: Network::default(),
+			id: network_id,
+			network: Network::default(),
 		},
 	);
 	commit_op(
 		&mut document,
 		RegistryDelta::RemoveNetwork {
-			network: network_id,
+			id: network_id,
 			snapshot: Network::default(),
 		},
 	);
@@ -239,10 +239,10 @@ fn set_export_resurrects_absent_network() {
 
 	commit_op(
 		&mut document,
-		RegistryDelta::SetExport {
-			network: network_id,
-			slot: 0,
-			target: None,
+		RegistryDelta::SetNetworkExport {
+			id: network_id,
+			index: 0,
+			export: None,
 		},
 	);
 
@@ -261,14 +261,14 @@ fn add_node_resurrects_owning_network() {
 	commit_op(
 		&mut document,
 		RegistryDelta::AddNetwork {
-			network: network_id,
-			contents: Network::default(),
+			id: network_id,
+			network: Network::default(),
 		},
 	);
 	commit_op(
 		&mut document,
 		RegistryDelta::RemoveNetwork {
-			network: network_id,
+			id: network_id,
 			snapshot: Network::default(),
 		},
 	);
@@ -280,7 +280,7 @@ fn add_node_resurrects_owning_network() {
 		attributes: crate::Attributes::new(),
 		network: network_id,
 	};
-	commit_op(&mut document, RegistryDelta::AddNode { node_id, node });
+	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node });
 
 	assert!(
 		document.registry.networks.contains_key(&network_id),
@@ -303,8 +303,8 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 	commit_op(
 		&mut document,
 		RegistryDelta::AddNetwork {
-			network: network_id,
-			contents: Network::default(),
+			id: network_id,
+			network: Network::default(),
 		},
 	);
 	let node = Node {
@@ -314,8 +314,8 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 		attributes: crate::Attributes::new(),
 		network: network_id,
 	};
-	commit_op(&mut document, RegistryDelta::AddNode { node_id, node: node.clone() });
-	commit_op(&mut document, RegistryDelta::RemoveNode { node_id, snapshot: node });
+	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node: node.clone() });
+	commit_op(&mut document, RegistryDelta::RemoveNode { id: node_id, snapshot: node });
 	assert!(!document.registry.node_instances.contains_key(&node_id), "node should be removed before the resurrection test");
 
 	document.restore_node_from_history(RegistryTarget::Working, node_id).expect("first resurrection should succeed");
@@ -349,7 +349,7 @@ fn restore_node_from_root_commit() {
 	document.retired_snapshot.networks.insert(ROOT_NETWORK, Network::default());
 	document.registry.node_instances.insert(node_id, node.clone());
 	document.retired_snapshot.node_instances.insert(node_id, node.clone());
-	commit_op(&mut document, RegistryDelta::RemoveNode { node_id, snapshot: node });
+	commit_op(&mut document, RegistryDelta::RemoveNode { id: node_id, snapshot: node });
 	assert!(!document.registry.node_instances.contains_key(&node_id), "node should be removed by the root commit");
 
 	document
@@ -366,8 +366,8 @@ fn apply_op_advances_clock_even_when_op_errors() {
 
 	let observed = TimeStamp { counter: 17, peer: PeerId(2) };
 	let failing_op = RegistryDelta::ChangeNodeInput {
-		node_id: 7,
-		input_idx: 0,
+		id: 7,
+		index: 0,
 		new_input: crate::NodeInput::Import { import_idx: 0 },
 	};
 
@@ -659,7 +659,7 @@ fn compute_deltas_diffs_resources_and_round_trips() {
 	);
 }
 
-/// Resource GC must keep an undone gesture's resources alive: undo removes a gesture's `AddResource`
+/// Resource GC must keep an undone interaction's resources alive: undo removes a interaction's `AddResource`
 /// from the working registry, but redo still needs those bytes. `all_referenced_resource_hashes` must
 /// therefore report history-referenced resources even after they leave the current registry, so the
 /// editor's GC "used" set doesn't evict them between an undo and a redo.
@@ -670,30 +670,30 @@ fn all_referenced_resource_hashes_survives_undo() {
 	let mut session = Session::with_peer(PeerId(1));
 	let resources = graphene_resource::ResourceRegistry::new();
 
-	// Base gesture: the first gesture is intentionally not undoable (the mount-base floor), so commit a
-	// network first. Undoing the later resource gesture then lands on this base rather than the root.
+	// Base interaction: the first interaction is intentionally not undoable (the mount-base floor), so commit a
+	// network first. Undoing the later resource interaction then lands on this base rather than the root.
 	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage base");
 	let base_up_to = session.hot_log().last().expect("staged base").timestamp;
 	let base_revs = session.retire(base_up_to).expect("retire base");
-	session.mark_gesture_end(*base_revs.last().expect("one base delta"));
+	session.mark_interaction_end(*base_revs.last().expect("one base delta"));
 
-	// Second gesture: add a resource and mark the retired delta as a gesture boundary.
+	// Second interaction: add a resource and mark the retired delta as a interaction boundary.
 	let hash = ResourceHash::from(&b"declaration-bytes"[..]);
 	let id = ResourceId::new();
 	let hot_ops = session.stage_embedded_resource(id, hash).expect("stage resource");
 	let up_to = hot_ops.last().expect("staged one op").timestamp;
 	let revs = session.retire(up_to).expect("retire");
-	session.mark_gesture_end(*revs.last().expect("one retired delta"));
+	session.mark_interaction_end(*revs.last().expect("one retired delta"));
 
-	assert!(session.registry().resources.contains_key(&id), "resource is present after the gesture");
+	assert!(session.registry().resources.contains_key(&id), "resource is present after the interaction");
 	assert!(session.all_referenced_resource_hashes().contains(&hash));
 
-	// Undo the gesture: the resource leaves the working registry but stays in history.
+	// Undo the interaction: the resource leaves the working registry but stays in history.
 	session.undo().expect("undo");
 	assert!(!session.registry().resources.contains_key(&id), "undo drops the resource from the working registry");
 	assert!(
 		session.all_referenced_resource_hashes().contains(&hash),
-		"the undone gesture's resource must still be reported so GC keeps its bytes for redo"
+		"the undone interaction's resource must still be reported so GC keeps its bytes for redo"
 	);
 }
 
@@ -705,18 +705,18 @@ fn no_op_commit_preserves_redo_stack() {
 	let mut session = Session::with_peer(PeerId(1));
 	let resources = graphene_resource::ResourceRegistry::new();
 
-	// Base gesture (the non-undoable mount floor), then a second gesture to undo onto it.
+	// Base interaction (the non-undoable mount floor), then a second interaction to undo onto it.
 	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage base");
 	let base_up_to = session.hot_log().last().expect("staged base").timestamp;
 	let base_revs = session.retire(base_up_to).expect("retire base");
-	session.mark_gesture_end(*base_revs.last().expect("one base delta"));
+	session.mark_interaction_end(*base_revs.last().expect("one base delta"));
 
 	let hash = ResourceHash::from(&b"declaration-bytes"[..]);
 	let id = ResourceId::new();
 	let hot_ops = session.stage_embedded_resource(id, hash).expect("stage resource");
 	let up_to = hot_ops.last().expect("staged one op").timestamp;
 	let revs = session.retire(up_to).expect("retire");
-	session.mark_gesture_end(*revs.last().expect("one retired delta"));
+	session.mark_interaction_end(*revs.last().expect("one retired delta"));
 
 	session.undo().expect("undo");
 	assert!(session.can_redo(), "undo must populate the redo stack");
@@ -747,7 +747,7 @@ fn embed_resource_sources_rejects_unretired_hot_ops() {
 /// ordered (`BTreeMap`): a hash-randomized map would give the same logical delta different `Rev`s.
 #[test]
 fn add_node_rev_is_independent_of_attribute_insertion_order() {
-	use crate::{AttributesExt, Value};
+	use crate::{AttributesWrite, Value};
 
 	let keys = ["ui::position", "ui::display_name", "ui::locked", "ui::pinned", "call_argument", "context_features"];
 
@@ -785,27 +785,15 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 		parents.clone(),
 		author,
 		timestamp,
-		RegistryDelta::AddNode {
-			node_id: 9,
-			node: make_node(&forward),
-		},
-		RegistryDelta::AddNode {
-			node_id: 9,
-			node: make_node(&forward),
-		},
+		RegistryDelta::AddNode { id: 9, node: make_node(&forward) },
+		RegistryDelta::AddNode { id: 9, node: make_node(&forward) },
 	);
 	let delta_reversed = Delta::new(
 		parents,
 		author,
 		timestamp,
-		RegistryDelta::AddNode {
-			node_id: 9,
-			node: make_node(&reversed),
-		},
-		RegistryDelta::AddNode {
-			node_id: 9,
-			node: make_node(&reversed),
-		},
+		RegistryDelta::AddNode { id: 9, node: make_node(&reversed) },
+		RegistryDelta::AddNode { id: 9, node: make_node(&reversed) },
 	);
 
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
