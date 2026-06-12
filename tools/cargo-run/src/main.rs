@@ -33,6 +33,9 @@ fn usage() {
 }
 
 fn main() -> ExitCode {
+	// Put the managed Binaryen installation (if present) on PATH for this process and its children
+	requirements::use_managed_binaryen();
+
 	let args: Vec<String> = std::env::args().collect();
 	let args: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
 
@@ -85,11 +88,19 @@ fn run_task(task: &Task) -> Result<(), Error> {
 	requirements::check(task)?;
 
 	match (&task.action, &task.target, &task.profile) {
-		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => npm_run_in_frontend_dir("start")?,
-		(Action::Run, Target::Web, Profile::Release) => npm_run_in_frontend_dir("production")?,
+		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => run_web_dev_server(false)?,
+		(Action::Run, Target::Web, Profile::Release) => run_web_dev_server(true)?,
 
-		(Action::Build, Target::Web, Profile::Debug) => npm_run_in_frontend_dir("build-dev")?,
-		(Action::Build, Target::Web, Profile::Release | Profile::Default) => npm_run_in_frontend_dir("build")?,
+		(Action::Build, Target::Web, Profile::Debug) => {
+			run_frontend_setup()?;
+			wasm::build(false, false)?;
+			run_vite_in_frontend_dir("build --mode dev")?;
+		}
+		(Action::Build, Target::Web, Profile::Release | Profile::Default) => {
+			run_frontend_setup()?;
+			wasm::build(true, false)?;
+			run_vite_in_frontend_dir("build")?;
+		}
 
 		(action, Target::Desktop, mut profile) => {
 			if matches!(profile, Profile::Default) {
@@ -100,11 +111,10 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				}
 			}
 
-			if matches!(profile, Profile::Release) {
-				npm_run_in_frontend_dir("build-native")?;
-			} else {
-				npm_run_in_frontend_dir("build-native-dev")?;
-			};
+			// Build the editor's Wasm module with the `native` feature, then bundle the frontend with Vite
+			run_frontend_setup()?;
+			wasm::build(matches!(profile, Profile::Release), true)?;
+			run_vite_in_frontend_dir("build --mode native")?;
 
 			run("cargo run -p third-party-licenses --features desktop")?;
 
@@ -130,4 +140,19 @@ fn run_task(task: &Task) -> Result<(), Error> {
 		(Action::Explore(_), _, _) => unreachable!(),
 	}
 	Ok(())
+}
+
+/// Builds the editor's Wasm module, then runs the Vite dev server alongside a `cargo watch` loop that rebuilds the Wasm module when the Rust source changes.
+/// The two are run in parallel by `concurrently`, which labels their output and shuts both down when either exits.
+/// Both `concurrently` and Vite are invoked through their JS entry points because npm's `.cmd` batch shims trip up Ctrl+C handling on Windows.
+fn run_web_dev_server(release: bool) -> Result<(), Error> {
+	const VITE: &str = "node node_modules/vite/bin/vite.js";
+	const CONCURRENTLY: &str = "node_modules/concurrently/dist/bin/concurrently.js";
+
+	run_frontend_setup()?;
+	wasm::build(release, false)?;
+
+	let rebuild_steps = wasm::watch_shell_commands(release).iter().map(|step| format!("--shell \"{step}\"")).collect::<Vec<_>>().join(" ");
+	let watcher = format!("cargo watch --postpone --watch-when-idle --workdir=wrapper {rebuild_steps}");
+	run_dev_server_in_frontend_dir("node", &[CONCURRENTLY, "-k", "-n", "VITE,RUST", VITE, &watcher])
 }

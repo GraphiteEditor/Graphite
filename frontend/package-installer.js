@@ -1,4 +1,4 @@
-// This script automatically installs the npm packages listed in package-lock.json and runs before `npm start`.
+// This script automatically installs the npm packages listed in package-lock.json and runs as part of `npm run setup` (invoked by `cargo run`).
 // It skips the installation if this has already run and neither package.json nor package-lock.json has been modified since.
 
 import { execSync } from "child_process";

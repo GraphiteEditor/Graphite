@@ -3,13 +3,22 @@ use std::process::Command;
 
 use crate::*;
 
+/// The Binaryen release version that [`install_binaryen`] downloads.
+/// NOTICE: keep in sync with the `BINARYEN_VERSION` pinned across the CI workflows.
+const BINARYEN_VERSION: &str = "129";
+const WASM_OPT_INSTALL: &str = "automatically download Binaryen (wasm-opt) from its official GitHub releases";
+
 #[derive(Default, Clone)]
 struct Requirement {
 	command: &'static str,
 	args: &'static [&'static str],
 	name: &'static str,
+	/// An exact version which must appear in the version output, for tools pinned to one specific version.
 	version: Option<&'static str>,
+	/// The command to install the tool, or with `install_action` present, a description of what it will do.
 	install: Option<&'static str>,
+	/// An installation procedure to run instead of executing `install` as a command.
+	install_action: Option<&'static dyn Fn() -> Result<(), Error>>,
 	skip: Option<&'static dyn Fn(&Task) -> bool>,
 }
 
@@ -24,7 +33,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 		Requirement {
 			command: "cargo-about",
 			args: &["--version"],
-			name: "cargo-about",
+			name: "Cargo About",
 			install: Some("cargo install cargo-about"),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
@@ -32,7 +41,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 		Requirement {
 			command: "cargo-watch",
 			args: &["--version"],
-			name: "cargo-watch",
+			name: "Cargo Watch",
 			install: Some("cargo install cargo-watch"),
 			skip: Some(&|task| {
 				!matches!(
@@ -49,18 +58,28 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 		Requirement {
 			command: "wasm-bindgen",
 			args: &["--version"],
-			name: "wasm-bindgen-cli",
+			name: "Wasm Bindgen",
 			version: Some("0.2.121"),
 			install: Some("cargo install -f wasm-bindgen-cli@0.2.121"),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
+			..Default::default()
 		},
 		Requirement {
-			command: "wasm-pack",
+			command: "wasm-opt",
 			args: &["--version"],
-			name: "wasm-pack",
-			install: Some("cargo install wasm-pack"),
-			skip: Some(&|task| matches!(task.target, Target::Cli)),
-			..Default::default()
+			name: "Wasm Opt",
+			version: Some(BINARYEN_VERSION),
+			install: Some(WASM_OPT_INSTALL),
+			install_action: Some(&install_binaryen),
+			// Only release builds are optimized with wasm-opt
+			skip: Some(&|task| {
+				matches!(task.target, Target::Cli)
+					|| match task.profile {
+						Profile::Debug => true,
+						Profile::Release => false,
+						Profile::Default => matches!(task.action, Action::Run),
+					}
+			}),
 		},
 		Requirement {
 			command: "node",
@@ -185,8 +204,17 @@ pub fn check(task: &Task) -> Result<(), Error> {
 
 	if input.is_empty() || input.eq_ignore_ascii_case("y") || input.eq_ignore_ascii_case("yes") {
 		for dep in &installable {
-			let parts: Vec<&str> = dep.install.unwrap().split_whitespace().collect();
 			eprintln!("Running: {}...", dep.install.unwrap());
+
+			if let Some(action) = dep.install_action {
+				if let Err(e) = action() {
+					eprintln!("{e}");
+					eprintln!("Failed to install {}", dep.name);
+				}
+				continue;
+			}
+
+			let parts: Vec<&str> = dep.install.unwrap().split_whitespace().collect();
 			let status = Command::new(parts[0])
 				.args(&parts[1..])
 				.status()
@@ -197,4 +225,57 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		}
 	}
 	Ok(())
+}
+
+/// Downloads the pinned Binaryen release into the workspace's target directory and puts its tools on this process's PATH.
+/// Windows, Mac, and Linux all ship with `curl` and `tar`, so no package manager is needed.
+fn install_binaryen() -> Result<(), Error> {
+	let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+		("windows", "x86_64") => "x86_64-windows",
+		("macos", "aarch64") => "arm64-macos",
+		("macos", "x86_64") => "x86_64-macos",
+		("linux", "x86_64") => "x86_64-linux",
+		("linux", "aarch64") => "aarch64-linux",
+		(os, arch) => {
+			let error = std::io::Error::other(format!("no official Binaryen release exists for {os} on {arch}"));
+			return Err(Error::Io(error, "Failed to download Binaryen".into()));
+		}
+	};
+
+	let target_dir = wasm::target_dir();
+	std::fs::create_dir_all(&target_dir).map_err(|e| Error::Io(e, format!("Failed to create directory '{}'", target_dir.display())))?;
+
+	let url = format!("https://github.com/WebAssembly/binaryen/releases/download/version_{BINARYEN_VERSION}/binaryen-version_{BINARYEN_VERSION}-{platform}.tar.gz");
+	let tarball = target_dir.join("binaryen.tar.gz");
+
+	let mut download = Command::new("curl");
+	download.args(["-sSfL", &url, "-o"]).arg(&tarball);
+	wasm::run_command(download)?;
+
+	let mut extract = Command::new("tar");
+	extract.arg("-xzf").arg(&tarball).arg("-C").arg(&target_dir);
+	wasm::run_command(extract)?;
+
+	let _ = std::fs::remove_file(&tarball);
+
+	use_managed_binaryen();
+	Ok(())
+}
+
+/// Prepends the managed Binaryen installation (if present) to this process's PATH, which child processes inherit.
+/// Prepending lets the pinned version win over any other installed wasm-opt.
+pub fn use_managed_binaryen() {
+	let bin_dir = wasm::target_dir().join(format!("binaryen-version_{BINARYEN_VERSION}")).join("bin");
+	if !bin_dir.is_dir() {
+		return;
+	}
+
+	let mut paths = vec![bin_dir];
+	if let Some(path) = std::env::var_os("PATH") {
+		paths.extend(std::env::split_paths(&path));
+	}
+	if let Ok(joined) = std::env::join_paths(paths) {
+		// Safety: this runs before any other threads are spawned
+		unsafe { std::env::set_var("PATH", joined) };
+	}
 }

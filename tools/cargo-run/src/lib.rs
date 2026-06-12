@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::process;
 
 pub mod requirements;
+pub mod wasm;
 
 pub enum Action {
 	Run,
@@ -69,11 +70,101 @@ pub fn run(command: &str) -> Result<(), Error> {
 	run_from(command, None)
 }
 
-pub fn npm_run_in_frontend_dir(args: &str) -> Result<(), Error> {
+/// Installs the frontend's npm packages and branding assets by running the `setup` script from `frontend/package.json`
+pub fn run_frontend_setup() -> Result<(), Error> {
 	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
 	let frontend_dir = workspace_dir.join("frontend");
 	let npm = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
-	run_from(&format!("{npm} run {args}"), Some(&frontend_dir))
+	run_from(&format!("{npm} run setup"), Some(&frontend_dir))
+}
+
+/// Runs Vite from the `frontend/` directory by invoking its JS entry point with Node.js directly.
+pub fn run_vite_in_frontend_dir(args: &str) -> Result<(), Error> {
+	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
+	let frontend_dir = workspace_dir.join("frontend");
+
+	// Calling the script avoids npm's `vite.cmd` batch shim, which `cmd.exe` interrupts with a "Terminate batch job (Y/N)?" prompt on Ctrl+C
+	run_from(&format!("node node_modules/vite/bin/vite.js {args}"), Some(&frontend_dir))
+}
+
+/// Runs the dev server's process supervisor from the `frontend/` directory, given its program and arguments.
+pub fn run_dev_server_in_frontend_dir(program: &str, args: &[&str]) -> Result<(), Error> {
+	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
+	let frontend_dir = workspace_dir.join("frontend");
+
+	let mut cmd = process::Command::new(program);
+	cmd.args(args);
+	cmd.current_dir(&frontend_dir);
+
+	// On Windows, the supervisor is placed in its own process group which doesn't receive the console's Ctrl+C events.
+	// Instead, a console handler kills the entire process tree at once. A single Ctrl+C thereby shuts everything down
+	// silently and immediately, rather than letting each descendant process race to react to the event with its own
+	// error messages and prompts. (Unix terminals already deliver the signal to the whole foreground process group.)
+	#[cfg(target_os = "windows")]
+	{
+		use std::os::windows::process::CommandExt;
+		const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+		cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+	}
+
+	let command_str = format!("{program} {}", args.join(" "));
+	let mut child = cmd.spawn().map_err(|e| Error::Io(e, format!("Failed to spawn command '{command_str}'")))?;
+
+	#[cfg(target_os = "windows")]
+	ctrl_c_windows::install_handler(child.id());
+
+	let exit_code = child.wait().map_err(|e| Error::Io(e, format!("Failed to wait for command '{command_str}'")))?;
+
+	#[cfg(target_os = "windows")]
+	if ctrl_c_windows::interrupted() {
+		return Ok(());
+	}
+
+	if !exit_code.success() {
+		return Err(Error::Command(command_str, exit_code));
+	}
+	Ok(())
+}
+
+/// Console Ctrl+C handling for [`run_dev_server_in_frontend_dir`]: terminates the dev server's process tree and
+/// reports the interruption so the exit is treated as a success.
+#[cfg(target_os = "windows")]
+mod ctrl_c_windows {
+	use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+	static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+	static CHILD_PID: AtomicU32 = AtomicU32::new(0);
+
+	#[link(name = "kernel32")]
+	unsafe extern "system" {
+		fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> i32>, add: i32) -> i32;
+	}
+
+	/// Windows runs this on a dedicated thread when the console receives Ctrl+C (or Ctrl+Break, or a window close)
+	unsafe extern "system" fn ctrl_handler(_ctrl_type: u32) -> i32 {
+		INTERRUPTED.store(true, Ordering::SeqCst);
+
+		let pid = CHILD_PID.load(Ordering::SeqCst);
+		if pid != 0 {
+			let _ = std::process::Command::new("taskkill")
+				.args(["/T", "/F", "/PID", &pid.to_string()])
+				.stdout(std::process::Stdio::null())
+				.stderr(std::process::Stdio::null())
+				.status();
+		}
+
+		// Report the event as handled so the default handler doesn't also terminate this process
+		1
+	}
+
+	pub fn install_handler(child_pid: u32) {
+		CHILD_PID.store(child_pid, Ordering::SeqCst);
+		unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), 1) };
+	}
+
+	pub fn interrupted() -> bool {
+		INTERRUPTED.load(Ordering::SeqCst)
+	}
 }
 
 pub fn open_url(url: &str) -> Result<(), Error> {
