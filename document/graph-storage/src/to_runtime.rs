@@ -121,7 +121,7 @@ fn convert_network(
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
-		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
+		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id.0);
 		let runtime_id = RuntimeNodeId(local_id);
 
 		if let Some(collector) = node_collector.as_mut()
@@ -181,7 +181,7 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 				});
 			};
 
-			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(storage_id);
+			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(storage_id.0);
 			Ok((key, (RuntimeNodeId(local_id), ty)))
 		})
 		.collect()
@@ -278,7 +278,7 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 				});
 			}
 
-			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(*node_id);
+			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(node_id.0);
 			GraphCraftNodeInput::Node {
 				node_id: RuntimeNodeId(local_id),
 				output_index: *output_index as usize,

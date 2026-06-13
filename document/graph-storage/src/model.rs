@@ -142,7 +142,7 @@ mod tests {
 
 	fn target_slot(node_id: u64) -> ExportSlot {
 		ExportSlot {
-			target: Some(NodeInput::Node { id: node_id, index: 0 }),
+			target: Some(NodeInput::Node { id: NodeId(node_id), index: 0 }),
 			timestamp: TimeStamp::ORIGIN,
 		}
 	}

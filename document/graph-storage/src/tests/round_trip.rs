@@ -7,7 +7,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput,
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 
-use crate::{NodeMetadataSource, PeerId, Position, Registry};
+use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry};
 
 /// Helper function to verify a NodeNetwork can be compiled successfully.
 /// Note: This only works for complete networks with all inputs resolved.
@@ -693,7 +693,7 @@ fn cross_network_reference_is_rejected() {
 		})
 		.expect("simple network has a node-to-node reference");
 
-	let other_network = 999;
+	let other_network = NetworkId(999);
 	registry.networks.insert(other_network, Network::default());
 	registry.node_instances.get_mut(&referenced_storage_id).expect("referenced node exists").network = other_network;
 
@@ -729,7 +729,7 @@ fn dangling_scope_injection_is_rejected() {
 	// Store an injection pointing at a storage ID that no node carries, leaving the reference dangling
 	// while the rest of the graph stays valid. The root network is whichever one holds the nodes.
 	let root_network_id = registry.node_instances.values().next().expect("simple network has nodes").network();
-	let injections: HashMap<String, (crate::NodeId, Type)> = [("editor-api".to_string(), (u64::MAX, concrete!(u32)))].into_iter().collect();
+	let injections: HashMap<String, (crate::NodeId, Type)> = [("editor-api".to_string(), (crate::NodeId(u64::MAX), concrete!(u32)))].into_iter().collect();
 	registry
 		.networks
 		.get_mut(&root_network_id)

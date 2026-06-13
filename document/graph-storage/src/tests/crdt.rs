@@ -4,7 +4,7 @@ use graph_craft::concrete;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 
 use crate::InputSlot;
-use crate::{Delta, Document, HotOp, Network, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, RegistryDelta, RegistryTarget, Session, TimeStamp};
+use crate::{Delta, Document, HotOp, Network, NetworkId, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, RegistryDelta, RegistryTarget, Session, TimeStamp};
 
 fn fresh_document(peer: PeerId) -> Document {
 	Session::with_peer(peer).document
@@ -39,7 +39,7 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 
 	let observed = TimeStamp { counter: 42, peer: PeerId(2) };
 	let hot_op = HotOp {
-		op: remove_node_op(99),
+		op: remove_node_op(NodeId(99)),
 		timestamp: observed,
 	};
 
@@ -213,7 +213,7 @@ fn first_contribution_registers_the_peer() {
 #[test]
 fn set_export_resurrects_absent_network() {
 	let mut document = fresh_document(PeerId(1));
-	let network_id = 7;
+	let network_id = NetworkId(7);
 
 	commit_op(
 		&mut document,
@@ -249,8 +249,8 @@ fn add_node_resurrects_owning_network() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
-	let network_id = 7;
-	let node_id = 42;
+	let network_id = NetworkId(7);
+	let node_id = NodeId(42);
 
 	commit_op(
 		&mut document,
@@ -285,8 +285,8 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
-	let network_id = 7;
-	let node_id = 42;
+	let network_id = NetworkId(7);
+	let node_id = NodeId(42);
 
 	commit_op(
 		&mut document,
@@ -315,7 +315,7 @@ fn restore_node_from_root_commit() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
-	let node_id = 42;
+	let node_id = NodeId(42);
 
 	let node = Node::dummy();
 
@@ -342,7 +342,7 @@ fn apply_op_advances_clock_even_when_op_errors() {
 
 	let observed = TimeStamp { counter: 17, peer: PeerId(2) };
 	let failing_op = RegistryDelta::ChangeNodeInput {
-		id: 7,
+		id: NodeId(7),
 		index: 0,
 		new_input: crate::NodeInput::Import { index: 0 },
 	};
@@ -766,15 +766,27 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 		parents.clone(),
 		author,
 		timestamp,
-		RegistryDelta::AddNode { id: 9, node: make_node(&forward) },
-		RegistryDelta::AddNode { id: 9, node: make_node(&forward) },
+		RegistryDelta::AddNode {
+			id: NodeId(9),
+			node: make_node(&forward),
+		},
+		RegistryDelta::AddNode {
+			id: NodeId(9),
+			node: make_node(&forward),
+		},
 	);
 	let delta_reversed = Delta::new(
 		parents,
 		author,
 		timestamp,
-		RegistryDelta::AddNode { id: 9, node: make_node(&reversed) },
-		RegistryDelta::AddNode { id: 9, node: make_node(&reversed) },
+		RegistryDelta::AddNode {
+			id: NodeId(9),
+			node: make_node(&reversed),
+		},
+		RegistryDelta::AddNode {
+			id: NodeId(9),
+			node: make_node(&reversed),
+		},
 	);
 
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");

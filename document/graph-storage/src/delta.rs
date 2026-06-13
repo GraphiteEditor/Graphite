@@ -235,9 +235,9 @@ mod tests {
 	fn compute_deltas_emits_nodes_in_deterministic_order() {
 		let make_registry = || {
 			let mut registry = Registry::default();
-			registry.networks.insert(0, Network::default());
+			registry.networks.insert(NetworkId(0), Network::default());
 			for node_id in [50, 3, 17, 999, 1, 42, 8, 256, 100, 7] {
-				registry.node_instances.insert(node_id, Node::dummy());
+				registry.node_instances.insert(NodeId(node_id), Node::dummy());
 			}
 			registry
 		};
@@ -253,7 +253,7 @@ mod tests {
 				.collect()
 		};
 
-		let expected = vec![1, 3, 7, 8, 17, 42, 50, 100, 256, 999];
+		let expected = vec![1, 3, 7, 8, 17, 42, 50, 100, 256, 999].into_iter().map(NodeId).collect::<Vec<_>>();
 		for _ in 0..16 {
 			assert_eq!(add_node_ids(&make_registry()), expected, "AddNode order must be deterministic (ascending)");
 		}
@@ -265,11 +265,11 @@ mod tests {
 
 		let mut to = from.clone();
 		let node = Node::dummy();
-		to.node_instances.insert(42, node);
+		to.node_instances.insert(NodeId(42), node);
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1);
-		assert!(matches!(deltas[0], RegistryDelta::AddNode { id: 42, .. }));
+		assert!(matches!(deltas[0], RegistryDelta::AddNode { id: NodeId(42), .. }));
 	}
 
 	/// A change in `inputs_attributes` length is structural: the per-slot diff only `zip`s the shared
@@ -280,10 +280,10 @@ mod tests {
 		let base = Node::dummy();
 
 		let mut from = Registry::default();
-		from.node_instances.insert(42, base.clone());
+		from.node_instances.insert(NodeId(42), base.clone());
 
 		let mut to = from.clone();
-		to.node_instances.get_mut(&42).unwrap().inputs.push(crate::InputSlot {
+		to.node_instances.get_mut(&NodeId(42)).unwrap().inputs.push(crate::InputSlot {
 			input: NodeInput::Import { index: 0 },
 			timestamp: TimeStamp::ORIGIN,
 			attributes: Attributes::new(),
@@ -291,7 +291,7 @@ mod tests {
 
 		let deltas = compute_deltas(&from, &to);
 		assert!(
-			deltas.iter().any(|delta| matches!(delta, RegistryDelta::RemoveNode { id: 42, .. })) && deltas.iter().any(|delta| matches!(delta, RegistryDelta::AddNode { id: 42, .. })),
+			deltas.iter().any(|delta| matches!(delta, RegistryDelta::RemoveNode { id: NodeId(42), .. })) && deltas.iter().any(|delta| matches!(delta, RegistryDelta::AddNode { id: NodeId(42), .. })),
 			"an inputs_attributes length change must emit RemoveNode + AddNode, got {deltas:?}"
 		);
 	}
@@ -301,15 +301,19 @@ mod tests {
 		use crate::{AttributesWrite, TimeStamp};
 
 		let mut from = Registry::default();
-		from.networks.insert(0, Network::default());
+		from.networks.insert(NetworkId(0), Network::default());
 
 		let mut to = from.clone();
-		to.networks.get_mut(&0).unwrap().attributes.set("ui::nav::width", serde_json::json!(640.0), TimeStamp::ORIGIN);
+		to.networks
+			.get_mut(&NetworkId(0))
+			.unwrap()
+			.attributes
+			.set("ui::nav::width", serde_json::json!(640.0), TimeStamp::ORIGIN);
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1, "a changed per-network attribute must emit one delta");
 		assert!(
-			matches!(&deltas[0], RegistryDelta::ChangeNetworkAttribute { id: 0, delta } if delta.key == "ui::nav::width"),
+			matches!(&deltas[0], RegistryDelta::ChangeNetworkAttribute { id: NetworkId(0), delta } if delta.key == "ui::nav::width"),
 			"expected ChangeNetworkAttribute for ui::nav::width, got {:?}",
 			deltas[0]
 		);
@@ -320,13 +324,13 @@ mod tests {
 		let mut from = Registry::default();
 
 		let node = Node::dummy();
-		from.node_instances.insert(42, node);
+		from.node_instances.insert(NodeId(42), node);
 
 		let to = Registry::default();
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1);
-		assert!(matches!(deltas[0], RegistryDelta::RemoveNode { id: 42, .. }));
+		assert!(matches!(deltas[0], RegistryDelta::RemoveNode { id: NodeId(42), .. }));
 	}
 
 	#[test]
@@ -342,10 +346,10 @@ mod tests {
 				timestamp: stamp(0),
 			},
 		);
-		from.node_instances.insert(42, node);
+		from.node_instances.insert(NodeId(42), node);
 
 		let mut to = from.clone();
-		to.node_instances.get_mut(&42).unwrap().attributes.insert(
+		to.node_instances.get_mut(&NodeId(42)).unwrap().attributes.insert(
 			"test".to_string(),
 			crate::Value {
 				value: serde_json::json!("new"),
@@ -357,7 +361,7 @@ mod tests {
 		assert_eq!(deltas.len(), 1);
 		assert!(matches!(
 			&deltas[0],
-			RegistryDelta::ChangeNodeAttribute { id: 42, delta: AttributeDelta { key, value: Some(_) } } if key == "test"
+			RegistryDelta::ChangeNodeAttribute { id: NodeId(42), delta: AttributeDelta { key, value: Some(_) } } if key == "test"
 		));
 	}
 
@@ -389,13 +393,13 @@ mod tests {
 	#[test]
 	fn test_compute_deltas_network_changes() {
 		let make_slot = |id: u64| ExportSlot {
-			target: Some(NodeInput::Node { id, index: 0 }),
+			target: Some(NodeInput::Node { id: NodeId(id), index: 0 }),
 			timestamp: TimeStamp::ORIGIN,
 		};
 
 		let mut from = Registry::default();
 		from.networks.insert(
-			0,
+			NetworkId(0),
 			Network {
 				exports: vec![make_slot(1), make_slot(2)],
 				..Default::default()
@@ -403,7 +407,7 @@ mod tests {
 		);
 
 		let mut to = from.clone();
-		to.networks.get_mut(&0).unwrap().exports.push(make_slot(3));
+		to.networks.get_mut(&NetworkId(0)).unwrap().exports.push(make_slot(3));
 
 		let deltas = compute_deltas(&from, &to);
 		// Only slot 2 changed (added). Slots 0 and 1 are unchanged so they don't emit ops.
@@ -411,9 +415,9 @@ mod tests {
 		assert!(matches!(
 			&deltas[0],
 			RegistryDelta::SetNetworkExport {
-				id: 0,
+				id: NetworkId(0),
 				index: 2,
-				export: Some(NodeInput::Node { id: 3, .. }),
+				export: Some(NodeInput::Node { id: NodeId(3), .. }),
 				..
 			}
 		));

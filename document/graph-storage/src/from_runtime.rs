@@ -24,16 +24,16 @@ fn map_serialization_error(key: &str) -> impl FnOnce(serde_json::Error) -> Conve
 /// yields the same global ID, so a peer re-converting its own runtime state preserves IDs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 struct NodePath {
-	path: Vec<(NodeId, NetworkId)>,
-	local_id: NodeId,
+	path: Vec<(RuntimeNodeId, NetworkId)>,
+	local_id: RuntimeNodeId,
 }
 
 impl NodePath {
-	fn root(node_id: NodeId) -> Self {
+	fn root(node_id: RuntimeNodeId) -> Self {
 		Self { path: vec![], local_id: node_id }
 	}
 
-	fn nested(parent_path: &NodePath, parent_node_id: NodeId, network_id: NetworkId, local_id: NodeId) -> Self {
+	fn nested(parent_path: &NodePath, parent_node_id: RuntimeNodeId, network_id: NetworkId, local_id: RuntimeNodeId) -> Self {
 		let mut path = parent_path.path.clone();
 		path.push((parent_node_id, network_id));
 		Self { path, local_id }
@@ -44,7 +44,7 @@ impl NodePath {
 		let digest = blake3::hash(&bytes);
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
-		NodeId::from_le_bytes(truncated)
+		NodeId(u64::from_le_bytes(truncated))
 	}
 
 	/// Stable id of the network owned by the node at this path, derived purely from the (structural)
@@ -56,7 +56,7 @@ impl NodePath {
 		let digest = blake3::hash(&bytes);
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
-		NetworkId::from_le_bytes(truncated)
+		NetworkId(u64::from_le_bytes(truncated))
 	}
 }
 
@@ -268,19 +268,17 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 	ctx: &mut ConversionContext<'_, M>,
 ) -> Result<(), ConversionError> {
 	for (runtime_node_id, doc_node) in &node_network.nodes {
-		let local_id = runtime_node_id.0;
-		let node_path = child_path(parent_path, network_id, local_id);
+		let node_path = child_path(parent_path, network_id, *runtime_node_id);
 		let global_id = node_path.to_global_id(ctx.peer);
 
 		let location = NodeLocation {
-			local_id,
 			network_id,
 			parent_path,
 			metadata_path,
 			runtime_node_id: *runtime_node_id,
 		};
 		let mut node = convert_node(doc_node, location, registry, ctx)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(local_id), TimeStamp::ORIGIN);
+		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(runtime_node_id.0), TimeStamp::ORIGIN);
 		registry.node_instances.insert(global_id, node);
 	}
 
@@ -324,7 +322,7 @@ fn write_scope_injections(
 		.scope_injections
 		.iter()
 		.map(|(key, (runtime_id, ty))| {
-			let storage_id = child_path(parent_path, network_id, runtime_id.0).to_global_id(peer);
+			let storage_id = child_path(parent_path, network_id, *runtime_id).to_global_id(peer);
 			(key.clone(), (storage_id, ty.clone()))
 		})
 		.collect();
@@ -334,18 +332,17 @@ fn write_scope_injections(
 		.map_err(map_serialization_error(network::SCOPE_INJECTIONS))
 }
 
-fn child_path(parent_path: Option<&NodePath>, network_id: NetworkId, local_id: NodeId) -> NodePath {
+fn child_path(parent_path: Option<&NodePath>, network_id: NetworkId, local_id: RuntimeNodeId) -> NodePath {
 	match parent_path {
 		None => NodePath::root(local_id),
 		Some(parent) => NodePath::nested(parent, parent.local_id, network_id, local_id),
 	}
 }
 
-/// Where a node sits in both the storage tree (`local_id`, `network_id`, `parent_path`) and the
-/// runtime tree (`metadata_path`, `runtime_node_id`). `metadata_path` is the chain of runtime IDs
-/// from the root down to (but not including) this node.
+/// Where a node sits in both the storage tree (`network_id`, `parent_path`) and the runtime tree
+/// (`metadata_path`, `runtime_node_id`). `metadata_path` is the chain of runtime IDs from the root
+/// down to (but not including) this node.
 struct NodeLocation<'a> {
-	local_id: NodeId,
 	network_id: NetworkId,
 	parent_path: Option<&'a NodePath>,
 	metadata_path: &'a [RuntimeNodeId],
@@ -354,14 +351,13 @@ struct NodeLocation<'a> {
 
 fn convert_node<M: NodeMetadataSource + ?Sized>(doc_node: &DocumentNode, location: NodeLocation<'_>, registry: &mut Registry, ctx: &mut ConversionContext<'_, M>) -> Result<Node, ConversionError> {
 	let NodeLocation {
-		local_id,
 		network_id,
 		parent_path,
 		metadata_path,
 		runtime_node_id,
 	} = location;
 
-	let node_path = child_path(parent_path, network_id, local_id);
+	let node_path = child_path(parent_path, network_id, runtime_node_id);
 	let timestamp = TimeStamp::ORIGIN;
 
 	let mut inputs = Vec::with_capacity(doc_node.inputs.len());
@@ -491,7 +487,7 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 fn convert_input(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, network_id: NetworkId, peer: PeerId) -> Result<NodeInput, ConversionError> {
 	Ok(match input {
 		GraphCraftNodeInput::Node { node_id, output_index } => NodeInput::Node {
-			id: child_path(parent_path, network_id, node_id.0).to_global_id(peer),
+			id: child_path(parent_path, network_id, *node_id).to_global_id(peer),
 			index: *output_index as u32,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {

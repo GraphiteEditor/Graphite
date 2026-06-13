@@ -47,7 +47,7 @@ impl Document {
 		let digest = blake3::hash(&bytes);
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
-		NodeId::from_le_bytes(truncated)
+		NodeId(u64::from_le_bytes(truncated))
 	}
 
 	pub(crate) fn restore_node_from_history(&mut self, target: RegistryTarget, node_id: NodeId) -> Result<(), CrdtError> {
