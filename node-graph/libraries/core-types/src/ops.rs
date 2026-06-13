@@ -106,7 +106,19 @@ impl Convert<DVec2, ()> for DVec2 {
 	}
 }
 
-// TODO: Add a DVec2 to List<Vector> anchor point conversion implementation to replace the 'Vec2 to Point' node
+/// Constructs `Self` from a single anchor point at the given position. Implemented by the vector crate's
+/// path type so the `Convert` impl below can build a single-point path without core-types depending on
+/// that crate (mirroring how [`ListConvert`] bridges per-item list conversions).
+pub trait FromAnchorPosition {
+	fn from_anchor_position(position: DVec2) -> Self;
+}
+
+// Converts a position into a vector path composed of a single anchor point
+impl<T: FromAnchorPosition + Send> Convert<List<T>, ()> for DVec2 {
+	async fn convert(self, _: Footprint, _: ()) -> List<T> {
+		List::new_from_item(Item::new_from_element(T::from_anchor_position(self)))
+	}
+}
 
 /// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
 macro_rules! impl_convert {
