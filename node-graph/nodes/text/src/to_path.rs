@@ -35,7 +35,11 @@ pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> List<Ve
 			continue;
 		}
 
-		let font: Resource = strings.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+		// Use fallback font when none is explicitly attached.
+		let font: Resource = {
+			let f: Resource = strings.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+			if f.is_empty() { super::FALLBACK_FONT_RESOURCE.clone() } else { f }
+		};
 
 		let defaults = TypesettingConfig::default();
 		let typesetting = TypesettingConfig {

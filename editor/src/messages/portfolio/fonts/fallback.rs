@@ -1,5 +1,4 @@
-use graph_craft::application_io::resource::Resource;
-use std::sync::LazyLock;
-
-const FALLBACK_FONT_BYTES: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-pub static FALLBACK_FONT_RESOURCE: LazyLock<Resource> = LazyLock::new(|| Resource::new(FALLBACK_FONT_BYTES));
+// Re-export the fallback font resource from text-nodes, which is the authoritative location.
+// This avoids duplicating the font bytes in the editor binary.
+// This file can be remove after deciding where to place the authority of fallback_resource.
+pub use graphene_std::text_nodes::FALLBACK_FONT_RESOURCE;

@@ -2360,7 +2360,10 @@ impl Render for List<String> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let font: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+			let font: Resource = {
+				let f: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+			};
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
 			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
 			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
@@ -2510,7 +2513,10 @@ impl Render for List<String> {
 			}
 
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let font: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+			let font: Resource = {
+				let f: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+			};
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
 			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
 			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
@@ -2647,7 +2653,10 @@ impl Render for List<String> {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
 			let Some(text) = self.element(index) else { continue };
-			let font: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+			let font: Resource = {
+				let f: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+			};
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
 			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
 			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);

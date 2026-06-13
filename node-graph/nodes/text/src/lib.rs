@@ -1,3 +1,4 @@
+pub mod fallback;
 mod font;
 pub mod json;
 mod path_builder;
@@ -16,6 +17,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
 pub use core_types as gcore;
+pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
 pub use text_context::TextContext;
 pub use to_path::*;
