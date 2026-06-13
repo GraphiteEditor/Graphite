@@ -90,8 +90,8 @@ impl CacheKey {
 			thumbnail,
 			aligned_strokes,
 			override_paint_order,
-			animation_time_ms: (animation_time * 1000.0).round() as i64,
-			real_time_ms: (real_time * 1000.0).round() as i64,
+			animation_time_ms: (animation_time * 1000.).round() as i64,
+			real_time_ms: (real_time * 1000.).round() as i64,
 			pointer: pointer_bytes,
 		}
 	}
@@ -369,8 +369,8 @@ pub async fn render_output_cache<'a: 'n>(
 		render_params.thumbnail,
 		render_params.aligned_strokes,
 		render_params.override_paint_order,
-		ctx.try_animation_time().unwrap_or(0.0),
-		ctx.try_real_time().unwrap_or(0.0),
+		ctx.try_animation_time().unwrap_or(0.),
+		ctx.try_real_time().unwrap_or(0.),
 		ctx.try_pointer_position(),
 	);
 

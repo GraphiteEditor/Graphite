@@ -701,7 +701,7 @@ mod graphic_is_opaque_tests {
 	use super::*;
 
 	fn color_graphic(alpha: f64) -> Graphic {
-		let color = Color::from_rgbaf32(1.0, 0.0, 0.0, alpha as f32).unwrap();
+		let color = Color::from_rgbaf32(1., 0., 0., alpha as f32).unwrap();
 		Graphic::Color(List::new_from_element(color))
 	}
 
@@ -713,7 +713,7 @@ mod graphic_is_opaque_tests {
 
 	#[test]
 	fn opaque_color_is_opaque() {
-		let g = color_graphic(1.0);
+		let g = color_graphic(1.);
 		assert!(g.is_opaque());
 	}
 
@@ -731,8 +731,8 @@ mod graphic_is_opaque_tests {
 
 	#[test]
 	fn gradient_with_all_opaque_stops_is_opaque() {
-		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
-		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let color_1 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
+		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
 		let gradient = GradientStops::new(vec![
 			GradientStop {
 				position: 0.,
@@ -751,8 +751,8 @@ mod graphic_is_opaque_tests {
 
 	#[test]
 	fn gradient_with_transparent_stop_is_not_opaque() {
-		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 0.5).unwrap();
-		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let color_1 = Color::from_rgbaf32(1., 0., 0., 0.5).unwrap();
+		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
 		let gradient = GradientStops::new(vec![
 			GradientStop {
 				position: 0.,

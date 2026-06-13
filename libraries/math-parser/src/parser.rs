@@ -68,7 +68,7 @@ impl NodeMetadata {
 }
 
 fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
-	let mut scale = 1.0;
+	let mut scale = 1.;
 	let mut length = 0;
 	let mut mass = 0;
 	let mut time = 0;
@@ -102,9 +102,9 @@ fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
 fn parse_const(pair: Pair<Rule>) -> Literal {
 	match pair.as_rule() {
 		Rule::infinity => Literal::Float(f64::INFINITY),
-		Rule::imaginary_unit => Literal::Complex(Complex::new(0.0, 1.0)),
+		Rule::imaginary_unit => Literal::Complex(Complex::new(0., 1.)),
 		Rule::pi => Literal::Float(std::f64::consts::PI),
-		Rule::tau => Literal::Float(2.0 * std::f64::consts::PI),
+		Rule::tau => Literal::Float(2. * std::f64::consts::PI),
 		Rule::euler_number => Literal::Float(std::f64::consts::E),
 		Rule::golden_ratio => Literal::Float(1.61803398875),
 		_ => unreachable!("Unexpected constant: {:?}", pair),
@@ -327,52 +327,52 @@ mod tests {
 	}
 
 	test_parser! {
-		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.0)),
+		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.)),
 		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(#[allow(clippy::approx_constant)] 3.14)),
 		test_parse_ident: "x" => Node::Var("x".to_string()),
 		test_parse_unary_neg: "-42" => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(42.0))),
+			expr: Box::new(Node::Lit(Literal::Float(42.))),
 			op: UnaryOp::Neg,
 		},
 		test_parse_binary_add: "1 + 2" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(1.0))),
+			lhs: Box::new(Node::Lit(Literal::Float(1.))),
 			op: BinaryOp::Add,
-			rhs: Box::new(Node::Lit(Literal::Float(2.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(2.))),
 		},
 		test_parse_binary_mul: "3 * 4" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
+			lhs: Box::new(Node::Lit(Literal::Float(3.))),
 			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
 		test_parse_binary_pow: "2 ^ 3" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(2.0))),
+			lhs: Box::new(Node::Lit(Literal::Float(2.))),
 			op: BinaryOp::Pow,
-			rhs: Box::new(Node::Lit(Literal::Float(3.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(3.))),
 		},
 		test_parse_unary_sqrt: "sqrt(16)" => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(16.0))),
+			expr: Box::new(Node::Lit(Literal::Float(16.))),
 			op: UnaryOp::Sqrt,
 		},
 		test_parse_sqr_ident: "sqr(16)" => Node::FnCall {
 			 name:"sqr".to_string(),
-			 expr: vec![Node::Lit(Literal::Float(16.0))]
+			 expr: vec![Node::Lit(Literal::Float(16.))]
 		},
 
 		test_parse_complex_expr: "(1 + 2)  3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {
-					lhs: Box::new(Node::Lit(Literal::Float(1.0))),
+					lhs: Box::new(Node::Lit(Literal::Float(1.))),
 					op: BinaryOp::Add,
-					rhs: Box::new(Node::Lit(Literal::Float(2.0))),
+					rhs: Box::new(Node::Lit(Literal::Float(2.))),
 				}),
 				op: BinaryOp::Mul,
-				rhs: Box::new(Node::Lit(Literal::Float(3.0))),
+				rhs: Box::new(Node::Lit(Literal::Float(3.))),
 			}),
 			op: BinaryOp::Sub,
 			rhs: Box::new(Node::BinOp {
-				lhs: Box::new(Node::Lit(Literal::Float(4.0))),
+				lhs: Box::new(Node::Lit(Literal::Float(4.))),
 				op: BinaryOp::Pow,
-				rhs: Box::new(Node::Lit(Literal::Float(2.0))),
+				rhs: Box::new(Node::Lit(Literal::Float(2.))),
 			}),
 		}
 	}
