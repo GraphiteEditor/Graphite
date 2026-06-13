@@ -1575,7 +1575,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i - 2].clone(), network_path);
 		}
 
-		// Keep inputs_count synchronized because subsequent Text migrations depend on it (see line 1692)
 		inputs_count = 13;
 	}
 
