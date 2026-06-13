@@ -1,0 +1,26 @@
+[package]
+name = "document-format"
+description = "Typed handle for the .gdd document format, sitting over graph-storage and document-container"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+document-container = { workspace = true, features = ["zip", "xz"] }
+graph-storage = { workspace = true }
+graph-craft = { workspace = true }
+graphene-resource = { workspace = true }
+core-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+futures = { workspace = true }
+chrono = { workspace = true }
+thiserror = "2.0"
+log = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
+graphene-resource = { workspace = true }
+tempfile = "3"

@@ -1,0 +1,32 @@
+//! Persistent cursor state for the local peer. Separate from [`crate::Manifest`] because the
+//! manifest describes document identity (what this document *is*), while [`SessionState`]
+//! describes where the local peer's cursor sits inside it.
+//!
+//! Lives in `session.json`. Rewritten on retirement.
+
+use graph_storage::{NetworkId, Rev};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SessionState {
+	/// Local-chain cursor. Points at the most recently applied retired delta.
+	#[serde(default)]
+	pub head_rev: Rev,
+	/// Revs the user has undone past, so redo survives a reopen. (The legacy `VecDeque` redo history
+	/// is not persisted, so within the shadow phase this is strictly more capable than the live editor.)
+	#[serde(default)]
+	pub redo_stack: Vec<Rev>,
+	/// Shared-monotonic counter feeding `Document::next_node_id`. Persisted so reopens don't
+	/// collide on minted IDs.
+	#[serde(default)]
+	pub next_node_counter: u64,
+	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
+	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
+	#[serde(default)]
+	pub view_settings: HashMap<String, serde_json::Value>,
+	/// Per-network view settings (node-graph nav + previewing), keyed by the stable storage [`NetworkId`].
+	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
+	#[serde(default)]
+	pub network_view_settings: HashMap<NetworkId, HashMap<String, serde_json::Value>>,
+}
