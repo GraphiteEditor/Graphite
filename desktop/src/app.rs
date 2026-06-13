@@ -280,8 +280,8 @@ impl App {
 					let viewport_offset_y = y / window_size.height as f64;
 					render_state.set_viewport_offset([viewport_offset_x as f32, viewport_offset_y as f32]);
 
-					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
-					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
+					let viewport_scale_x = if width != 0. { window_size.width as f64 / width } else { 1. };
+					let viewport_scale_y = if height != 0. { window_size.height as f64 / height } else { 1. };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
 			}

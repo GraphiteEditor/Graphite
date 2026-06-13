@@ -228,10 +228,10 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio: 1.2,
-		character_spacing: 0.0,
+		character_spacing: 0.,
 		max_width: None,
 		max_height: None,
-		tilt: 0.0,
+		tilt: 0.,
 		align: TextAlign::AlignLeft,
 	};
 

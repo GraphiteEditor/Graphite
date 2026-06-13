@@ -360,9 +360,9 @@ mod tests {
 	#[test]
 	fn test_bounding_box_cache_fingerprint_generation() {
 		// Test that fingerprints have MSB set and use only 7 bits for data
-		let rotation1 = 0.0;
-		let rotation2 = PI / 3.0;
-		let rotation3 = PI / 2.0;
+		let rotation1 = 0.;
+		let rotation2 = PI / 3.;
+		let rotation3 = PI / 2.;
 
 		let fp1 = BoundingBoxCache::rotation_fingerprint(rotation1);
 		let fp2 = BoundingBoxCache::rotation_fingerprint(rotation2);
@@ -387,11 +387,11 @@ mod tests {
 		let mut cache = BoundingBoxCache::default();
 
 		// Create a simple rectangle subpath for testing
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100.0, 50.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100., 50.));
 
-		let rotation = PI / 4.0;
-		let scale = DVec2::new(2.0, 2.0);
-		let translation = DVec2::new(10.0, 20.0);
+		let rotation = PI / 4.;
+		let scale = DVec2::new(2., 2.);
+		let translation = DVec2::new(10., 20.);
 		let fingerprint = BoundingBoxCache::rotation_fingerprint(rotation);
 
 		// Cache should be empty initially
@@ -410,12 +410,12 @@ mod tests {
 	#[test]
 	fn test_bounding_box_cache_ring_buffer_behavior() {
 		let mut cache = BoundingBoxCache::default();
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10.0, 10.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10., 10.));
 		let scale = DVec2::ONE;
 		let translation = DVec2::ZERO;
 
 		// Fill cache beyond capacity to test ring buffer behavior
-		let rotations: Vec<f64> = (0..10).map(|i| i as f64 * PI / 8.0).collect();
+		let rotations: Vec<f64> = (0..10).map(|i| i as f64 * PI / 8.).collect();
 
 		for rotation in &rotations {
 			let fingerprint = BoundingBoxCache::rotation_fingerprint(*rotation);
@@ -435,12 +435,12 @@ mod tests {
 	#[test]
 	fn test_click_target_bounding_box_caching() {
 		// Create a click target with a simple rectangle
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100.0, 50.0));
-		let click_target = ClickTarget::new_with_subpath(subpath, 1.0);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100., 50.));
+		let click_target = ClickTarget::new_with_subpath(subpath, 1.);
 
-		let rotation = PI / 6.0;
+		let rotation = PI / 6.;
 		let scale = DVec2::new(1.5, 1.5);
-		let translation = DVec2::new(20.0, 30.0);
+		let translation = DVec2::new(20., 30.);
 		let transform = DAffine2::from_scale_angle_translation(scale, rotation, translation);
 
 		// Helper function to count present values in cache
@@ -463,7 +463,7 @@ mod tests {
 		assert_eq!(count_present_values(), 1); // Should still be 1, not 2
 
 		// Different scale/translation but same rotation should use cached rotation
-		let transform2 = DAffine2::from_scale_angle_translation(DVec2::new(2.0, 2.0), rotation, DVec2::new(50.0, 60.0));
+		let transform2 = DAffine2::from_scale_angle_translation(DVec2::new(2., 2.), rotation, DVec2::new(50., 60.));
 		let result3 = click_target.bounding_box_with_transform(transform2);
 		assert!(result3.is_some());
 		assert_ne!(result1, result3); // Different due to different scale/translation
@@ -472,11 +472,11 @@ mod tests {
 
 	#[test]
 	fn test_click_target_skew_bypass_cache() {
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100.0, 50.0));
-		let click_target = ClickTarget::new_with_subpath(subpath.clone(), 1.0);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100., 50.));
+		let click_target = ClickTarget::new_with_subpath(subpath.clone(), 1.);
 
 		// Create a transform with skew (non-uniform scaling in different directions)
-		let skew_transform = DAffine2::from_cols_array(&[2.0, 0.5, 0.0, 1.0, 10.0, 20.0]);
+		let skew_transform = DAffine2::from_cols_array(&[2., 0.5, 0., 1., 10., 20.]);
 		assert!(skew_transform.has_skew());
 
 		// Should bypass cache and compute directly
@@ -488,12 +488,12 @@ mod tests {
 	#[test]
 	fn test_cache_fingerprint_collision_handling() {
 		let mut cache = BoundingBoxCache::default();
-		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10.0, 10.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10., 10.));
 		let scale = DVec2::ONE;
 		let translation = DVec2::ZERO;
 
 		// Find two rotations that produce the same fingerprint (collision)
-		let rotation1 = 0.0;
+		let rotation1 = 0.;
 		let rotation2 = 0.25;
 		let fp1 = BoundingBoxCache::rotation_fingerprint(rotation1);
 		let fp2 = BoundingBoxCache::rotation_fingerprint(rotation2);

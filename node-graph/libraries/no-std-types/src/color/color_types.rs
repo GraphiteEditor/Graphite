@@ -261,12 +261,12 @@ impl RGB for Luma {
 impl Pixel for Luma {}
 
 /// Structure that represents a color.
-/// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
-/// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
-/// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
+/// Internally alpha is stored as `f32` that ranges from `0.` (transparent) to `1.` (opaque).
+/// The other components (RGB) are stored as `f32` that range from `0.` up to `f32::MAX`,
+/// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.` (black) to `1.` (white) in SDR color.
 /// Linear-light sRGB color with `f32` channels (alpha unassociated for swatch/UI colors, associated/premultiplied for pixel data inside [`Image<Color>`]).
 ///
-/// Channels range from `0.0` to `f32::MAX`, encoding brightness proportional to light intensity (cd/m² nits in HDR, or `0..=1` mapped to white for SDR).
+/// Channels range from `0.` to `f32::MAX`, encoding brightness proportional to light intensity (cd/m² nits in HDR, or `0..=1` mapped to white for SDR).
 ///
 /// Anything crossing the Wasm/JS boundary must go through [`SRGBA8`] instead.
 #[repr(C)]
@@ -452,8 +452,8 @@ impl Color {
 		alpha: 0.,
 	};
 
-	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negative numbers (including `-0.0`), NaN, and infinity are not valid values and return `None`.
-	/// Alpha values greater than `1.0` are not valid.
+	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negative numbers (including `-0.`), NaN, and infinity are not valid values and return `None`.
+	/// Alpha values greater than `1.` are not valid.
 	///
 	/// # Examples
 	/// ```
@@ -593,7 +593,7 @@ impl Color {
 		self.blue
 	}
 
-	/// Return the `alpha` component without checking its expected `0.0` to `1.0` range.
+	/// Return the `alpha` component without checking its expected `0.` to `1.` range.
 	///
 	/// # Examples
 	/// ```

@@ -1215,7 +1215,7 @@ impl OverlayContextInternal {
 
 	fn snap_to_physical_pixel(&self, p: DVec2) -> DVec2 {
 		let s = self.viewport.scale();
-		if !s.is_finite() || s <= 0.0 {
+		if !s.is_finite() || s <= 0. {
 			return p.round();
 		}
 		(p * s).round() / s
@@ -1223,7 +1223,7 @@ impl OverlayContextInternal {
 
 	fn snap_to_physical_pixel_center(&self, p: DVec2) -> DVec2 {
 		let s = self.viewport.scale();
-		if !s.is_finite() || s <= 0.0 {
+		if !s.is_finite() || s <= 0. {
 			return p.round() - DVec2::splat(0.5);
 		}
 		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)
