@@ -6,7 +6,7 @@ use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput as GraphCraftNodeInput, NodeNetwork};
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
@@ -28,6 +28,8 @@ pub enum ConversionError {
 	CrossNetworkReference { network: NetworkId, referenced: NodeId },
 	#[error("Scope injection {key:?} in network {network} references node {referenced}, which is missing or in a different network")]
 	DanglingScopeInjection { network: NetworkId, key: String, referenced: NodeId },
+	#[error("Network {0} is reachable from itself through nested implementations, forming a cycle")]
+	CyclicNetwork(NetworkId),
 }
 
 /// Resolved proto-node declarations, keyed by the `ResourceId` that `Implementation::ProtoNode`
@@ -61,6 +63,11 @@ impl Registry {
 			declarations,
 			nodes_by_network,
 		};
+
+		// Reject cycles up front so the recursive conversion below can assume the network reference
+		// graph is acyclic and never blow the stack on a self-referential `Implementation::Network`.
+		detect_network_cycle(&context, ROOT_NETWORK)?;
+
 		let network = convert_network(&context, ROOT_NETWORK, &[], &mut node_metadata, &mut network_metadata)?;
 		Ok((network, node_metadata.expect("seeded above"), network_metadata.expect("seeded above")))
 	}
@@ -106,6 +113,51 @@ struct ConversionContext<'a> {
 /// here into the runtime's dense `Vec<NodeInput>` — slot stability is a storage-side concern.
 ///
 /// `metadata_path` is the owning-node chain naming *this* network (empty for the root).
+/// Walk the network reference graph (edges are `Implementation::Network` references between a
+/// network and the networks its nodes embed) and reject any cycle, so the recursive `convert_network`
+/// can't recurse forever and overflow the stack. Iterative DFS with an explicit stack and a gray set
+/// for the active path; a child already on the active path is a back edge, i.e. a cycle.
+fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<(), ConversionError> {
+	// Networks reachable from `root` that referenced networks, used by an embedded node, are pushed in
+	// reverse so the natural processing order matches a recursive walk. `Enter`/`Leave` frames let us
+	// maintain the gray (active-path) set with an explicit stack.
+	enum Frame {
+		Enter(NetworkId),
+		Leave(NetworkId),
+	}
+
+	let mut stack = vec![Frame::Enter(root)];
+	let mut on_path: FxHashSet<NetworkId> = FxHashSet::default();
+	let mut fully_explored: FxHashSet<NetworkId> = FxHashSet::default();
+
+	while let Some(frame) = stack.pop() {
+		match frame {
+			Frame::Leave(network_id) => {
+				on_path.remove(&network_id);
+				fully_explored.insert(network_id);
+			}
+			Frame::Enter(network_id) => {
+				if fully_explored.contains(&network_id) {
+					continue;
+				}
+				if !on_path.insert(network_id) {
+					return Err(ConversionError::CyclicNetwork(network_id));
+				}
+
+				stack.push(Frame::Leave(network_id));
+
+				for &(_, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
+					if let Implementation::Network(child) = node.implementation {
+						stack.push(Frame::Enter(child));
+					}
+				}
+			}
+		}
+	}
+
+	Ok(())
+}
+
 fn convert_network(
 	context: &ConversionContext,
 	network_id: NetworkId,
@@ -301,7 +353,7 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 				.get_typed(node::REFLECTION_METADATA)
 				.ok_or_else(|| ConversionError::DeserializationError("Missing reflection_metadata in input_attributes".to_string()))?,
 		),
-		NodeInput::Other => unreachable!(),
+		NodeInput::Other => return Err(ConversionError::DeserializationError("Cannot convert NodeInput::Other to a runtime input".to_string())),
 	})
 }
 

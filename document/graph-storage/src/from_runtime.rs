@@ -68,6 +68,8 @@ pub enum ConversionError {
 	UnsupportedImplementation,
 	#[error("Invalid network structure: {0}")]
 	InvalidNetwork(String),
+	#[error("Index {0} exceeds the storage format's u32 range")]
+	IndexOverflow(usize),
 }
 
 /// Graph-only conversion (no editor metadata). Use [`Registry::from_runtime_with_metadata`] for
@@ -488,14 +490,16 @@ fn convert_input(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, ne
 	Ok(match input {
 		GraphCraftNodeInput::Node { node_id, output_index } => NodeInput::Node {
 			id: child_path(parent_path, network_id, *node_id).to_global_id(peer),
-			index: *output_index as u32,
+			index: (*output_index).try_into().map_err(|_| ConversionError::IndexOverflow(*output_index))?,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
 			let value = serde_json::to_value(&**tagged_value).map_err(|e| ConversionError::SerializationError(format!("{e:?}")))?;
 			NodeInput::Value { value, exposed: *exposed }
 		}
 		GraphCraftNodeInput::Scope(s) => NodeInput::Scope(s.clone()),
-		GraphCraftNodeInput::Import { import_index, .. } => NodeInput::Import { index: *import_index as u32 },
+		GraphCraftNodeInput::Import { import_index, .. } => NodeInput::Import {
+			index: (*import_index).try_into().map_err(|_| ConversionError::IndexOverflow(*import_index))?,
+		},
 		GraphCraftNodeInput::Reflection(_) => NodeInput::Reflection,
 		// GPU-specific; not modeled in the Registry format.
 		GraphCraftNodeInput::Inline(_) => return Err(ConversionError::UnsupportedImplementation),

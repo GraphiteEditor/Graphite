@@ -129,8 +129,9 @@ impl Document {
 		}
 	}
 
-	/// New local/remote op against the working registry: structural ops error on duplicate/missing
-	/// targets; LWW arms keep the newer-timestamp value (strict `>`). The common entry point for edits.
+	/// New local/remote op against the working registry: add ops error on duplicate targets and
+	/// `Change*` ops error on a missing target, while remove ops no-op when the target is already
+	/// absent; LWW arms keep the newer-timestamp value (strict `>`). The common entry point for edits.
 	pub(crate) fn apply_op(&mut self, op: RegistryDelta, timestamp: TimeStamp) -> Result<(), CrdtError> {
 		self.apply_op_with(RegistryTarget::Working, op, timestamp, ApplyMode::Live)
 	}

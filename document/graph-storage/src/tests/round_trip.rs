@@ -741,3 +741,41 @@ fn dangling_scope_injection_is_rejected() {
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("dangling scope injection must error");
 	assert!(matches!(error, ConversionError::DanglingScopeInjection { .. }), "expected DanglingScopeInjection, got {error:?}");
 }
+
+#[test]
+fn cyclic_network_reference_is_rejected() {
+	use crate::to_runtime::ConversionError;
+	use crate::{Implementation, Network, Node};
+
+	// A runtime `NodeNetwork` embeds children by value and so can't be cyclic; the cycle only exists
+	// in the storage form, where networks reference each other by `NetworkId`. Build it directly:
+	// the root network holds a node whose implementation is the child network, whose own node points
+	// back at the root, closing the loop.
+	let child_network_id = NetworkId(1);
+
+	let mut registry = Registry::default();
+	registry.networks.insert(crate::ROOT_NETWORK, Network::default());
+	registry.networks.insert(child_network_id, Network::default());
+
+	registry.node_instances.insert(
+		crate::NodeId(0),
+		Node {
+			implementation: Implementation::Network(child_network_id),
+			inputs: Vec::new(),
+			attributes: crate::Attributes::default(),
+			network: crate::ROOT_NETWORK,
+		},
+	);
+	registry.node_instances.insert(
+		crate::NodeId(1),
+		Node {
+			implementation: Implementation::Network(crate::ROOT_NETWORK),
+			inputs: Vec::new(),
+			attributes: crate::Attributes::default(),
+			network: child_network_id,
+		},
+	);
+
+	let error = registry.to_runtime_with_metadata(&crate::Declarations::new()).expect_err("cyclic network reference must error");
+	assert!(matches!(error, ConversionError::CyclicNetwork(_)), "expected CyclicNetwork, got {error:?}");
+}
