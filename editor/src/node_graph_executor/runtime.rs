@@ -345,12 +345,12 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		if let Err(e) = self.preprocessor.expand_network(&mut graph, &self.resources) {
+	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+
+		if let Err(e) = self.preprocessor.expand_network(&mut scoped_network, &self.resources) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
 		}
-
-		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
