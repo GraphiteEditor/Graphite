@@ -404,16 +404,16 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_f_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node"],
+		node: graphene_std::math_nodes::as_f_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_u_32::IDENTIFIER,
+		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node", "math_nodes::ToU32Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_u_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node"],
+		node: graphene_std::math_nodes::as_u_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node", "math_nodes::ToU64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
@@ -676,8 +676,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::logic::SwitchNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::text_nodes::to_string::IDENTIFIER,
-		aliases: &["graphene_core::logic::ToStringNode"],
+		node: graphene_std::text_nodes::as_string::IDENTIFIER,
+		aliases: &["graphene_core::logic::ToStringNode", "text_nodes::ToStringNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
