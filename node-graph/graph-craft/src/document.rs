@@ -655,6 +655,59 @@ impl NodeNetwork {
 	}
 }
 
+// Functions for resolving scope inputs
+impl NodeNetwork {
+	pub fn resolve_scope_inputs(&mut self) {
+		let mut leftover = Vec::new();
+		self.resolve_scope_inputs_with(None, &mut leftover);
+		assert!(leftover.is_empty(), "Unresolved scope keys at top level: {leftover:?}");
+	}
+
+	fn resolve_scope_inputs_with(&mut self, parent: Option<&ScopeChain<'_>>, parent_inputs: &mut Vec<NodeInput>) {
+		let chain = ScopeChain {
+			scopes: &self.scope_injections,
+			parent,
+		};
+
+		for node in self.nodes.values_mut() {
+			let DocumentNodeImplementation::Network(network) = &mut node.implementation else { continue };
+			network.resolve_scope_inputs_with(Some(&chain), &mut node.inputs);
+		}
+
+		let mut key_to_idx: FxHashMap<Cow<'static, str>, usize> = FxHashMap::default();
+		for node in self.nodes.values_mut() {
+			for input in node.inputs.iter_mut() {
+				let NodeInput::Scope(key) = input else { continue };
+				if let Some((producer_id, _)) = self.scope_injections.get(key.as_ref()) {
+					*input = NodeInput::node(*producer_id, 0);
+					continue;
+				}
+				let import_type = chain
+					.get(key.as_ref())
+					.map(|(_, t)| t.clone())
+					.unwrap_or_else(|| panic!("Scope key `{key}` not found in any ancestor scope_injections"));
+				let import_index = *key_to_idx.entry(key.clone()).or_insert_with(|| {
+					let index = parent_inputs.len();
+					parent_inputs.push(NodeInput::Scope(key.clone()));
+					index
+				});
+				*input = NodeInput::Import { import_type, import_index };
+			}
+		}
+	}
+}
+
+struct ScopeChain<'a> {
+	scopes: &'a FxHashMap<String, (NodeId, Type)>,
+	parent: Option<&'a ScopeChain<'a>>,
+}
+
+impl ScopeChain<'_> {
+	fn get(&self, key: &str) -> Option<&(NodeId, Type)> {
+		self.scopes.get(key).or_else(|| self.parent?.get(key))
+	}
+}
+
 /// Functions for compiling the network
 impl NodeNetwork {
 	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
@@ -784,18 +837,6 @@ impl NodeNetwork {
 		are_inputs_used
 	}
 
-	pub fn resolve_scope_inputs(&mut self) {
-		for node in self.nodes.values_mut() {
-			for input in node.inputs.iter_mut() {
-				if let NodeInput::Scope(key) = input {
-					let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
-					// TODO use correct output index
-					*input = NodeInput::node(*import_id, 0);
-				}
-			}
-		}
-	}
-
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
 		self.flatten_with_fns(node_id, merge_ids, NodeId::new)
@@ -886,11 +927,7 @@ impl NodeNetwork {
 						}
 						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 						NodeInput::Inline(_) => (),
-						NodeInput::Scope(ref key) => {
-							let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
-							// TODO use correct output index
-							nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
-						}
+						NodeInput::Scope(_) => unreachable!("Scope inputs should have been resolved by resolve_scope_inputs_recursive before flattening"),
 						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
 					}
 				}
@@ -906,21 +943,8 @@ impl NodeNetwork {
 		}
 	}
 
+	/// Connect all nodes that were previously connected to this node to the nodes of the inner network
 	fn replace_node_with_its_exports(&mut self, id: NodeId, original_location: &OriginalLocation, exports: &[NodeInput]) {
-		// Connect scope injections to the inner network export
-		self.scope_injections.values_mut().for_each(|(node_id, _ty)| {
-			if node_id == &id {
-				let Some(export) = exports.first() else {
-					log::error!("Inner network should have at least one export");
-					return;
-				};
-				if let NodeInput::Node { node_id: export_id, output_index: _ } = export {
-					*node_id = *export_id;
-				}
-			}
-		});
-
-		// Connect all nodes that were previously connected to this node to the nodes of the inner network
 		for (i, export) in exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = &export {
 				for deps in &original_location.dependants {
