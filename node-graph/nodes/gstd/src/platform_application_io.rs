@@ -268,3 +268,8 @@ pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope("editor-a
 		panic!("Resource {hash} not found");
 	})
 }
+
+#[node_macro::node(category(""), inject_scope)]
+pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
+	editor_api.application_io.as_ref().unwrap().gpu_executor().expect("GPU executor not available")
+}

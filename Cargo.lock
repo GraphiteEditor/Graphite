@@ -2042,6 +2042,7 @@ dependencies = [
  "base64",
  "blending-nodes",
  "brush-nodes",
+ "bytemuck",
  "core-types",
  "dyn-any",
  "glam",
