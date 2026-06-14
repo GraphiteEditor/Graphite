@@ -10,9 +10,7 @@ use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 use wgpu_executor::WgpuExecutor;
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>) -> NodeNetwork {
-	network.generate_node_paths(&[]);
-
+pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>) -> NodeNetwork {
 	let inner_network = DocumentNode {
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: vec![],
@@ -126,7 +124,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: scope_injections.into_iter().collect(),
-		// TODO(TrueDoctor): check if it makes sense to set `generated` to `true`
-		generated: false,
+		generated: true,
 	}
 }

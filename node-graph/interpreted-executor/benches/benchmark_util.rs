@@ -13,7 +13,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let editor_api = std::sync::Arc::new(EditorApi::default());
 	let mut network = wrap_network_in_scope(network, editor_api);
 	let preprocessor = preprocessor::Preprocessor::new();
-	preprocessor.expand_network(&mut network, &ResourceRegistry::default()).unwrap();
+	preprocessor.preprocess(&mut network, &ResourceRegistry::default()).unwrap();
 	let proto_network = compile(network);
 	let executor = block_on(DynamicExecutor::new(proto_network.clone())).unwrap();
 	(executor, proto_network)
