@@ -1575,6 +1575,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		for i in 10..=12 {
 			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i - 2].clone(), network_path);
 		}
+
+		inputs_count = 13;
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
