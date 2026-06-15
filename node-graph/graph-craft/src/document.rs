@@ -659,39 +659,40 @@ impl NodeNetwork {
 impl NodeNetwork {
 	pub fn resolve_scope_inputs(&mut self) {
 		let mut leftover = Vec::new();
-		self.resolve_scope_inputs_with(None, &mut leftover);
+		self.resolve_scope_inputs_impl(None, &mut leftover);
 		assert!(leftover.is_empty(), "Unresolved scope keys at top level: {leftover:?}");
 	}
 
-	fn resolve_scope_inputs_with(&mut self, parent: Option<&ScopeChain<'_>>, parent_inputs: &mut Vec<NodeInput>) {
-		let chain = ScopeChain {
+	fn resolve_scope_inputs_impl(&mut self, parent: Option<&ScopeChain<'_>>, network_inputs: &mut Vec<NodeInput>) {
+		let scope_chain = ScopeChain {
 			scopes: &self.scope_injections,
 			parent,
 		};
 
 		for node in self.nodes.values_mut() {
 			let DocumentNodeImplementation::Network(network) = &mut node.implementation else { continue };
-			network.resolve_scope_inputs_with(Some(&chain), &mut node.inputs);
+			network.resolve_scope_inputs_impl(Some(&scope_chain), &mut node.inputs);
 		}
 
 		let mut key_to_idx: FxHashMap<Cow<'static, str>, usize> = FxHashMap::default();
 		for node in self.nodes.values_mut() {
 			for input in node.inputs.iter_mut() {
 				let NodeInput::Scope(key) = input else { continue };
-				if let Some((producer_id, _)) = self.scope_injections.get(key.as_ref()) {
-					*input = NodeInput::node(*producer_id, 0);
-					continue;
-				}
-				let import_type = chain
-					.get(key.as_ref())
-					.map(|(_, t)| t.clone())
-					.unwrap_or_else(|| panic!("Scope key `{key}` not found in any ancestor scope_injections"));
-				let import_index = *key_to_idx.entry(key.clone()).or_insert_with(|| {
-					let index = parent_inputs.len();
-					parent_inputs.push(NodeInput::Scope(key.clone()));
-					index
-				});
-				*input = NodeInput::Import { import_type, import_index };
+				*input = match scope_chain.lookup(key) {
+					ScopeChainLookup::Current(node_id, _ty) => NodeInput::node(*node_id, 0),
+					ScopeChainLookup::Parent(_node_id, ty) => {
+						let import_index = *key_to_idx.entry(key.clone()).or_insert_with(|| {
+							let index = network_inputs.len();
+							network_inputs.push(NodeInput::Scope(key.clone()));
+							index
+						});
+						NodeInput::Import {
+							import_type: ty.clone(),
+							import_index,
+						}
+					}
+					ScopeChainLookup::None => panic!("Scope key `{key}` not found in any ancestor scope_injections"),
+				};
 			}
 		}
 	}
@@ -701,10 +702,23 @@ struct ScopeChain<'a> {
 	scopes: &'a FxHashMap<String, (NodeId, Type)>,
 	parent: Option<&'a ScopeChain<'a>>,
 }
-
+enum ScopeChainLookup<'a> {
+	Current(&'a NodeId, &'a Type),
+	Parent(&'a NodeId, &'a Type),
+	None,
+}
 impl ScopeChain<'_> {
-	fn get(&self, key: &str) -> Option<&(NodeId, Type)> {
-		self.scopes.get(key).or_else(|| self.parent?.get(key))
+	fn lookup(&'_ self, key: &str) -> ScopeChainLookup<'_> {
+		self.scopes
+			.get(key)
+			.map(|(id, ty)| ScopeChainLookup::Current(id, ty))
+			.or_else(|| {
+				self.parent.and_then(|parent| match parent.lookup(key) {
+					ScopeChainLookup::Current(id, ty) | ScopeChainLookup::Parent(id, ty) => Some(ScopeChainLookup::Parent(id, ty)),
+					ScopeChainLookup::None => None,
+				})
+			})
+			.unwrap_or(ScopeChainLookup::None)
 	}
 }
 
