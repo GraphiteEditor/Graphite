@@ -1,4 +1,4 @@
-use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
+use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -236,12 +236,6 @@ impl Luminance for Luma {
 	}
 }
 
-impl LuminanceMut for Luma {
-	fn set_luminance(&mut self, luminance: Self::LuminanceChannel) {
-		self.0 = luminance
-	}
-}
-
 impl RGB for Luma {
 	type ColorChannel = f32;
 	#[inline(always)]
@@ -408,28 +402,6 @@ impl Luminance for Color {
 	#[inline(always)]
 	fn luminance(&self) -> f32 {
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
-	}
-}
-
-impl LuminanceMut for Color {
-	fn set_luminance(&mut self, luminance: f32) {
-		let current = self.luminance();
-		// When we have a black-ish color, we just set the color to a grey-scale value. This prohibits a divide-by-0.
-		if current < f32::EPSILON {
-			self.red = 0.2126 * luminance;
-			self.green = 0.7152 * luminance;
-			self.blue = 0.0722 * luminance;
-			return;
-		}
-		let fac = luminance / current;
-		// TODO: when we have for example the rgb color (0, 0, 1) and want to
-		// TODO: do `.set_luminance(1)`, then the actual luminance is not 1 at
-		// TODO: the end. With no clamp, the resulting color would be
-		// TODO: (0, 0, 12.8504). The excess should be spread to the other
-		// TODO: channels, but is currently just clamped away.
-		self.red = (self.red * fac).clamp(0., 1.);
-		self.green = (self.green * fac).clamp(0., 1.);
-		self.blue = (self.blue * fac).clamp(0., 1.);
 	}
 }
 
