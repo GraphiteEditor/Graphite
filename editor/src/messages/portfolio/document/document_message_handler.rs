@@ -573,7 +573,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.context_menu = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 				}
-				// Exit one level up if inside a nested network
+				// Go back up one level in the breadcrumb path if we're in a subgraph
 				else if !self.breadcrumb_network_path.is_empty() {
 					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
 				}

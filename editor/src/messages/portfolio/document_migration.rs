@@ -1226,6 +1226,30 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// The "Image" wrapper network was replaced with the `image` proto node directly. Convert old `Network("Image")` instances to the proto node, forwarding the embedded image data so the `image` pass in `migrate_node` below turns it into a resource.
+	// Pre-pass for the same reason as the Brush and Transform migrations above: replacing the outer Image's network impl orphans its child paths.
+	let image_layers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Image".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &image_layers {
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
+		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), image_input, network_path);
+		}
+	}
+
 	// Apply upgrades to each unmodified node.
 	let nodes = document
 		.network_interface

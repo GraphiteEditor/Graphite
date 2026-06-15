@@ -623,7 +623,11 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Graphic>)))),
 			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Artboard>)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
-				let first_element = content.as_object().and_then(|c| c.get("element")).and_then(|e| e.as_array()).and_then(|arr| arr.first());
+				let first_element = content
+					.as_object()
+					.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
+					.and_then(|e| e.as_array())
+					.and_then(|arr| arr.first());
 				if let Some(image_value) = first_element {
 					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
