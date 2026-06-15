@@ -157,6 +157,42 @@ fn history_is_causal_and_deterministic() {
 	}
 }
 
+fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
+	RegistryDelta::ChangeDocumentAttribute {
+		delta: crate::AttributeDelta {
+			key: key.to_string(),
+			value: Some(serde_json::json!(value)),
+		},
+	}
+}
+
+/// Two peers that each integrate the other's concurrent branch converge to byte-identical history:
+/// the merge commit is parent-set-addressed (same `Rev` on both) and the canonical sort erases the
+/// arrival-order difference. Exercises `Session::merge`, the `Merge` variant, and `canonical_sort`.
+#[test]
+fn merge_converges_to_identical_history() {
+	// Shared base commit, then a concurrent edit on each peer's own clone of that base.
+	let mut session_a = Session::with_peer(PeerId(1));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0));
+	let mut session_b = session_a.clone();
+
+	session_a.commit_op_for_test(set_document_attribute("compute::a", 1));
+	session_b.commit_op_for_test(set_document_attribute("compute::b", 2));
+
+	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
+	let deltas_a = session_a.cloned_deltas();
+	let deltas_b = session_b.cloned_deltas();
+	let merge_a = session_a.merge(deltas_b).expect("merge into A failed").expect("A produced a merge");
+	let merge_b = session_b.merge(deltas_a).expect("merge into B failed").expect("B produced a merge");
+
+	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
+
+	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
+	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
+	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
+	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
+}
+
 /// Committing the same NodeNetwork twice must produce zero history entries on the second commit.
 /// Without value-only diffing in compute_deltas, the second commit would emit spurious
 /// ChangeNodeInput / ChangeNodeAttribute ops because self.registry has real timestamps while the

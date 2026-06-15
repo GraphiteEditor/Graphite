@@ -5,8 +5,8 @@
 //! gets serialized to the on-disk history file and what [`crate::Session::replay_from_history`]
 //! consumes. Retired commits have a single writer in every regime (solo editing, or leader-ordered
 //! collaboration where the leader serializes retired commits), so appending preserves the order by
-//! construction. The only operation that could introduce out-of-order deltas is an offline branch
-//! merge, which is deferred until transport lands and would re-sort to restore the invariant.
+//! construction. The only operation that introduces out-of-order deltas is [`merge`](History::merge),
+//! which re-sorts the combined set into the canonical order to restore the invariant.
 
 use std::collections::HashMap;
 
@@ -62,6 +62,70 @@ impl History {
 	/// Deltas in topological order (a valid replay order).
 	pub fn iter(&self) -> impl Iterator<Item = &Delta> + '_ {
 		self.deltas.iter()
+	}
+
+	/// Absorb `incoming` (dedup by `Rev`) and canonically re-sort the whole combined history.
+	///
+	/// The sort is deterministic (topological, ties broken by `Rev`), so two peers that absorb the same
+	/// delta set produce byte-identical history, not merely two different valid orderings. This is the
+	/// history-convergence mechanism: arrival order is erased. Callers update the registry separately
+	/// (LWW apply is commutative, so the registry converges regardless of order).
+	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) {
+		for delta in incoming {
+			self.push(delta);
+		}
+		self.canonical_sort();
+	}
+
+	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
+	/// children, and among deltas whose parents are all emitted the lowest `Rev` goes first. O(V + E).
+	fn canonical_sort(&mut self) {
+		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
+		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());
+		let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
+		for delta in &self.deltas {
+			let in_history_parents = delta.all_parents().filter(|parent| self.index.contains_key(parent)).count();
+			pending_parents.insert(delta.id, in_history_parents);
+			for parent in delta.all_parents() {
+				if self.index.contains_key(&parent) {
+					children.entry(parent).or_default().push(delta.id);
+				}
+			}
+		}
+
+		// Ready set as a min-heap on `Rev` (via `Reverse`) so ties resolve deterministically.
+		let mut ready: std::collections::BinaryHeap<std::cmp::Reverse<Rev>> = pending_parents.iter().filter(|(_, count)| **count == 0).map(|(rev, _)| std::cmp::Reverse(*rev)).collect();
+
+		let mut order: Vec<Rev> = Vec::with_capacity(self.deltas.len());
+		while let Some(std::cmp::Reverse(rev)) = ready.pop() {
+			order.push(rev);
+			for child in children.get(&rev).into_iter().flatten() {
+				let count = pending_parents.get_mut(child).expect("child is in history");
+				*count -= 1;
+				if *count == 0 {
+					ready.push(std::cmp::Reverse(*child));
+				}
+			}
+		}
+
+		// `order` is a permutation of the existing revs, so reorder `deltas` to match and rebuild the index.
+		let mut by_rev: HashMap<Rev, Delta> = self.deltas.drain(..).map(|delta| (delta.id, delta)).collect();
+		self.index.clear();
+		for (position, rev) in order.iter().enumerate() {
+			if let Some(delta) = by_rev.remove(rev) {
+				self.index.insert(*rev, position);
+				self.deltas.push(delta);
+			}
+		}
+	}
+
+	/// The current tips: revs that no other delta lists as a parent (the divergent heads). A linear
+	/// history has exactly one tip; concurrent branches have several. Sorted ascending for determinism.
+	pub fn tips(&self) -> Vec<Rev> {
+		let referenced: std::collections::HashSet<Rev> = self.deltas.iter().flat_map(|delta| delta.all_parents()).collect();
+		let mut tips: Vec<Rev> = self.deltas.iter().map(|delta| delta.id).filter(|rev| !referenced.contains(rev)).collect();
+		tips.sort_unstable();
+		tips
 	}
 
 	/// Mark a retired delta as the end of a user interaction. Mutates only the delta's attributes

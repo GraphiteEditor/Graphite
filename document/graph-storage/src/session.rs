@@ -196,8 +196,8 @@ impl Session {
 	}
 
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
-	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in its
-	/// on-disk append order (parents before children) and indexed in that order.
+	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in on-disk
+	/// (topological) order.
 	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
 		for delta in &history {
@@ -250,6 +250,36 @@ impl Session {
 	/// where the registry may already reflect the op's effect from a prior retired snapshot.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
 		self.document.replay_hot_op(hot_op)
+	}
+
+	/// Integrate `incoming` retired deltas from another branch and emit a [`RegistryDelta::Merge`]
+	/// joining the resulting tips, returning the new merge `Rev` (or `None` if `incoming` adds nothing).
+	/// Applies each incoming op to the registry, then hands the set to [`History::merge`]. Incoming
+	/// deltas must arrive in causal order.
+	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<Option<Rev>, CrdtError> {
+		let mut absorbed: Vec<Delta> = Vec::new();
+		for delta in incoming {
+			if self.document.history.contains(delta.id) {
+				continue;
+			}
+			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
+			absorbed.push(delta);
+		}
+		if absorbed.is_empty() {
+			return Ok(None);
+		}
+
+		self.document.history.merge(absorbed);
+		let tips = self.document.history.tips();
+		let timestamp = self.document.clock.tick();
+		let merge = Delta::merge(tips, self.document.peer, timestamp);
+		let merge_rev = merge.id;
+		self.document.history.merge(std::iter::once(merge));
+		self.document.head = Some(merge_rev);
+
+		// Merge runs with an empty hot log; keep the retired snapshot in step with the working registry.
+		self.document.retired_snapshot = self.document.working_registry.clone();
+		Ok(Some(merge_rev))
 	}
 
 	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, re-applied with fresh
@@ -431,6 +461,18 @@ impl Session {
 
 	pub fn head_rev(&self) -> Option<Rev> {
 		self.document.head
+	}
+
+	/// Test-only: every retired delta, cloned, for feeding one session's branch into another's `merge`.
+	#[cfg(test)]
+	pub(crate) fn cloned_deltas(&self) -> Vec<Delta> {
+		self.document.history.iter().cloned().collect()
+	}
+
+	/// Test-only: commit a single op as a retired delta on the local chain.
+	#[cfg(test)]
+	pub(crate) fn commit_op_for_test(&mut self, op: RegistryDelta) {
+		self.commit_ops(std::iter::once(op), false).expect("test commit failed");
 	}
 
 	pub fn redo_stack(&self) -> &[Rev] {
