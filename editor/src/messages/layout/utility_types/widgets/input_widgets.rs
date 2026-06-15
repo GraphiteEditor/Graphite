@@ -421,31 +421,6 @@ pub struct TextInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
-// #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-// #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
-// #[derivative(Debug, PartialEq, Default)]
-// pub struct CurveInput {
-// 	// Content
-// 	#[widget_builder(constructor)]
-// 	pub value: Curve,
-
-// 	// Tooltips
-// 	#[serde(rename = "tooltipLabel")]
-// 	pub tooltip_label: String,
-// 	#[serde(rename = "tooltipDescription")]
-// 	pub tooltip_description: String,
-// 	#[serde(rename = "tooltipShortcut")]
-// 	pub tooltip_shortcut: Option<ActionShortcut>,
-
-// 	// Callbacks
-// 	#[serde(skip)]
-// 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-// 	pub on_update: WidgetCallback<CurveInput>,
-// 	#[serde(skip)]
-// 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-// 	pub on_commit: WidgetCallback<()>,
-// }
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]

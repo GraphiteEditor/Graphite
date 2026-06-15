@@ -1162,28 +1162,6 @@ pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup 
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 }
 
-// pub fn curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-// 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-// 	let mut widgets = start_widgets(parameter_widgets_info);
-
-// 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-// 	let Some(input) = document_node.inputs.get(index) else {
-// 		log::warn!("A widget failed to be built because its node's input index is invalid.");
-// 		return LayoutGroup::row(vec![]);
-// 	};
-// 	if let Some(TaggedValue::Curve(curve)) = &input.as_non_exposed_value() {
-// 		widgets.extend_from_slice(&[
-// 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-// 			CurveInput::new(curve.clone())
-// 				.on_update(update_value(|x: &CurveInput| TaggedValue::Curve(x.value.clone()), node_id, index))
-// 				.on_commit(commit_value)
-// 				.widget_instance(),
-// 		])
-// 	}
-// 	LayoutGroup::row(widgets)
-// }
-
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
 	let network = context
 		.network_interface
