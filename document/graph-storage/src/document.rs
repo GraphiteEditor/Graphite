@@ -1,8 +1,7 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
+	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
 	apply_attribute_delta, reverse_attribute_delta,
 };
-use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -20,9 +19,10 @@ pub struct Document {
 	/// working registry keeps the staging-time timestamps. Benign while the local monotonic clock makes
 	/// new edits win
 	pub(crate) retired_snapshot: Registry,
-	/// User's cursor in their local history chain.
-	pub(crate) head: Rev,
-	pub(crate) history: HashMap<Rev, Delta>,
+	/// User's cursor in their local history chain. `None` on an empty document (no commits yet).
+	pub(crate) head: Option<Rev>,
+	/// Retired delta DAG in topological (append) order. See [`History`](crate::History).
+	pub(crate) history: History,
 	/// Revs undone past (most-recent last), so `redo` can re-apply them. Local-view state the DAG can't
 	/// recover (a parent may have several children). A new edit while non-empty clears it.
 	pub(crate) redo_stack: Vec<Rev>,
@@ -74,12 +74,12 @@ impl Document {
 	/// ops are idempotent, and LWW arms assign the reverse value unconditionally even though it carries
 	/// the same timestamp as the forward op it undoes.
 	pub(crate) fn revert_delta(&mut self, target: RegistryTarget, mut delta: Delta) -> Result<(), CrdtError> {
-		std::mem::swap(&mut delta.kind, &mut delta.reverse);
-		for parent in &delta.parents {
-			if !self.history.contains_key(parent) {
-				return Err(CrdtError::NotFoundInHistory(*parent));
+		for parent in delta.all_parents() {
+			if !self.history.contains(parent) {
+				return Err(CrdtError::NotFoundInHistory(parent));
 			}
 		}
+		std::mem::swap(&mut delta.kind, &mut delta.reverse);
 		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
@@ -104,13 +104,13 @@ impl Document {
 	/// targets, Remove on missing ones) since hot ops already produced the structural state.
 	/// The point is to bump field timestamps to T_retire via the LWW arms.
 	pub fn apply_delta(&mut self, delta: Delta) -> Result<(), CrdtError> {
-		for parent in &delta.parents {
-			if !self.history.contains_key(parent) {
-				return Err(CrdtError::NotFoundInHistory(*parent));
+		for parent in delta.all_parents() {
+			if !self.history.contains(parent) {
+				return Err(CrdtError::NotFoundInHistory(parent));
 			}
 		}
 		self.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-		self.history.insert(delta.id, delta);
+		self.history.push(delta);
 		Ok(())
 	}
 
@@ -271,7 +271,8 @@ impl Document {
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
 				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes);
 			}
-			RegistryDelta::Other(_) => {}
+			// Merge is a structural sync point only; it mutates no registry state.
+			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
 		}
 		Ok(())
 	}
@@ -407,11 +408,12 @@ impl Document {
 				let snapshot = registry.resources.get(&id).cloned().unwrap_or_default();
 				RegistryDelta::AddResource { id, entry: snapshot }
 			}
+			RegistryDelta::Merge { extra_parents } => RegistryDelta::Merge { extra_parents: extra_parents.clone() },
 			&RegistryDelta::Other(_) => RegistryDelta::Other(serde_json::Value::Null),
 		})
 	}
 
-	/// Retired-only walk from `head` along first parents. Hot ops are excluded by design.
+	/// Retired-only walk from `head` along the primary parent. Hot ops are excluded by design.
 	fn history_iter(&self) -> HistoryIter<'_> {
 		HistoryIter {
 			document: self,
@@ -422,18 +424,18 @@ impl Document {
 
 struct HistoryIter<'a> {
 	document: &'a Document,
-	parent_rev: Rev,
+	parent_rev: Option<Rev>,
 }
 
 impl<'a> Iterator for HistoryIter<'a> {
 	type Item = &'a Delta;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let delta = self.document.history.get(&self.parent_rev)?;
-		// First parent only for now. Local-chain walking (filter by author) is a follow-up. The root
-		// delta has no parents, so fall back to the `0` sentinel: the next `get` misses and ends the
-		// walk *after* yielding the root (using `?` here would drop the root instead).
-		self.parent_rev = delta.parents.first().copied().unwrap_or(0);
+		let delta = self.document.history.get(self.parent_rev?)?;
+		// Follow the primary parent (`None` at the root ends the walk after yielding it). The
+		// merge-aware rule (follow the local-authored branch through a `Merge`) is deferred until
+		// merges are actually emitted (needs transport).
+		self.parent_rev = delta.parent;
 		Some(delta)
 	}
 }

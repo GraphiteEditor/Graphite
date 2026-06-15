@@ -1,5 +1,5 @@
 use crate::from_runtime;
-use crate::{ApplyMode, AttributesWrite, Delta, Document, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, Delta, Document, History, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -30,9 +30,9 @@ impl Session {
 			document: Document {
 				working_registry: Registry::default(),
 				retired_snapshot: Registry::default(),
-				history: HashMap::new(),
+				history: History::new(),
 				hot_log: Vec::new(),
-				head: 0,
+				head: None,
 				redo_stack: Vec::new(),
 				clock: LamportClock::new(peer),
 				peer,
@@ -173,21 +173,22 @@ impl Session {
 
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
 			let timestamp = self.document.clock.tick();
-			let parents = if self.document.head == 0 { Vec::new() } else { vec![self.document.head] };
+			let parent = self.document.head;
 			let author = self.document.peer;
 
-			let delta = Delta::new(parents, author, timestamp, op, reverse);
+			let delta = Delta::new(parent, author, timestamp, op, reverse);
 			let rev = delta.id;
 
-			for parent in &delta.parents {
-				if !self.document.history.contains_key(parent) {
-					return Err(CrdtError::NotFoundInHistory(*parent));
-				}
+			// `parent` is `None` for the root commit; otherwise it must already be in history.
+			if let Some(parent) = parent
+				&& !self.document.history.contains(parent)
+			{
+				return Err(CrdtError::NotFoundInHistory(parent));
 			}
 			let mode = if idempotent { ApplyMode::Idempotent } else { ApplyMode::Live };
 			self.document.apply_op_with(target, delta.kind.clone(), delta.timestamp, mode)?;
-			self.document.history.insert(rev, delta);
-			self.document.head = rev;
+			self.document.history.push(delta);
+			self.document.head = Some(rev);
 			produced.push(rev);
 		}
 
@@ -195,10 +196,11 @@ impl Session {
 	}
 
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
-	/// clock past every observed timestamp but does not re-apply ops.
-	pub fn load(peer: PeerId, registry: Registry, history: HashMap<Rev, Delta>, head: Rev, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
+	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in its
+	/// on-disk append order (parents before children) and indexed in that order.
+	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
-		for delta in history.values() {
+		for delta in &history {
 			clock.observe(delta.timestamp);
 		}
 
@@ -208,7 +210,7 @@ impl Session {
 				// `load`) build the working registry on top, leaving `retired_snapshot` at retired.
 				retired_snapshot: registry.clone(),
 				working_registry: registry,
-				history,
+				history: History::from_ordered(history),
 				hot_log: Vec::new(),
 				head,
 				redo_stack,
@@ -230,8 +232,8 @@ impl Session {
 		for delta in deltas {
 			let rev = delta.id;
 			session.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			session.document.history.insert(rev, delta);
-			session.document.head = rev;
+			session.document.history.push(delta);
+			session.document.head = Some(rev);
 		}
 
 		// Pure retired-delta replay: no hot ops, so the working registry is fully retired.
@@ -273,9 +275,7 @@ impl Session {
 	/// Called once per interaction by the editor-facing commit path (not by resource/internal commits).
 	pub fn mark_interaction_end(&mut self, rev: Rev) {
 		let timestamp = self.document.clock.tick();
-		if let Some(delta) = self.document.history.get_mut(&rev) {
-			delta.mark_interaction_end(timestamp);
-		}
+		self.document.history.mark_interaction_end(rev, timestamp);
 	}
 
 	/// Low-level: set a local annotation attribute (e.g. a commit message) on a retired delta in place.
@@ -283,7 +283,7 @@ impl Session {
 	/// delta was found. The `Gdd` layer re-persists the affected history frame after calling this.
 	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> bool {
 		let timestamp = self.document.clock.tick();
-		self.document.history.get_mut(&rev).map(|delta| delta.attributes.set(key, value, timestamp)).is_some()
+		self.document.history.annotate(rev, key, value, timestamp)
 	}
 
 	/// Whether there is a retired commit at `head` that can be undone in the silent zone (a commit
@@ -296,21 +296,22 @@ impl Session {
 	/// first-parents and checking whether it bottoms out at the root with no earlier interaction boundary to
 	/// land on. If so, there is nothing before this interaction to undo to, so undo is disabled.
 	pub fn can_undo(&self) -> bool {
-		if self.document.head == 0 || self.document.last_broadcast_rev == Some(self.document.head) {
+		let Some(head) = self.document.head else { return false };
+		if self.document.last_broadcast_rev == Some(head) {
 			return false;
 		}
-		self.interaction_start_parent(self.document.head).is_some_and(|parent| parent != 0)
+		self.interaction_start_parent(head).is_some()
 	}
 
-	/// Walk the interaction containing `rev` back along first-parents to its first delta, returning that
-	/// delta's parent (the rev the cursor would rest on after undoing this interaction, or `0` for the root).
-	/// Mirrors the boundary condition in [`undo`](Self::undo): stop when the parent is a `interaction_end`
-	/// boundary or the root.
+	/// Walk the interaction containing `rev` back along first-parents to its first delta, returning the
+	/// rev the cursor would rest on after undoing this interaction, or `None` if that is the root (the
+	/// earliest interaction, which is not undoable). Mirrors the boundary condition in [`undo`](Self::undo):
+	/// stop when the parent is an `interaction_end` boundary or the root.
 	fn interaction_start_parent(&self, rev: Rev) -> Option<Rev> {
 		let mut current = rev;
 		loop {
-			let parent = self.document.history.get(&current)?.parents.first().copied().unwrap_or(0);
-			if parent == 0 || self.document.history.get(&parent).is_some_and(|d| d.is_interaction_end()) {
+			let parent = self.document.history.get(current)?.parent?;
+			if self.document.history.get(parent).is_some_and(|d| d.is_interaction_end()) {
 				return Some(parent);
 			}
 			current = parent;
@@ -330,20 +331,22 @@ impl Session {
 		if !self.can_undo() {
 			return Err(CrdtError::NothingToUndo);
 		}
-		let checkpoint = self.document.head;
+		let checkpoint = self.document.head.ok_or(CrdtError::NothingToUndo)?;
 
 		// Revert this interaction's last delta, then keep going back until `head` rests on the previous
 		// interaction's boundary (its `interaction_end` delta) or the root.
 		loop {
-			let rev = self.document.head;
-			let delta = self.document.history.get(&rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
-			let parent = delta.parents.first().copied().unwrap_or(0);
+			let rev = self.document.head.ok_or(CrdtError::NothingToUndo)?;
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
+			let parent = delta.parent;
 
 			self.document.revert_delta(RegistryTarget::Working, delta)?;
 			self.document.head = parent;
 
-			if parent == 0 || self.document.history.get(&parent).is_some_and(|d| d.is_interaction_end()) {
-				break;
+			match parent {
+				None => break,
+				Some(parent) if self.document.history.get(parent).is_some_and(|d| d.is_interaction_end()) => break,
+				Some(_) => {}
 			}
 		}
 
@@ -361,15 +364,12 @@ impl Session {
 		let checkpoint = self.document.redo_stack.pop().ok_or(CrdtError::NothingToRedo)?;
 
 		let mut forward = Vec::new();
-		let mut cursor = checkpoint;
+		let mut cursor = Some(checkpoint);
 		while cursor != self.document.head {
-			let delta = self.document.history.get(&cursor).ok_or(CrdtError::NotFoundInHistory(cursor))?.clone();
-			let parent = delta.parents.first().copied().unwrap_or(0);
+			let Some(rev) = cursor else { break };
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
+			cursor = delta.parent;
 			forward.push(delta);
-			cursor = parent;
-			if cursor == 0 {
-				break;
-			}
 		}
 
 		// Force-apply so each forward value wins the LWW tie against the reverse that undo force-applied
@@ -377,7 +377,7 @@ impl Session {
 		for delta in forward.into_iter().rev() {
 			self.document.force_apply_op(delta.kind.clone(), delta.timestamp)?;
 		}
-		self.document.head = checkpoint;
+		self.document.head = Some(checkpoint);
 
 		// Redo runs with an empty hot log; keep the retired snapshot in lockstep with the working registry.
 		self.document.retired_snapshot = self.document.working_registry.clone();
@@ -395,21 +395,15 @@ impl Session {
 		Ok(session)
 	}
 
+	/// Retired deltas in append order, which is a valid replay order (parents before children).
 	pub fn history(&self) -> impl Iterator<Item = &Delta> + '_ {
-		self.document.history.values()
+		self.document.history.iter()
 	}
 
-	/// Verify that every delta's content-addressed `id` matches its recomputed hash. `Delta` skips this
-	/// on deserialize to keep loading cheap, so call this after loading history from an untrusted source
-	/// (it walks the whole history and rehashes each delta). Returns the first mismatch found.
+	/// Verify the retired history loaded from an untrusted source: content-addressed ids match their
+	/// recomputed hashes, and the deltas are topologically ordered. See [`History::verify`].
 	pub fn verify_history(&self) -> Result<(), CrdtError> {
-		for (&stored, delta) in &self.document.history {
-			let expected = delta.recomputed_id();
-			if stored != expected || delta.id != expected {
-				return Err(CrdtError::RevMismatch { stored, expected });
-			}
-		}
-		Ok(())
+		self.document.history.verify()
 	}
 
 	/// Every resource hash referenced by the current registry *or* anywhere in history. Undo removes a
@@ -420,7 +414,7 @@ impl Session {
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
 
-		for delta in self.document.history.values() {
+		for delta in self.document.history.iter() {
 			match &delta.kind {
 				RegistryDelta::AddResource { entry, .. } => hashes.extend(entry.hash),
 				RegistryDelta::RemoveResource { snapshot, .. } => hashes.extend(snapshot.hash),
@@ -431,51 +425,11 @@ impl Session {
 		hashes
 	}
 
-	/// History in deterministic causal order: a topological sort with ties among
-	/// ready deltas broken by `Rev`. Every parent precedes its children, so the result is a valid
-	/// replay order.
-	/// The order is a pure function of the delta set, so two peers holding the same
-	/// history serialize byte-identical output. Parents outside this history (already-known ancestors)
-	/// don't gate emission. O(V + E) in deltas and parent edges.
-	pub fn history_topological(&self) -> Vec<&Delta> {
-		let history = &self.document.history;
-
-		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
-		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(history.len());
-		let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
-		for (rev, delta) in history {
-			let in_history_parents = delta.parents.iter().filter(|parent| history.contains_key(parent)).count();
-			pending_parents.insert(*rev, in_history_parents);
-			for parent in &delta.parents {
-				if history.contains_key(parent) {
-					children.entry(*parent).or_default().push(*rev);
-				}
-			}
-		}
-
-		// Ready set as a min-heap on `Rev` (via `Reverse`) so ties resolve deterministically.
-		let mut ready: std::collections::BinaryHeap<std::cmp::Reverse<Rev>> = pending_parents.iter().filter(|(_, count)| **count == 0).map(|(rev, _)| std::cmp::Reverse(*rev)).collect();
-
-		let mut ordered = Vec::with_capacity(history.len());
-		while let Some(std::cmp::Reverse(rev)) = ready.pop() {
-			ordered.push(&history[&rev]);
-			for child in children.get(&rev).into_iter().flatten() {
-				let count = pending_parents.get_mut(child).expect("child is in history");
-				*count -= 1;
-				if *count == 0 {
-					ready.push(std::cmp::Reverse(*child));
-				}
-			}
-		}
-
-		ordered
-	}
-
 	pub fn hot_log(&self) -> &[HotOp] {
 		&self.document.hot_log
 	}
 
-	pub fn head_rev(&self) -> Rev {
+	pub fn head_rev(&self) -> Option<Rev> {
 		self.document.head
 	}
 

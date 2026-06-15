@@ -27,8 +27,28 @@ impl std::fmt::Display for NetworkId {
 
 /// Content-addressed identity for a `Delta`.
 /// 128-bit blake3 truncation: comfortable collision headroom for any plausible document lifetime
-/// without being adversarial-grade. Same delta content always produces the same `Rev`.
-pub type Rev = u128;
+/// without being adversarial-grade. Same delta content always produces the same `Rev`. Non-zero so
+/// `Option<Rev>` (a missing/root parent) is niche-optimized to the same size as a bare `Rev`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Rev(pub std::num::NonZeroU128);
+
+impl Rev {
+	/// Wrap a raw value, or `None` if it is zero.
+	pub fn new(value: u128) -> Option<Self> {
+		std::num::NonZeroU128::new(value).map(Self)
+	}
+
+	pub fn get(self) -> u128 {
+		self.0.get()
+	}
+}
+
+impl std::fmt::Display for Rev {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
 
 /// Root network ID. The renderable graph lives in `networks[&ROOT_NETWORK]`.
 pub const ROOT_NETWORK: NetworkId = NetworkId(0);
@@ -88,12 +108,26 @@ impl LamportClock {
 }
 
 /// Hash the identity-bearing fields of a `Delta` with blake3 and truncate to 128 bits.
-pub(crate) fn compute_rev(parents: &[Rev], author: PeerId, timestamp: TimeStamp, delta_type: &RegistryDelta) -> Rev {
+///
+/// A [`RegistryDelta::Merge`] is addressed by its sorted parent set alone (author and timestamp
+/// excluded), so two peers merging the same tips mint the identical `Rev` and dedup. Every other
+/// delta hashes `(parent, author, timestamp, kind)`.
+pub(crate) fn compute_rev(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, delta_type: &RegistryDelta) -> Rev {
 	let mut hasher = blake3::Hasher::new();
-	let bytes = rmp_serde::to_vec(&(parents, author, timestamp, delta_type)).expect("Delta identity fields must serialize");
+	let bytes = match delta_type {
+		RegistryDelta::Merge { extra_parents } => {
+			let mut parents: Vec<Rev> = parent.into_iter().chain(extra_parents.iter().copied()).collect();
+			parents.sort_unstable();
+			parents.dedup();
+			rmp_serde::to_vec(&("merge", parents)).expect("Merge identity fields must serialize")
+		}
+		_ => rmp_serde::to_vec(&(parent, author, timestamp, delta_type)).expect("Delta identity fields must serialize"),
+	};
 	hasher.update(&bytes);
 	let digest = hasher.finalize();
 	let mut truncated = [0u8; 16];
 	truncated.copy_from_slice(&digest.as_bytes()[..16]);
-	Rev::from_le_bytes(truncated)
+	// A 128-bit blake3 truncation is zero with probability 2^-128 (never in practice); map it to 1 so
+	// the non-zero invariant is total rather than relying on a panic that can't realistically fire.
+	Rev::new(u128::from_le_bytes(truncated)).unwrap_or(Rev(std::num::NonZeroU128::MIN))
 }

@@ -22,11 +22,10 @@ fn remove_node_op(node_id: NodeId) -> RegistryDelta {
 fn commit_op(document: &mut Document, op: RegistryDelta) {
 	let reverse = document.compute_reverse_delta(RegistryTarget::Working, &op).expect("compute_reverse_delta failed");
 	let timestamp = document.clock.tick();
-	let parents = if document.head == 0 { Vec::new() } else { vec![document.head] };
-	let delta = Delta::new(parents, document.peer, timestamp, op, reverse);
+	let delta = Delta::new(document.head, document.peer, timestamp, op, reverse);
 	let rev = delta.id;
 	document.apply_delta(delta).expect("apply_retired_delta failed");
-	document.head = rev;
+	document.head = Some(rev);
 }
 
 /// Every applied op must advance the local clock past the op's timestamp, so any subsequent
@@ -117,17 +116,17 @@ fn verify_history_detects_rev_mismatch() {
 
 	session.verify_history().expect("a freshly built history must validate");
 
-	// Tamper one delta's stored id (the field, not its key) so it no longer matches its content hash.
-	let some_rev = *session.document.history.keys().next().expect("history is non-empty");
-	session.document.history.get_mut(&some_rev).expect("delta exists").id = 0xdead_beef;
+	// Tamper one delta's stored id so it no longer matches its content hash.
+	session.document.history.first_mut().expect("history is non-empty").id = crate::Rev::new(0xdead_beef).unwrap();
 
 	assert!(matches!(session.verify_history(), Err(crate::CrdtError::RevMismatch { .. })), "a tampered delta id must be flagged");
 }
 
-/// `history_topological` emits parents before children and is a pure function of the delta set:
-/// two sessions independently built from the same network produce byte-identical history order.
+/// History iteration emits parents before children and is a pure function of the delta set: two
+/// sessions independently built from the same network produce byte-identical history order. (The
+/// append-order invariant guarantees this directly, with no separate topological sort.)
 #[test]
-fn history_topological_is_causal_and_deterministic() {
+fn history_is_causal_and_deterministic() {
 	let resources = graphene_resource::ResourceRegistry::new();
 
 	let build = || {
@@ -141,18 +140,18 @@ fn history_topological_is_causal_and_deterministic() {
 	let session_a = build();
 	let session_b = build();
 
-	let order_a: Vec<crate::Rev> = session_a.history_topological().iter().map(|delta| delta.id).collect();
-	let order_b: Vec<crate::Rev> = session_b.history_topological().iter().map(|delta| delta.id).collect();
+	let order_a: Vec<crate::Rev> = session_a.history().map(|delta| delta.id).collect();
+	let order_b: Vec<crate::Rev> = session_b.history().map(|delta| delta.id).collect();
 
 	assert!(order_a.len() > 1, "expected a multi-delta history to make ordering meaningful");
-	assert_eq!(order_a, order_b, "same delta set must serialize in the same topological order");
+	assert_eq!(order_a, order_b, "same delta set must serialize in the same order");
 
 	// Every parent that's part of this history precedes its child.
 	let position: std::collections::HashMap<crate::Rev, usize> = order_a.iter().enumerate().map(|(i, rev)| (*rev, i)).collect();
-	for delta in session_a.history_topological() {
-		for parent in &delta.parents {
-			if let Some(parent_pos) = position.get(parent) {
-				assert!(*parent_pos < position[&delta.id], "parent {parent} must precede child {} in topological order", delta.id);
+	for delta in session_a.history() {
+		for parent in delta.all_parents() {
+			if let Some(parent_pos) = position.get(&parent) {
+				assert!(*parent_pos < position[&delta.id], "parent {parent} must precede child {} in order", delta.id);
 			}
 		}
 	}
@@ -758,12 +757,12 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	let forward: Vec<&str> = keys.to_vec();
 	let reversed: Vec<&str> = keys.iter().rev().copied().collect();
 
-	let parents = vec![1, 2];
+	let parent = crate::Rev::new(1);
 	let author = PeerId(7);
 	let timestamp = TimeStamp { counter: 42, peer: PeerId(7) };
 
 	let delta_forward = Delta::new(
-		parents.clone(),
+		parent,
 		author,
 		timestamp,
 		RegistryDelta::AddNode {
@@ -776,7 +775,7 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 		},
 	);
 	let delta_reversed = Delta::new(
-		parents,
+		parent,
 		author,
 		timestamp,
 		RegistryDelta::AddNode {
