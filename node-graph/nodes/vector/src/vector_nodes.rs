@@ -1074,16 +1074,10 @@ async fn dimensions(_: impl Ctx, content: List<Vector>) -> DVec2 {
 		.unwrap_or_default()
 }
 
-// TODO: Replace this node with an automatic type conversion implementation of the `Convert` trait
-/// Converts a vec2 value into a vector path composed of a single anchor point.
-///
-/// This is useful in conjunction with nodes that repeat it, followed by the "Points to Polyline" node to string together a path of the points.
-#[node_macro::node(category("Vector"), name("Vec2 to Point"), path(core_types::vector))]
-async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> List<Vector> {
-	let mut point_domain = PointDomain::new();
-	point_domain.push(PointId::generate(), vec2);
-
-	List::new_from_item(Item::new_from_element(Vector { point_domain, ..Default::default() }))
+/// Type-asserts a value to be vector data.
+#[node_macro::node(category("Vector"), name("As Vector"), path(core_types::vector))]
+fn as_vector(_: impl Ctx, value: List<Vector>) -> List<Vector> {
+	value
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.

@@ -1,12 +1,12 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
-use core_types::ops::ListConvert;
+use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
 use vector_types::GradientStops;
@@ -391,6 +391,13 @@ impl IntoGraphicList for DAffine2 {
 impl From<DAffine2> for Graphic {
 	fn from(_: DAffine2) -> Self {
 		Graphic::default()
+	}
+}
+
+// DVec2
+impl From<DVec2> for Graphic {
+	fn from(position: DVec2) -> Self {
+		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position)))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore

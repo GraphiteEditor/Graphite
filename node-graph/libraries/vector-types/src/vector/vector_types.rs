@@ -55,6 +55,23 @@ impl graphene_hash::CacheHash for Vector {
 	}
 }
 
+impl core_types::ops::FromAnchorPosition for Vector {
+	fn from_anchor_position(position: DVec2) -> Self {
+		let mut point_domain = PointDomain::new();
+		point_domain.push(PointId::generate(), position);
+
+		Self { point_domain, ..Default::default() }
+	}
+}
+
+// Identity item conversion so `List<Vector>` satisfies the blanket `Convert<List<U>, ()> for List<T>`, letting its
+// auto-inserted input wrapper be a `ConvertNode` (which also accepts a `DVec2` anchor position) rather than an `IntoNode`.
+impl core_types::ops::ListConvert<Vector> for Vector {
+	fn convert_item(self) -> Vector {
+		self
+	}
+}
+
 impl Vector {
 	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
@@ -618,5 +635,18 @@ mod tests {
 
 		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
 		assert_subpath_eq(&generated, &[curve, circle]);
+	}
+
+	// Verifies the `DVec2 -> List<Vector>` conversion that replaced the former "Vec2 to Point" node yields a path
+	// with exactly one anchor point at the given position and no segments
+	#[test]
+	fn anchor_position_builds_single_point_path() {
+		use core_types::ops::FromAnchorPosition;
+
+		let vector = Vector::from_anchor_position(DVec2::new(3., 4.));
+
+		assert_eq!(vector.point_domain.positions(), [DVec2::new(3., 4.)]);
+		assert_eq!(vector.point_domain.ids().len(), 1);
+		assert!(vector.segment_domain.ids().is_empty());
 	}
 }
