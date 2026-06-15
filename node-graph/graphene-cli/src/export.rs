@@ -146,7 +146,7 @@ impl AnimationParams {
 
 	/// Get the frame delay in centiseconds (GIF uses 10ms units)
 	pub fn frame_delay_centiseconds(&self) -> u16 {
-		((100.0 / self.fps).round() as u16).max(1)
+		((100. / self.fps).round() as u16).max(1)
 	}
 }
 

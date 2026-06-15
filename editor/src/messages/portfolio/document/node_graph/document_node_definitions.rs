@@ -787,9 +787,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								..Default::default()
 							},
-							// 3: Vec2 to Point
+							// 3: As Vector (auto-converts the decomposed translation into a single-anchor List<Vector>)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::vec_2_to_point::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::as_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								..Default::default()
 							},
@@ -858,7 +858,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 3: Vec2 to Point
+								// 3: As Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),

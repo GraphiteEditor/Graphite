@@ -19,57 +19,12 @@ pub struct Preprocessor {
 }
 
 impl Preprocessor {
-	pub fn expand_network(&self, network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
+	pub fn preprocess(&self, network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
-		replace_resource_inputs(network, resources)?;
-		self.expand_network_inner(network);
+		self.replace_resource_inputs(network, resources)?;
+		self.expand_network(network);
 		Ok(())
 	}
-}
-
-/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
-	let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
-	let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
-
-	for node in network.nodes.values_mut() {
-		if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-			replace_resource_inputs(nested, resources)?;
-			continue;
-		}
-
-		if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == platform_application_io::resource::IDENTIFIER) {
-			continue;
-		}
-
-		for input in node.inputs.iter_mut() {
-			let NodeInput::Value { tagged_value, .. } = input else { continue };
-			let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
-
-			let Some(hash) = resources.hash(&resource_id) else {
-				return Err(PreprocessorError::ResourceNotFound(resource_id));
-			};
-
-			let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
-				let id = NodeId::new();
-				let resource_node = DocumentNode {
-					inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
-					implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
-					..Default::default()
-				};
-				new_resource_nodes.push((id, resource_node));
-				id
-			});
-
-			*input = NodeInput::node(resource_id, 0);
-		}
-	}
-
-	for (id, node) in new_resource_nodes {
-		network.nodes.insert(id, node);
-	}
-
-	Ok(())
 }
 
 impl Preprocessor {
@@ -85,14 +40,55 @@ impl Preprocessor {
 		}
 	}
 
-	fn expand_network_inner(&self, network: &mut NodeNetwork) {
-		if network.generated {
-			return;
-		}
+	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
+	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
+		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
+		let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				self.replace_resource_inputs(nested, resources)?;
+				continue;
+			}
+
+			if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == platform_application_io::resource::IDENTIFIER) {
+				continue;
+			}
+
+			for input in node.inputs.iter_mut() {
+				let NodeInput::Value { tagged_value, .. } = input else { continue };
+				let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
+
+				let Some(hash) = resources.hash(&resource_id) else {
+					return Err(PreprocessorError::ResourceNotFound(resource_id));
+				};
+
+				let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
+					let id = NodeId::new();
+					let resource_node = DocumentNode {
+						inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
+						implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
+						..Default::default()
+					};
+					new_resource_nodes.push((id, resource_node));
+					id
+				});
+
+				*input = NodeInput::node(resource_id, 0);
+			}
+		}
+
+		for (id, node) in new_resource_nodes {
+			network.nodes.insert(id, node);
+		}
+
+		Ok(())
+	}
+
+	fn expand_network(&self, network: &mut NodeNetwork) {
+		for node in network.nodes.values_mut() {
 			match &mut node.implementation {
-				DocumentNodeImplementation::Network(node_network) => self.expand_network_inner(node_network),
+				DocumentNodeImplementation::Network(node_network) => self.expand_network(node_network),
 				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 					if let Some(new_node) = self.substitutions.get(proto_node_identifier) {
 						// Reconcile the document node's inputs with what the current node definition expects,

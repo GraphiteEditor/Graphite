@@ -234,6 +234,6 @@ impl ApplyTransform for DVec2 {
 		*self = modification.transform_point2(*self);
 	}
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
-		*self = modification.inverse().transform_point2(*self);
+		*self = modification.transform_point2(*self);
 	}
 }

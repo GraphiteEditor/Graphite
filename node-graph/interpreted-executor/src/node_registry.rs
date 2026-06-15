@@ -33,7 +33,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// INTO NODES
 		// ==========
 		into_node!(from: List<Graphic>, to: List<Graphic>),
-		into_node!(from: List<Vector>, to: List<Vector>),
 		into_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>),
 		#[cfg(feature = "gpu")]
 		into_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>),
@@ -96,6 +95,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		into_node!(from: &PlatformEditorApi, to: &WgpuExecutor),
 		convert_node!(from: DVec2, to: DVec2),
+		convert_node!(from: List<Vector>, to: List<Vector>),
+		convert_node!(from: DVec2, to: List<Vector>),
 		convert_node!(from: String, to: String),
 		convert_node!(from: bool, to: String),
 		convert_node!(from: DVec2, to: String),

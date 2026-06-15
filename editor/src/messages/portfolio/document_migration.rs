@@ -404,16 +404,16 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_f_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node"],
+		node: graphene_std::math_nodes::as_f_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_u_32::IDENTIFIER,
+		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node", "math_nodes::ToU32Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_u_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node"],
+		node: graphene_std::math_nodes::as_u_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node", "math_nodes::ToU64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
@@ -676,8 +676,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::logic::SwitchNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::text_nodes::to_string::IDENTIFIER,
-		aliases: &["graphene_core::logic::ToStringNode"],
+		node: graphene_std::text_nodes::as_string::IDENTIFIER,
+		aliases: &["graphene_core::logic::ToStringNode", "text_nodes::ToStringNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
@@ -958,11 +958,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::TangentOnPathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
+		node: graphene_std::vector::as_vector::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::PositionToPointNode",
 			"graphene_core::vector::PositionToPointNode",
 			"graphene_core::vector::Vec2ToPointNode",
+			"core_types::vector::Vec2ToPointNode",
 		],
 	},
 ];
@@ -1222,6 +1223,30 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
 				document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
 			}
+		}
+	}
+
+	// The "Image" wrapper network was replaced with the `image` proto node directly. Convert old `Network("Image")` instances to the proto node, forwarding the embedded image data so the `image` pass in `migrate_node` below turns it into a resource.
+	// Pre-pass for the same reason as the Brush and Transform migrations above: replacing the outer Image's network impl orphans its child paths.
+	let image_layers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Image".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &image_layers {
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
+		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), image_input, network_path);
 		}
 	}
 

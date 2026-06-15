@@ -246,6 +246,16 @@ impl ResourceId {
 	pub fn new() -> Self {
 		Self(core_types::uuid::generate_uuid())
 	}
+
+	/// Derive a deterministic ID from a content hash (first 8 bytes, little-endian). Used when
+	/// bootstrapping resources from an existing document so re-conversion is stable and identical
+	/// content maps to one ID. New resources created live should use [`ResourceId::new`] instead.
+	pub fn from_hash(hash: &ResourceHash) -> Self {
+		let bytes: [u8; 32] = hash.into();
+		let mut truncated = [0u8; 8];
+		truncated.copy_from_slice(&bytes[..8]);
+		Self(u64::from_le_bytes(truncated))
+	}
 }
 
 impl From<u64> for ResourceId {

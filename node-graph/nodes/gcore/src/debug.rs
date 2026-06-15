@@ -34,13 +34,3 @@ fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<
 fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&List<Raster<CPU>>)] value: &'i T) -> T {
 	value.clone()
 }
-
-#[node_macro::node(category("Debug"), inject_scope)]
-fn inject_scope_test_producer(_: impl Ctx) -> bool {
-	true
-}
-
-#[node_macro::node(category("Debug"))]
-fn inject_scope_test_consumer(_: impl Ctx, _primary: (), #[scope(inject_scope_test_producer::IDENTIFIER)] injected: bool) -> bool {
-	injected
-}

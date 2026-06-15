@@ -111,8 +111,8 @@ lazy_static! {
 		map.insert(
 			"invcot",
 			Box::new(|values| match values {
-				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real((PI / 2.0 - real).atan()))),
-				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex((Complex::new(PI / 2.0, 0.0) - complex).atan()))),
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real((PI / 2. - real).atan()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex((Complex::new(PI / 2., 0.) - complex).atan()))),
 				_ => None,
 			}),
 		);

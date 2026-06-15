@@ -242,10 +242,10 @@ fn compile_graph(document_string: String, editor_api: Arc<PlatformEditorApi>) ->
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 
-	let preprocessor = preprocessor::Preprocessor::new();
-	preprocessor.expand_network(&mut network, &ResourceRegistry::default()).expect("Failed to expand network"); // TODO: actually load the resources from the document
+	let mut wrapped_network = wrap_network_in_scope(network, editor_api);
 
-	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
+	let preprocessor = preprocessor::Preprocessor::new();
+	preprocessor.preprocess(&mut wrapped_network, &ResourceRegistry::default()).expect("Failed to expand network"); // TODO: actually load the resources from the document
 
 	let compiler = Compiler {};
 	compiler.compile_single(wrapped_network).map_err(|x| x.into())
