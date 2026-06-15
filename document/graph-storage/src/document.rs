@@ -52,10 +52,8 @@ impl Document {
 
 	pub(crate) fn restore_node_from_history(&mut self, target: RegistryTarget, node_id: NodeId) -> Result<(), CrdtError> {
 		let delta = self
-			.history_iter()
-			.find(|d| matches!(d.reverse, RegistryDelta::AddNode { id, .. } if id == node_id))
-			.ok_or(CrdtError::NodeNotInHistory(node_id))?
-			.clone();
+			.find_in_ancestry(|d| matches!(d.reverse, RegistryDelta::AddNode { id, .. } if id == node_id))
+			.ok_or(CrdtError::NodeNotInHistory(node_id))?;
 		self.revert_delta(target, delta)
 	}
 
@@ -63,11 +61,29 @@ impl Document {
 		// Find the Delta whose forward op removed this network. Its `reverse` is `AddNetwork`,
 		// which is what we want to re-apply.
 		let delta = self
-			.history_iter()
-			.find(|d| matches!(d.reverse, RegistryDelta::AddNetwork { id, .. } if id == network_id))
-			.ok_or(CrdtError::NetworkNotInHistory(network_id))?
-			.clone();
+			.find_in_ancestry(|d| matches!(d.reverse, RegistryDelta::AddNetwork { id, .. } if id == network_id))
+			.ok_or(CrdtError::NetworkNotInHistory(network_id))?;
 		self.revert_delta(target, delta)
+	}
+
+	/// Search every delta reachable from `head` (following all parents, including a merge's
+	/// `extra_parents`) for the first matching `predicate`, breadth-first. Resurrection needs full
+	/// ancestry reachability, so a node added only on a merged-in branch is still found.
+	fn find_in_ancestry(&self, predicate: impl Fn(&Delta) -> bool) -> Option<Delta> {
+		let mut queue: std::collections::VecDeque<Rev> = self.head.into_iter().collect();
+		let mut seen: std::collections::HashSet<Rev> = self.head.into_iter().collect();
+		while let Some(rev) = queue.pop_front() {
+			let Some(delta) = self.history.get(rev) else { continue };
+			if predicate(delta) {
+				return Some(delta.clone());
+			}
+			for parent in delta.all_parents() {
+				if seen.insert(parent) {
+					queue.push_back(parent);
+				}
+			}
+		}
+		None
 	}
 
 	/// Apply a delta's `reverse` as the new forward op (silent-zone undo). Force-applied: structural
@@ -411,32 +427,6 @@ impl Document {
 			RegistryDelta::Merge { extra_parents } => RegistryDelta::Merge { extra_parents: extra_parents.clone() },
 			&RegistryDelta::Other(_) => RegistryDelta::Other(serde_json::Value::Null),
 		})
-	}
-
-	/// Retired-only walk from `head` along the primary parent. Hot ops are excluded by design.
-	fn history_iter(&self) -> HistoryIter<'_> {
-		HistoryIter {
-			document: self,
-			parent_rev: self.head,
-		}
-	}
-}
-
-struct HistoryIter<'a> {
-	document: &'a Document,
-	parent_rev: Option<Rev>,
-}
-
-impl<'a> Iterator for HistoryIter<'a> {
-	type Item = &'a Delta;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let delta = self.document.history.get(self.parent_rev?)?;
-		// Follow the primary parent (`None` at the root ends the walk after yielding it). The
-		// merge-aware rule (follow the local-authored branch through a `Merge`) is deferred until
-		// merges are actually emitted (needs transport).
-		self.parent_rev = delta.parent;
-		Some(delta)
 	}
 }
 

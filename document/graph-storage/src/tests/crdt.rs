@@ -173,11 +173,11 @@ fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 fn merge_converges_to_identical_history() {
 	// Shared base commit, then a concurrent edit on each peer's own clone of that base.
 	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
 	let mut session_b = session_a.clone();
 
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1));
-	session_b.commit_op_for_test(set_document_attribute("compute::b", 2));
+	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
+	session_b.commit_op_for_test(set_document_attribute("compute::b", 2)).expect("B edit");
 
 	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
 	let deltas_a = session_a.cloned_deltas();
@@ -191,6 +191,46 @@ fn merge_converges_to_identical_history() {
 	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
 	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
 	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
+}
+
+/// Resurrection must reach into a merged-in branch: a network added then removed on the other peer's
+/// branch lives only under the merge's secondary parent, so a `SetNetworkExport` targeting it after
+/// the merge can only restore it by traversing all ancestors (not the primary-parent chain).
+#[test]
+fn resurrection_reaches_across_a_merge() {
+	let network_id = NetworkId(7);
+
+	// Shared base, then peer B adds and removes network 7 on its own branch.
+	let mut session_a = Session::with_peer(PeerId(1));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
+	let mut session_b = session_a.clone();
+
+	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
+	session_b
+		.commit_op_for_test(RegistryDelta::AddNetwork {
+			id: network_id,
+			network: Network::default(),
+		})
+		.expect("B AddNetwork");
+	session_b
+		.commit_op_for_test(RegistryDelta::RemoveNetwork {
+			id: network_id,
+			snapshot: Network::default(),
+		})
+		.expect("B RemoveNetwork");
+
+	// A merges B's branch: 7's AddNetwork now lives only under the merge's secondary parent.
+	session_a.merge(session_b.cloned_deltas()).expect("merge failed");
+
+	// A SetNetworkExport on 7 must resurrect it by walking into the merged-in branch. Before the
+	// all-ancestors fix this failed with NetworkNotInHistory (the primary-parent walk missed B's branch).
+	session_a
+		.commit_op_for_test(RegistryDelta::SetNetworkExport {
+			id: network_id,
+			index: 0,
+			export: None,
+		})
+		.expect("resurrection must find the AddNetwork on the merged-in branch");
 }
 
 /// Committing the same NodeNetwork twice must produce zero history entries on the second commit.

@@ -471,10 +471,11 @@ impl Session {
 		self.document.history.iter().cloned().collect()
 	}
 
-	/// Test-only: commit a single op as a retired delta on the local chain.
+	/// Test-only: commit a single op as a retired delta on the local chain, returning the result so a
+	/// test can observe a resurrection failure (e.g. `NotFoundInHistory`).
 	#[cfg(test)]
-	pub(crate) fn commit_op_for_test(&mut self, op: RegistryDelta) {
-		self.commit_ops(std::iter::once(op), false).expect("test commit failed");
+	pub(crate) fn commit_op_for_test(&mut self, op: RegistryDelta) -> Result<(), CrdtError> {
+		self.commit_ops(std::iter::once(op), false).map(|_| ())
 	}
 
 	pub fn redo_stack(&self) -> &[Rev] {
