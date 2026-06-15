@@ -274,7 +274,9 @@ impl Session {
 		let timestamp = self.document.clock.tick();
 		let merge = Delta::merge(tips, self.document.peer, timestamp);
 		let merge_rev = merge.id;
-		self.document.history.merge(std::iter::once(merge));
+		// The merge's parents are the current tips, so it sorts last: `push` preserves the canonical
+		// order without re-sorting the whole history.
+		self.document.history.push(merge);
 		self.document.head = Some(merge_rev);
 
 		// Merge runs with an empty hot log; keep the retired snapshot in step with the working registry.
