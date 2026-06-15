@@ -65,7 +65,9 @@ impl RenderExt for List<Color> {
 		_render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let Some(color) = self.element(0) else { return r#" fill="none""#.to_string() };
+		let Some(color) = self.element(0) else {
+			return format!(r#" {}="none""#, target.paint_attr());
+		};
 
 		let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
 		if color.a() < 1. {
