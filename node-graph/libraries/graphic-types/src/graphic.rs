@@ -231,10 +231,9 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 /// Borrowing equivalent of `graphic_list_at(...).is_some()`.
 /// Returns whether the item carries a non-blank paint attribute, without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	if let Some(graphics) = list.attribute::<List<Graphic>>(attribute, index) {
-		return graphics.element(0).is_some_and(|graphic| !graphic.is_empty());
-	}
-	list.attribute::<List<Color>>(attribute, index).is_some_and(|l| !l.is_empty())
+	list.attribute::<List<Graphic>>(attribute, index)
+		.is_some_and(|graphics| graphics.element(0).is_some_and(|graphic| !graphic.is_empty()))
+		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|l| !l.is_empty())
 		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|l| !l.is_empty())
 		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|l| !l.is_empty())
 		|| list.attribute::<List<Raster<CPU>>>(attribute, index).is_some_and(|l| !l.is_empty())
