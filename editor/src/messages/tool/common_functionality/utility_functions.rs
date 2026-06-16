@@ -586,3 +586,57 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 
 	Some(first_layer)
 }
+
+/// Smallest extent, in document units, a nudge-resized box may have per axis (avoids a zero divisor and prevents collapse/inversion).
+const NUDGE_RESIZE_MIN_EXTENT: f64 = 1.;
+
+/// The resized box corners and the document-space scale transform produced by [`nudge_resize_bounds`].
+pub struct NudgeResize {
+	pub min: DVec2,
+	pub max: DVec2,
+	pub transform: DAffine2,
+}
+
+/// Resizes the axis-aligned document-space box `[min, max]` by an arrow-key nudge `delta` (screen space).
+///
+/// `tilt` (document rotation) is snapped to a quarter turn so the arrow maps onto a box axis. The top-left corner is anchored by default,
+/// or the bottom-right corner when `resize_opposite` (Control) is held; the other corner moves. The box stays at least one unit per axis.
+pub fn nudge_resize_bounds(min: DVec2, max: DVec2, delta: DVec2, tilt: f64, resize_opposite: bool) -> NudgeResize {
+	// Snap rotation to a quarter turn so the screen arrow lands on a document-space box axis
+	let doc_delta = match ((tilt / std::f64::consts::FRAC_PI_2).round() as i32).rem_euclid(4) {
+		1 => DVec2::new(delta.y, -delta.x),
+		2 => -delta,
+		3 => DVec2::new(-delta.y, delta.x),
+		_ => delta,
+	};
+
+	// Move one corner by the arrow, keeping the other (the anchor) at least the minimum extent away
+	let mut new_min = min;
+	let mut new_max = max;
+	if resize_opposite {
+		new_min += doc_delta;
+		new_min = new_min.min(new_max - DVec2::splat(NUDGE_RESIZE_MIN_EXTENT));
+	} else {
+		new_max += doc_delta;
+		new_max = new_max.max(new_min + DVec2::splat(NUDGE_RESIZE_MIN_EXTENT));
+	}
+
+	// Ratio of new to old extent, treating a degenerate (sub-unit) original extent as unscaled
+	let old_extent = max - min;
+	let new_extent = new_max - new_min;
+	let scale = DVec2::new(
+		if old_extent.x.abs() < NUDGE_RESIZE_MIN_EXTENT { 1. } else { new_extent.x / old_extent.x },
+		if old_extent.y.abs() < NUDGE_RESIZE_MIN_EXTENT { 1. } else { new_extent.y / old_extent.y },
+	);
+
+	// Scale about the anchored corner, guarding non-finite components to zero
+	let anchor = if resize_opposite { max } else { min };
+	let scale_center = DVec2::new(if anchor.x.is_finite() { anchor.x } else { 0. }, if anchor.y.is_finite() { anchor.y } else { 0. });
+	let transform = DAffine2::from_scale_angle_translation(scale, 0., scale_center - scale * scale_center);
+
+	NudgeResize {
+		min: new_min,
+		max: new_max,
+		transform,
+	}
+}

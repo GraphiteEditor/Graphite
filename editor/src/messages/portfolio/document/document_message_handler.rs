@@ -24,6 +24,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
+use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -735,8 +736,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::NudgeSelectedLayers { delta_x, delta_y } => {
-				self.nudge_selected_layers(delta_x, delta_y, responses);
+			DocumentMessage::NudgeSelectedLayers {
+				delta_x,
+				delta_y,
+				resize,
+				resize_opposite,
+			} => {
+				let resize = ipp.keyboard.key(resize);
+				let resize_opposite = ipp.keyboard.key(resize_opposite);
+				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
@@ -2672,13 +2680,40 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 	}
 
-	fn nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, responses: &mut VecDeque<Message>) {
-		responses.add(DocumentMessage::AddTransaction);
-
+	fn nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, resize: bool, resize_opposite: bool, responses: &mut VecDeque<Message>) {
 		let can_move = |layer| {
 			let selected = self.network_interface.selected_nodes();
 			selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
 		};
+
+		if resize {
+			let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
+			// Bail before opening a transaction when there's nothing resizable
+			let Some([min, max]) = layers.iter().filter_map(|&layer| self.metadata().bounding_box_document(layer)).reduce(Quad::combine_bounds) else {
+				return;
+			};
+
+			let resized = nudge_resize_bounds(min, max, DVec2::new(delta_x, delta_y), self.document_ptz.tilt(), resize_opposite);
+
+			// Express the document-space scale in viewport space so it composes with each layer like the rest of the transform pipeline
+			let document_to_viewport = self.metadata().document_to_viewport;
+			let transform = document_to_viewport * resized.transform * document_to_viewport.inverse();
+
+			responses.add(DocumentMessage::AddTransaction);
+
+			for layer in layers {
+				responses.add(GraphOperationMessage::TransformChange {
+					layer,
+					transform,
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				});
+			}
+
+			return;
+		}
+
+		responses.add(DocumentMessage::AddTransaction);
 
 		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
 		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });

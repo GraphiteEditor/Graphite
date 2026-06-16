@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::utility_types::misc::{GroupFolderType, SnappingState};
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -108,6 +109,8 @@ pub enum DocumentMessage {
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,
+		resize: Key,
+		resize_opposite: Key,
 	},
 	PasteImage {
 		name: Option<String>,
