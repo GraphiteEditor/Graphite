@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::transformation_cage::*;
+use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use graph_craft::document::NodeId;
 use graphene_std::renderer::{Quad, Rect};
 
@@ -30,7 +31,7 @@ pub enum ArtboardToolMessage {
 	// Tool-specific messages
 	UpdateSelectedArtboard,
 	DeleteSelected,
-	NudgeSelected { delta_x: f64, delta_y: f64 },
+	NudgeSelected { delta_x: f64, delta_y: f64, resize: Key, resize_opposite: Key },
 	PointerDown,
 	PointerMove { constrain_axis_or_aspect: Key, center: Key },
 	PointerOutsideViewport { constrain_axis_or_aspect: Key, center: Key },
@@ -480,8 +481,16 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready { hovered }
 			}
-			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
-				let Some(bounds) = &mut tool_data.bounding_box_manager else {
+			(
+				_,
+				ArtboardToolMessage::NudgeSelected {
+					delta_x,
+					delta_y,
+					resize,
+					resize_opposite,
+				},
+			) => {
+				let Some(bounds) = &tool_data.bounding_box_manager else {
 					return ArtboardToolFsmState::Ready { hovered };
 				};
 				let Some(selected_artboard) = tool_data.selected_artboard else {
@@ -493,12 +502,24 @@ impl Fsm for ArtboardToolFsmState {
 				}
 
 				let [existing_top_left, existing_bottom_right] = bounds.bounds;
-				let delta = DVec2::from_angle(-document.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y));
+				let tilt = document.document_ptz.tilt();
 
+				// The resize key switches from nudging the artboard's position to resizing its box, anchored to the opposite edge by the other key
+				let resize = input.keyboard.key(resize);
+				let (location, dimensions) = if resize {
+					let resize_opposite = input.keyboard.key(resize_opposite);
+					let resized = nudge_resize_bounds(existing_top_left, existing_bottom_right, DVec2::new(delta_x, delta_y), tilt, resize_opposite);
+					(resized.min.round(), (resized.max - resized.min).round())
+				} else {
+					let delta = DVec2::from_angle(-tilt).rotate(DVec2::new(delta_x, delta_y));
+					((existing_top_left + delta).round(), (existing_bottom_right - existing_top_left).round())
+				};
+
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: selected_artboard,
-					location: DVec2::new(existing_top_left.x + delta.x, existing_top_left.y + delta.y).round(),
-					dimensions: (existing_bottom_right - existing_top_left).round(),
+					location,
+					dimensions,
 				});
 
 				ArtboardToolFsmState::Ready { hovered }

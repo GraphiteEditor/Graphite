@@ -1812,7 +1812,12 @@ impl Fsm for SelectToolFsmState {
 					// TODO: Make all the following hints only appear if there is at least one selected layer
 					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
-					HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+					HintGroup(vec![
+						HintInfo::arrow_keys("Nudge Selected"),
+						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
+						HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
+						HintInfo::keys([Key::Control], "Other Corner").prepend_plus(),
+					]),
 					HintGroup(vec![
 						HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
 						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
