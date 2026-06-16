@@ -418,8 +418,33 @@
 		// while dragging it outside the browser window, because Safari has another bug where the cursor icon is unaffected by that API.
 		if (isSafari) document.body.classList.add("cursor-hidden");
 
-		// Enter dragging state
-		if (usePointerLock) target.requestPointerLock();
+		// Tracks whether the drag has already ended (the mouse was released). Used to resolve the race where
+		// pointer lock finishes engaging only after the user has already released the mouse button.
+		let dragReleased = false;
+
+		// Enter dragging state.
+		// `requestPointerLock()` is asynchronous: the pointer isn't actually locked until the "pointerlockchange"
+		// event fires. If the user releases the mouse before that happens (e.g. a rapid click or a quick
+		// drag-and-release), `endDrag()` cleans up the drag listeners directly, but the still-pending lock may engage
+		// afterward — by which point our "pointerlockchange" listener has already been removed. We use the returned
+		// promise (in browsers that support it) to exit such a late-engaging lock so the cursor doesn't get stuck
+		// locked, and to confirm the drag was already cleaned up if the request is rejected. Without this, the value
+		// could stay tied to mouse movement. See: <https://github.com/GraphiteEditor/Graphite/issues/4231>
+		if (usePointerLock) {
+			const lockRequest = target.requestPointerLock();
+			if (lockRequest instanceof Promise) {
+				lockRequest.then(
+					() => {
+						// If the user already released before the lock engaged, exit it immediately so we aren't stuck locked.
+						if (dragReleased && document.pointerLockElement) document.exitPointerLock();
+					},
+					() => {
+						// The lock request was rejected (e.g. the browser's brief cooldown after rapidly re-locking).
+						// Nothing to do here: `pointerUp` cleans up on release since we never entered pointer lock.
+					},
+				);
+			}
+		}
 		if (import.meta.env.MODE === "native") {
 			editor.appWindowPointerLock();
 		}
@@ -443,24 +468,21 @@
 			initialValueBeforeDragging = value;
 			cumulativeDragDelta = 0;
 
-			if (usePointerLock) document.exitPointerLock();
-			else pointerLockChange();
+			endDrag();
 		};
 		const pointerMove = (e: PointerEvent) => {
 			// TODO: Display a fake cursor over the top of the page which wraps around the edges of the editor.
 
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
 			if (e.buttons & BUTTONS_RIGHT) {
-				if (usePointerLock) document.exitPointerLock();
-				else pointerLockChange();
+				endDrag();
 				return;
 			}
 
 			// If no buttons are down, that means we are stuck in the drag state after having released the mouse, so we should exit.
 			// For some reason on Firefox in Wayland, `e.buttons` can be 0 while `e.button` is -1, but we don't want to exit in that state.
 			if (e.buttons === 0 && e.button !== -1) {
-				if (usePointerLock) document.exitPointerLock();
-				else pointerLockChange();
+				endDrag();
 				return;
 			}
 
@@ -496,6 +518,17 @@
 
 			// Close out the transaction `startDragging` opened so the many emits collapse into one history step (covers both confirmed and aborted drags).
 			commitTransactionIfInProgress();
+		};
+		// Ends the drag and runs the cleanup. If the pointer is actually locked, exiting it fires "pointerlockchange",
+		// which performs the cleanup. Otherwise (we're not using pointer lock, or the lock hasn't engaged yet because
+		// the interaction ended too quickly) no such event will arrive, so we clean up directly. This prevents a stuck
+		// drag where the value stays tied to mouse movement (#4231). Setting `dragReleased` also lets a pointer lock
+		// that engages after this point exit itself immediately (see the `requestPointerLock()` handling above).
+		const endDrag = () => {
+			dragReleased = true;
+
+			if (usePointerLock && document.pointerLockElement) document.exitPointerLock();
+			else pointerLockChange();
 		};
 
 		addEventListener("pointerup", pointerUp);
