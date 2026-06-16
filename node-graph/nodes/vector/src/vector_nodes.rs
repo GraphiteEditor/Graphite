@@ -286,12 +286,14 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 
 	let random_scale_difference = random_scale_max - random_scale_min;
 
-	for row in points.into_iter() {
-		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+	// Initialize RNGs once before the loop to ensure unique random values across all paths
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
 
-		let do_scale = random_scale_difference.abs() > 1e-6;
-		let do_rotation = random_rotation.abs() > 1e-6;
+	let do_scale = random_scale_difference.abs() > 1e-6;
+	let do_rotation = random_rotation.abs() > 1e-6;
+
+	for row in points.into_iter() {
 
 		let points_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		for &point in row.element().point_domain.positions() {
@@ -3097,6 +3099,7 @@ mod test {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
+
 	#[tokio::test]
 	async fn copy_to_points() {
 		let points = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
@@ -3140,6 +3143,61 @@ mod test {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
+
+	#[tokio::test]
+	async fn copy_to_points_unique_randomization() {
+		// Regression test for RNG reset bug: ensure random values are unique across multiple paths
+		// Create two separate paths with 2 points each
+		let path1 = Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY);
+		let path2 = Rect::new(100., 100., 110., 110.).to_path(DEFAULT_ACCURACY);
+		
+		// Combine both paths into the points input
+		let mut combined_path = path1.clone();
+		combined_path.extend(path2);
+		
+		let element = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
+		
+		// Call with randomization enabled (scale and rotation)
+		let result = super::copy_to_points(
+			Footprint::default(), 
+			vector_node_from_bezpath(combined_path), 
+			vector_node_from_bezpath(element), 
+			0.5,   // random_scale_min
+			1.5,   // random_scale_max
+			0.0,   // random_scale_bias (uniform)
+			42,    // random_scale_seed
+			180.0, // random_rotation (degrees)
+			123,   // random_rotation_seed
+		).await;
+		
+		let flattened = super::flatten_path(Footprint::default(), result).await;
+		let vector = flattened.element(0).unwrap();
+		
+		// We should have 8 regions (4 points from path1 + 4 points from path2, each getting a rect)
+		assert_eq!(vector.region_manipulator_groups().count(), 8);
+		
+		// Extract the first manipulator from each region to check for randomization differences
+		let anchors: Vec<DVec2> = vector
+			.region_manipulator_groups()
+			.map(|(_, manips)| manips[0].anchor)
+			.collect();
+		
+		// With the bug fixed, the first point of the second path (index 4) should NOT be identical 
+		// to the first point of the first path (index 0) when accounting for their base positions
+		// Check that there's variation in the pattern (not all differences are identical)
+		let diff_0_1 = (anchors[0] - anchors[1]).length();
+		let diff_4_5 = (anchors[4] - anchors[5]).length();
+		
+		// These differences should NOT be exactly identical (within very tight tolerance)
+		// If RNG was reset, the pattern would repeat exactly
+		assert!(
+			(diff_0_1 - diff_4_5).abs() > 0.001,
+			"Random values appear to be repeating across paths (potential RNG reset bug). \
+			 Difference 0-1: {}, Difference 4-5: {}",
+			diff_0_1, diff_4_5
+		);
+	}
+
 	#[tokio::test]
 	async fn poisson() {
 		let poisson_points = super::scatter_points(
