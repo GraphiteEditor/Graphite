@@ -81,6 +81,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		List<String>,
 		List<f64>,
 		List<u8>,
+		List<bool>,
 		List<NodeId>,
 		List<Color>,
 		List<GradientStops>,
@@ -88,6 +89,10 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		List<Raster<CPU>>,
 		List<Graphic>,
 		List<Artboard>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
 	list: List<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
