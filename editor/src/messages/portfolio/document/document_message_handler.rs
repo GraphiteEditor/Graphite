@@ -2688,8 +2688,13 @@ impl DocumentMessageHandler {
 
 		if resize {
 			let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
-			// Bail before opening a transaction when there's nothing resizable
-			let Some([min, max]) = layers.iter().filter_map(|&layer| self.metadata().bounding_box_document(layer)).reduce(Quad::combine_bounds) else {
+			// Combine only finite bounds (a non-finite box would poison the scale), bailing before opening a transaction if none remain
+			let Some([min, max]) = layers
+				.iter()
+				.filter_map(|&layer| self.metadata().bounding_box_document(layer))
+				.filter(|[min, max]| min.is_finite() && max.is_finite())
+				.reduce(Quad::combine_bounds)
+			else {
 				return;
 			};
 
