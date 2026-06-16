@@ -9,9 +9,39 @@ use math_parser::value::Value;
 use std::collections::{HashMap, HashSet};
 use vector_types::subpath;
 
+const TOLERANCE_FACTOR: f64 = 0.005;
+
+#[derive(Debug, Clone, Copy)]
+enum SamplePoint {
+	Valid { parameter: f64, coord: DVec2 },
+
+	Invalid { parameter: f64 },
+}
+
+impl SamplePoint {
+	pub fn parameter(&self) -> f64 {
+		match self {
+			SamplePoint::Valid { parameter, .. } => *parameter,
+			SamplePoint::Invalid { parameter } => *parameter,
+		}
+	}
+
+	pub fn coord(&self) -> Option<DVec2> {
+		match self {
+			SamplePoint::Valid { coord, .. } => Some(*coord),
+			SamplePoint::Invalid { .. } => None,
+		}
+	}
+
+	pub fn is_valid(&self) -> bool {
+		matches!(self, SamplePoint::Valid { .. })
+	}
+}
+
 type CurveSegment = Vec<DVec2>;
 
-struct PlotBounds {
+#[derive(Debug)]
+struct CurveBounds {
 	x_min: f64,
 	x_max: f64,
 	y_min: f64,
@@ -106,9 +136,12 @@ fn function_plot(
 	/// Maximum value for the parameter to evaluate.
 	#[default(6.28318530718)]
 	parameter_max_value: f64,
-	/// How many samples should we take
-	#[default(100)]
-	sample_count: u32,
+	/// Level of sampling detail
+	#[default(7)]
+	level_of_detail: u32,
+	/// Discontinuity detection sensitivity
+	#[default(0.3)]
+	discontinuity_sensitivity: f64,
 	/// Auto close
 	#[default(true)]
 	auto_close: bool,
@@ -119,10 +152,12 @@ fn function_plot(
 		None => return plots,
 	};
 
-	let (mut segments, bounds) = match sample_plot_curve(&x_node, &y_node, &variable_name, parameter_min_value, parameter_max_value, sample_count) {
+	let (sample_points, bounds) = match sample_plot_curve(&x_node, &y_node, &variable_name, parameter_min_value, parameter_max_value, level_of_detail) {
 		Some(result) => result,
 		None => return plots,
 	};
+
+	let segments = detect_curve_segments(sample_points, discontinuity_sensitivity);
 
 	for mut segment_anchors in segments {
 		fit_plot_to_bounds(&mut segment_anchors, &bounds, width, height);
@@ -150,86 +185,285 @@ fn function_plot(
 	plots
 }
 
-fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str, parameter_min_value: f64, parameter_max_value: f64, sample_count: u32) -> Option<(Vec<CurveSegment>, PlotBounds)> {
-	let mut values = HashMap::<String, f64>::new();
-	values.insert(variable_name.to_string(), 0.);
+fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str, parameter_min_value: f64, parameter_max_value: f64, sample_count: u32) -> Option<(Vec<SamplePoint>, CurveBounds)> {
+	let point_start = evaluate_expressions(parameter_min_value, x_node, y_node, variable_name)?;
 
-	let interval = (parameter_max_value - parameter_min_value) / (sample_count - 1) as f64;
+	let point_end = evaluate_expressions(parameter_max_value, x_node, y_node, variable_name)?;
 
-	let mut segments = Vec::new();
-	let mut segment_anchors = Vec::<DVec2>::new();
+	let mut bounds = CurveBounds {
+		x_min: f64::INFINITY,
+		x_max: f64::NEG_INFINITY,
+		y_min: f64::INFINITY,
+		y_max: f64::NEG_INFINITY,
+	};
 
-	let mut x_min = 0.;
-	let mut x_max = 0.;
-	let mut y_min = 0.;
-	let mut y_max = 0.;
-	debug!("sample_plot_curve------");
-
-	for i in 0..sample_count {
-		let t = parameter_min_value + i as f64 * interval;
-
-		if let Some(value) = values.get_mut(variable_name) {
-			*value = t;
-		}
-
-		let context = EvalContext::new(PlotContext { values: &values }, NothingMap);
-
-		let x_value = match x_node.eval(&context) {
-			Ok(value) => value,
-			Err(e) => {
-				warn!("Expression evaluation error: {e:?}");
-				return None;
-			}
-		};
-
-		let y_value = match y_node.eval(&context) {
-			Ok(value) => value,
-			Err(e) => {
-				warn!("Expression evaluation error: {e:?}");
-				return None;
-			}
-		};
-
-		let point = match (x_value.as_real().filter(|v| v.is_finite()), y_value.as_real().filter(|v| v.is_finite())) {
-			(Some(x), Some(y)) => DVec2::new(x, y),
-			_ => {
-				if segment_anchors.len() >= 2 {
-					debug!("new segment");
-					segments.push(segment_anchors);
-					segment_anchors = Vec::new();
-				}
-				continue;
-			}
-		};
-
-		if i == 0 || point.x < x_min {
-			x_min = point.x;
-		}
-
-		if i == 0 || point.x > x_max {
-			x_max = point.x;
-		}
-
-		if i == 0 || point.y < y_min {
-			y_min = point.y;
-		}
-
-		if i == 0 || point.y > y_max {
-			y_max = point.y;
-		}
-
-		segment_anchors.push(point);
+	if point_start.is_valid() {
+		update_bounds(&point_start, &mut bounds);
 	}
 
-	if segment_anchors.len() >= 2 {
-		segments.push(segment_anchors);
+	if point_end.is_valid() {
+		update_bounds(&point_end, &mut bounds);
 	}
 
-	debug!("sample_plot_curve------");
-	Some((segments, PlotBounds { x_min, x_max, y_min, y_max }))
+	let mut sample_points = Vec::<SamplePoint>::new();
+
+	sample_interval(point_start, point_end, &mut sample_points, &mut bounds, x_node, y_node, variable_name, 0, 4, sample_count);
+
+	sample_points.push(point_end);
+
+	Some((sample_points, bounds))
 }
 
-fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &PlotBounds, width: f64, height: f64) {
+#[allow(clippy::too_many_arguments)]
+fn sample_interval(
+	begin_point: SamplePoint,
+	end_point: SamplePoint,
+	sample_points: &mut Vec<SamplePoint>,
+	bounds: &mut CurveBounds,
+	x_node: &ast::Node,
+	y_node: &ast::Node,
+	variable_name: &str,
+	current_depth: u32,
+	min_depth: u32,
+	max_depth: u32,
+) {
+	if current_depth >= max_depth {
+		sample_points.push(begin_point);
+		return;
+	}
+
+	let t_begin = begin_point.parameter();
+	let t_end = end_point.parameter();
+	let t_mid = t_begin + (t_end - t_begin) * 0.50;
+	let Some(point_mid) = evaluate_expressions(t_mid, x_node, y_node, variable_name) else {
+		return;
+	};
+	if let SamplePoint::Valid { .. } = point_mid {
+		update_bounds(&point_mid, bounds);
+	}
+
+	if current_depth > min_depth && begin_point.is_valid() && end_point.is_valid() {
+		let t_quarter = t_begin + (t_end - t_begin) * 0.25;
+		let t_q3 = t_begin + (t_end - t_begin) * 0.75;
+
+		let Some(point_q1) = evaluate_expressions(t_quarter, x_node, y_node, variable_name) else {
+			return;
+		};
+
+		let Some(point_q3) = evaluate_expressions(t_q3, x_node, y_node, variable_name) else {
+			return;
+		};
+
+		if let SamplePoint::Valid { .. } = point_q1 {
+			update_bounds(&point_q1, bounds);
+		}
+
+		if let SamplePoint::Valid { .. } = point_q3 {
+			update_bounds(&point_q3, bounds);
+		}
+
+		let Some(begin_coord) = begin_point.coord() else { return };
+		let Some(end_coord) = end_point.coord() else { return };
+
+		let segment_length = begin_coord.distance(end_coord);
+		let tolerance = segment_length * TOLERANCE_FACTOR;
+
+		let segment_q1 = begin_coord + (end_coord - begin_coord) * 0.25;
+		let segment_mid = (begin_coord + end_coord) * 0.5;
+		let segment_q3 = begin_coord + (end_coord - begin_coord) * 0.75;
+
+		let mut max_error: f64 = 0.;
+
+		if let Some(q1) = point_q1.coord() {
+			max_error = max_error.max(q1.distance(segment_q1));
+		}
+		if let Some(mid) = point_mid.coord() {
+			max_error = max_error.max(mid.distance(segment_mid));
+		}
+		if let Some(q3) = point_q3.coord() {
+			max_error = max_error.max(q3.distance(segment_q3));
+		}
+
+		if max_error < tolerance {
+			sample_points.push(begin_point);
+			return;
+		}
+	}
+
+	sample_interval(begin_point, point_mid, sample_points, bounds, x_node, y_node, variable_name, current_depth + 1, min_depth, max_depth);
+
+	sample_interval(point_mid, end_point, sample_points, bounds, x_node, y_node, variable_name, current_depth + 1, min_depth, max_depth);
+}
+
+fn evaluate_expressions(t: f64, x_node: &ast::Node, y_node: &ast::Node, variable_name: &str) -> Option<SamplePoint> {
+	let mut values = HashMap::<String, f64>::new();
+	values.insert(variable_name.to_string(), t);
+
+	let context = EvalContext::new(PlotContext { values: &values }, NothingMap);
+
+	let x_value = match x_node.eval(&context) {
+		Ok(value) => value,
+		Err(e) => {
+			warn!("Expression evaluation error: {e:?}");
+			return None;
+		}
+	};
+
+	let y_value = match y_node.eval(&context) {
+		Ok(value) => value,
+		Err(e) => {
+			warn!("Expression evaluation error: {e:?}");
+			return None;
+		}
+	};
+
+	let point = match (x_value.as_real().filter(|v| v.is_finite()), y_value.as_real().filter(|v| v.is_finite())) {
+		(Some(x), Some(y)) => SamplePoint::Valid {
+			parameter: t,
+			coord: DVec2::new(x, y),
+		},
+
+		_ => SamplePoint::Invalid { parameter: t },
+	};
+
+	Some(point)
+}
+
+fn update_bounds(point: &SamplePoint, bounds: &mut CurveBounds) {
+	let Some(coord) = point.coord() else {
+		return;
+	};
+
+	bounds.x_min = bounds.x_min.min(coord.x);
+	bounds.x_max = bounds.x_max.max(coord.x);
+
+	bounds.y_min = bounds.y_min.min(coord.y);
+	bounds.y_max = bounds.y_max.max(coord.y);
+}
+
+fn detect_curve_segments(curve_points: Vec<SamplePoint>, discontinuity_sensitivity: f64) -> Vec<CurveSegment> {
+	let mut segments: Vec<Vec<DVec2>> = Vec::new();
+	let mut segment = Vec::<DVec2>::new();
+
+	let mut previous_right_continuity = Some(true);
+
+	for i in 0..curve_points.len() {
+		let current_point = &curve_points[i];
+		if !current_point.is_valid() {
+			continue;
+		}
+
+		let mut push_to_last_segment = false;
+		let mut continue_segment = true;
+		if i < curve_points.len() - 1 {
+			continue_segment = curve_points[i + 1].is_valid();
+		}
+
+		if continue_segment {
+			let mut left_continuity = Some(true);
+			let mut right_continuity = Some(true);
+
+			if i > 1 {
+				let prev_prev_point = &curve_points[i - 2];
+				let prev_point = &curve_points[i - 1];
+				left_continuity = extrapolate_continuity(current_point, prev_prev_point, prev_point, discontinuity_sensitivity);
+			}
+
+			if i < curve_points.len() - 2 {
+				let next_point = &curve_points[i + 1];
+				let next_next_point = &curve_points[i + 2];
+
+				right_continuity = extrapolate_continuity(current_point, next_point, next_next_point, discontinuity_sensitivity);
+			}
+
+			if right_continuity == Some(false) {
+				continue_segment = false;
+			}
+
+			if previous_right_continuity == Some(false) && left_continuity == Some(true) {
+				push_to_last_segment = true;
+			}
+
+			previous_right_continuity = right_continuity;
+		}
+
+		if push_to_last_segment && !segments.is_empty() {
+			segments.last_mut().unwrap().push(current_point.coord().unwrap());
+		} else {
+			segment.push(current_point.coord().unwrap());
+		}
+
+		if !continue_segment {
+			if segment.len() > 1 {
+				segments.push(segment);
+			}
+
+			segment = Vec::new();
+		}
+	}
+
+	if segment.len() > 1 {
+		segments.push(segment);
+	}
+
+	segments
+}
+
+fn extrapolate_continuity(point: &SamplePoint, neighbor1: &SamplePoint, neighbor2: &SamplePoint, discontinuity_sensitivity: f64) -> Option<bool> {
+	if !point.is_valid() || !neighbor1.is_valid() || !neighbor2.is_valid() {
+		return None;
+	}
+	let current_coord = point.coord().unwrap();
+
+	let left_limit_x = extrapolate_limit(
+		DVec2 {
+			x: point.parameter(),
+			y: current_coord.x,
+		},
+		DVec2 {
+			x: neighbor1.parameter(),
+			y: neighbor1.coord().unwrap().x,
+		},
+		DVec2 {
+			x: neighbor2.parameter(),
+			y: neighbor2.coord().unwrap().x,
+		},
+	);
+
+	let left_limit_y = extrapolate_limit(
+		DVec2 {
+			x: point.parameter(),
+			y: current_coord.y,
+		},
+		DVec2 {
+			x: neighbor1.parameter(),
+			y: neighbor1.coord().unwrap().y,
+		},
+		DVec2 {
+			x: neighbor2.parameter(),
+			y: neighbor2.coord().unwrap().y,
+		},
+	);
+
+	let segment_length = current_coord.distance(neighbor2.coord().unwrap());
+	let tolerance = segment_length * discontinuity_sensitivity;
+
+	if (left_limit_x - current_coord.x).abs() > tolerance || (left_limit_y - current_coord.y).abs() > tolerance {
+		return Some(false);
+	}
+
+	Some(true)
+}
+
+fn extrapolate_limit(p_coord: DVec2, p1_coord: DVec2, p2_coord: DVec2) -> f64 {
+	if (p2_coord.x - p1_coord.x).abs() > f64::EPSILON {
+		(p_coord.x - p1_coord.x) * (p2_coord.y - p1_coord.y) / (p2_coord.x - p1_coord.x) + p1_coord.y
+	} else {
+		p2_coord.y + (p2_coord.y - p1_coord.y)
+	}
+}
+
+fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &CurveBounds, width: f64, height: f64) {
 	let x_scale = width / (bounds.x_max - bounds.x_min).max(f64::EPSILON);
 	let y_scale = height / (bounds.y_max - bounds.y_min).max(f64::EPSILON);
 
