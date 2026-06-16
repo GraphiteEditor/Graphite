@@ -735,13 +735,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::NudgeSelectedLayers {
-				delta_x,
-				delta_y,
-				resize,
-				resize_opposite_corner,
-			} => {
-				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
+			DocumentMessage::NudgeSelectedLayers { delta_x, delta_y } => {
+				self.nudge_selected_layers(delta_x, delta_y, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
@@ -2677,90 +2672,21 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	fn nudge_selected_layers(
-		&mut self,
-		delta_x: f64,
-		delta_y: f64,
-		resize: Key,
-		resize_opposite_corner: Key,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		responses: &mut VecDeque<Message>,
-	) {
+	fn nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::AddTransaction);
-
-		let resize = ipp.keyboard.key(resize);
-		let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 
 		let can_move = |layer| {
 			let selected = self.network_interface.selected_nodes();
 			selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
 		};
 
-		// Nudge translation without resizing
-		if !resize {
-			let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
-			responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
-
-			for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-				responses.add(GraphOperationMessage::TransformChange {
-					layer,
-					transform,
-					transform_in: TransformIn::Local,
-					skip_rerender: false,
-				});
-			}
-
-			return;
-		}
-
-		let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
-		let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
-
-		// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
-		let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
-		let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
-			0 => (delta_x, delta_y, false, false),
-			1 => (delta_y, -delta_x, false, true),
-			2 => (-delta_x, -delta_y, true, true),
-			3 => (-delta_y, delta_x, true, false),
-			_ => unreachable!(),
-		};
-
-		let size = existing_bottom_right - existing_top_left;
-		// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
-		// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
-		let size = size.max(DVec2::ONE);
-		let enlargement = DVec2::new(
-			if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
-			if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
-		);
-		let enlargement_factor = (enlargement + size) / size;
-
-		let position = DVec2::new(
-			existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
-			existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
-		);
-		let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
-		if !pivot.x.is_finite() {
-			pivot.x = 0.;
-		}
-		if !pivot.y.is_finite() {
-			pivot.y = 0.;
-		}
-		let scale = DAffine2::from_scale(enlargement_factor);
-		let pivot = DAffine2::from_translation(pivot);
-		let transformation = pivot * scale * pivot.inverse();
-		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-			let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-			let original_transform = self.metadata().upstream_transform(layer.to_node());
-			let new = to.inverse() * transformation * to * original_transform;
-			responses.add(GraphOperationMessage::TransformSet {
+			responses.add(GraphOperationMessage::TransformChange {
 				layer,
-				transform: new,
+				transform,
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});

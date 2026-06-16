@@ -133,7 +133,7 @@ pub enum ShapeToolMessage {
 	IncreaseSides,
 	DecreaseSides,
 
-	NudgeSelectedLayers { delta_x: f64, delta_y: f64, resize: Key, resize_opposite_corner: Key },
+	NudgeSelectedLayers { delta_x: f64, delta_y: f64 },
 }
 
 fn create_sides_widget(vertices: u32) -> WidgetInstance {
@@ -994,21 +994,8 @@ impl Fsm for ShapeToolFsmState {
 				}
 				self
 			}
-			(
-				ShapeToolFsmState::Ready(_),
-				ShapeToolMessage::NudgeSelectedLayers {
-					delta_x,
-					delta_y,
-					resize,
-					resize_opposite_corner,
-				},
-			) => {
-				responses.add(DocumentMessage::NudgeSelectedLayers {
-					delta_x,
-					delta_y,
-					resize,
-					resize_opposite_corner,
-				});
+			(ShapeToolFsmState::Ready(_), ShapeToolMessage::NudgeSelectedLayers { delta_x, delta_y }) => {
+				responses.add(DocumentMessage::NudgeSelectedLayers { delta_x, delta_y });
 
 				self
 			}
