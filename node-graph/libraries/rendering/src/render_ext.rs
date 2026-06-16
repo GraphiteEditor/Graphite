@@ -119,7 +119,7 @@ impl RenderExt for List<GradientStops> {
 		let start = transform_points.transform_point2(DVec2::ZERO);
 		let end = transform_points.transform_point2(DVec2::X);
 
-		let gradient_transform = if transformed_bounds.matrix2.determinant() != 0. {
+		let gradient_transform = if transformed_bounds.matrix2.determinant().recip().is_finite() {
 			transformed_bounds.inverse()
 		} else {
 			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
