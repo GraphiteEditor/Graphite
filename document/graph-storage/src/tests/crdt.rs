@@ -22,11 +22,10 @@ fn remove_node_op(node_id: NodeId) -> RegistryDelta {
 fn commit_op(document: &mut Document, op: RegistryDelta) {
 	let reverse = document.compute_reverse_delta(RegistryTarget::Working, &op).expect("compute_reverse_delta failed");
 	let timestamp = document.clock.tick();
-	let parents = if document.head == 0 { Vec::new() } else { vec![document.head] };
-	let delta = Delta::new(parents, document.peer, timestamp, op, reverse);
+	let delta = Delta::new(document.head, document.peer, timestamp, op, reverse);
 	let rev = delta.id;
 	document.apply_delta(delta).expect("apply_retired_delta failed");
-	document.head = rev;
+	document.head = Some(rev);
 }
 
 /// Every applied op must advance the local clock past the op's timestamp, so any subsequent
@@ -117,17 +116,17 @@ fn verify_history_detects_rev_mismatch() {
 
 	session.verify_history().expect("a freshly built history must validate");
 
-	// Tamper one delta's stored id (the field, not its key) so it no longer matches its content hash.
-	let some_rev = *session.document.history.keys().next().expect("history is non-empty");
-	session.document.history.get_mut(&some_rev).expect("delta exists").id = 0xdead_beef;
+	// Tamper one delta's stored id so it no longer matches its content hash.
+	session.document.history.first_mut().expect("history is non-empty").id = crate::Rev::new(0xdead_beef).unwrap();
 
 	assert!(matches!(session.verify_history(), Err(crate::CrdtError::RevMismatch { .. })), "a tampered delta id must be flagged");
 }
 
-/// `history_topological` emits parents before children and is a pure function of the delta set:
-/// two sessions independently built from the same network produce byte-identical history order.
+/// History iteration emits parents before children and is a pure function of the delta set: two
+/// sessions independently built from the same network produce byte-identical history order. (The
+/// append-order invariant guarantees this directly, with no separate topological sort.)
 #[test]
-fn history_topological_is_causal_and_deterministic() {
+fn history_is_causal_and_deterministic() {
 	let resources = graphene_resource::ResourceRegistry::new();
 
 	let build = || {
@@ -141,21 +140,97 @@ fn history_topological_is_causal_and_deterministic() {
 	let session_a = build();
 	let session_b = build();
 
-	let order_a: Vec<crate::Rev> = session_a.history_topological().iter().map(|delta| delta.id).collect();
-	let order_b: Vec<crate::Rev> = session_b.history_topological().iter().map(|delta| delta.id).collect();
+	let order_a: Vec<crate::Rev> = session_a.history().map(|delta| delta.id).collect();
+	let order_b: Vec<crate::Rev> = session_b.history().map(|delta| delta.id).collect();
 
 	assert!(order_a.len() > 1, "expected a multi-delta history to make ordering meaningful");
-	assert_eq!(order_a, order_b, "same delta set must serialize in the same topological order");
+	assert_eq!(order_a, order_b, "same delta set must serialize in the same order");
 
 	// Every parent that's part of this history precedes its child.
 	let position: std::collections::HashMap<crate::Rev, usize> = order_a.iter().enumerate().map(|(i, rev)| (*rev, i)).collect();
-	for delta in session_a.history_topological() {
-		for parent in &delta.parents {
-			if let Some(parent_pos) = position.get(parent) {
-				assert!(*parent_pos < position[&delta.id], "parent {parent} must precede child {} in topological order", delta.id);
+	for delta in session_a.history() {
+		for parent in delta.all_parents() {
+			if let Some(parent_pos) = position.get(&parent) {
+				assert!(*parent_pos < position[&delta.id], "parent {parent} must precede child {} in order", delta.id);
 			}
 		}
 	}
+}
+
+fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
+	RegistryDelta::ChangeDocumentAttribute {
+		delta: crate::AttributeDelta {
+			key: key.to_string(),
+			value: Some(serde_json::json!(value)),
+		},
+	}
+}
+
+/// Two peers that each integrate the other's concurrent branch converge to byte-identical history:
+/// the merge commit is parent-set-addressed (same `Rev` on both) and the canonical sort erases the
+/// arrival-order difference. Exercises `Session::merge`, the `Merge` variant, and `canonical_sort`.
+#[test]
+fn merge_converges_to_identical_history() {
+	// Shared base commit, then a concurrent edit on each peer's own clone of that base.
+	let mut session_a = Session::with_peer(PeerId(1));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
+	let mut session_b = session_a.clone();
+
+	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
+	session_b.commit_op_for_test(set_document_attribute("compute::b", 2)).expect("B edit");
+
+	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
+	let deltas_a = session_a.cloned_deltas();
+	let deltas_b = session_b.cloned_deltas();
+	let merge_a = session_a.merge(deltas_b).expect("merge into A failed").expect("A produced a merge");
+	let merge_b = session_b.merge(deltas_a).expect("merge into B failed").expect("B produced a merge");
+
+	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
+
+	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
+	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
+	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
+	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
+}
+
+/// Resurrection must reach into a merged-in branch: a network added then removed on the other peer's
+/// branch lives only under the merge's secondary parent, so a `SetNetworkExport` targeting it after
+/// the merge can only restore it by traversing all ancestors (not the primary-parent chain).
+#[test]
+fn resurrection_reaches_across_a_merge() {
+	let network_id = NetworkId(7);
+
+	// Shared base, then peer B adds and removes network 7 on its own branch.
+	let mut session_a = Session::with_peer(PeerId(1));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
+	let mut session_b = session_a.clone();
+
+	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
+	session_b
+		.commit_op_for_test(RegistryDelta::AddNetwork {
+			id: network_id,
+			network: Network::default(),
+		})
+		.expect("B AddNetwork");
+	session_b
+		.commit_op_for_test(RegistryDelta::RemoveNetwork {
+			id: network_id,
+			snapshot: Network::default(),
+		})
+		.expect("B RemoveNetwork");
+
+	// A merges B's branch: 7's AddNetwork now lives only under the merge's secondary parent.
+	session_a.merge(session_b.cloned_deltas()).expect("merge failed");
+
+	// A SetNetworkExport on 7 must resurrect it by walking into the merged-in branch. Before the
+	// all-ancestors fix this failed with NetworkNotInHistory (the primary-parent walk missed B's branch).
+	session_a
+		.commit_op_for_test(RegistryDelta::SetNetworkExport {
+			id: network_id,
+			index: 0,
+			export: None,
+		})
+		.expect("resurrection must find the AddNetwork on the merged-in branch");
 }
 
 /// Committing the same NodeNetwork twice must produce zero history entries on the second commit.
@@ -758,12 +833,12 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	let forward: Vec<&str> = keys.to_vec();
 	let reversed: Vec<&str> = keys.iter().rev().copied().collect();
 
-	let parents = vec![1, 2];
+	let parent = crate::Rev::new(1);
 	let author = PeerId(7);
 	let timestamp = TimeStamp { counter: 42, peer: PeerId(7) };
 
 	let delta_forward = Delta::new(
-		parents.clone(),
+		parent,
 		author,
 		timestamp,
 		RegistryDelta::AddNode {
@@ -776,7 +851,7 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 		},
 	);
 	let delta_reversed = Delta::new(
-		parents,
+		parent,
 		author,
 		timestamp,
 		RegistryDelta::AddNode {
