@@ -377,7 +377,7 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
-fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<peniko::Brush> {
+fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
@@ -395,33 +395,25 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 	let bounds = parent_vector.nonzero_bounding_box();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let inverse_parent_transform = if transform_is_invertible(*parent_transform) {
-		parent_transform.inverse()
-	} else {
-		Default::default()
-	};
-	let mod_points = inverse_parent_transform * multiplied_transform * bound_transform * gradient_transform;
-
-	let start = mod_points.transform_point2(DVec2::ZERO);
-	let end = mod_points.transform_point2(DVec2::X);
+	// Map the unit gradient to device space with the full transform.
+	// Keeping the whole matrix so a non-uniform transform applies to the gradient, which can make a radial gradient into an ellipse.
+	// For a linear gradient, vello only uses the axis and always renders perpendicular bands, so the full matrix is equivalent to the two endpoints.
+	let gradient_to_device = multiplied_transform * bound_transform * gradient_transform;
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
 			GradientType::Linear => peniko::LinearGradientPosition {
-				start: to_point(start),
-				end: to_point(end),
+				start: to_point(DVec2::ZERO),
+				end: to_point(DVec2::X),
 			}
 			.into(),
-			GradientType::Radial => {
-				let radius = start.distance(end);
-				peniko::RadialGradientPosition {
-					start_center: to_point(start),
-					start_radius: 0.,
-					end_center: to_point(start),
-					end_radius: radius as f32,
-				}
-				.into()
+			GradientType::Radial => peniko::RadialGradientPosition {
+				start_center: to_point(DVec2::ZERO),
+				start_radius: 0.,
+				end_center: to_point(DVec2::ZERO),
+				end_radius: 1.,
 			}
+			.into(),
 		},
 		extend: match spread_method {
 			GradientSpreadMethod::Pad => peniko::Extend::Pad,
@@ -433,7 +425,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 		..Default::default()
 	});
 
-	Some(brush)
+	Some((brush, gradient_to_device))
 }
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
@@ -1352,7 +1344,7 @@ impl Render for List<Vector> {
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
 						Graphic::Gradient(list) => {
-							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, element, &multiplied_transform) else {
 								continue;
 							};
 
@@ -1361,7 +1353,7 @@ impl Render for List<Vector> {
 							} else {
 								Default::default()
 							};
-							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
 						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
@@ -1434,7 +1426,7 @@ impl Render for List<Vector> {
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 						}
 						Graphic::Gradient(list) => {
-							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, element, &multiplied_transform) else {
 								continue;
 							};
 							let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -1442,7 +1434,7 @@ impl Render for List<Vector> {
 							} else {
 								Default::default()
 							};
-							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
