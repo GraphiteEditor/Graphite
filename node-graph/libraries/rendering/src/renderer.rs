@@ -356,7 +356,6 @@ fn emit_svg_fill_path(
 	element_transform: DAffine2,
 	applied_stroke_transform: DAffine2,
 	bounds_matrix: DAffine2,
-	transformed_bounds_matrix: DAffine2,
 	render_params: &RenderParams,
 ) {
 	render.leaf_tag("path", |attributes| {
@@ -367,18 +366,7 @@ fn emit_svg_fill_path(
 		}
 		let defs = &mut attributes.0.svg_defs;
 		let fill_attribute = fill_graphic_list
-			.map(|list| {
-				list.render(
-					defs,
-					item_transform,
-					element_transform,
-					applied_stroke_transform,
-					bounds_matrix,
-					transformed_bounds_matrix,
-					render_params,
-					PaintTarget::Fill,
-				)
-			})
+			.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
@@ -1084,7 +1072,6 @@ impl Render for List<Vector> {
 			let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
 
 			let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
-			let transformed_bounds_matrix = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 			let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
 			let mut path = String::new();
@@ -1126,7 +1113,6 @@ impl Render for List<Vector> {
 					element_transform,
 					applied_stroke_transform,
 					bounds_matrix,
-					transformed_bounds_matrix,
 					render_params,
 				);
 			}
@@ -1158,7 +1144,6 @@ impl Render for List<Vector> {
 						element_transform,
 						applied_stroke_transform,
 						bounds_matrix,
-						transformed_bounds_matrix,
 						render_params,
 					);
 				}
@@ -1207,16 +1192,7 @@ impl Render for List<Vector> {
 					.stroke()
 					.map(|stroke| {
 						if stroke_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
-							stroke.render(
-								defs,
-								item_transform,
-								element_transform,
-								applied_stroke_transform,
-								bounds_matrix,
-								transformed_bounds_matrix,
-								&render_params,
-								PaintTarget::Stroke,
-							)
+							stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 						} else {
 							String::new()
 						}
@@ -1235,16 +1211,7 @@ impl Render for List<Vector> {
 								Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
 								_ => stroke_bounds_matrix,
 							};
-							list.render(
-								defs,
-								item_transform,
-								element_transform,
-								applied_stroke_transform,
-								paint_bounds,
-								transformed_bounds_matrix,
-								&render_params,
-								PaintTarget::Stroke,
-							)
+							list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
 						})
 						.unwrap_or_else(|| r#" stroke="none""#.to_string())
 				} else {
@@ -1256,18 +1223,7 @@ impl Render for List<Vector> {
 				} else {
 					fill_graphic_list
 						.as_deref()
-						.map(|list| {
-							list.render(
-								defs,
-								item_transform,
-								element_transform,
-								applied_stroke_transform,
-								bounds_matrix,
-								transformed_bounds_matrix,
-								&render_params,
-								PaintTarget::Fill,
-							)
-						})
+						.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
 						.unwrap_or_else(|| r#" fill="none""#.to_string())
 				};
 
@@ -1303,7 +1259,6 @@ impl Render for List<Vector> {
 					element_transform,
 					applied_stroke_transform,
 					bounds_matrix,
-					transformed_bounds_matrix,
 					render_params,
 				);
 			}

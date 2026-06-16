@@ -4,7 +4,7 @@ use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
@@ -45,7 +45,6 @@ pub trait RenderExt {
 		element_transform: DAffine2,
 		stroke_transform: DAffine2,
 		bounds: DAffine2,
-		transformed_bounds: DAffine2,
 		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output;
@@ -61,7 +60,6 @@ impl RenderExt for List<Color> {
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_transformed_bounds: DAffine2,
 		_render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
@@ -85,11 +83,10 @@ impl RenderExt for List<GradientStops> {
 	fn render(
 		&self,
 		svg_defs: &mut String,
-		_item_transform: DAffine2,
+		item_transform: DAffine2,
 		element_transform: DAffine2,
-		stroke_transform: DAffine2,
+		_stroke_transform: DAffine2,
 		bounds: DAffine2,
-		transformed_bounds: DAffine2,
 		_render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
@@ -97,7 +94,7 @@ impl RenderExt for List<GradientStops> {
 
 		let Some(stops) = self.element(0) else { return 0 };
 		let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
-		let gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
@@ -115,16 +112,30 @@ impl RenderExt for List<GradientStops> {
 			stop.push_str(" />")
 		}
 
-		let transform_points = element_transform * stroke_transform * bounds * gradient_transform;
-		let start = transform_points.transform_point2(DVec2::ZERO);
-		let end = transform_points.transform_point2(DVec2::X);
-
-		let gradient_transform = if transform_is_invertible(transformed_bounds) {
-			transformed_bounds.inverse()
+		// Need to cancel out the element's transform as it is already applied to the path itself.
+		let element_transform_inverse = if transform_is_invertible(element_transform) {
+			element_transform.inverse()
 		} else {
-			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
+			DAffine2::IDENTITY
 		};
-		let gradient_transform = format_transform_matrix(gradient_transform);
+
+		let document_transform = item_transform * bounds * local_gradient_transform;
+
+		let placement = match gradient_type {
+			// A sheared linear gradient is not expressible in vello, no matter what transform is applied to the vector or the brush.
+			// So to keep the SVG rendering consistent with vello, we replace the second column of the document transform
+			// with the perpendicular vector of the first column, which makes the gradient band always perpendicular to the axis, the same way vello renders it.
+			GradientType::Linear => {
+				let axis = document_transform.matrix2.x_axis;
+				DAffine2 {
+					matrix2: DMat2::from_cols(axis, axis.perp()),
+					translation: document_transform.translation,
+				}
+			}
+			// Radial is 2D, and both vello and SVG can keep the full matrix so a non-uniform/skewed transform makes an ellipse.
+			GradientType::Radial => document_transform,
+		};
+		let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
 		let gradient_transform = if gradient_transform.is_empty() {
 			String::new()
 		} else {
@@ -143,16 +154,15 @@ impl RenderExt for List<GradientStops> {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{spread_method}{gradient_transform}>{}</linearGradient>"#,
-					gradient_id, start.x, start.y, end.x, end.y, stop
+					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
+					gradient_id, stop
 				);
 			}
 			GradientType::Radial => {
-				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{spread_method}{gradient_transform}>{}</radialGradient>"#,
-					gradient_id, start.x, start.y, radius, stop
+					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
+					gradient_id, stop
 				);
 			}
 		}
@@ -172,7 +182,6 @@ impl RenderExt for Stroke {
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
-		_transformed_bounds: DAffine2,
 		render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
@@ -233,7 +242,6 @@ impl RenderExt for List<Graphic> {
 		element_transform: DAffine2,
 		stroke_transform: DAffine2,
 		bounds: DAffine2,
-		transformed_bounds: DAffine2,
 		render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
@@ -241,9 +249,9 @@ impl RenderExt for List<Graphic> {
 		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
-			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params, target),
+			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
 			Some(Graphic::Gradient(gradient_list)) => {
-				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params, target);
+				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) => {
