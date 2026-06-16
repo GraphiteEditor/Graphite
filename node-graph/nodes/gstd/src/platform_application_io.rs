@@ -261,8 +261,13 @@ where
 	)
 }
 
+#[node_macro::node(category(""), inject_scope)]
+pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a PlatformEditorApi {
+	editor_api
+}
+
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> Resource {
+pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[editor_api::IDENTIFIER] editor_api: &'a PlatformEditorApi) -> Resource {
 	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
 	application_io.load_resource(hash).await.unwrap_or_else(|| {
 		panic!("Resource {hash} not found");
@@ -270,6 +275,11 @@ pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope("editor-a
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
+pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[editor_api::IDENTIFIER] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
 	editor_api.application_io.as_ref().unwrap().gpu_executor().expect("GPU executor not available")
+}
+
+#[node_macro::node(category(""), inject_scope)]
+pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[editor_api::IDENTIFIER] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
+	editor_api.application_io.as_ref().unwrap().gpu_executor()
 }

@@ -75,7 +75,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 #[node_macro::node(category(""))]
 async fn render<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: &'a WgpuExecutor,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	data: RenderIntermediate,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
@@ -133,6 +133,7 @@ async fn render<'a: 'n>(
 			}
 
 			let texture = executor
+				.expect("GPU executor not available")
 				.render_vello_scene(&transformed_scene, physical_resolution, context, None)
 				.await
 				.expect("Failed to render Vello scene");
