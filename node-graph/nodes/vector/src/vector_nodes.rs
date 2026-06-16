@@ -294,7 +294,6 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	let do_rotation = random_rotation.abs() > 1e-6;
 
 	for row in points.into_iter() {
-
 		let points_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		for &point in row.element().point_domain.positions() {
 			let translation = points_transform.transform_point2(point);
@@ -3146,56 +3145,73 @@ mod test {
 
 	#[tokio::test]
 	async fn copy_to_points_unique_randomization() {
-		// Regression test for RNG reset bug: ensure random values are unique across multiple paths
-		// Create two separate paths with 2 points each
+		// Regression test for RNG reset bug
+		//
+		// BUG: RNG was reinitialized inside the outer loop (for each path/row), causing the same
+		// random sequence to be generated for each separate path.
+		//
+		// This test uses TWO SEPARATE PATHS. If the bug exists, the first point of path1
+		// and the first point of path2 will get IDENTICAL random values because RNG resets.
+
+		// Create two separate rectangular paths (each produces 4 corner points)
 		let path1 = Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY);
 		let path2 = Rect::new(100., 100., 110., 110.).to_path(DEFAULT_ACCURACY);
-		
-		// Combine both paths into the points input
-		let mut combined_path = path1.clone();
-		combined_path.extend(path2);
-		
+
+		// Create a List with two separate rows (each row is a separate path iteration)
+		let mut points = List::new();
+		points.push(create_vector_item(path1, DAffine2::IDENTITY));
+		points.push(create_vector_item(path2, DAffine2::IDENTITY));
+
 		let element = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
-		
-		// Call with randomization enabled (scale and rotation)
+
+		// Call with strong randomization to make differences obvious
 		let result = super::copy_to_points(
-			Footprint::default(), 
-			vector_node_from_bezpath(combined_path), 
-			vector_node_from_bezpath(element), 
+			Footprint::default(),
+			points,
+			vector_node_from_bezpath(element),
 			0.5,   // random_scale_min
-			1.5,   // random_scale_max
-			0.0,   // random_scale_bias (uniform)
+			1.5,   // random_scale_max (wide range)
+			0.0,   // random_scale_bias (uniform distribution)
 			42,    // random_scale_seed
-			180.0, // random_rotation (degrees)
+			180.0, // random_rotation (wide range in degrees)
 			123,   // random_rotation_seed
-		).await;
-		
-		let flattened = super::flatten_path(Footprint::default(), result).await;
-		let vector = flattened.element(0).unwrap();
-		
-		// We should have 8 regions (4 points from path1 + 4 points from path2, each getting a rect)
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
-		
-		// Extract the first manipulator from each region to check for randomization differences
-		let anchors: Vec<DVec2> = vector
-			.region_manipulator_groups()
-			.map(|(_, manips)| manips[0].anchor)
-			.collect();
-		
-		// With the bug fixed, the first point of the second path (index 4) should NOT be identical 
-		// to the first point of the first path (index 0) when accounting for their base positions
-		// Check that there's variation in the pattern (not all differences are identical)
-		let diff_0_1 = (anchors[0] - anchors[1]).length();
-		let diff_4_5 = (anchors[4] - anchors[5]).length();
-		
-		// These differences should NOT be exactly identical (within very tight tolerance)
-		// If RNG was reset, the pattern would repeat exactly
+		)
+		.await;
+
+		// We have 8 total copies (4 points per rectangle × 2 rectangles)
+		assert_eq!(result.len(), 8, "Should have 8 copies total");
+
+		// Extract transforms from all copies
+		let transforms: Vec<DAffine2> = (0..result.len()).map(|i| result.attribute_cloned_or_default(ATTR_TRANSFORM, i)).collect();
+
+		// Extract scales (length of transform's x-axis vector)
+		let scales: Vec<f64> = transforms.iter().map(|t| DVec2::new(t.matrix2.x_axis.x, t.matrix2.x_axis.y).length()).collect();
+
+		// Extract rotations (angle of transform's x-axis vector)
+		let rotations: Vec<f64> = transforms.iter().map(|t| DVec2::new(t.matrix2.x_axis.x, t.matrix2.x_axis.y).to_angle()).collect();
+
+		// CRITICAL TEST: Compare first point of path1 (index 0) with first point of path2 (index 4)
+		// If RNG is reset between paths, these will be IDENTICAL
+		let scale_diff = (scales[0] - scales[4]).abs();
+		let rotation_diff = (rotations[0] - rotations[4]).abs();
+
 		assert!(
-			(diff_0_1 - diff_4_5).abs() > 0.001,
-			"Random values appear to be repeating across paths (potential RNG reset bug). \
-			 Difference 0-1: {}, Difference 4-5: {}",
-			diff_0_1, diff_4_5
+			scale_diff > 0.01 || rotation_diff > 0.01,
+			"RNG RESET BUG DETECTED: First points of different paths have identical random values!\n\
+			 Path1 Point1: scale={:.4}, rotation={:.4}\n\
+			 Path2 Point1: scale={:.4}, rotation={:.4}\n\
+			 Scale diff: {:.6}, Rotation diff: {:.6}\n\
+			 This indicates RNG is being reinitialized for each path.",
+			scales[0],
+			rotations[0],
+			scales[4],
+			rotations[4],
+			scale_diff,
+			rotation_diff
 		);
+
+		// Additional verification: values should vary within each path too
+		assert!((scales[0] - scales[1]).abs() > 0.001, "Sequential points within same path should have different scales");
 	}
 
 	#[tokio::test]
