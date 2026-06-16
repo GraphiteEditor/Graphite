@@ -1,6 +1,6 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
-use document_format::{Codec, Gdd, GddV1, Layout, Manifest, OpenError, io, manifest};
+use document_format::{Codec, Error, Gdd, GddV1, Layout, Manifest, io, manifest};
 use graph_storage::{HotOp, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
 
 fn empty_container() -> AnyContainer {
@@ -68,7 +68,7 @@ fn open_in_rejects_wrong_format_magic() {
 		io::write_single(&container, layout.manifest_basename(), Codec::Json, &bogus).unwrap();
 
 		match Gdd::<GddV1>::open_in(container, layout).await {
-			Err(OpenError::WrongFormat { .. }) => {}
+			Err(Error::WrongFormat { .. }) => {}
 			Ok(_) => panic!("expected WrongFormat, got Ok"),
 			Err(other) => panic!("expected WrongFormat, got {other:?}"),
 		}
@@ -241,7 +241,7 @@ fn export_zip_round_trips_via_deserialize() {
 
 #[test]
 fn export_rejects_invalid_options() {
-	use document_format::{ExportError, ExportFormat, ExportOptions};
+	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
 		let gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(1), 0xEF, "ed".into(), "std".into())
@@ -257,7 +257,7 @@ fn export_rejects_invalid_options() {
 		};
 
 		match gdd.export(&dest, ExportFormat::Folder, options, &empty_byte_store()).await {
-			Err(ExportError::InvalidOptions(_)) => {}
+			Err(Error::InvalidExportOptions(_)) => {}
 			Ok(_) => panic!("expected InvalidOptions, got Ok"),
 			Err(other) => panic!("expected InvalidOptions, got {other:?}"),
 		}
@@ -497,7 +497,7 @@ fn open_in_rejects_future_format_version() {
 		io::write_single(&container, layout.manifest_basename(), Codec::Json, &future_version).unwrap();
 
 		match Gdd::<GddV1>::open_in(container, layout).await {
-			Err(OpenError::UnsupportedVersion { .. }) => {}
+			Err(Error::UnsupportedVersion { .. }) => {}
 			Ok(_) => panic!("expected UnsupportedVersion, got Ok"),
 			Err(other) => panic!("expected UnsupportedVersion, got {other:?}"),
 		}

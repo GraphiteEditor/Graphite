@@ -10,9 +10,10 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SessionState {
-	/// Local-chain cursor. Points at the most recently applied retired delta.
+	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
+	/// document (no commits yet).
 	#[serde(default)]
-	pub head_rev: Rev,
+	pub head_rev: Option<Rev>,
 	/// Revs the user has undone past, so redo survives a reopen. (The legacy `VecDeque` redo history
 	/// is not persisted, so within the shadow phase this is strictly more capable than the live editor.)
 	#[serde(default)]

@@ -4,9 +4,8 @@
 //! Mutations flow through `Gdd` to keep the session and the on-disk working copy mirrored.
 //! Export is a separate, explicit operation — see [`export::ExportFormat`].
 //!
-//! See `notes/disk-container-format.md` for the design rationale.
+//! See the "On-disk container" section of `node-graph/rfcs/document-format.md` for the format spec.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 // `Path`, `Archive`, and `FolderBackend` are only used by the native-only path-based open/create
 // and filesystem export, so they're gated off wasm to avoid unused-import warnings.
@@ -18,11 +17,12 @@ use document_container::archive::Archive;
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
-use graph_storage::{CommitError, CrdtError, Delta, HotOp, NodeMetadataSource, PeerId, Registry, Rev, Session, TimeStamp};
+use graph_storage::{CommitError, Delta, HotOp, NodeMetadataSource, PeerId, Registry, Rev, Session, TimeStamp};
 use graphene_resource::ResourceFuture;
 use graphene_resource::{LoadResource, Resource, ResourceHash, ResourceStorage};
 
 pub mod codec;
+pub mod error;
 pub mod export;
 pub mod io;
 pub mod layout;
@@ -30,6 +30,7 @@ pub mod manifest;
 pub mod session_state;
 
 pub use codec::{Codec, CodecError};
+pub use error::Error;
 pub use export::{ExportFormat, ExportOptions};
 pub use io::ReadError;
 pub use layout::{GddV1, Layout};
@@ -86,7 +87,7 @@ impl<L: Layout + Default> Gdd<L> {
 	/// Open an existing working copy at `path`. Validates the manifest, materializes the session
 	/// from `registry.bin` (fast path) or by replaying `history.jsonl` (slow path), then applies
 	/// the persisted hot log on top.
-	pub async fn open(path: &Path) -> Result<Self, OpenError> {
+	pub async fn open(path: &Path) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::open(path)?);
 		let layout = L::default();
 		Self::open_in(working, layout).await
@@ -94,7 +95,7 @@ impl<L: Layout + Default> Gdd<L> {
 
 	/// Create a fresh, empty working copy at `path` bound to `peer`. Writes a default manifest
 	/// and session state; the caller fills in editor metadata via [`Gdd::update_manifest`].
-	pub async fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, OpenError> {
+	pub async fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::create(path)?);
 		let layout = L::default();
 		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version).await
@@ -107,7 +108,7 @@ impl<L: Layout> Gdd<L> {
 	/// (the archive reader is synchronous), then each entry is written into `working` via the sync
 	/// `write_non_blocking` surface — durable on folder/memory, eagerly enqueued on OPFS. `working` is
 	/// expected to be a fresh per-document container; entries with colliding paths are overwritten.
-	pub async fn open_from_archive(bytes: &[u8], working: AnyContainer, layout: L) -> Result<Self, OpenError> {
+	pub async fn open_from_archive(bytes: &[u8], working: AnyContainer, layout: L) -> Result<Self, Error> {
 		use document_container::AsyncContainer;
 		use document_container::Container;
 		use document_container::backends::memory::MemoryBackend;
@@ -130,7 +131,11 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Backend-agnostic open. Splits out so tests can supply a [`document_container::backends::memory::MemoryBackend`].
-	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, OpenError> {
+	///
+	/// # Errors
+	/// [`Error::WrongFormat`] / [`Error::UnsupportedVersion`] if the manifest fails validation, plus
+	/// the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
+	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, Error> {
 		let manifest: Manifest = io::read_single(&working, layout.manifest_basename(), MANIFEST_CODEC).await?;
 		validate_manifest(&manifest)?;
 		let codecs = manifest.codecs;
@@ -146,15 +151,8 @@ impl<L: Layout> Gdd<L> {
 		let mut session = match (has_registry, has_history) {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				let history_map: HashMap<Rev, Delta> = load_history(&working, &layout, codecs.history).await?.into_iter().map(|delta| (delta.id, delta)).collect();
-				Session::load(
-					manifest.peer_id,
-					registry,
-					history_map,
-					session_state.head_rev,
-					session_state.redo_stack,
-					session_state.next_node_counter,
-				)
+				let history = load_history(&working, &layout, codecs.history).await?;
+				Session::load(manifest.peer_id, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
@@ -178,7 +176,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
-	pub async fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, OpenError> {
+	pub async fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let manifest = Manifest::new(document_uuid, peer, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
@@ -198,15 +196,15 @@ impl<L: Layout> Gdd<L> {
 	}
 }
 
-fn validate_manifest(manifest: &Manifest) -> Result<(), OpenError> {
+fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {
 	if manifest.format != manifest::FORMAT_MAGIC {
-		return Err(OpenError::WrongFormat {
+		return Err(Error::WrongFormat {
 			found: manifest.format.clone(),
 			expected: manifest::FORMAT_MAGIC,
 		});
 	}
 	if manifest.format_version > manifest::SUPPORTED_FORMAT_VERSION {
-		return Err(OpenError::UnsupportedVersion {
+		return Err(Error::UnsupportedVersion {
 			found: manifest.format_version,
 			max_supported: manifest::SUPPORTED_FORMAT_VERSION,
 		});
@@ -214,14 +212,14 @@ fn validate_manifest(manifest: &Manifest) -> Result<(), OpenError> {
 	Ok(())
 }
 
-async fn load_history<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec) -> Result<Vec<Delta>, OpenError> {
+async fn load_history<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec) -> Result<Vec<Delta>, Error> {
 	if !io::exists(working, layout.history_basename(), codec).await {
 		return Ok(Vec::new());
 	}
 	Ok(io::iter::<Delta>(working, layout.history_basename(), codec).await?)
 }
 
-async fn replay_hot_log<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec, session: &mut Session) -> Result<(), OpenError> {
+async fn replay_hot_log<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec, session: &mut Session) -> Result<(), Error> {
 	if !io::exists(working, layout.hot_log_basename(), codec).await {
 		return Ok(());
 	}
@@ -247,7 +245,7 @@ impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
 	/// the undone `Rev`. The working registry is rewound in place by the reverse delta, so re-snapshot it
 	/// (alongside `head`) or a reopen would read a `registry.bin` inconsistent with the persisted cursor.
-	pub fn undo(&mut self) -> Result<Rev, UndoError> {
+	pub fn undo(&mut self) -> Result<Rev, Error> {
 		let rev = self.session.undo()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
@@ -255,7 +253,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Re-apply the most-recently-undone commit and persist the new cursor and re-snapshotted registry.
-	pub fn redo(&mut self) -> Result<Rev, UndoError> {
+	pub fn redo(&mut self) -> Result<Rev, Error> {
 		let rev = self.session.redo()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
@@ -302,7 +300,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Edit the cached manifest and persist it. Always JSON, synchronous.
-	pub fn update_manifest(&mut self, edit: impl FnOnce(&mut Manifest)) -> Result<(), OpenError> {
+	pub fn update_manifest(&mut self, edit: impl FnOnce(&mut Manifest)) -> Result<(), Error> {
 		edit(&mut self.manifest);
 		io::write_single(&self.working, self.layout.manifest_basename(), MANIFEST_CODEC, &self.manifest)?;
 		Ok(())
@@ -313,13 +311,18 @@ impl<L: Layout> Gdd<L> {
 	/// declaration bytes. The working registry reflects the edit immediately, but nothing enters durable
 	/// retired history until [`retire_pending_gesture`](Self::retire_pending_gesture). Staging on every
 	/// edit while retiring only at gesture boundaries lets several edits coalesce into one retired gesture.
+	///
+	/// # Errors
+	/// [`Error::Commit`] if the runtime diff is rejected by the session. On an [`Error::Container`] /
+	/// [`Error::Codec`] from persisting the hot frames, the session has already advanced past what the
+	/// working copy reflects, so the caller should treat the document as needing re-persist.
 	pub fn stage_runtime_snapshot<M: NodeMetadataSource>(
 		&mut self,
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<(), CommitFromRuntimeError> {
+	) -> Result<(), Error> {
 		let (hot_ops, declaration_bytes) = self.session.stage_from_runtime(network, metadata, resources)?;
 
 		for hot_op in &hot_ops {
@@ -339,7 +342,7 @@ impl<L: Layout> Gdd<L> {
 	/// delta as the gesture boundary), then re-snapshot the registry. One gesture is one undo unit, so
 	/// the caller invokes this at each undo-step boundary and before any undo/redo. A no-op when there
 	/// are no pending hot ops.
-	pub fn retire_pending_gesture(&mut self) -> Result<Vec<Rev>, RetireError> {
+	pub fn retire_pending_gesture(&mut self) -> Result<Vec<Rev>, Error> {
 		let Some(up_to) = self.session.hot_log().iter().map(|hot_op| hot_op.timestamp).max() else {
 			return Ok(Vec::new());
 		};
@@ -356,9 +359,9 @@ impl<L: Layout> Gdd<L> {
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<Vec<Rev>, CommitFromRuntimeError> {
+	) -> Result<Vec<Rev>, Error> {
 		self.stage_runtime_snapshot(network, metadata, resources, byte_store)?;
-		Ok(self.retire_pending_gesture()?)
+		self.retire_pending_gesture()
 	}
 
 	/// Resolve the proto-node declarations referenced by the registry into a [`graph_storage::Declarations`]
@@ -397,7 +400,11 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Apply a hot op from the broadcast stream, appending one frame to the hot log.
-	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), CrdtError> {
+	///
+	/// # Errors
+	/// Returns [`Error::Crdt`] if the op is rejected by the session. A failure to persist the hot
+	/// frame is logged, not returned.
+	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), Error> {
 		self.session.apply_hot_op(op.clone())?;
 		if let Err(error) = self.append_hot_frame(&op) {
 			log::error!("Failed to append hot op frame: {error}");
@@ -409,7 +416,7 @@ impl<L: Layout> Gdd<L> {
 	/// hot frame (so a crash before retirement still recovers the work), then retires up to the last
 	/// staged timestamp, which drains exactly these ops and re-snapshots the registry. Returns the
 	/// retired `Rev`s. A no-op when nothing was staged.
-	fn append_and_retire(&mut self, hot_ops: &[HotOp], gesture: bool) -> Result<Vec<Rev>, RetireError> {
+	fn append_and_retire(&mut self, hot_ops: &[HotOp], gesture: bool) -> Result<Vec<Rev>, Error> {
 		let Some(last) = hot_ops.last() else { return Ok(Vec::new()) };
 
 		for hot_op in hot_ops {
@@ -419,9 +426,10 @@ impl<L: Layout> Gdd<L> {
 		self.retire_inner(last.timestamp, gesture)
 	}
 
-	/// Encode the history deltas identified by `revs` and append them to the history file.
-	/// Single pass over the history (O(history length)), filtering by `revs` membership.
-	fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), OpenError> {
+	/// Encode the history deltas identified by `revs` and append them to the history file. Iterates
+	/// `session.history()` (topological/append order) filtered by `revs` membership, so the appended
+	/// frames preserve replay order regardless of the order `revs` lists them in.
+	fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), Error> {
 		let wanted: std::collections::HashSet<Rev> = revs.iter().copied().collect();
 		let mut buffer = Vec::new();
 		for delta in self.session.history().filter(|delta| wanted.contains(&delta.id)) {
@@ -435,24 +443,25 @@ impl<L: Layout> Gdd<L> {
 	/// Unlike the per-gesture marker written inline at retire, this targets an already-written delta, so
 	/// the whole history file is rewritten in topological order. O(history) — fine for occasional user
 	/// labeling, not for per-gesture marking (which uses the inline path). No-op if `rev` is unknown.
-	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> Result<(), OpenError> {
+	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
 		}
 		Ok(())
 	}
 
-	/// Rewrite the entire history file from the in-memory session, in deterministic topological order.
-	fn rewrite_history(&mut self) -> Result<(), OpenError> {
+	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
+	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
+	fn rewrite_history(&mut self) -> Result<(), Error> {
 		let mut buffer = Vec::new();
-		for delta in self.session.history_topological() {
+		for delta in self.session.history() {
 			self.manifest.codecs.history.append(&mut buffer, delta)?;
 		}
 		self.working.write_non_blocking(&io::path_for(self.layout.history_basename(), self.manifest.codecs.history), &buffer)?;
 		Ok(())
 	}
 
-	fn persist_session_state(&mut self) -> Result<(), OpenError> {
+	fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			head_rev: self.session.head_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
@@ -468,7 +477,7 @@ impl<L: Layout> Gdd<L> {
 	/// registry to match the persisted `head`, so any cursor move (undo/redo) that rewinds the working
 	/// registry without retiring must re-persist it or a reopen would read a registry inconsistent with
 	/// `head`. Synchronous and hot-path-safe (`write_non_blocking`).
-	fn persist_registry_snapshot(&mut self) -> Result<(), OpenError> {
+	fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
 		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
 		Ok(())
 	}
@@ -481,7 +490,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Replace the per-peer view settings and persist them to `session.json`. Called by the editor when
 	/// the viewport or a document-level toggle changes; never enters the registry, history, or CRDT.
-	pub fn set_view_settings(&mut self, view_settings: std::collections::HashMap<String, serde_json::Value>) -> Result<(), OpenError> {
+	pub fn set_view_settings(&mut self, view_settings: std::collections::HashMap<String, serde_json::Value>) -> Result<(), Error> {
 		self.view_settings = view_settings;
 		self.persist_session_state()
 	}
@@ -494,15 +503,12 @@ impl<L: Layout> Gdd<L> {
 
 	/// Replace the per-network view settings and persist them to `session.json`. Per-peer, per-network; never
 	/// enters the registry, history, or CRDT.
-	pub fn set_network_view_settings(
-		&mut self,
-		network_view_settings: std::collections::HashMap<graph_storage::NetworkId, std::collections::HashMap<String, serde_json::Value>>,
-	) -> Result<(), OpenError> {
+	pub fn set_network_view_settings(&mut self, network_view_settings: std::collections::HashMap<graph_storage::NetworkId, std::collections::HashMap<String, serde_json::Value>>) -> Result<(), Error> {
 		self.network_view_settings = network_view_settings;
 		self.persist_session_state()
 	}
 
-	fn append_hot_frame(&mut self, op: &HotOp) -> Result<(), OpenError> {
+	fn append_hot_frame(&mut self, op: &HotOp) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		self.manifest.codecs.hot_log.append(&mut buffer, op)?;
 		self.working.append_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &buffer)?;
@@ -512,13 +518,13 @@ impl<L: Layout> Gdd<L> {
 	/// Working-copy checkpoint: promote hot ops with timestamp `≤ up_to` into retired deltas,
 	/// append them to the history file, rewrite the hot log with remaining (unretired) ops,
 	/// re-snapshot the registry, and bump `last_retired_at` on the manifest. Synchronous.
-	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, RetireError> {
+	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
 		self.retire_inner(up_to, false)
 	}
 
 	/// `gesture`: mark the batch's last delta as a gesture boundary (one undo unit) before its history
 	/// frame is written, so the marker persists on reopen without a later frame rewrite.
-	fn retire_inner(&mut self, up_to: TimeStamp, gesture: bool) -> Result<Vec<Rev>, RetireError> {
+	fn retire_inner(&mut self, up_to: TimeStamp, gesture: bool) -> Result<Vec<Rev>, Error> {
 		let new_revs = self.session.retire(up_to)?;
 
 		// Mark before `append_history_deltas` so the on-disk frame carries the boundary.
@@ -570,7 +576,7 @@ impl<L: Layout> Gdd<L> {
 	/// `DataSource::Embedded` source resolved to the content hash) through the session so the registry
 	/// records the resource and the entry replicates, then writes the bytes into the working copy's
 	/// content-addressed store. The caller owns `id` allocation.
-	pub fn add_resource(&mut self, id: graph_storage::ResourceId, bytes: &[u8]) -> Result<(), AddResourceError> {
+	pub fn add_resource(&mut self, id: graph_storage::ResourceId, bytes: &[u8]) -> Result<(), Error> {
 		let hash = ResourceHash::from(bytes);
 
 		let hot_ops = self.session.stage_embedded_resource(id, hash)?;
@@ -584,7 +590,7 @@ impl<L: Layout> Gdd<L> {
 	/// than buffering them. Folder backends use `fs::copy` (CoW on supported filesystems); other
 	/// backends fall back to read-then-write. Native-only: there is no filesystem source path on wasm.
 	#[cfg(not(target_family = "wasm"))]
-	pub fn add_resource_from_path(&mut self, id: graph_storage::ResourceId, hash: ResourceHash, src: &Path) -> Result<(), AddResourceError> {
+	pub fn add_resource_from_path(&mut self, id: graph_storage::ResourceId, hash: ResourceHash, src: &Path) -> Result<(), Error> {
 		let hot_ops = self.session.stage_embedded_resource(id, hash)?;
 		self.append_and_retire(&hot_ops, false)?;
 
@@ -646,9 +652,13 @@ impl<L: Layout> Gdd<L> {
 	/// `byte_store` is the source for `embed_all_resources`: in the editor the working copy holds no
 	/// resource bytes (they live in the app-global cache), so embedding resolves each registry hash
 	/// through the store. It is unused when `embed_all_resources` is false.
+	///
+	/// # Errors
+	/// [`Error::InvalidExportOptions`] if the options are incoherent, or [`Error::MissingResource`] if
+	/// an embedded resource's bytes are absent from `byte_store`.
 	#[cfg(not(target_family = "wasm"))]
-	pub async fn export(&self, dest: &Path, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource) -> Result<(), ExportError> {
-		options.validate().map_err(ExportError::InvalidOptions)?;
+	pub async fn export(&self, dest: &Path, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource) -> Result<(), Error> {
+		options.validate().map_err(Error::InvalidExportOptions)?;
 
 		match format {
 			ExportFormat::Folder => {
@@ -683,14 +693,14 @@ impl<L: Layout> Gdd<L> {
 	/// `legacy_document`, when present, is embedded verbatim at `Layout::legacy_basename()`, so the
 	/// produced `.gdd` carries the legacy `.graphite` fallback the dual-write soak relies on.
 	/// `ExportFormat::Folder` has no single-file byte form and is rejected.
-	pub async fn export_to_bytes(&self, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource, legacy_document: Option<&[u8]>) -> Result<Vec<u8>, ExportError> {
+	pub async fn export_to_bytes(&self, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource, legacy_document: Option<&[u8]>) -> Result<Vec<u8>, Error> {
 		use document_container::archive::Archive;
 
-		options.validate().map_err(ExportError::InvalidOptions)?;
+		options.validate().map_err(Error::InvalidExportOptions)?;
 
 		let cursor = std::io::Cursor::new(Vec::new());
 		let buffer = match format {
-			ExportFormat::Folder => return Err(ExportError::InvalidOptions("folder export has no single-file byte form")),
+			ExportFormat::Folder => return Err(Error::InvalidExportOptions("folder export has no single-file byte form")),
 			ExportFormat::Zip => {
 				let mut writer = document_container::archive::Zip::writer(cursor)?;
 				self.stream_entries(options, byte_store, &mut writer).await?;
@@ -716,7 +726,7 @@ impl<L: Layout> Gdd<L> {
 	/// copy's recorded per-payload codecs (no re-encode), so registry stays single-value and history
 	/// stays multi-value without the caller having to keep them coherent. Each entry is written one
 	/// at a time so the sink only ever sees one payload's bytes; the manifest itself is always JSON.
-	async fn stream_entries(&self, options: ExportOptions, byte_store: &dyn LoadResource, sink: &mut dyn ExportSink) -> Result<(), ExportError> {
+	async fn stream_entries(&self, options: ExportOptions, byte_store: &dyn LoadResource, sink: &mut dyn ExportSink) -> Result<(), Error> {
 		use document_container::AsyncContainer;
 
 		let codecs = self.manifest.codecs;
@@ -760,13 +770,17 @@ impl<L: Layout> Gdd<L> {
 			}
 		}
 
+		// Multiple resource entries can resolve to the same content hash; dedup so each is loaded once.
+		hashes_from_store.sort_unstable();
+		hashes_from_store.dedup();
+
 		// Load the gap from the byte store (fail fast if an embedded resource is missing), then commit
 		// the link promotions as real `AddSource` deltas on the clone so the exported registry and
 		// history stay consistent. The live `Gdd` is untouched.
 		let mut embedded_bytes: Vec<(ResourceHash, Resource)> = Vec::new();
 		for hash in hashes_from_store {
 			let Some(resource) = byte_store.load(hash).await else {
-				return Err(ExportError::MissingResource(hash));
+				return Err(Error::MissingResource(hash));
 			};
 			embedded_bytes.push((hash, resource));
 		}
@@ -781,7 +795,7 @@ impl<L: Layout> Gdd<L> {
 
 		if options.include_history {
 			let mut buffer = Vec::new();
-			for delta in export_session.history_topological() {
+			for delta in export_session.history() {
 				codecs.history.append(&mut buffer, delta)?;
 			}
 			if !buffer.is_empty() {
@@ -858,20 +872,32 @@ impl<L: Layout + Send + Sync> ResourceStorage for Gdd<L> {
 	}
 
 	fn garbage_collect(&self, used: &[ResourceHash]) {
-		let kept: std::collections::HashSet<&ResourceHash> = used.iter().collect();
-		let hashes = match futures::executor::block_on(self.resource_hashes()) {
-			Ok(hashes) => hashes,
-			Err(error) => {
-				log::error!("Failed to list resources during garbage_collect: {error}");
-				return;
-			}
-		};
-		for hash in hashes {
-			if kept.contains(&hash) {
-				continue;
-			}
-			if let Err(error) = self.working.remove_non_blocking(&self.layout.resource_path(&hash)) {
-				log::error!("ResourceStorage::garbage_collect failed to remove {hash}: {error}");
+		// `garbage_collect` is synchronous but listing resources is async, so the native path blocks on
+		// it. That's unavailable on wasm (single-threaded; `block_on` would deadlock). The editor never
+		// uses `Gdd` as the runtime `ResourceStorage` on wasm (it GCs the app-global cache instead), so
+		// this is an unreachable configuration there rather than a missing feature.
+		#[cfg(target_family = "wasm")]
+		{
+			let _ = used;
+			log::error!("ResourceStorage::garbage_collect is not supported for Gdd on wasm");
+		}
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let kept: std::collections::HashSet<&ResourceHash> = used.iter().collect();
+			let hashes = match futures::executor::block_on(self.resource_hashes()) {
+				Ok(hashes) => hashes,
+				Err(error) => {
+					log::error!("Failed to list resources during garbage_collect: {error}");
+					return;
+				}
+			};
+			for hash in hashes {
+				if kept.contains(&hash) {
+					continue;
+				}
+				if let Err(error) = self.working.remove_non_blocking(&self.layout.resource_path(&hash)) {
+					log::error!("ResourceStorage::garbage_collect failed to remove {hash}: {error}");
+				}
 			}
 		}
 	}
@@ -885,14 +911,14 @@ impl<L: Layout + Send + Sync> ResourceStorage for Gdd<L> {
 /// `Send` because `stream_entries` holds `&mut dyn ExportSink` across `.await`s, so the enclosing
 /// future (e.g. the editor's save future) must be `Send` on native. The concrete sinks are all `Send`.
 trait ExportSink: Send {
-	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), ExportError>;
+	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), Error>;
 
 	/// Copy a file from disk into the sink. Default impl reads the source into memory and
 	/// forwards to `write_entry`; sinks like the folder writer override to use `fs::copy`
 	/// (CoW on supported filesystems, kernel-side copy otherwise). Native-only: only reachable
 	/// for an `External` (mmap'd) holder, which doesn't exist on wasm.
 	#[cfg(not(target_family = "wasm"))]
-	fn write_entry_from_path(&mut self, path: &str, src: &std::path::Path) -> Result<(), ExportError> {
+	fn write_entry_from_path(&mut self, path: &str, src: &std::path::Path) -> Result<(), Error> {
 		let bytes = std::fs::read(src).map_err(document_container::ContainerError::Io)?;
 		self.write_entry(path, &bytes)
 	}
@@ -905,12 +931,12 @@ struct FolderSink<'a> {
 
 #[cfg(not(target_family = "wasm"))]
 impl ExportSink for FolderSink<'_> {
-	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), ExportError> {
+	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), Error> {
 		document_container::Container::write(self.folder, path, bytes)?;
 		Ok(())
 	}
 
-	fn write_entry_from_path(&mut self, path: &str, src: &std::path::Path) -> Result<(), ExportError> {
+	fn write_entry_from_path(&mut self, path: &str, src: &std::path::Path) -> Result<(), Error> {
 		document_container::validate_path(path)?;
 		let dest = self.folder.root().join(path);
 		if let Some(parent) = dest.parent() {
@@ -922,7 +948,7 @@ impl ExportSink for FolderSink<'_> {
 }
 
 impl<W: std::io::Write + std::io::Seek + Send> ExportSink for document_container::archive::ZipWriter<W> {
-	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), ExportError> {
+	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), Error> {
 		use document_container::archive::ArchiveWriter;
 		ArchiveWriter::write_entry(self, path, bytes)?;
 		Ok(())
@@ -930,89 +956,9 @@ impl<W: std::io::Write + std::io::Seek + Send> ExportSink for document_container
 }
 
 impl<W: std::io::Write + std::io::Seek + Send> ExportSink for document_container::archive::XzWriter<W> {
-	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), ExportError> {
+	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), Error> {
 		use document_container::archive::ArchiveWriter;
 		ArchiveWriter::write_entry(self, path, bytes)?;
 		Ok(())
 	}
-}
-
-/// Errors from [`Gdd::open`] / [`Gdd::create`]. Per design, any unexpected condition is a hard error.
-#[derive(Debug, thiserror::Error)]
-pub enum OpenError {
-	#[error("container error: {0}")]
-	Container(#[from] ContainerError),
-	#[error("read error: {0}")]
-	Read(#[from] ReadError),
-	#[error("not a .gdd document (manifest format = {found:?}, expected {expected:?})")]
-	WrongFormat { found: String, expected: &'static str },
-	#[error("unsupported format version: found {found}, max supported {max_supported}")]
-	UnsupportedVersion { found: u32, max_supported: u32 },
-	#[error("codec error: {0}")]
-	Codec(#[from] CodecError),
-	#[error("CRDT error: {0}")]
-	Crdt(#[from] CrdtError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum RetireError {
-	#[error("container error: {0}")]
-	Container(#[from] ContainerError),
-	#[error("read error: {0}")]
-	Read(#[from] ReadError),
-	#[error("codec error: {0}")]
-	Codec(#[from] CodecError),
-	#[error("CRDT error: {0}")]
-	Crdt(#[from] CrdtError),
-	#[error("manifest update failed: {0}")]
-	Manifest(#[from] OpenError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum UndoError {
-	#[error("CRDT error: {0}")]
-	Crdt(#[from] CrdtError),
-	#[error("failed to persist cursor: {0}")]
-	Persist(#[from] OpenError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum AddResourceError {
-	#[error("container error: {0}")]
-	Container(#[from] ContainerError),
-	#[error("CRDT error: {0}")]
-	Crdt(#[from] CrdtError),
-	#[error("failed to retire registration: {0}")]
-	Retire(#[from] RetireError),
-}
-
-/// A commit staged into the in-memory session but its on-disk persistence failed. The session has
-/// advanced past what the working copy reflects; callers should treat the document as needing
-/// re-persist (or surface the failure) rather than assuming the snapshot is durable.
-#[derive(Debug, thiserror::Error)]
-pub enum CommitFromRuntimeError {
-	#[error("failed to stage runtime snapshot: {0}")]
-	Stage(#[from] CommitError),
-	#[error("failed to persist staged hot frames: {0}")]
-	Persist(#[from] OpenError),
-	#[error("failed to retire staged hot ops: {0}")]
-	Retire(#[from] RetireError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ExportError {
-	#[error("container error: {0}")]
-	Container(#[from] ContainerError),
-	#[error("read error: {0}")]
-	Read(#[from] ReadError),
-	#[error("open error: {0}")]
-	Open(#[from] OpenError),
-	#[error("codec error: {0}")]
-	Codec(#[from] CodecError),
-	#[error("invalid export options: {0}")]
-	InvalidOptions(&'static str),
-	#[error("embedded resource {0} missing from the byte store")]
-	MissingResource(ResourceHash),
-	#[error("CRDT error: {0}")]
-	Crdt(#[from] CrdtError),
 }
