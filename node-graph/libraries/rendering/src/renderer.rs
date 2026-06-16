@@ -21,7 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1353,9 +1353,9 @@ impl Render for List<Vector> {
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = element.style.stroke();
-			let can_draw_aligned_stroke = !is_stroke_fully_transparent_at(self, index)
-				&& stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered())
-				&& element.stroke_bezier_paths().all(|p| p.closed());
+			let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
+			let can_draw_aligned_stroke =
+				!stroke_fully_transparent && stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -1700,13 +1700,7 @@ impl Render for List<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
-	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL) {
-		graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
-	} else if let Some(vector) = vector_list.element(index) {
-		!matches!(vector.style.fill(), Fill::None)
-	} else {
-		false
-	};
+	let filled = has_paint_at(vector_list, index, ATTR_FILL) || vector_list.element(index).is_some_and(|vector| !matches!(vector.style.fill(), Fill::None));
 
 	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
 	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
