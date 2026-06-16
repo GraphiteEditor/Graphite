@@ -689,10 +689,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::BlendSelectedLayers => {
-				self.handle_group_selected_layers(GroupFolderType::Blend, responses);
+				self.group_selected_layers(GroupFolderType::Blend, responses);
 			}
 			DocumentMessage::MorphSelectedLayers => {
-				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
+				self.group_selected_layers(GroupFolderType::Morph, responses);
 			}
 			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
 				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
@@ -713,10 +713,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.handle_expand_fill_stroke_on_selected_layers(responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
-				self.handle_group_selected_layers(group_folder_type, responses);
+				self.group_selected_layers(group_folder_type, responses);
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
-				self.handle_move_selected_layers_to(parent, insert_index, responses);
+				self.move_selected_layers_to(parent, insert_index, responses);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -741,7 +741,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				resize,
 				resize_opposite_corner,
 			} => {
-				self.handle_nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
+				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
@@ -2441,9 +2441,7 @@ impl DocumentMessageHandler {
 		folder_id
 	}
 
-	/// Helper method for GroupSelectedLayers message.
-	/// Handles grouping layers in both artboard and non-artboard workflows.
-	fn handle_group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
+	fn group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::AddTransaction);
 
 		let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
@@ -2585,9 +2583,7 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Helper method for MoveSelectedLayersTo message.
-	/// Handles moving selected layers to a new parent with proper transform preservation.
-	fn handle_move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
+	fn move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
 		if !self.selection_network_path.is_empty() {
 			log::error!("Moving selected layers is only supported for the Document Network");
 			return;
@@ -2681,10 +2677,8 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 	}
 
-	/// Helper method for NudgeSelectedLayers message.
-	/// Handles keyboard nudging of selected layers with optional resize mode.
 	#[allow(clippy::too_many_arguments)]
-	fn handle_nudge_selected_layers(
+	fn nudge_selected_layers(
 		&mut self,
 		delta_x: f64,
 		delta_y: f64,
