@@ -1,6 +1,6 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
-use document_format::{Codec, Error, Gdd, GddV1, Layout, Manifest, io, manifest};
+use document_format::{Codec, Error, GddV1, GddV1Layout, Layout, Manifest, io, manifest};
 use graph_storage::{HotOp, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
 
 fn empty_container() -> AnyContainer {
@@ -40,13 +40,13 @@ fn create_in_round_trips_empty_document() {
 	futures::executor::block_on(async {
 		let container = empty_container();
 
-		let created = match Gdd::<GddV1>::create_in(container, GddV1, PeerId(7), 0xFEED, "editor-x".into(), "stdlib-x".into()).await {
+		let created = match GddV1::create_in(container, GddV1Layout, PeerId(7), 0xFEED, "editor-x".into(), "stdlib-x".into()).await {
 			Ok(gdd) => gdd,
 			Err(error) => panic!("create_in failed: {error:?}"),
 		};
 
 		let (working, layout) = created.into_storage();
-		let reopened = match Gdd::<GddV1>::open_in(working, layout).await {
+		let reopened = match GddV1::open_in(working, layout).await {
 			Ok(gdd) => gdd,
 			Err(error) => panic!("open_in failed: {error:?}"),
 		};
@@ -61,13 +61,13 @@ fn create_in_round_trips_empty_document() {
 fn open_in_rejects_wrong_format_magic() {
 	futures::executor::block_on(async {
 		let container = empty_container();
-		let layout = GddV1;
+		let layout = GddV1Layout;
 
 		let mut bogus = Manifest::new(0xC0DE, PeerId(1), "ed".into(), "std".into());
 		bogus.format = "not-gdd".into();
 		io::write_single(&container, layout.manifest_basename(), Codec::Json, &bogus).unwrap();
 
-		match Gdd::<GddV1>::open_in(container, layout).await {
+		match GddV1::open_in(container, layout).await {
 			Err(Error::WrongFormat { .. }) => {}
 			Ok(_) => panic!("expected WrongFormat, got Ok"),
 			Err(other) => panic!("expected WrongFormat, got {other:?}"),
@@ -78,7 +78,7 @@ fn open_in_rejects_wrong_format_magic() {
 #[test]
 fn manifest_returns_what_create_in_wrote() {
 	futures::executor::block_on(async {
-		let gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(13), 0xC0FFEE, "ed-1.2".into(), "std-0.7".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(13), 0xC0FFEE, "ed-1.2".into(), "std-0.7".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -94,7 +94,7 @@ fn manifest_returns_what_create_in_wrote() {
 #[test]
 fn update_manifest_changes_visible_after_reopen() {
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -102,7 +102,7 @@ fn update_manifest_changes_visible_after_reopen() {
 			.unwrap_or_else(|error| panic!("update_manifest failed: {error:?}"));
 
 		let (working, layout) = gdd.into_storage();
-		let reopened = Gdd::<GddV1>::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
 		let manifest = reopened.manifest();
 		assert_eq!(manifest.editor_version, "ed-NEW");
 	});
@@ -111,7 +111,7 @@ fn update_manifest_changes_visible_after_reopen() {
 #[test]
 fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -129,7 +129,7 @@ fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 		assert!(gdd.registry().networks.contains_key(&ROOT_NETWORK), "hot op should have created the root network in memory");
 
 		let (working, layout) = gdd.into_storage();
-		let reopened = Gdd::<GddV1>::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
 
 		assert!(reopened.registry().networks.contains_key(&ROOT_NETWORK), "hot op should have been replayed from the hot log on reopen");
 	});
@@ -138,7 +138,7 @@ fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 #[test]
 fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -170,7 +170,7 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 
 		// Reopen and confirm survival: hot log has the late op (replayed), history has the early op.
 		let (working, layout) = gdd.into_storage();
-		let reopened = Gdd::<GddV1>::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
 
 		assert!(reopened.registry().networks.contains_key(&ROOT_NETWORK), "retired op's effect should be in registry");
 		assert!(reopened.registry().networks.contains_key(&NetworkId(42)), "hot op's effect should be replayed");
@@ -187,7 +187,7 @@ fn export_folder_round_trips_through_open() {
 	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
-		let gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(3), 0xAB, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(3), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -206,7 +206,7 @@ fn export_folder_round_trips_through_open() {
 		assert!(!dest.join("hot-log.frames").exists());
 
 		// And the export is itself openable.
-		let reopened = Gdd::<GddV1>::open(&dest).await.unwrap_or_else(|error| panic!("open failed: {error:?}"));
+		let reopened = GddV1::open(&dest).await.unwrap_or_else(|error| panic!("open failed: {error:?}"));
 		assert_eq!(reopened.session().peer(), PeerId(3));
 	});
 }
@@ -217,7 +217,7 @@ fn export_zip_round_trips_via_deserialize() {
 	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
-		let gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(4), 0xCD, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(4), 0xCD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -244,7 +244,7 @@ fn export_rejects_invalid_options() {
 	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
-		let gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(1), 0xEF, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xEF, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -269,7 +269,7 @@ fn resource_round_trip_add_read_remove() {
 	use graphene_resource::{ResourceHash, ResourceId};
 
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(99), 0xCAFE, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(99), 0xCAFE, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -301,7 +301,7 @@ fn resource_survives_reopen() {
 	use graphene_resource::{ResourceHash, ResourceId};
 
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(7), 0xC0DE, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(7), 0xC0DE, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -311,7 +311,7 @@ fn resource_survives_reopen() {
 		gdd.add_resource(id, payload).unwrap();
 
 		let (working, layout) = gdd.into_storage();
-		let reopened = Gdd::<GddV1>::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
 
 		assert!(reopened.has_resource(&hash).await);
 		assert_eq!(reopened.read_resource(&hash).await.unwrap().as_slice(), payload);
@@ -332,7 +332,7 @@ fn resource_from_path_uses_fs_copy_on_folder_backend() {
 		// Need a folder-backed working copy to exercise the fs::copy path.
 		let working_dir = tempfile::tempdir().unwrap();
 		let working = AnyContainer::Folder(FolderBackend::create(working_dir.path()).unwrap());
-		let mut gdd = Gdd::<GddV1>::create_in(working, GddV1, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(working, GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -358,7 +358,7 @@ fn export_carries_resources() {
 	use graphene_resource::{ResourceHash, ResourceId};
 
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(2), 0xBC, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(2), 0xBC, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -388,7 +388,7 @@ fn embed_all_resources_materializes_link_only_resource() {
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(8), 0xF00D, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(8), 0xF00D, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -431,7 +431,7 @@ fn embed_all_resources_materializes_link_only_resource() {
 
 		// Reopen the export: the registry chain now leads with Embedded, keeping the URL as fallback,
 		// and the bytes are resolvable from the export itself with no byte store.
-		let reopened = Gdd::<GddV1>::open(&dest).await.unwrap_or_else(|error| panic!("open export failed: {error:?}"));
+		let reopened = GddV1::open(&dest).await.unwrap_or_else(|error| panic!("open export failed: {error:?}"));
 		assert!(reopened.has_resource(&hash).await, "embedded bytes should be resolvable from the export");
 
 		let entry = reopened.registry().resources.get(&id).expect("resource entry survived export");
@@ -454,7 +454,7 @@ fn export_materializes_embedded_resource_from_byte_store() {
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(9), 0xBEEF, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(9), 0xBEEF, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -490,13 +490,13 @@ fn export_materializes_embedded_resource_from_byte_store() {
 fn open_in_rejects_future_format_version() {
 	futures::executor::block_on(async {
 		let container = empty_container();
-		let layout = GddV1;
+		let layout = GddV1Layout;
 
 		let mut future_version = Manifest::new(0xC0DE, PeerId(1), "ed".into(), "std".into());
 		future_version.format_version = manifest::SUPPORTED_FORMAT_VERSION + 1;
 		io::write_single(&container, layout.manifest_basename(), Codec::Json, &future_version).unwrap();
 
-		match Gdd::<GddV1>::open_in(container, layout).await {
+		match GddV1::open_in(container, layout).await {
 			Err(Error::UnsupportedVersion { .. }) => {}
 			Ok(_) => panic!("expected UnsupportedVersion, got Ok"),
 			Err(other) => panic!("expected UnsupportedVersion, got {other:?}"),
@@ -507,7 +507,7 @@ fn open_in_rejects_future_format_version() {
 #[test]
 fn create_in_records_default_codecs_in_manifest() {
 	futures::executor::block_on(async {
-		let gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -530,7 +530,7 @@ fn first_commit_registers_peer_and_survives_reopen() {
 	use graphene_resource::ResourceRegistry;
 
 	futures::executor::block_on(async {
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(21), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(21), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -554,7 +554,7 @@ fn first_commit_registers_peer_and_survives_reopen() {
 		assert_eq!(gdd.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "first commit registers the peer");
 
 		let (working, layout) = gdd.into_storage();
-		let reopened = Gdd::<GddV1>::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
 		assert_eq!(reopened.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "registration survives reopen");
 	});
 }
@@ -566,7 +566,7 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 	futures::executor::block_on(async {
 		use document_container::AsyncContainer;
 
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -584,7 +584,7 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 		assert!(working.exists(&io::path_for(layout.hot_log_basename(), Codec::MessagePackFrames)).await);
 		assert!(working.exists(&io::path_for(layout.manifest_basename(), Codec::Json)).await);
 
-		let reopened = Gdd::<GddV1>::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
 		assert!(reopened.registry().networks.contains_key(&ROOT_NETWORK));
 	});
 }
@@ -619,7 +619,7 @@ fn declarations_round_trip_through_byte_store() {
 			..Default::default()
 		};
 
-		let mut gdd = Gdd::<GddV1>::create_in(empty_container(), GddV1, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 

@@ -21,9 +21,9 @@ pub trait Layout {
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-pub struct GddV1;
+pub struct GddV1Layout;
 
-impl Layout for GddV1 {
+impl Layout for GddV1Layout {
 	fn manifest_basename(&self) -> &str {
 		"manifest"
 	}
