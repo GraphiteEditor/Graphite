@@ -1,4 +1,4 @@
-//! Export options. Walking the working copy through an archive codec / re-encoding payloads.
+//! Export options. Walking the working copy through an archive codec, keeping payloads as-is.
 //! Implementation lives on [`crate::Gdd::export`].
 
 /// Export wrapping. Payloads keep the working copy's recorded per-payload codecs (see

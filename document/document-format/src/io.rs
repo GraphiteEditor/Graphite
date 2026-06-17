@@ -53,7 +53,7 @@ async fn read_bytes(container: &AnyContainer, basename: &str, codec: Codec) -> R
 
 /// Encode `value` with `codec` and write to `{basename}.{ext}`. Synchronous: the write goes through
 /// the container's sync write surface (durable on folder/memory, enqueued on OPFS).
-pub fn write_single<T: Serialize>(container: &AnyContainer, basename: &str, codec: Codec, value: &T) -> Result<(), ReadError> {
+pub fn write_single<T: Serialize>(container: &AnyContainer, basename: &str, codec: Codec, value: &T) -> Result<(), crate::Error> {
 	let bytes = codec.write_single(value)?;
 	container.write_non_blocking(&path_for(basename, codec), &bytes)?;
 	Ok(())

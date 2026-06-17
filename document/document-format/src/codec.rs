@@ -113,8 +113,11 @@ impl Codec {
 	pub fn read_single<T: DeserializeOwned>(self, bytes: &[u8]) -> Result<T, CodecError> {
 		let mut iter = self.iter::<T>(bytes);
 		let first = iter.next().ok_or(CodecError::Empty)??;
-		if iter.next().is_some() {
-			return Err(CodecError::ExpectedSingle);
+		match iter.next() {
+			// A trailing decode error is more informative than `ExpectedSingle`, so surface it.
+			Some(Err(error)) => return Err(error),
+			Some(Ok(_)) => return Err(CodecError::ExpectedSingle),
+			None => {}
 		}
 		Ok(first)
 	}

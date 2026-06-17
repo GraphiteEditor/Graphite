@@ -579,10 +579,10 @@ impl<L: Layout> Gdd<L> {
 	pub fn add_resource(&mut self, id: graph_storage::ResourceId, bytes: &[u8]) -> Result<(), Error> {
 		let hash = ResourceHash::from(bytes);
 
+		self.working.write_non_blocking(&self.layout.resource_path(&hash), bytes)?;
+
 		let hot_ops = self.session.stage_embedded_resource(id, hash)?;
 		self.append_and_retire(&hot_ops, false)?;
-
-		self.working.write_non_blocking(&self.layout.resource_path(&hash), bytes)?;
 		Ok(())
 	}
 
@@ -591,9 +591,6 @@ impl<L: Layout> Gdd<L> {
 	/// backends fall back to read-then-write. Native-only: there is no filesystem source path on wasm.
 	#[cfg(not(target_family = "wasm"))]
 	pub fn add_resource_from_path(&mut self, id: graph_storage::ResourceId, hash: ResourceHash, src: &Path) -> Result<(), Error> {
-		let hot_ops = self.session.stage_embedded_resource(id, hash)?;
-		self.append_and_retire(&hot_ops, false)?;
-
 		let dest_path = self.layout.resource_path(&hash);
 		if let AnyContainer::Folder(folder) = self.working.as_ref() {
 			let full = folder.root().join(&dest_path);
@@ -601,11 +598,13 @@ impl<L: Layout> Gdd<L> {
 				std::fs::create_dir_all(parent).map_err(ContainerError::Io)?;
 			}
 			std::fs::copy(src, &full).map_err(ContainerError::Io)?;
-			return Ok(());
+		} else {
+			let bytes = std::fs::read(src).map_err(ContainerError::Io)?;
+			self.working.write_non_blocking(&dest_path, &bytes)?;
 		}
 
-		let bytes = std::fs::read(src).map_err(ContainerError::Io)?;
-		self.working.write_non_blocking(&dest_path, &bytes)?;
+		let hot_ops = self.session.stage_embedded_resource(id, hash)?;
+		self.append_and_retire(&hot_ops, false)?;
 		Ok(())
 	}
 
@@ -643,9 +642,9 @@ impl<L: Layout> Gdd<L> {
 		Ok(hashes)
 	}
 
-	/// Build a self-contained export of the working copy: re-encodes typed payloads with the
-	/// chosen codec, omits session/hot-log (peer-local + ephemeral), copies resources straight
-	/// through, then materializes as a folder, zip, or xz archive at `dest`. Does not mutate
+	/// Build a self-contained export of the working copy: keeps typed payloads in their recorded
+	/// codecs (no re-encode), omits session/hot-log (peer-local + ephemeral), copies resources
+	/// straight through, then materializes as a folder, zip, or xz archive at `dest`. Does not mutate
 	/// `self` and does not buffer the full export — resources stream end-to-end. Native-only:
 	/// export writes to a filesystem path.
 	///
