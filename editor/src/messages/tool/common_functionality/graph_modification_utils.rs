@@ -337,10 +337,8 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 			.map(|footprint| footprint.transform)
 			.unwrap_or(metadata.document_to_viewport);
 	}
-	let multiplied = metadata.transform_to_viewport(layer);
-	let bounds = metadata.nonzero_bounding_box(layer);
-	let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-	multiplied * bound_transform
+
+	metadata.transform_to_viewport(layer)
 }
 
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely

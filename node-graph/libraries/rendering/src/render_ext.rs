@@ -86,7 +86,7 @@ impl RenderExt for List<GradientStops> {
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
-		bounds: DAffine2,
+		_bounds: DAffine2,
 		_render_params: &RenderParams,
 		_target: PaintTarget,
 	) -> Self::Output {
@@ -119,7 +119,7 @@ impl RenderExt for List<GradientStops> {
 			DAffine2::IDENTITY
 		};
 
-		let document_transform = item_transform * bounds * local_gradient_transform;
+		let document_transform = item_transform * local_gradient_transform;
 
 		let placement = match gradient_type {
 			// A sheared linear gradient is not expressible in vello, no matter what transform is applied to the vector or the brush.

@@ -377,7 +377,7 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
-fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
@@ -392,13 +392,10 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 		});
 	}
 
-	let bounds = parent_vector.nonzero_bounding_box();
-	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
 	// Map the unit gradient to device space with the full transform.
 	// Keeping the whole matrix so a non-uniform transform applies to the gradient, which can make a radial gradient into an ellipse.
 	// For a linear gradient, vello only uses the axis and always renders perpendicular bands, so the full matrix is equivalent to the two endpoints.
-	let gradient_to_device = multiplied_transform * bound_transform * gradient_transform;
+	let gradient_to_device = multiplied_transform * gradient_transform;
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
@@ -1344,7 +1341,7 @@ impl Render for List<Vector> {
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
 						Graphic::Gradient(list) => {
-							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, element, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
 
@@ -1426,7 +1423,7 @@ impl Render for List<Vector> {
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 						}
 						Graphic::Gradient(list) => {
-							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, element, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
 							let inverse_element_transform = if transform_is_invertible(element_transform) {
