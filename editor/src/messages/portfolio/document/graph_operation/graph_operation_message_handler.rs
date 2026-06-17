@@ -11,7 +11,6 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::descriptor;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
-use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
@@ -684,7 +683,6 @@ fn import_usvg_node_inner(
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
 fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	let subpaths = convert_usvg_path(path);
-	let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 
 	// Skip creating a Transform node entirely when the SVG-native transform is identity.
 	let node_transform = usvg_transform(node.abs_transform());
@@ -697,8 +695,7 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 
 	if let Some(fill) = path.fill() {
-		let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		apply_usvg_fill(fill, modify_inputs, bounds_transform, graphite_gradient_stops);
+		apply_usvg_fill(fill, modify_inputs, graphite_gradient_stops);
 	}
 	if let Some(stroke) = path.stroke() {
 		apply_usvg_stroke(stroke, modify_inputs, node_transform);
@@ -797,14 +794,13 @@ fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMet
 	}
 }
 
-fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) {
+fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
 		usvg::Paint::LinearGradient(linear) => {
 			let gradient_transform = usvg_transform(linear.transform());
 			let (start, end) = (DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64));
 			let (start, end) = (gradient_transform.transform_point2(start), gradient_transform.transform_point2(end));
-			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
 
 			let gradient_type = GradientType::Linear;
 
@@ -834,7 +830,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
 			let edge = center + DVec2::X * radial.r().get() as f64;
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
-			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
 
 			let gradient_type = GradientType::Radial;
 
