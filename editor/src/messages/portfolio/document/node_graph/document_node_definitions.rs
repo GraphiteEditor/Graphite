@@ -922,7 +922,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::import(concrete!(String), 1)],
+								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(concrete!(String), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
 								..Default::default()
 							},
@@ -1249,22 +1249,17 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::scope(platform_application_io::wgpu_executor::IDENTIFIER)],
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
 								..Default::default()
 							},
