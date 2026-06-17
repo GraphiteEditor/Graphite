@@ -14,7 +14,7 @@ use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 #[node_macro::node(category(""))]
 async fn render_background<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(background_compositor_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
+	#[scope(composit_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
 	data: RenderOutput,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
@@ -36,7 +36,7 @@ async fn render_background<'a: 'n>(
 		RenderOutputType::Texture(foreground_texture) => {
 			let doc_to_screen = (glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * render_params.footprint.transform).as_affine2();
 			let blended = pipeline
-				.run::<BackgroundCompositor>(&BackgroundCompositorArgs {
+				.run::<CompositBackground>(&CompositBackgroundArgs {
 					foreground: foreground_texture.as_ref(),
 					backgrounds: &metadata.backgrounds,
 					document_to_screen: doc_to_screen,
@@ -118,16 +118,18 @@ async fn render_background<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn background_compositor_pipeline<'a: 'n>(
+async fn composit_background_pipeline<'a: 'n>(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: &'a WgpuExecutor,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> WgpuPipelineCache {
-	executor.pipeline_init::<BackgroundCompositor>(pipeline);
+	if let Some(executor) = executor {
+		executor.pipeline_init::<CompositBackground>(pipeline);
+	}
 	pipeline.clone()
 }
 
-pub struct BackgroundCompositor {
+pub struct CompositBackground {
 	checker_rect_pipeline: wgpu::RenderPipeline,
 	checker_viewport_pipeline: wgpu::RenderPipeline,
 	fullscreen_pipeline: wgpu::RenderPipeline,
@@ -136,15 +138,15 @@ pub struct BackgroundCompositor {
 	sampler: wgpu::Sampler,
 }
 
-pub struct BackgroundCompositorArgs<'a> {
+pub struct CompositBackgroundArgs<'a> {
 	foreground: &'a wgpu::Texture,
 	backgrounds: &'a [rendering::Background],
 	document_to_screen: Affine2,
 	zoom: f32,
 }
 
-impl AsyncWgpuPipeline for BackgroundCompositor {
-	type Args<'a> = BackgroundCompositorArgs<'a>;
+impl AsyncWgpuPipeline for CompositBackground {
+	type Args<'a> = CompositBackgroundArgs<'a>;
 	type Out = Arc<wgpu::Texture>;
 
 	fn create(executor: &WgpuExecutor) -> Self {
@@ -327,7 +329,7 @@ impl AsyncWgpuPipeline for BackgroundCompositor {
 	}
 
 	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
-		let &BackgroundCompositorArgs {
+		let &CompositBackgroundArgs {
 			foreground,
 			backgrounds,
 			document_to_screen,
@@ -437,7 +439,7 @@ impl AsyncWgpuPipeline for BackgroundCompositor {
 	}
 }
 
-impl BackgroundCompositor {
+impl CompositBackground {
 	fn create_checker_bind_group(&self, device: &wgpu::Device, uniforms: CompositeUniforms) -> wgpu::BindGroup {
 		let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("background_checker_uniforms"),

@@ -73,7 +73,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 				DocumentNode {
 					call_argument: concrete!(Context),
 					inputs: vec![
-						NodeInput::scope(graphene_std::render_background::background_compositor_pipeline::IDENTIFIER),
+						NodeInput::scope(graphene_std::render_background::composit_background_pipeline::IDENTIFIER),
 						NodeInput::node(NodeId(3), 0),
 					],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_background::render_background::IDENTIFIER),

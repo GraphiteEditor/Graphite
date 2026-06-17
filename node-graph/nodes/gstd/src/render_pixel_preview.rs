@@ -58,7 +58,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
 
 	let resampled = pipeline
-		.run::<PixelPreview>(&ResamplerArgs {
+		.run::<PixelPreview>(&PixelPreviewArgs {
 			source: source_texture.as_ref(),
 			transform: &transform,
 			size: physical_resolution,
@@ -77,10 +77,12 @@ pub async fn render_pixel_preview<'a: 'n>(
 #[node_macro::node(category(""), inject_scope)]
 async fn pixel_preview_pipeline<'a: 'n>(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: &'a WgpuExecutor,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> WgpuPipelineCache {
-	executor.pipeline_init::<PixelPreview>(pipeline);
+	if let Some(executor) = executor {
+		executor.pipeline_init::<PixelPreview>(pipeline);
+	}
 	pipeline.clone()
 }
 
@@ -89,14 +91,14 @@ pub struct PixelPreview {
 	bind_group_layout: wgpu::BindGroupLayout,
 }
 
-pub struct ResamplerArgs<'a> {
+pub struct PixelPreviewArgs<'a> {
 	source: &'a wgpu::Texture,
 	transform: &'a DAffine2,
 	size: UVec2,
 }
 
 impl AsyncWgpuPipeline for PixelPreview {
-	type Args<'a> = ResamplerArgs<'a>;
+	type Args<'a> = PixelPreviewArgs<'a>;
 	type Out = Arc<wgpu::Texture>;
 
 	fn create(executor: &WgpuExecutor) -> Self {
@@ -169,7 +171,7 @@ impl AsyncWgpuPipeline for PixelPreview {
 
 	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
 		let context = &executor.context();
-		let &ResamplerArgs { source, transform, size } = args;
+		let &PixelPreviewArgs { source, transform, size } = args;
 
 		let output = executor.request_texture(size).await;
 
