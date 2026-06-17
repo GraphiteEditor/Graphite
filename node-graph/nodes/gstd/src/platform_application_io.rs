@@ -276,10 +276,15 @@ pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope(editor_ap
 
 #[node_macro::node(category(""), inject_scope)]
 pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
-	editor_api.application_io.as_ref().unwrap().gpu_executor().expect("GPU executor not available")
+	editor_api
+		.application_io
+		.as_ref()
+		.expect("ApplicationIo not not available")
+		.gpu_executor()
+		.expect("GPU executor not available")
 }
 
 #[node_macro::node(category(""), inject_scope)]
 pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
-	editor_api.application_io.as_ref().unwrap().gpu_executor()
+	editor_api.application_io.as_ref()?.gpu_executor()
 }
