@@ -292,8 +292,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let node_template = document_node_type.default_node_template();
+				let mut node_template = document_node_type.default_node_template();
 				self.context_menu = None;
+
+				// A freshly added Text Layer node carries no font, so give it the default font (registered like the Text tool does)
+				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text_layer::IDENTIFIER) {
+					let font_resource_id = graph_craft::application_io::resource::ResourceId::new();
+					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text_layer::FontInput::INDEX) {
+						*font_input = NodeInput::value(TaggedValue::Resource(font_resource_id), false);
+					}
+					responses.add(DocumentMessage::Resource(ResourceMessage::AddFont {
+						resource_id: font_resource_id,
+						font: graphene_std::text::Font::default(),
+					}));
+				}
 
 				if add_transaction {
 					responses.add(DocumentMessage::AddTransaction);

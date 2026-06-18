@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::prelude::{FontsMessageHandler, Message, ResourceMessageHandler};
+use crate::messages::prelude::{FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -2047,6 +2047,10 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
+			// Lazily load the font catalog (like the Text tool) so the dropdown has entries
+			if context.fonts.font_catalog.is_empty() {
+				context.responses.add(FontsMessage::LoadCatalog);
+			}
 			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {
