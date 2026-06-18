@@ -1902,7 +1902,10 @@ impl PortfolioMessageHandler {
 			.iter()
 			.filter(|&&id| exclude != Some(id))
 			.filter_map(|&id| self.document_details(id))
-			.filter_map(|doc| doc.name.strip_prefix(untitled).map(|rest| rest.trim().parse::<usize>().unwrap_or(1)))
+			.filter_map(|doc| {
+				let rest = doc.name.strip_prefix(untitled)?.trim();
+				if rest.is_empty() { Some(1) } else { rest.parse::<usize>().ok() }
+			})
 			.collect::<HashSet<usize>>();
 
 		// Pick the lowest number not already in use (a match always exists since the range is unbounded)
