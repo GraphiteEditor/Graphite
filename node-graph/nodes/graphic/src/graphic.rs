@@ -283,7 +283,7 @@ fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<GradientSpreadMethod>,
 	)]
 	mut content: List<T>,
-	/// The source values to attach. Any `List<U>` wired here is type-erased via an auto-inserted convert.
+	/// The source values to attach.
 	#[expose]
 	source: AttributeDyn,
 	/// The name to assign to the new destination attribute.
@@ -296,7 +296,7 @@ fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	content
 }
 
-/// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `List<Vector>`.
+/// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_vector(
 	_: impl Ctx,
@@ -312,7 +312,7 @@ fn read_attribute_vector(
 	result
 }
 
-/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `List<f64>`. Integer values are converted to `f64`.
+/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_number(
 	_: impl Ctx,
@@ -333,7 +333,7 @@ fn read_attribute_number(
 	result
 }
 
-/// Reads a named `bool` attribute from the input list, outputting each value as an element of a new `List<bool>`.
+/// Reads a named `bool` attribute from the input list, outputting each value as an element of a new `bool[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_bool(
 	_: impl Ctx,
@@ -349,7 +349,7 @@ fn read_attribute_bool(
 	result
 }
 
-/// Reads a named `String` attribute from the input list, outputting each value as an element of a new `List<String>`.
+/// Reads a named `String` attribute from the input list, outputting each value as an element of a new `String[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_string(
 	_: impl Ctx,
@@ -365,7 +365,7 @@ fn read_attribute_string(
 	result
 }
 
-/// Reads a named `DAffine2` transform attribute from the input list, outputting each value as an element of a new `List<DAffine2>`.
+/// Reads a named `DAffine2` transform attribute from the input list, outputting each value as an element of a new `DAffine2[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_transform(
 	_: impl Ctx,
@@ -381,7 +381,7 @@ fn read_attribute_transform(
 	result
 }
 
-/// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `List<Color>`.
+/// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `Color[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_color(
 	_: impl Ctx,
@@ -397,7 +397,7 @@ fn read_attribute_color(
 	result
 }
 
-/// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `List<BlendMode>`.
+/// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `BlendMode[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_blend_mode(
 	_: impl Ctx,
@@ -413,7 +413,7 @@ fn read_attribute_blend_mode(
 	result
 }
 
-/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `List<GradientType>`.
+/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `GradientType[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_gradient_type(
 	_: impl Ctx,
@@ -429,7 +429,7 @@ fn read_attribute_gradient_type(
 	result
 }
 
-/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `List<GradientSpreadMethod>`.
+/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `GradientSpreadMethod[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_spread_method(
 	_: impl Ctx,
@@ -445,7 +445,7 @@ fn read_attribute_spread_method(
 	result
 }
 
-/// Reads a named `GradientStops` attribute from the input list, outputting each value as an element of a new `List<GradientStops>`.
+/// Reads a named `GradientStops` attribute from the input list, outputting each value as an element of a new `GradientStops[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_gradient_stops(
 	_: impl Ctx,
@@ -461,7 +461,7 @@ fn read_attribute_gradient_stops(
 	result
 }
 
-/// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `List<Artboard>`.
+/// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_artboard(
 	_: impl Ctx,
@@ -477,7 +477,7 @@ fn read_attribute_artboard(
 	result
 }
 
-/// Reads a named `Raster<CPU>` attribute from the input list, outputting each value as an element of a new `List<Raster<CPU>>`.
+/// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_raster(
 	_: impl Ctx,
@@ -560,8 +560,8 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	List::new_from_element(content.into())
 }
 
-/// Converts a `List` of graphical content into a `List<Graphic>` by placing it into an element of a new wrapper `List<Graphic>`.
-/// If it is already a `List<Graphic>`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
+/// Converts a list of graphical content into a `Graphic[]` by placing it into an element of a new wrapper `Graphic[]`.
+/// If it is already a `Graphic[]`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
 #[node_macro::node(category("General"))]
 pub async fn to_graphic<T: IntoGraphicList + 'n>(
 	_: impl Ctx,
@@ -579,7 +579,7 @@ pub async fn to_graphic<T: IntoGraphicList + 'n>(
 	content.into_graphic_list()
 }
 
-/// Removes a level of nesting from a `List<Graphic>`, or all nesting if "Fully Flatten" is enabled.
+/// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
 pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: bool) -> List<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
@@ -616,7 +616,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 	output
 }
 
-/// Converts a `List<Graphic>` into a `List<Vector>` by deeply flattening any vector content it contains, and discarding any non-vector content.
+/// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
 pub async fn flatten_vector<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
 	let graphic_list = content.into_graphic_list();
@@ -649,25 +649,25 @@ pub async fn flatten_vector<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx,
 	output
 }
 
-/// Converts a `List<Graphic>` into a `List<Raster>` by deeply flattening any raster content it contains, and discarding any non-raster content.
+/// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
 pub async fn flatten_raster<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Raster<CPU>>)] content: T) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
-/// Converts a `List<Graphic>` into a `List<Color>` by deeply flattening any color content it contains, and discarding any non-color content.
+/// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
 pub async fn flatten_color<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] content: T) -> List<Color> {
 	content.into_flattened_list()
 }
 
-/// Converts a `List<Graphic>` into a `List<GradientStops>` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+/// Converts a `Graphic[]` into a `GradientStops[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
 pub async fn flatten_gradient<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<GradientStops>)] content: T) -> List<GradientStops> {
 	content.into_flattened_list()
 }
 
-/// Constructs a gradient from a `List<Color>`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
+/// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
 fn colors_to_gradient<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> List<GradientStops> {
 	let colors = colors.into_flattened_list::<Color>();

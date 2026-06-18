@@ -77,7 +77,7 @@ fn text(
 	to_path(&text, &font, typesetting, separate_glyphs)
 }
 
-/// Produces a styled `List<String>` carrying all typographic attributes.
+/// Produces a styled `String[]` carrying all typographic attributes.
 #[node_macro::node(category("Text"))]
 fn text_layer(
 	_: impl Ctx,
@@ -161,12 +161,12 @@ fn text_layer(
 	list
 }
 
-/// Converts a styled `List<String>` into vector geometry.
+/// Converts a styled `String[]` into vector geometry.
 /// Each string item is independently shaped by Parley and vectorised via skrifa.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Text"), name("Text to Vector"))]
 fn text_to_vector(
 	_: impl Ctx,
-	/// A styled list of text strings produced by the **Text Layer** node (or any other `List<String>` source).
+	/// A styled list of text strings produced by the **Text Layer** node (or any other `String[]` source).
 	#[implementations(List<String>)]
 	strings: List<String>,
 	/// When enabled, each glyph is emitted as its own vector item instead of a single compound path per string.
