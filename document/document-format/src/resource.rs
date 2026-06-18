@@ -47,6 +47,9 @@ impl<L: Layout> Gdd<L> {
 			std::fs::copy(src, &full).map_err(ContainerError::Io)?;
 		} else {
 			let bytes = std::fs::read(src).map_err(ContainerError::Io)?;
+			// The folder fast path trusts the caller's hash to avoid reading the file; here we've read
+			// the bytes anyway, so verify the hash matches and flag a content-addressing bug in debug.
+			debug_assert_eq!(hash, ResourceHash::from(bytes.as_slice()), "add_resource_from_path hash does not match the file at {src:?}");
 			self.working.write_non_blocking(&dest_path, &bytes)?;
 		}
 

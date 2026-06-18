@@ -105,13 +105,13 @@ impl<L: Layout> Gdd<L> {
 	/// Apply a hot op from the broadcast stream, appending one frame to the hot log.
 	///
 	/// # Errors
-	/// Returns [`Error::Crdt`] if the op is rejected by the session. A failure to persist the hot
-	/// frame is logged, not returned.
+	/// Returns [`Error::Crdt`] if the op is rejected by the session, or an [`Error::Container`] /
+	/// [`Error::Codec`] if persisting the hot frame fails. On a persist failure the session has already
+	/// advanced past what the working copy reflects, so the caller should treat the document as needing
+	/// re-persist (mirrors [`stage_runtime_snapshot`](Self::stage_runtime_snapshot)).
 	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), Error> {
 		self.session.apply_hot_op(op.clone())?;
-		if let Err(error) = self.append_hot_frame(&op) {
-			log::error!("Failed to append hot op frame: {error}");
-		}
+		self.append_hot_frame(&op)?;
 		Ok(())
 	}
 
