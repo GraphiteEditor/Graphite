@@ -24,3 +24,4 @@ rmp-serde = { workspace = true }
 
 [dev-dependencies]
 graph-craft = { workspace = true, features = ["loading"] }
+core-types = { workspace = true }

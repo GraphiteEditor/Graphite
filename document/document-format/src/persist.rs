@@ -129,13 +129,16 @@ impl<L: Layout> Gdd<L> {
 		self.retire_inner(last.timestamp, gesture)
 	}
 
-	/// Encode the history deltas identified by `revs` and append them to the history file. Iterates
-	/// `session.history()` (topological/append order) filtered by `revs` membership, so the appended
-	/// frames preserve replay order regardless of the order `revs` lists them in.
+	/// Encode the history deltas identified by `revs` and append them to the history file. `revs` comes
+	/// from `Session::retire` in append order, which is a valid replay order, so a direct per-rev lookup
+	/// preserves replay order without scanning the whole history.
 	fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), Error> {
-		let wanted: std::collections::HashSet<Rev> = revs.iter().copied().collect();
 		let mut buffer = Vec::new();
-		for delta in self.session.history().filter(|delta| wanted.contains(&delta.id)) {
+		for &rev in revs {
+			let Some(delta) = self.session.delta(rev) else {
+				log::error!("Retired rev {rev:?} missing from history; skipping its history frame");
+				continue;
+			};
 			self.manifest.codecs.history.append(&mut buffer, delta)?;
 		}
 		self.working.append_non_blocking(&io::path_for(self.layout.history_basename(), self.manifest.codecs.history), &buffer)?;

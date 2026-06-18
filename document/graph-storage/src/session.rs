@@ -436,6 +436,12 @@ impl Session {
 		self.document.history.iter()
 	}
 
+	/// The retired delta for `rev`, or `None` if it isn't in history. O(1) lookup, for callers that
+	/// already hold the revs they want (e.g. persisting a freshly-retired batch) and don't need a scan.
+	pub fn delta(&self, rev: Rev) -> Option<&Delta> {
+		self.document.history.get(rev)
+	}
+
 	/// Verify the retired history loaded from an untrusted source: content-addressed ids match their
 	/// recomputed hashes, and the deltas are topologically ordered. See [`History::verify`].
 	pub fn verify_history(&self) -> Result<(), CrdtError> {

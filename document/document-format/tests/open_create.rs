@@ -1,3 +1,7 @@
+// Exercises the runtime-conversion bridge and the zip archive round-trip, so it only compiles with
+// both features. A minimal-dependency build (e.g. `--no-default-features`) skips it entirely.
+#![cfg(all(feature = "conversion", feature = "zip"))]
+
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{Codec, Error, GddV1, GddV1Layout, Layout, Manifest, io, manifest};
