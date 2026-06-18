@@ -609,11 +609,23 @@ impl PartialEq for InspectResult {
 
 impl InspectState {
 	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
-	/// Returns `None` if the path is empty or doesn't resolve to a node inside a reachable subnetwork.
+	/// Returns `None` if the path is empty, doesn't resolve to a node inside a reachable subnetwork, or the target has no
+	/// flatten-safe primary output to monitor (e.g. an empty merged subnetwork), which would otherwise leave the monitor's
+	/// input dangling once the subnetwork is flattened away.
 	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
 		let (inspect_node, parent_path) = inspect_path.split_last()?;
 		let inspect_node = *inspect_node;
 		let target_network = navigate_to_network_mut(network, parent_path)?;
+
+		// A subnetwork's primary output only survives flattening if its first export is a node
+		let monitorable = match &target_network.nodes.get(&inspect_node)?.implementation {
+			DocumentNodeImplementation::Network(inner) => matches!(inner.exports.first(), Some(NodeInput::Node { .. })),
+			_ => true,
+		};
+		if !monitorable {
+			return None;
+		}
+
 		let monitor_id = NodeId::new();
 
 		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
