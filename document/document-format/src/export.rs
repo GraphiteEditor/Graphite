@@ -6,6 +6,7 @@
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 
+#[cfg(any(feature = "zip", feature = "xz"))]
 use document_container::archive::Archive;
 use graphene_resource::{LoadResource, Resource, ResourceHash};
 
@@ -21,8 +22,10 @@ pub enum ExportFormat {
 	/// Copy the working copy to a destination folder.
 	Folder,
 	/// Wrap as a `.gdd.zip` archive (deflate, pure-Rust `zip` crate).
+	#[cfg(feature = "zip")]
 	Zip,
 	/// Wrap as a `.gdd.xz` archive (whole-archive xz via `lzma-rust2`).
+	#[cfg(feature = "xz")]
 	Xz,
 }
 
@@ -78,6 +81,7 @@ impl<L: Layout> Gdd<L> {
 				let mut sink = FolderSink { folder: &mut folder };
 				self.stream_entries(options, byte_store, &mut sink).await?;
 			}
+			#[cfg(feature = "zip")]
 			ExportFormat::Zip => {
 				let file = std::fs::File::create(dest).map_err(document_container::ContainerError::Io)?;
 				let mut writer = document_container::archive::Zip::writer(file)?;
@@ -85,6 +89,7 @@ impl<L: Layout> Gdd<L> {
 				use document_container::archive::ArchiveWriter;
 				writer.finish()?;
 			}
+			#[cfg(feature = "xz")]
 			ExportFormat::Xz => {
 				let file = std::fs::File::create(dest).map_err(document_container::ContainerError::Io)?;
 				let mut writer = document_container::archive::Xz::writer(file)?;
@@ -100,12 +105,14 @@ impl<L: Layout> Gdd<L> {
 	/// In-memory variant of [`export`](Self::export) returning the archive bytes. Available on every
 	/// target (no `std::fs`) but buffers the whole archive. `legacy_document` is embedded verbatim at
 	/// [`Layout::legacy_basename`]. `ExportFormat::Folder` has no single-file form and is rejected.
+	#[cfg(any(feature = "zip", feature = "xz"))]
 	pub async fn export_to_bytes(&self, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource, legacy_document: Option<&[u8]>) -> Result<Vec<u8>, Error> {
 		options.validate().map_err(Error::InvalidExportOptions)?;
 
 		let cursor = std::io::Cursor::new(Vec::new());
 		let buffer = match format {
 			ExportFormat::Folder => return Err(Error::InvalidExportOptions("folder export has no single-file byte form")),
+			#[cfg(feature = "zip")]
 			ExportFormat::Zip => {
 				let mut writer = document_container::archive::Zip::writer(cursor)?;
 				self.stream_entries(options, byte_store, &mut writer).await?;
@@ -114,6 +121,7 @@ impl<L: Layout> Gdd<L> {
 				}
 				writer.finish_into()?
 			}
+			#[cfg(feature = "xz")]
 			ExportFormat::Xz => {
 				let mut writer = document_container::archive::Xz::writer(cursor)?;
 				self.stream_entries(options, byte_store, &mut writer).await?;
@@ -269,6 +277,7 @@ impl ExportSink for FolderSink<'_> {
 	}
 }
 
+#[cfg(feature = "zip")]
 impl<W: std::io::Write + std::io::Seek + Send> ExportSink for document_container::archive::ZipWriter<W> {
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), Error> {
 		use document_container::archive::ArchiveWriter;
@@ -277,6 +286,7 @@ impl<W: std::io::Write + std::io::Seek + Send> ExportSink for document_container
 	}
 }
 
+#[cfg(feature = "xz")]
 impl<W: std::io::Write + std::io::Seek + Send> ExportSink for document_container::archive::XzWriter<W> {
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<(), Error> {
 		use document_container::archive::ArchiveWriter;

@@ -6,12 +6,23 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+# Runtime bridge: the editor↔storage conversion methods (stage/commit from a `NodeNetwork`,
+# `network_ids`, `declarations`). Off lets a standalone migration tool build without `graph-craft`
+# or `core-types`. Forwards to `graph-storage/conversion`.
+conversion = ["graph-storage/conversion", "dep:graph-craft", "dep:core-types"]
+# Compressed-archive export/open. Each forwards to the matching `document-container` feature and
+# gates that format's `ExportFormat` arm and sink. The folder/memory codec-free core needs neither.
+zip = ["document-container/zip"]
+xz = ["document-container/xz"]
+default = ["conversion", "zip", "xz"]
+
 [dependencies]
-document-container = { workspace = true, features = ["zip", "xz"] }
-graph-storage = { workspace = true }
-graph-craft = { workspace = true }
+document-container = { workspace = true }
+graph-storage = { workspace = true, default-features = false }
+graph-craft = { workspace = true, optional = true }
 graphene-resource = { workspace = true }
-core-types = { workspace = true }
+core-types = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rmp-serde = { workspace = true }

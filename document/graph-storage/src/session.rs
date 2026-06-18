@@ -1,5 +1,8 @@
+#[cfg(any(feature = "conversion", test))]
+use crate::NodeMetadataSource;
+#[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
-use crate::{ApplyMode, Delta, Document, History, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, Delta, Document, History, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -19,6 +22,7 @@ impl Session {
 	/// Mints a fresh `PeerId` from the process-wide UUID generator and wraps an empty `Document`.
 	/// Two peers in the same process will collide (the generator is seeded once); use `with_peer`
 	/// in tests where determinism matters.
+	#[cfg(any(feature = "conversion", test))]
 	pub fn new() -> Self {
 		Self::with_peer(PeerId(core_types::uuid::generate_uuid()))
 	}
@@ -488,6 +492,7 @@ impl Session {
 }
 
 /// Errors from `Session::commit_from_runtime`.
+#[cfg(any(feature = "conversion", test))]
 #[derive(Debug, thiserror::Error)]
 pub enum CommitError {
 	#[error("Failed to convert runtime network: {0}")]
@@ -496,6 +501,7 @@ pub enum CommitError {
 	Crdt(#[from] CrdtError),
 }
 
+#[cfg(any(feature = "conversion", test))]
 impl Default for Session {
 	fn default() -> Self {
 		Self::new()

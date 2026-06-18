@@ -15,8 +15,12 @@ use std::path::Path;
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
-use graph_storage::{CommitError, Delta, HotOp, NodeMetadataSource, PeerId, Registry, Session};
-use graphene_resource::{LoadResource, ResourceHash};
+#[cfg(feature = "conversion")]
+use graph_storage::{CommitError, NodeMetadataSource};
+use graph_storage::{Delta, HotOp, PeerId, Registry, Session};
+#[cfg(feature = "conversion")]
+use graphene_resource::LoadResource;
+use graphene_resource::ResourceHash;
 
 pub mod codec;
 pub mod error;
@@ -111,6 +115,7 @@ impl<L: Layout> Gdd<L> {
 	/// (the archive reader is synchronous), then each entry is written into `working` via the sync
 	/// `write_non_blocking` surface — durable on folder/memory, eagerly enqueued on OPFS. `working` is
 	/// expected to be a fresh per-document container; entries with colliding paths are overwritten.
+	#[cfg(all(feature = "zip", feature = "xz"))]
 	pub async fn open_from_archive(bytes: &[u8], working: AnyContainer, layout: L) -> Result<Self, Error> {
 		use document_container::AsyncContainer;
 		use document_container::Container;
@@ -251,6 +256,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`](graph_storage::NetworkId), so the
 	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
+	#[cfg(feature = "conversion")]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,
 		network: &graph_craft::document::NodeNetwork,
@@ -289,6 +295,7 @@ impl<L: Layout> Gdd<L> {
 	/// working-copy container for standalone). Only resources referenced by `Implementation::ProtoNode`
 	/// are visited, so image/font resources are skipped. Cold-path (open / `to_runtime`); async
 	/// because resource loads are.
+	#[cfg(feature = "conversion")]
 	pub async fn declarations(&self, byte_store: &dyn LoadResource) -> graph_storage::Declarations {
 		use graph_storage::Implementation;
 

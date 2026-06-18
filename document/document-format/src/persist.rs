@@ -4,7 +4,10 @@
 //! surface absorbs durability.
 
 use document_container::AsyncContainer;
-use graph_storage::{HotOp, NodeMetadataSource, Rev, TimeStamp};
+#[cfg(feature = "conversion")]
+use graph_storage::NodeMetadataSource;
+use graph_storage::{HotOp, Rev, TimeStamp};
+#[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
 use crate::error::Error;
@@ -49,6 +52,7 @@ impl<L: Layout> Gdd<L> {
 	/// [`Error::Commit`] if the runtime diff is rejected by the session. On an [`Error::Container`] /
 	/// [`Error::Codec`] from persisting the hot frames, the session has already advanced past what the
 	/// working copy reflects, so the caller should treat the document as needing re-persist.
+	#[cfg(feature = "conversion")]
 	pub fn stage_runtime_snapshot<M: NodeMetadataSource>(
 		&mut self,
 		network: &graph_craft::document::NodeNetwork,
@@ -86,6 +90,7 @@ impl<L: Layout> Gdd<L> {
 	/// durable history. Convenience for callers that produce a whole gesture atomically (tests, and any
 	/// one-shot commit). Equivalent to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot) followed
 	/// by [`retire_pending_gesture`](Self::retire_pending_gesture).
+	#[cfg(feature = "conversion")]
 	pub fn commit_from_runtime<M: NodeMetadataSource>(
 		&mut self,
 		network: &graph_craft::document::NodeNetwork,

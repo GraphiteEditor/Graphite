@@ -6,7 +6,9 @@
 //! an `# Errors` section.
 
 use document_container::ContainerError;
-use graph_storage::{CommitError, CrdtError};
+#[cfg(feature = "conversion")]
+use graph_storage::CommitError;
+use graph_storage::CrdtError;
 use graphene_resource::ResourceHash;
 
 use crate::codec::CodecError;
@@ -32,6 +34,7 @@ pub enum Error {
 	#[error("CRDT error: {0}")]
 	Crdt(#[from] CrdtError),
 	/// Staging a runtime snapshot into the session failed (conversion or CRDT apply).
+	#[cfg(feature = "conversion")]
 	#[error("commit error: {0}")]
 	Commit(#[from] CommitError),
 	/// The manifest's `format` field is not the `.gdd` magic, so this is not a `.gdd` document.

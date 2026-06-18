@@ -89,7 +89,7 @@ repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-graph-storage = { path = "document/graph-storage" }
+graph-storage = { path = "document/graph-storage", default-features = false }
 document-format = { path = "document/document-format" }
 document-container = { path = "document/container" }
 raster-nodes = { path = "node-graph/nodes/raster" }
