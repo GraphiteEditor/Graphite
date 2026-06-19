@@ -2702,7 +2702,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in fill_properties: {err}");
+			log::error!("Could not get document node in stroke_properties: {err}");
 			return Vec::new();
 		}
 	};
@@ -2718,7 +2718,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, ColorInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, PaintInput::INDEX, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));
