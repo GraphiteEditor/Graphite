@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
@@ -15,6 +15,7 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
+use graphene_std::vector::style::Gradient;
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
@@ -81,12 +82,13 @@ struct ExecutionContext {
 }
 
 // TODO: Eventually remove this document upgrade code
-/// State for the deferred legacy-gradient migration: a queue of root-network "Fill" nodes still holding bounding-box-relative
-/// gradients, measured one at a time by redirecting the document export to each so even hidden/orphaned branches evaluate.
+/// State for the deferred legacy-gradient migration: a queue of root-network "Fill" nodes whose decomposed gradient still needs
+/// its transform baked, each paired with its original relative gradient and measured one at a time by redirecting the document
+/// export so even hidden/orphaned branches evaluate.
 #[derive(Debug, Clone)]
 struct GradientMigration {
 	document_id: DocumentId,
-	remaining: VecDeque<NodeId>,
+	remaining: VecDeque<(NodeId, Gradient)>,
 	resolution: UVec2,
 	scale: f64,
 }
@@ -472,9 +474,9 @@ impl NodeGraphExecutor {
 			None => {}
 		}
 
-		let remaining: VecDeque<NodeId> = graph_modification_utils::legacy_gradient_fill_nodes(&document.network_interface).into_iter().collect();
-		let Some(&first_fill) = remaining.front() else {
-			document.pending_gradient_migration = false;
+		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above) until the migration finishes and clears it.
+		let remaining: VecDeque<(NodeId, Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
+		let Some((first_fill, _)) = remaining.front().cloned() else {
 			responses.add(NodeGraphMessage::RunDocumentGraph);
 			return;
 		};
@@ -562,7 +564,7 @@ impl NodeGraphExecutor {
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	/// Convert the just-measured fill's legacy gradients to absolute space using its evaluated geometry, then advance the queue.
+	/// Bake the just-measured fill's gradient transform into absolute space using its evaluated geometry, then advance the queue.
 	fn handle_gradient_measurement(
 		&mut self,
 		document: &mut DocumentMessageHandler,
@@ -573,9 +575,19 @@ impl NodeGraphExecutor {
 	) {
 		let measured = inspect_result.and_then(|mut result| result.take_data()).and_then(|data| measure_fill_geometry(&data));
 
-		match measured {
-			Some((bounding_box, item_transform)) => graph_modification_utils::migrate_fill_node_gradients_to_absolute(fill_node_id, &mut document.network_interface, bounding_box, item_transform),
-			None => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving it in legacy space"),
+		// The fill being measured is still at the front of the queue, so its original relative gradient is read from there.
+		let gradient = self.gradient_migration.as_ref().and_then(|migration| migration.remaining.front()).map(|(_, gradient)| gradient.clone());
+
+		match (measured, gradient) {
+			(Some((bounding_box, item_transform)), Some(gradient)) => {
+				let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
+				let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
+				let input = InputConnector::node(fill_node_id, 6);
+				document
+					.network_interface
+					.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &[]);
+			}
+			_ => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving its transform unbaked"),
 		}
 
 		self.advance_gradient_migration(document, document_id, responses);
@@ -586,7 +598,7 @@ impl NodeGraphExecutor {
 	fn advance_gradient_migration(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		let next_fill = self.gradient_migration.as_mut().and_then(|migration| {
 			migration.remaining.pop_front();
-			migration.remaining.front().copied()
+			migration.remaining.front().map(|(node_id, _)| *node_id)
 		});
 
 		if let Some(next_fill) = next_fill {
@@ -596,7 +608,7 @@ impl NodeGraphExecutor {
 			self.gradient_migration = None;
 			self.previous_node_to_inspect = Vec::new();
 			self.node_graph_hash = 0;
-			document.pending_gradient_migration = false;
+			document.pending_gradient_bbox_bake.clear();
 			responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}

@@ -1622,8 +1622,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
 				// TODO: Eventually remove this document upgrade code
-				// A freshly-opened document with legacy gradients runs a one-time measurement pre-pass instead of rendering, until every gradient is converted to absolute space
-				if document.pending_gradient_migration {
+				// A freshly-opened document with legacy gradients runs a one-time measurement pre-pass instead of rendering, until every gradient's transform is baked into absolute space
+				if !document.pending_gradient_bbox_bake.is_empty() {
 					self.executor.drive_gradient_migration(document, document_id, physical_resolution, scale, responses);
 					return;
 				}
