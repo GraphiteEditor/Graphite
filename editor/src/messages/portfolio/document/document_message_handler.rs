@@ -44,7 +44,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::{Fill, RenderMode};
+use graphene_std::vector::style::{Fill, Gradient, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -131,10 +131,10 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
 	// TODO: Eventually remove this document upgrade code
-	/// Set when a freshly-opened document still has legacy bounding-box-relative gradients; the deferred gradient
-	/// migration converts them to absolute after the first graph run (when geometry bounds are available) and clears this.
+	/// Fill nodes whose legacy bounding-box-relative gradient was decomposed into the value model, but whose transform still
+	/// needs the bounding box baked in. The deferred migration bakes them after the first graph run (when bounds are available) and clears this.
 	#[serde(skip)]
-	pub(crate) pending_gradient_migration: bool,
+	pub(crate) pending_gradient_bbox_bake: Vec<(NodeId, Gradient)>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -191,7 +191,7 @@ impl Default for DocumentMessageHandler {
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
 			// TODO: Eventually remove this document upgrade code
-			pending_gradient_migration: false,
+			pending_gradient_bbox_bake: Vec::new(),
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
