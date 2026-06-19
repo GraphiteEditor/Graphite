@@ -2340,6 +2340,99 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 	}
 }
 
+/// Lays out text item `index` of a styled `List<String>` and returns its local size and transform. The `BoundingBox` trait can't do
+/// this since a bare `String` carries no typography, so click-target and bounding-box computation share this. Falls back to an em
+/// square if the font isn't registered yet.
+fn text_item_size_and_transform(list: &List<String>, index: usize) -> Option<(DVec2, DAffine2)> {
+	let text = list.element(index)?;
+	let font: Resource = {
+		let f: Resource = list.attribute_cloned_or_default(ATTR_FONT, index);
+		if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
+	};
+	let font_size: f64 = list.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+	let line_height: f64 = list.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
+	let letter_spacing: f64 = list.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
+	let max_width: Option<f64> = list.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
+	let max_height: Option<f64> = list.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
+	let align: text_nodes::TextAlign = list.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
+	let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+
+	let typesetting = text_nodes::TypesettingConfig {
+		font_size,
+		line_height_ratio: line_height,
+		letter_spacing,
+		letter_tilt: 0.,
+		max_width,
+		max_height,
+		align,
+	};
+
+	let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {
+		ctx.layout_text(text, &font, typesetting).map(|layout| {
+			let w = max_width.unwrap_or_else(|| layout.width() as f64);
+			let h = max_height.unwrap_or_else(|| layout.height() as f64);
+			(w, h)
+		})
+	})
+	.unwrap_or((font_size, font_size));
+
+	Some((DVec2::new(width, height), transform))
+}
+
+/// Union bounding box of a styled `List<String>`, laid out per item. The `BoundingBox` trait returns `None` for `List<String>`
+/// (a bare `String` has no extent), so text-layer thumbnails and bounds use this instead. Each item is laid out under `outer_transform`.
+pub fn text_list_bounding_box(list: &List<String>, outer_transform: DAffine2) -> RenderBoundingBox {
+	let mut bounds: Option<[DVec2; 2]> = None;
+	for index in 0..list.len() {
+		let Some((size, transform)) = text_item_size_and_transform(list, index) else { continue };
+		let full_transform = outer_transform * transform;
+		for corner in [DVec2::ZERO, DVec2::new(size.x, 0.), DVec2::new(0., size.y), size] {
+			let point = full_transform.transform_point2(corner);
+			bounds = Some(match bounds {
+				Some([min, max]) => [min.min(point), max.max(point)],
+				None => [point, point],
+			});
+		}
+	}
+	match bounds {
+		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+		None => RenderBoundingBox::None,
+	}
+}
+
+/// Like `List<Graphic>::thumbnail_bounding_box`, but lays out `Graphic::Text` items, which the `BoundingBox` trait reports as `None`.
+/// Used for layer thumbnails so text layers (whose content is a `List<Graphic>` wrapping the text) frame their content.
+pub fn graphic_list_bounding_box(list: &List<Graphic>, transform: DAffine2) -> RenderBoundingBox {
+	let mut combined: Option<[DVec2; 2]> = None;
+	let mut any_infinite = false;
+
+	for index in 0..list.len() {
+		let item_transform = transform * list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
+		let Some(graphic) = list.element(index) else { continue };
+		let bounds = match graphic {
+			Graphic::Text(text_list) => text_list_bounding_box(text_list, item_transform),
+			Graphic::Graphic(sub_list) => graphic_list_bounding_box(sub_list, item_transform),
+			other => other.thumbnail_bounding_box(item_transform, true),
+		};
+		match bounds {
+			RenderBoundingBox::None => {}
+			RenderBoundingBox::Infinite => any_infinite = true,
+			RenderBoundingBox::Rectangle([min, max]) => {
+				combined = Some(match combined {
+					Some([existing_min, existing_max]) => [existing_min.min(min), existing_max.max(max)],
+					None => [min, max],
+				})
+			}
+		}
+	}
+
+	match (combined, any_infinite) {
+		(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
+		(None, true) => RenderBoundingBox::Infinite,
+		(None, false) => RenderBoundingBox::None,
+	}
+}
+
 impl Render for List<String> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
@@ -2505,40 +2598,8 @@ impl Render for List<String> {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let Some(text) = self.element(index) else { continue };
-			let font: Resource = {
-				let f: Resource = self.attribute_cloned_or_default(ATTR_FONT, index);
-				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
-			};
-			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let line_height: f64 = self.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
-			let letter_spacing: f64 = self.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
-			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
-			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
-			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-
-			let typesetting = text_nodes::TypesettingConfig {
-				font_size,
-				line_height_ratio: line_height,
-				letter_spacing,
-				letter_tilt: 0.,
-				max_width,
-				max_height,
-				align,
-			};
-
-			// Falls back to a single-em square if fonts are not yet registered.
-			let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {
-				ctx.layout_text(text, &font, typesetting).map(|layout| {
-					let w = max_width.unwrap_or_else(|| layout.width() as f64);
-					let h = max_height.unwrap_or_else(|| layout.height() as f64);
-					(w, h)
-				})
-			})
-			.unwrap_or((font_size, font_size));
-
-			let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(width, height));
+			let Some((size, transform)) = text_item_size_and_transform(self, index) else { continue };
+			let subpath = Subpath::new_rectangle(DVec2::ZERO, size);
 			let mut target = ClickTarget::new_with_subpath(subpath, 0.);
 			target.apply_transform(transform);
 			click_targets.push(target);
