@@ -162,9 +162,12 @@ pub enum ContextMenuData {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ContextMenuInformation {
-	// Stores whether the context menu is open and its position in graph coordinates
+	// The menu's display position in graph coordinates, which may be shifted from the click point to keep the menu on-screen
 	#[serde(rename = "contextMenuCoordinates")]
 	pub context_menu_coordinates: (i32, i32),
+	// The click point in graph coordinates, where a node created from the menu is placed (unshifted, unlike the display position)
+	#[serde(rename = "nodeCreationCoordinates")]
+	pub node_creation_coordinates: (i32, i32),
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
 }

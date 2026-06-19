@@ -96,14 +96,14 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 
 	// Handle from from `1` to `len_points - 2` (inclusive).
 	for ix in 1..=(len_points - 2) {
-		let m = 1.0 / (b[ix] - a[ix] * cmod[ix - 1]);
+		let m = 1. / (b[ix] - a[ix] * cmod[ix - 1]);
 		cmod[ix] = c[ix] * m;
-		u[ix] = (0.0 - a[ix] * u[ix - 1]) * m;
+		u[ix] = (0. - a[ix] * u[ix - 1]) * m;
 		x[ix] = (x[ix] - a[ix] * x[ix - 1]) * m;
 	}
 
 	// Handle `len_points - 1`.
-	let m = 1.0 / (b[len_points - 1] - alpha * beta / gamma - beta * cmod[len_points - 2]);
+	let m = 1. / (b[len_points - 1] - alpha * beta / gamma - beta * cmod[len_points - 2]);
 	u[len_points - 1] = (alpha - a[len_points - 1] * u[len_points - 2]) * m;
 	x[len_points - 1] = (x[len_points - 1] - a[len_points - 1] * x[len_points - 2]) * m;
 
@@ -113,7 +113,7 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 		x[ix] = x[ix] - cmod[ix] * x[ix + 1];
 	}
 
-	let fact = (x[0] + x[len_points - 1] * beta / gamma) / (1.0 + u[0] + u[len_points - 1] * beta / gamma);
+	let fact = (x[0] + x[len_points - 1] * beta / gamma) / (1. + u[0] + u[len_points - 1] * beta / gamma);
 
 	for ix in 0..(len_points) {
 		x[ix] -= fact * u[ix];

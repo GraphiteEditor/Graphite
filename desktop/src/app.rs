@@ -16,13 +16,14 @@ use winit::window::WindowId;
 
 use crate::cef;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
+use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
-use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -32,6 +33,7 @@ pub(crate) struct App {
 	window_size: PhysicalSize<u32>,
 	window_maximized: bool,
 	window_fullscreen: bool,
+	window_pending_drag: bool,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	ui_scale: f64,
@@ -91,7 +93,14 @@ impl App {
 			}
 		});
 
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
+		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
+
+		// Wake the winit event loop when an editor future completes.
+		let wake_scheduler = app_event_scheduler.clone();
+		let wake = Arc::new(move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
+		});
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,
@@ -101,6 +110,7 @@ impl App {
 			window_size: PhysicalSize { width: 0, height: 0 },
 			window_maximized: false,
 			window_fullscreen: false,
+			window_pending_drag: false,
 			pointer_position: Default::default(),
 			pointer_lock_position: Default::default(),
 			ui_scale: 1.,
@@ -270,8 +280,8 @@ impl App {
 					let viewport_offset_y = y / window_size.height as f64;
 					render_state.set_viewport_offset([viewport_offset_x as f32, viewport_offset_y as f32]);
 
-					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
-					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
+					let viewport_scale_x = if width != 0. { window_size.width as f64 / width } else { 1. };
+					let viewport_scale_y = if height != 0. { window_size.height as f64 / height } else { 1. };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
 			}
@@ -363,9 +373,7 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::WindowDrag => {
-				if let Some(window) = &self.window {
-					window.start_drag();
-				}
+				self.window_pending_drag = true;
 			}
 			DesktopFrontendMessage::WindowFocus => {
 				if let Some(window) = &self.window {
@@ -526,8 +534,6 @@ impl ApplicationHandler for App {
 
 		self.resize();
 
-		self.desktop_wrapper.init(self.wgpu_context.clone());
-
 		self.startup_time = Some(Instant::now());
 	}
 
@@ -645,6 +651,21 @@ impl ApplicationHandler for App {
 				if self.pointer_lock_position.is_none() =>
 			{
 				self.pointer_position = position;
+
+				if self.window_pending_drag {
+					self.window_pending_drag = false;
+					if let Some(window) = &self.window {
+						window.start_drag();
+					}
+				}
+			}
+
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(MouseButton::Left),
+				state: ElementState::Released,
+				..
+			} => {
+				self.window_pending_drag = false;
 			}
 
 			_ => {}

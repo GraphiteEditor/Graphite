@@ -9,8 +9,9 @@ use crate::EDITOR;
 #[cfg(not(feature = "native"))]
 use crate::helpers::poll_node_graph_evaluation;
 use crate::helpers::{auto_save_all_documents, calculate_hash, render_image_data_to_canvases, request_animation_frame, set_timeout, translate_key, wrapper};
-use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
+use crate::{EDITOR_HAS_CRASHED, Error, FRONTEND_READY, MESSAGE_BUFFER};
 #[cfg(not(feature = "native"))]
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Editor, Environment, Host, Platform};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
@@ -19,7 +20,7 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
+use editor::messages::portfolio::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -52,7 +53,10 @@ impl EditorWrapper {
 		self.send_frontend_message_to_js(message);
 	}
 
+	#[cfg(any(feature = "native", target_family = "wasm"))]
 	fn initialize_wrapper(frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use crate::{EDITOR_WRAPPER, PANIC_DIALOG_MESSAGE_CALLBACK};
+
 		let panic_callback = frontend_message_handler_callback.clone();
 		let editor_wrapper = EditorWrapper { frontend_message_handler_callback };
 		if EDITOR_WRAPPER.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor_wrapper.clone()))).is_none() {
@@ -69,22 +73,31 @@ impl EditorWrapper {
 	// Editor wrapper machinery
 	// ========================
 
-	#[cfg(not(feature = "native"))]
-	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
-		let editor = Editor::new(
-			Environment {
-				platform: Platform::Web,
-				host: match platform.as_str() {
-					"Linux" => Host::Linux,
-					"Mac" => Host::Mac,
-					"Windows" => Host::Windows,
-					_ => unreachable!(),
-				},
-			},
-			uuid_random_seed,
-		);
+	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use graph_craft::application_io::PlatformApplicationIo;
+		use graph_craft::application_io::resource::*;
 
-		if EDITOR.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+		let host = match platform.as_str() {
+			"Linux" => Host::Linux,
+			"Mac" => Host::Mac,
+			"Windows" => Host::Windows,
+			_ => unreachable!(),
+		};
+
+		let storage: std::sync::Arc<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
+			Ok(storage) => std::sync::Arc::new(storage),
+			Err(error) => {
+				log::error!("Failed to open OPFS resource storage, falling back to in-memory: {error:?}");
+				std::sync::Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new())
+			}
+		};
+
+		let application_io = PlatformApplicationIo::new().await;
+		let wake = crate::helpers::async_wake_callback();
+		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, application_io, wake);
+
+		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
 
@@ -634,21 +647,6 @@ impl EditorWrapper {
 		Ok(())
 	}
 
-	/// The font catalog has been loaded
-	#[wasm_bindgen(js_name = onFontCatalogLoad)]
-	pub fn on_font_catalog_load(&self, catalog: Vec<FontCatalogFamily>) {
-		self.dispatch(PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(catalog) });
-	}
-
-	/// A font has been downloaded
-	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, data: Vec<u8>) -> Result<(), JsValue> {
-		let message = PortfolioMessage::FontLoaded { font_family, font_style, data };
-		self.dispatch(message);
-
-		Ok(())
-	}
-
 	/// Dialog got dismissed
 	#[wasm_bindgen(js_name = onDialogDismiss)]
 	pub fn on_dialog_dismiss(&self) {
@@ -753,6 +751,18 @@ impl EditorWrapper {
 
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
+			insert_index: insert_index.unwrap_or_default(),
+		};
+		self.dispatch(message);
+	}
+
+	/// Duplicate the selected layers, placing the copies within the given folder at the given index.
+	/// If the folder is `None`, they are inserted into the document root.
+	/// If the insert index is `None`, they are inserted at the start of the folder.
+	#[wasm_bindgen(js_name = duplicateLayerInTree)]
+	pub fn duplicate_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let message = DocumentMessage::DuplicateSelectedLayersTo {
+			parent: insert_parent_id.map(NodeId).map(LayerNodeIdentifier::new_unchecked).unwrap_or_default(),
 			insert_index: insert_index.unwrap_or_default(),
 		};
 		self.dispatch(message);

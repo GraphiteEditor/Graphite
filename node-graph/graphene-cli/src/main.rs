@@ -4,13 +4,13 @@ use clap::{Args, Parser, Subcommand};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::application_io::EditorPreferences;
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
-use graphene_std::text::FontCache;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -54,10 +54,6 @@ enum Command {
 		/// Output file path (extension determines format: .svg, .png, .jpg, .gif)
 		#[clap(long, short = 'o')]
 		output: PathBuf,
-
-		/// Optional input image resource
-		#[clap(long)]
-		image: Option<PathBuf>,
 
 		/// Scale factor for export (default: 1.0)
 		#[clap(long, default_value = "1.0")]
@@ -121,11 +117,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
 
 	log::info!("Creating GPU context");
-	let mut application_io = block_on(PlatformApplicationIo::new());
-
-	if let Command::Export { image: Some(ref image_path), .. } = app.command {
-		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
-	}
+	let application_io = block_on(PlatformApplicationIo::new());
 
 	// Convert application_io to Arc first
 	let application_io_arc = Arc::new(application_io);
@@ -141,7 +133,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		max_render_region_size: EditorPreferences::default().max_render_region_size,
 	};
 	let editor_api = Arc::new(PlatformEditorApi {
-		font_cache: FontCache::default(),
 		application_io: Some(application_io_for_api),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
@@ -251,10 +242,10 @@ fn compile_graph(document_string: String, editor_api: Arc<PlatformEditorApi>) ->
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 
-	let substitutions = preprocessor::generate_node_substitutions();
-	preprocessor::expand_network(&mut network, &substitutions);
+	let mut wrapped_network = wrap_network_in_scope(network, editor_api);
 
-	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
+	let preprocessor = preprocessor::Preprocessor::new();
+	preprocessor.preprocess(&mut wrapped_network, &ResourceRegistry::default()).expect("Failed to expand network"); // TODO: actually load the resources from the document
 
 	let compiler = Compiler {};
 	compiler.compile_single(wrapped_network).map_err(|x| x.into())

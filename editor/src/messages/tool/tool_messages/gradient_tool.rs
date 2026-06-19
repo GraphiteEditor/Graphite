@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops, gradient_chain_target_input};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
@@ -192,14 +192,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		}
 	}
 
-	advertise_actions!(GradientToolMessageDiscriminant;
-		PointerDown,
-		PointerUp,
-		PointerMove,
-		DoubleClick,
-		Abort,
-		DeleteStop,
-	);
+	fn actions(&self) -> ActionList {
+		let mut common = actions!(GradientToolMessageDiscriminant;
+			PointerDown,
+			PointerUp,
+			PointerMove,
+			DoubleClick,
+			Abort,
+		);
+
+		// Only intercept Delete/Backspace (`DeleteStop`) while a deletable stop or midpoint is selected
+		if self.data.selected_gradient.as_ref().is_some_and(|selected| !matches!(selected.dragging, GradientDragTarget::New)) {
+			common.extend(actions!(GradientToolMessageDiscriminant; DeleteStop));
+		}
+
+		common
+	}
 }
 
 impl LayoutHolder for GradientTool {
@@ -347,20 +355,19 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 // TODO: Remove this whole function once all gradients are stored via the modern `Gradient(GradientStops)` slot
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
-		let GradientChainState {
-			transform,
-			gradient_type,
-			spread_method,
-		} = read_gradient_chain_state(layer, network_interface);
-		return Some(Gradient {
+		// Try to construct a gradient out of a chain, which is directly connected to a layer
+		let chain_state = read_gradient_chain_state(layer, network_interface);
+		Some(Gradient {
 			stops,
-			gradient_type,
-			spread_method,
-			start: transform.transform_point2(DVec2::ZERO),
-			end: transform.transform_point2(DVec2::X),
-		});
+			gradient_type: chain_state.gradient_type,
+			spread_method: chain_state.spread_method,
+			start: chain_state.transform.transform_point2(DVec2::ZERO),
+			end: chain_state.transform.transform_point2(DVec2::X),
+		})
+	} else {
+		// Try to find a legacy Fill::Gradient that is selected in a Fill node
+		graph_modification_utils::get_gradient(layer, network_interface)
 	}
-	graph_modification_utils::get_gradient(layer, network_interface)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -373,6 +380,9 @@ struct GradientChainState {
 /// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
 /// 'Transform' nodes. Type and spread method come from the closest-to-layer node of each kind, or the type default.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientChainState {
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
+
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 	let gradient_type_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_type::IDENTIFIER);
 	let spread_method_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
@@ -382,8 +392,8 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	let mut spread_method: Option<GradientSpreadMethod> = None;
 
 	for node_id in network_interface
-		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
-		.skip(1)
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.skip_while(|node_id| network_interface.is_layer(node_id, &[]))
 		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
 	{
 		let Some(reference) = network_interface.reference(&node_id, &[]) else { continue };
@@ -512,14 +522,13 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 impl SelectedGradient {
 	pub fn new(gradient: Gradient, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
 		let transform = gradient_space_transform(layer, document);
-		let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
 		Self {
 			layer: Some(layer),
 			transform,
 			gradient: gradient.clone(),
 			dragging: GradientDragTarget::End,
 			initial_gradient: gradient,
-			is_gradient_list,
+			is_gradient_list: get_gradient_stops(layer, &document.network_interface).is_some(),
 		}
 	}
 
@@ -2327,6 +2336,36 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn delete_removes_layer_when_no_stop_selected() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create a layer and switch to the Gradient tool without engaging any gradient handle
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.select_tool(ToolType::Gradient).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1, "Expected the rectangle layer to exist");
+
+		// With no color stop selected, Delete should fall through to deleting the selected layer
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted");
+	}
+
+	#[tokio::test]
+	async fn delete_removes_layer_after_drawing_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Draw a fresh gradient, which leaves `selected_gradient` set to the `New` drag target rather than a selected stop
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1, "Expected the rectangle layer to exist");
+
+		// Since no stop is selected (`New` isn't a deletable handle), Delete should still delete the layer
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted after drawing a gradient");
+	}
+
+	#[tokio::test]
 	async fn change_spread_method() {
 		use graphene_std::vector::style::GradientSpreadMethod;
 
@@ -2500,5 +2539,99 @@ mod test_gradient {
 		assert_eq!(SRGBA8::from(updated.stops.color[0]), SRGBA8::from(Color::RED), "First stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color[1]), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color[2]), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
+	}
+
+	// When the gradient chain feeds a 'Fill' node's secondary input it's an unencapsulated side-branch (no layer
+	// background to lay it out), so a node inserted there must be placed onto the displaced feeder's spot in absolute
+	// graph space rather than stranded at the origin.
+	#[tokio::test]
+	async fn gradient_chain_node_on_fill_secondary_input_takes_feeder_slot() {
+		use graphene_std::vector::style::GradientSpreadMethod;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Find the 'Fill' node in the layer's primary chain.
+		let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+		let fill_node_id = {
+			let network_interface = &editor.active_document().network_interface;
+			network_interface
+				.document_network()
+				.nodes
+				.keys()
+				.copied()
+				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&fill_reference))
+				.expect("Fill node should exist")
+		};
+
+		// Feed a 'Gradient Value' node into the Fill node's secondary (fill) input.
+		let gradient_value_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(gradient_value_id, 0),
+				input_connector: InputConnector::node(fill_node_id, 1),
+			})
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::SetInputValue {
+				node_id: gradient_value_id,
+				input_index: 1,
+				value: TaggedValue::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: Color::RED,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::BLUE,
+					},
+				])),
+			})
+			.await;
+
+		// Move the feeder off the origin so its slot is unambiguous, then record where it sits.
+		editor
+			.handle_message(NodeGraphMessage::ShiftNodePosition {
+				node_id: gradient_value_id,
+				x: 4,
+				y: 6,
+			})
+			.await;
+		let feeder_position = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position");
+
+		// Set the spread method through the tool, which splices a 'Spread Method' node onto the Fill's fill input wire.
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			})
+			.await;
+
+		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
+		let spread_node_id = {
+			let network_interface = &editor.active_document().network_interface;
+			network_interface
+				.document_network()
+				.nodes
+				.keys()
+				.copied()
+				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference))
+				.expect("Spread Method node should have been inserted")
+		};
+
+		let spread_position = editor.active_document_mut().network_interface.position(&spread_node_id, &[]).expect("Spread Method position");
+		let feeder_position_after = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position after");
+
+		assert_eq!(spread_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
+		assert_eq!(
+			feeder_position_after,
+			feeder_position - glam::IVec2::new(crate::consts::NODE_CHAIN_WIDTH, 0),
+			"the feeder's branch should shift one chain-width left to make room"
+		);
 	}
 }

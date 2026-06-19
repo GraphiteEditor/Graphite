@@ -7,6 +7,8 @@ members = [
 	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
+	"document/container",
+	"document/graph-storage",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -68,6 +70,7 @@ graphene-hash = { path = "node-graph/libraries/graphene-hash", features = ["deri
 preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 graphene-application-io = { path = "node-graph/libraries/application-io" }
+graphene-resource = { path = "node-graph/libraries/resources" }
 core-types = { path = "node-graph/libraries/core-types" }
 no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
@@ -85,6 +88,7 @@ repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
+graph-storage = { path = "document/graph-storage" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
@@ -165,12 +169,15 @@ color = "0.3"
 # Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
+rmp-serde = "1.3"
 glam = { version = "0.32.1", default-features = false, features = [
 	"nostd-libm",
 	"scalar-math",
 	"bytemuck",
 ] }
 base64 = "0.22"
+blake3 = "1.5"
+mmap-io = { version = "0.9", features = ["hugepages"] }
 image = { version = "0.25", default-features = false, features = [
 	"png",
 	"jpeg",
@@ -219,6 +226,7 @@ lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "e
 scraper = "0.25"
 linesweeper = "0.3"
 smallvec = "1.13.2"
+zip = { version = "8", default-features = false }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }

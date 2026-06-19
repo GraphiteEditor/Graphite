@@ -838,11 +838,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
 						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
 
+						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
+						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
+
+						// Right-clicking an unselected node selects just it, so selection-based actions like Merge Selected Nodes target it
+						if !is_clicked_selected {
+							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+						}
+
 						// Determine which layers the Lock/Unlock action would affect:
 						// - If the right-clicked node is in the selection, it affects all selected layers
 						// - If the right-clicked node is not in the selection, it affects just the right-clicked node
-						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
-						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
 						let affected_layer_ids = if is_clicked_selected {
 							selected_nodes.map(|selected| selected.selected_nodes().copied().filter(|id| network_interface.is_layer(id, selection_network_path)).collect())
 						} else {
@@ -876,6 +882,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					self.context_menu = Some(ContextMenuInformation {
 						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2().into(),
+						node_creation_coordinates: node_graph_point.as_ivec2().into(),
 						context_menu_data,
 					});
 
@@ -1315,6 +1322,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: (point + node_graph_shift).as_ivec2().into(),
+							node_creation_coordinates: point.as_ivec2().into(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -1557,7 +1565,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// Only disconnect inputs to non selected nodes
 						if network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
-							.is_some_and(|connector| connector.node_id().map_or(true, |node_id| !all_selected_nodes.contains(&node_id)))
+							.is_some_and(|connector| connector.node_id().is_none_or(|node_id| !all_selected_nodes.contains(&node_id)))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}

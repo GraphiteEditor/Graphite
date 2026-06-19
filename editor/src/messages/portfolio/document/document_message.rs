@@ -12,6 +12,8 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::Graphic;
+use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
@@ -37,6 +39,8 @@ pub enum DocumentMessage {
 	PropertiesPanel(PropertiesPanelMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
+	#[child]
+	Resource(ResourceMessage),
 
 	// Messages
 	AlignSelectedLayers {
@@ -58,6 +62,10 @@ pub enum DocumentMessage {
 		context: OverlayContext,
 	},
 	DuplicateSelectedLayers,
+	DuplicateSelectedLayersTo {
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
 	EnterNestedNetwork {
 		node_id: NodeId,
 	},
@@ -102,7 +110,7 @@ pub enum DocumentMessage {
 		delta_x: f64,
 		delta_y: f64,
 		resize: Key,
-		resize_opposite_corner: Key,
+		resize_opposite: Key,
 	},
 	PasteImage {
 		name: Option<String>,
@@ -228,6 +236,16 @@ pub enum DocumentMessage {
 	},
 	UpdateVectorData {
 		vector_data: HashMap<NodeId, Arc<Vector>>,
+	},
+	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
+	// `UpdateFillAttributes` and `UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	#[serde(skip)]
+	UpdateFillAttributes {
+		fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	},
+	#[serde(skip)]
+	UpdateStrokeAttributes {
+		stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

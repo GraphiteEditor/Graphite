@@ -11,9 +11,9 @@ use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx};
+pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
-use graphene_application_io::ApplicationIo;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
@@ -137,18 +137,24 @@ fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a PlatformEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
-	let Some(api) = editor_resources.application_io.as_ref() else {
-		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
-	};
-	let Ok(data) = api.load_resource(url) else {
-		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
-	};
-	let Ok(data) = data.await else {
-		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] _editor: &'a PlatformEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
+	let placeholder = || -> Arc<[u8]> { Arc::from(Vec::<u8>::new()) };
+
+	let response = match reqwest::Client::new().get(&url).send().await {
+		Ok(response) => response,
+		Err(error) => {
+			log::error!("HTTP request for `{url}` failed: {error}");
+			return placeholder();
+		}
 	};
 
-	data
+	match response.bytes().await {
+		Ok(bytes) => Arc::from(bytes.to_vec()),
+		Err(error) => {
+			log::error!("Failed to read HTTP response for `{url}`: {error}");
+			placeholder()
+		}
+	}
 }
 
 /// Converts raw binary data to a raster image.
@@ -253,4 +259,12 @@ where
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
 	)
+}
+
+#[node_macro::node(category(""))]
+pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> Resource {
+	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
+	application_io.load_resource(hash).await.unwrap_or_else(|| {
+		panic!("Resource {hash} not found");
+	})
 }

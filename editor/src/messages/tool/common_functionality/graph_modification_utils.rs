@@ -271,6 +271,37 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * center)
 }
 
+/// Determine the input connector where the gradient chain enters the layer.
+/// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
+pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
+	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
+		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Fill>::INDEX)
+	} else {
+		InputConnector::node(layer.to_node(), 1)
+	}
+}
+
+/// Try to find a "Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
+pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
+
+	network_interface
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
+}
+
+/// Get the node connected to Fill's fill input, if any.
+pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
+	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::<Fill>::INDEX)? else {
+		return None;
+	};
+	Some(*node_id)
+}
+
 /// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;
@@ -284,8 +315,8 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))?;
-	let TaggedValue::Gradient(stops) = inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
+	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
+	let TaggedValue::Gradient(stops) = gradient_value_node.inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(stops.clone())
@@ -435,15 +466,21 @@ pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))
 }
 
-/// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig, bool)> {
+/// Gets properties from the Text node. Resolves the font selection by reading the resource id and lookup via the fonts message handler.
+pub fn get_text<'a>(
+	layer: LayerNodeIdentifier,
+	network_interface: &'a NodeNetworkInterface,
+	fonts: &FontsMessageHandler,
+	resources: &ResourceMessageHandler,
+) -> Option<(&'a String, Font, TypesettingConfig, bool)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?;
 
 	let Some(TaggedValue::String(text)) = &inputs[graphene_std::text::text::TextInput::INDEX].as_value() else {
 		return None;
 	};
-	let Some(TaggedValue::Font(font)) = &inputs[graphene_std::text::text::FontInput::INDEX].as_value() else {
-		return None;
+	let font = match &inputs[graphene_std::text::text::FontInput::INDEX].as_value() {
+		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
+		_ => Font::default(),
 	};
 	let Some(&TaggedValue::F64(font_size)) = inputs[graphene_std::text::text::SizeInput::INDEX].as_value() else {
 		return None;

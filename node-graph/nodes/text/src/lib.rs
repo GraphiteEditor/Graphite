@@ -1,4 +1,4 @@
-mod font_cache;
+mod font;
 pub mod json;
 mod path_builder;
 pub mod regex;
@@ -16,7 +16,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
 pub use core_types as gcore;
-pub use font_cache::*;
+pub use font::*;
 pub use text_context::TextContext;
 pub use to_path::*;
 pub use vector_types;
@@ -188,7 +188,7 @@ fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 
 /// Type-asserts a value to be a string.
 #[node_macro::node(category("Debug"))]
-fn to_string(_: impl Ctx, value: String) -> String {
+fn as_string(_: impl Ctx, value: String) -> String {
 	value
 }
 

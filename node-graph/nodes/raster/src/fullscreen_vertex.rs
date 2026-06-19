@@ -1,7 +1,7 @@
 use glam::{Vec2, Vec4};
 use spirv_std::spirv;
 
-/// webgpu NDC is like OpenGL: (-1.0 .. 1.0, -1.0 .. 1.0, 0.0 .. 1.0)
+/// WebGPU NDC is like OpenGL: (-1..1, -1..1, 0..1)
 /// https://www.w3.org/TR/webgpu/#coordinate-systems
 ///
 /// So to make a fullscreen triangle around a box at (-1..1):

@@ -1,4 +1,4 @@
-use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
+use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -236,12 +236,6 @@ impl Luminance for Luma {
 	}
 }
 
-impl LuminanceMut for Luma {
-	fn set_luminance(&mut self, luminance: Self::LuminanceChannel) {
-		self.0 = luminance
-	}
-}
-
 impl RGB for Luma {
 	type ColorChannel = f32;
 	#[inline(always)]
@@ -260,13 +254,9 @@ impl RGB for Luma {
 
 impl Pixel for Luma {}
 
-/// Structure that represents a color.
-/// Internally alpha is stored as `f32` that ranges from `0.0` (transparent) to `1.0` (opaque).
-/// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
-/// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 /// Linear-light sRGB color with `f32` channels (alpha unassociated for swatch/UI colors, associated/premultiplied for pixel data inside [`Image<Color>`]).
 ///
-/// Channels range from `0.0` to `f32::MAX`, encoding brightness proportional to light intensity (cd/m² nits in HDR, or `0..=1` mapped to white for SDR).
+/// Channels range from `0.` to `f32::MAX`, encoding brightness proportional to light intensity (cd/m² nits in HDR, or `0..=1` mapped to white for SDR).
 ///
 /// Anything crossing the Wasm/JS boundary must go through [`SRGBA8`] instead.
 #[repr(C)]
@@ -411,28 +401,6 @@ impl Luminance for Color {
 	}
 }
 
-impl LuminanceMut for Color {
-	fn set_luminance(&mut self, luminance: f32) {
-		let current = self.luminance();
-		// When we have a black-ish color, we just set the color to a grey-scale value. This prohibits a divide-by-0.
-		if current < f32::EPSILON {
-			self.red = 0.2126 * luminance;
-			self.green = 0.7152 * luminance;
-			self.blue = 0.0722 * luminance;
-			return;
-		}
-		let fac = luminance / current;
-		// TODO: when we have for example the rgb color (0, 0, 1) and want to
-		// TODO: do `.set_luminance(1)`, then the actual luminance is not 1 at
-		// TODO: the end. With no clamp, the resulting color would be
-		// TODO: (0, 0, 12.8504). The excess should be spread to the other
-		// TODO: channels, but is currently just clamped away.
-		self.red = (self.red * fac).clamp(0., 1.);
-		self.green = (self.green * fac).clamp(0., 1.);
-		self.blue = (self.blue * fac).clamp(0., 1.);
-	}
-}
-
 impl Rec709Primaries for Color {}
 impl SRGB for Color {}
 
@@ -452,18 +420,7 @@ impl Color {
 		alpha: 0.,
 	};
 
-	/// Returns `Some(Color)` if `red`, `green`, `blue` and `alpha` have a valid value. Negative numbers (including `-0.0`), NaN, and infinity are not valid values and return `None`.
-	/// Alpha values greater than `1.0` are not valid.
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgbaf32(0.3, 0.14, 0.15, 0.92).unwrap();
-	/// assert!(color.components() == (0.3, 0.14, 0.15, 0.92));
-	///
-	/// let color = Color::from_rgbaf32(1., 1., 1., f32::NAN);
-	/// assert!(color == None);
-	/// ```
+	/// Builds a color from linear-light `f32` channels, returning `None` if any channel is negative, NaN, or infinite, or if `alpha` exceeds `1.`.
 	#[inline(always)]
 	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
 		if alpha > 1. || [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
@@ -554,53 +511,25 @@ impl Color {
 		Color::from_gamma_srgb_channels(red, green, blue, alpha)
 	}
 
-	/// Return the `red` component.
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert!(color.r() == 0.114);
-	/// ```
+	/// The red channel value.
 	#[inline(always)]
 	pub fn r(&self) -> f32 {
 		self.red
 	}
 
-	/// Return the `green` component.
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert!(color.g() == 0.103);
-	/// ```
+	/// The green channel value.
 	#[inline(always)]
 	pub fn g(&self) -> f32 {
 		self.green
 	}
 
-	/// Return the `blue` component.
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert!(color.b() == 0.98);
-	/// ```
+	/// The blue channel value.
 	#[inline(always)]
 	pub fn b(&self) -> f32 {
 		self.blue
 	}
 
-	/// Return the `alpha` component without checking its expected `0.0` to `1.0` range.
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert!(color.a() == 0.97);
-	/// ```
+	/// The alpha channel value, returned as-is without range checking.
 	#[inline(always)]
 	pub fn a(&self) -> f32 {
 		self.alpha
@@ -910,14 +839,7 @@ impl Color {
 		self.with_luminance(lum_s)
 	}
 
-	/// Return the all components as a tuple, first component is red, followed by green, followed by blue, followed by alpha.
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// assert_eq!(color.components(),  (0.114, 0.103, 0.98, 0.97));
-	/// ```
+	/// All four channels as `(red, green, blue, alpha)`.
 	#[inline(always)]
 	pub fn components(&self) -> (f32, f32, f32, f32) {
 		(self.red, self.green, self.blue, self.alpha)

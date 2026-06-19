@@ -8,8 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::CachedData;
-use crate::messages::prelude::Message;
+use crate::messages::prelude::{FontsMessageHandler, Message, ResourceMessageHandler};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -28,10 +27,11 @@ use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
-	pub cached_data: &'a CachedData,
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub resources: &'a ResourceMessageHandler,
+	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
 }
@@ -787,9 +787,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								..Default::default()
 							},
-							// 3: Vec2 to Point
+							// 3: As Vector (auto-converts the decomposed translation into a single-anchor List<Vector>)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::vec_2_to_point::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::as_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								..Default::default()
 							},
@@ -858,7 +858,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 3: Vec2 to Point
+								// 3: As Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),

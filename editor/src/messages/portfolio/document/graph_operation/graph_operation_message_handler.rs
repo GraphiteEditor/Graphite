@@ -32,7 +32,7 @@ pub struct GraphOperationMessageHandler {}
 #[message_handler_data]
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, context: GraphOperationMessageContext) {
-		let network_interface = context.network_interface;
+		let GraphOperationMessageContext { network_interface, .. } = context;
 
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {

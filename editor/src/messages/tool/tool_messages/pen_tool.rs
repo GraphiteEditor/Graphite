@@ -418,6 +418,10 @@ struct PenToolData {
 	/// avoiding unintended direction changes. Specifically handles the case where a handle is being dragged,
 	/// and Ctrl is pressed near the anchor to make it colinear with its opposite handle.
 	angle_locked: bool,
+	/// Ignores the lock-angle key (Ctrl) still held from the undo/redo shortcut until it is released and pressed again, so the restored preview isn't forced onto the previously locked angle.
+	suppress_lock_angle: bool,
+	/// Same as `suppress_lock_angle`, for the angle-snap key (Shift) held during the Ctrl+Shift+Z redo.
+	suppress_snap_angle: bool,
 	path_closed: bool,
 
 	handle_mode: HandleMode,
@@ -454,7 +458,54 @@ impl PenToolData {
 		self.handle_end = None;
 		self.latest_points.clear();
 		self.point_index = 0;
+		self.suppress_lock_angle = false;
+		self.suppress_snap_angle = false;
 		self.snap_manager.cleanup(responses);
+	}
+
+	/// Reads the modifier key states, applying the post-undo/redo angle-lock and angle-snap suppression.
+	fn read_modifiers(&mut self, input: &InputPreprocessorMessageHandler, snap_angle: Key, break_handle: Key, lock_angle: Key, colinear: Key, move_anchor_with_handles: Key) -> ModifierState {
+		let lock_angle_held = input.keyboard.key(lock_angle);
+		if self.suppress_lock_angle && !lock_angle_held {
+			self.suppress_lock_angle = false;
+		}
+
+		let snap_angle_held = input.keyboard.key(snap_angle);
+		if self.suppress_snap_angle && !snap_angle_held {
+			self.suppress_snap_angle = false;
+		}
+
+		ModifierState {
+			snap_angle: snap_angle_held && !self.suppress_snap_angle,
+			lock_angle: lock_angle_held && !self.suppress_lock_angle,
+			break_handle: input.keyboard.key(break_handle),
+			colinear: input.keyboard.key(colinear),
+			move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
+		}
+	}
+
+	/// Re-renders the preview after an undo/redo once the graph has re-evaluated, since the layer transform is
+	/// briefly stale until then and would place the preview off in the wrong space. Also suppresses the angle
+	/// modifiers (Ctrl, Shift) still held from the shortcut until each is released and pressed again.
+	fn refresh_preview_after_history(&mut self, responses: &mut VecDeque<Message>) {
+		self.suppress_lock_angle = true;
+		self.suppress_snap_angle = true;
+		self.modifiers.lock_angle = false;
+		self.modifiers.snap_angle = false;
+		self.angle_locked = false;
+
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![
+				PenToolMessage::PointerMove {
+					snap_angle: Key::Shift,
+					break_handle: Key::Alt,
+					lock_angle: Key::Control,
+					colinear: Key::KeyC,
+					move_anchor_with_handles: Key::Space,
+				}
+				.into(),
+			],
+		});
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
@@ -1133,16 +1184,20 @@ impl PenToolData {
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(self.current_layer)?;
-		let vector = document.network_interface.compute_modified_vector(layer)?;
-		let transform = document.metadata().document_to_viewport * transform;
-		for point in vector.anchor_points() {
-			let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
-			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
-			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-			if transformed_distance_between_squared < snap_point_tolerance_squared {
-				self.next_point = pos;
+
+		// The vector may be momentarily unavailable while the graph re-evaluates (e.g. during undo), so snapping onto an existing point is best-effort rather than a reason to bail out
+		if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
+			let transform = document.metadata().document_to_viewport * transform;
+			for point in vector.anchor_points() {
+				let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
+				let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
+				let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+				if transformed_distance_between_squared < snap_point_tolerance_squared {
+					self.next_point = pos;
+				}
 			}
 		}
+
 		if let Some(handle_end) = self.handle_end.as_mut() {
 			*handle_end = self.next_point;
 			self.next_handle_start = self.next_point;
@@ -1924,13 +1979,7 @@ impl Fsm for PenToolFsmState {
 					move_anchor_with_handles,
 				},
 			) => {
-				tool_data.modifiers = ModifierState {
-					snap_angle: input.keyboard.key(snap_angle),
-					lock_angle: input.keyboard.key(lock_angle),
-					break_handle: input.keyboard.key(break_handle),
-					colinear: input.keyboard.key(colinear),
-					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
-				};
+				tool_data.modifiers = tool_data.read_modifiers(input, snap_angle, break_handle, lock_angle, colinear, move_anchor_with_handles);
 
 				let snap_data = SnapData::new(document, input, viewport);
 				if tool_data.modifiers.colinear && !tool_data.toggle_colinear_debounce {
@@ -1979,9 +2028,8 @@ impl Fsm for PenToolFsmState {
 					tool_data.angle_locked = false;
 				}
 
-				let state = tool_data
-					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input, viewport)
-					.unwrap_or(PenToolFsmState::Ready);
+				// Don't end the path if the handle can't be resolved this frame
+				let state = tool_data.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input, viewport).unwrap_or(self);
 
 				if tool_data.handle_swapped {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
@@ -2022,16 +2070,11 @@ impl Fsm for PenToolFsmState {
 			) => {
 				tool_data.switch_to_free_on_ctrl_release = false;
 				tool_data.alt_pressed = false;
-				tool_data.modifiers = ModifierState {
-					snap_angle: input.keyboard.key(snap_angle),
-					lock_angle: input.keyboard.key(lock_angle),
-					break_handle: input.keyboard.key(break_handle),
-					colinear: input.keyboard.key(colinear),
-					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
-				};
+				tool_data.modifiers = tool_data.read_modifiers(input, snap_angle, break_handle, lock_angle, colinear, move_anchor_with_handles);
+				// Don't end the path if the anchor can't be resolved this frame
 				let state = tool_data
 					.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
-					.unwrap_or(PenToolFsmState::Ready);
+					.unwrap_or(self);
 
 				// Auto-panning
 				let messages = [
@@ -2074,13 +2117,7 @@ impl Fsm for PenToolFsmState {
 					move_anchor_with_handles,
 				},
 			) => {
-				tool_data.modifiers = ModifierState {
-					snap_angle: input.keyboard.key(snap_angle),
-					lock_angle: input.keyboard.key(lock_angle),
-					break_handle: input.keyboard.key(break_handle),
-					colinear: input.keyboard.key(colinear),
-					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
-				};
+				tool_data.modifiers = tool_data.read_modifiers(input, snap_angle, break_handle, lock_angle, colinear, move_anchor_with_handles);
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
@@ -2214,9 +2251,8 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
-					tool_data
-						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
-						.unwrap_or(PenToolFsmState::PlacingAnchor)
+					tool_data.refresh_preview_after_history(responses);
+					PenToolFsmState::PlacingAnchor
 				} else {
 					responses.add(PenToolMessage::Abort);
 					self
@@ -2224,7 +2260,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Redo) => {
 				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
-				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+				tool_data.refresh_preview_after_history(responses);
 				match tool_data.point_index {
 					0 => PenToolFsmState::Ready,
 					_ => PenToolFsmState::PlacingAnchor,

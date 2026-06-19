@@ -1,0 +1,23 @@
+[package]
+name = "graphene-resource"
+version = "0.1.0"
+edition = "2024"
+description = "graphene resource interface"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "url/serde"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+core-types = { workspace = true }
+
+# Workspace dependencies
+blake3 = { workspace = true }
+url = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }

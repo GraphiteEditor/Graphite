@@ -1,12 +1,13 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
+use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
-use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_std::list::List;
@@ -16,7 +17,6 @@ use graphene_std::ops::Convert;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -42,14 +42,14 @@ pub struct NodeRuntime {
 	update_thumbnails: bool,
 
 	editor_api: Arc<PlatformEditorApi>,
+	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
 	/// Which node is inspected and which monitor node is used (if any) for the current execution.
 	inspect_state: Option<InspectState>,
 
-	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
-	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
+	preprocessor: preprocessor::Preprocessor,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
@@ -69,13 +69,13 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	FontCacheUpdate(FontCache),
 	EditorPreferencesUpdate(EditorPreferences),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
+	pub(super) resources: ResourceRegistry,
 	/// Full path from the root network to the node that should be temporarily inspected during execution.
 	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
 	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
@@ -97,7 +97,7 @@ pub struct ExportConfig {
 struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
 
 impl InternalNodeGraphUpdateSender {
-	fn send_generation_response(&self, response: CompilationResponse) {
+	fn send_compilation_response(&self, response: CompilationResponse) {
 		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
 	}
 
@@ -127,21 +127,25 @@ impl NodeRuntime {
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
+			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
 
 			editor_api: PlatformEditorApi {
-				font_cache: FontCache::default(),
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
+				#[cfg(not(test))]
 				application_io: None,
+
+				#[cfg(test)]
+				application_io: Some(PlatformApplicationIo::default().into()),
 			}
 			.into(),
 
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
 
-			substitutions: preprocessor::generate_node_substitutions(),
+			preprocessor: preprocessor::Preprocessor::new(),
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
@@ -154,20 +158,6 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) -> Option<ImageTexture> {
-		if self.editor_api.application_io.is_none() {
-			self.editor_api = PlatformEditorApi {
-				#[cfg(all(not(test), target_family = "wasm"))]
-				application_io: Some(PlatformApplicationIo::new().await.into()),
-				#[cfg(any(test, not(target_family = "wasm")))]
-				application_io: Some(PlatformApplicationIo::new().await.into()),
-				font_cache: self.editor_api.font_cache.clone(),
-				node_graph_message_sender: Box::new(self.sender.clone()),
-				editor_preferences: Box::new(self.editor_preferences.clone()),
-			}
-			.into();
-		}
-
-		let mut font = None;
 		let mut preferences = None;
 		let mut graph = None;
 		let mut eyedropper = None;
@@ -191,7 +181,6 @@ impl NodeRuntime {
 						break;
 					}
 				}
-				GraphRuntimeRequest::FontCacheUpdate(_) => font = Some(request),
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}
 		}
@@ -204,27 +193,13 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [font, preferences, graph, eyedropper, execution].into_iter().flatten();
+		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
-				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
-					self.editor_api = PlatformEditorApi {
-						font_cache,
-						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
-						editor_preferences: Box::new(self.editor_preferences.clone()),
-					}
-					.into();
-					if let Some(graph) = self.old_graph.clone() {
-						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
-					}
-				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = PlatformEditorApi {
-						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
@@ -235,11 +210,16 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+					mut network,
+					resources,
+					node_to_inspect,
+				}) => {
 					// Insert the monitor node to manage the inspection
 					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
 
 					self.old_graph = Some(network.clone());
+					self.resources = resources;
 
 					self.node_graph_errors.clear();
 					let result = self.update_network(network).await;
@@ -247,7 +227,7 @@ impl NodeRuntime {
 
 					self.update_thumbnails = true;
 
-					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
+					self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
 					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
@@ -365,10 +345,12 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		preprocessor::expand_network(&mut graph, &self.substitutions);
+	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
-		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &self.resources) {
+			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
+		}
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
@@ -571,18 +553,23 @@ pub async fn run_node_graph() -> (bool, Option<ImageTexture>) {
 	(false, None)
 }
 
-pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
+pub fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
 }
-pub async fn replace_application_io(application_io: PlatformApplicationIo) {
+pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.editor_api = PlatformEditorApi {
-			font_cache: node_runtime.editor_api.font_cache.clone(),
+		node_runtime.replace_application_io(application_io);
+	}
+}
+
+impl NodeRuntime {
+	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
+		self.editor_api = PlatformEditorApi {
 			application_io: Some(application_io.into()),
-			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
-			editor_preferences: Box::new(node_runtime.editor_preferences.clone()),
+			node_graph_message_sender: Box::new(self.sender.clone()),
+			editor_preferences: Box::new(self.editor_preferences.clone()),
 		}
 		.into();
 	}
@@ -622,11 +609,23 @@ impl PartialEq for InspectResult {
 
 impl InspectState {
 	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
-	/// Returns `None` if the path is empty or doesn't resolve to a node inside a reachable subnetwork.
+	/// Returns `None` if the path is empty, doesn't resolve to a node inside a reachable subnetwork, or the target has no
+	/// flatten-safe primary output to monitor (e.g. an empty merged subnetwork), which would otherwise leave the monitor's
+	/// input dangling once the subnetwork is flattened away.
 	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
 		let (inspect_node, parent_path) = inspect_path.split_last()?;
 		let inspect_node = *inspect_node;
 		let target_network = navigate_to_network_mut(network, parent_path)?;
+
+		// A subnetwork's primary output only survives flattening if its first export is a node
+		let monitorable = match &target_network.nodes.get(&inspect_node)?.implementation {
+			DocumentNodeImplementation::Network(inner) => matches!(inner.exports.first(), Some(NodeInput::Node { .. })),
+			_ => true,
+		};
+		if !monitorable {
+			return None;
+		}
+
 		let monitor_id = NodeId::new();
 
 		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node

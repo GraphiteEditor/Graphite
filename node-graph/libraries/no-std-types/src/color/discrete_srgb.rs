@@ -62,7 +62,7 @@ pub fn float_to_srgb_u8(mut f: f32) -> u8 {
 		f = 1.;
 	}
 
-	// Shift away slightly from 0.0 to reduce exponent range.
+	// Shift away slightly from 0 to reduce exponent range.
 	const C: f32 = 0.009842521f32;
 	let u = (f + C).to_bits() - C.to_bits();
 	if u > (1. + C).to_bits() - C.to_bits() {

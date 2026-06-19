@@ -291,11 +291,11 @@ pub trait Tangent {
 	fn tangent_at(&self, t: f64) -> DVec2;
 
 	fn tangent_at_start(&self) -> DVec2 {
-		self.tangent_at(0.0)
+		self.tangent_at(0.)
 	}
 
 	fn tangent_at_end(&self) -> DVec2 {
-		self.tangent_at(1.0)
+		self.tangent_at(1.)
 	}
 }
 

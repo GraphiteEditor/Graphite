@@ -8,7 +8,7 @@ use glam::DAffine2;
 
 /// Nominal wrapper around `List<Graphic>` representing a single artboard's content.
 ///
-/// Per-artboard metadata (location, dimensions, background, clip) lives as row attributes on the
+/// Per-artboard metadata (location, dimensions, background, clip) lives as attributes on the
 /// enclosing `List<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
 /// that prevents arbitrary `List<List<...<Graphic>>>` nesting.
 #[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]

@@ -20,9 +20,12 @@ use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::ContextDependencies;
+use graphene_std::Graphic;
+use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
@@ -508,6 +511,10 @@ impl NodeNetworkInterface {
 				position
 			}
 		})
+	}
+
+	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceId>) {
+		collect_network_resources(self.document_network(), target);
 	}
 
 	pub fn frontend_imports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
@@ -3396,6 +3403,16 @@ impl NodeNetworkInterface {
 	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
+
+	/// Update the per-layer `ATTR_FILL` snapshot.
+	pub fn update_fill_attributes(&mut self, new_layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
+		self.document_metadata.layer_fill_attributes = new_layer_fill_attributes;
+	}
+
+	/// Update the per-layer `ATTR_STROKE` snapshot.
+	pub fn update_stroke_attributes(&mut self, new_layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
+		self.document_metadata.layer_stroke_attributes = new_layer_stroke_attributes;
+	}
 }
 
 // Public mutable methods
@@ -5906,6 +5923,46 @@ impl NodeNetworkInterface {
 		self.create_wire(&upstream_output, &InputConnector::node(*node_id, insert_node_input_index), network_path);
 	}
 
+	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
+	/// new node's primary (index 0) input, and the new node feeds `input_connector`.
+	///
+	/// When the wire is part of a layer's encapsulated primary chain, `set_input` chain-positions the new node
+	/// automatically. On an unencapsulated secondary-input branch (e.g. a 'Fill' node's fill input) chain positioning
+	/// doesn't apply, so the node would otherwise land at the graph origin; instead it's placed on the displaced
+	/// upstream node's spot and that whole branch is shifted left (in absolute graph space) to make room.
+	pub fn insert_node_before_input(&mut self, node_id: &NodeId, input_connector: &InputConnector, network_path: &[NodeId]) {
+		let feeder = self.upstream_output_connector(input_connector, network_path).and_then(|output| output.node_id());
+
+		let Some(current_input) = self.input_from_connector(input_connector, network_path).cloned() else {
+			log::error!("Could not get input in insert_node_before_input");
+			return;
+		};
+
+		if self.input_from_connector(&InputConnector::node(*node_id, 0), network_path).is_none() {
+			return;
+		}
+
+		self.set_input(&InputConnector::node(*node_id, 0), current_input, network_path);
+		self.set_input(input_connector, NodeInput::node(*node_id, 0), network_path);
+
+		// If `set_input` chain-positioned the node (it joined a layer chain), there's nothing more to do.
+		if !self.is_absolute(node_id, network_path) {
+			return;
+		}
+
+		// Otherwise place the node where the displaced feeder was, then shift the feeder's branch left to make room.
+		let Some(feeder) = feeder else { return };
+		let Some(node_position) = self.position(node_id, network_path) else { return };
+		let Some(feeder_position) = self.position(&feeder, network_path) else { return };
+
+		self.shift_node(node_id, feeder_position - node_position, network_path);
+		// Deduplicate, since `UpstreamFlow` can yield a shared node more than once and we must shift each node only once.
+		let upstream_nodes: HashSet<NodeId> = self.upstream_flow_back_from_nodes(vec![feeder], network_path, FlowType::UpstreamFlow).collect();
+		for upstream_node in &upstream_nodes {
+			self.shift_node(upstream_node, IVec2::new(-NODE_CHAIN_WIDTH, 0), network_path);
+		}
+	}
+
 	/// Moves a node to the start of a layer chain (feeding into the secondary input of the layer).
 	/// When `import` is true, uses lightweight wiring that skips `is_acyclic` checks and per-node cache invalidation.
 	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId], import: bool) {
@@ -6767,6 +6824,21 @@ pub enum TransactionStatus {
 	Modified,
 	#[default]
 	Finished,
+}
+
+fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
+	for node in network.nodes.values() {
+		for input in &node.inputs {
+			if let NodeInput::Value { tagged_value, .. } = input
+				&& let TaggedValue::Resource(id) = &**tagged_value
+			{
+				out.insert(*id);
+			}
+		}
+		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+			collect_network_resources(nested, out);
+		}
+	}
 }
 
 #[cfg(test)]

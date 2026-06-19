@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
+use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
@@ -16,6 +17,7 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::ops::Range;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
@@ -402,16 +404,16 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_f_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node"],
+		node: graphene_std::math_nodes::as_f_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_u_32::IDENTIFIER,
+		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node", "math_nodes::ToU32Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::to_u_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node"],
+		node: graphene_std::math_nodes::as_u_64::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node", "math_nodes::ToU64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
@@ -674,8 +676,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::logic::SwitchNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::text_nodes::to_string::IDENTIFIER,
-		aliases: &["graphene_core::logic::ToStringNode"],
+		node: graphene_std::text_nodes::as_string::IDENTIFIER,
+		aliases: &["graphene_core::logic::ToStringNode", "text_nodes::ToStringNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
@@ -956,11 +958,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::TangentOnPathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
+		node: graphene_std::vector::as_vector::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::PositionToPointNode",
 			"graphene_core::vector::PositionToPointNode",
 			"graphene_core::vector::Vec2ToPointNode",
+			"core_types::vector::Vec2ToPointNode",
 		],
 	},
 ];
@@ -1032,6 +1035,77 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 	}
 
 	false
+}
+
+pub fn document_migration_replace_resources_referenced_by_hash(document_serialized_content: String) -> (String, HashMap<ResourceHash, ResourceId>) {
+	fn collect_resources_referenced_by_hash(s: &str) -> HashMap<ResourceHash, Vec<Range<usize>>> {
+		let mut out: HashMap<ResourceHash, Vec<Range<usize>>> = HashMap::new();
+		let mut offset = 0;
+
+		while let Some(i) = s[offset..].find("\"Resource\":") {
+			let abs = offset + i + 11; // pos after `"Resource":`
+			offset = abs;
+
+			if let Some(j) = s[offset..].find('}') {
+				let chunk_start = offset;
+				let chunk = &s[chunk_start..chunk_start + j];
+
+				let quotes: Vec<_> = chunk.match_indices('"').collect();
+				if quotes.len() == 2 {
+					let q0 = chunk_start + quotes[0].0;
+					let q1 = chunk_start + quotes[1].0;
+					let hash = &s[q0 + 1..q1];
+
+					if hash.len() == 64
+						&& hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+						&& let Ok(hash) = hash.parse::<ResourceHash>()
+					{
+						out.entry(hash).or_default().push(q0..q1 + 1);
+					}
+				}
+
+				offset = chunk_start + j + 1;
+			} else {
+				break;
+			}
+		}
+
+		out
+	}
+
+	let resources_by_hash = collect_resources_referenced_by_hash(&document_serialized_content);
+
+	// Require each referenced hash to also appear as an embedded resource map key (more than ranges.len() occurrences).
+	if resources_by_hash.is_empty()
+		|| !resources_by_hash
+			.iter()
+			.all(|(hash, ranges)| document_serialized_content.matches(&hash.to_string()).count() > ranges.len())
+	{
+		return (document_serialized_content, HashMap::new());
+	}
+
+	// Assign a new ResourceId for each hash
+	let mut hash_to_id: HashMap<ResourceHash, ResourceId> = HashMap::new();
+	for hash in resources_by_hash.keys() {
+		#[allow(clippy::unwrap_or_default)]
+		hash_to_id.entry(*hash).or_insert_with(ResourceId::new);
+	}
+
+	// Each range is 66 bytes (64 hex + 2 quotes) and a ResourceId serializes to at most 20 ASCII digits, so the ID always fits.
+	// Overwrite each hash in place with its ID and pad the leftover bytes with spaces, which JSON deserialization discards.
+	let mut bytes = document_serialized_content.into_bytes();
+	for (hash, ranges) in &resources_by_hash {
+		let id_str = format!("{}", hash_to_id[hash]);
+		let id_bytes = id_str.as_bytes();
+		for range in ranges {
+			bytes[range.start..range.start + id_bytes.len()].copy_from_slice(id_bytes);
+			bytes[range.start + id_bytes.len()..range.end].fill(b' ');
+		}
+	}
+
+	let out = String::from_utf8(bytes).expect("in-place hash-to-ID rewrite produced invalid UTF-8");
+
+	(out, hash_to_id)
 }
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
@@ -1149,6 +1223,30 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
 				document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
 			}
+		}
+	}
+
+	// The "Image" wrapper network was replaced with the `image` proto node directly. Convert old `Network("Image")` instances to the proto node, forwarding the embedded image data so the `image` pass in `migrate_node` below turns it into a resource.
+	// Pre-pass for the same reason as the Brush and Transform migrations above: replacing the outer Image's network impl orphans its child paths.
+	let image_layers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Image".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &image_layers {
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
+		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), image_input, network_path);
 		}
 	}
 
@@ -1501,6 +1599,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		for i in 10..=12 {
 			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i - 2].clone(), network_path);
 		}
+
+		inputs_count = 13;
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
@@ -1588,12 +1688,51 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) && inputs_count == 1 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+	// Upgrade `image` nodes that stored image data as `Image<Color>`` to `image` nodes that store a reference to the image data as a resource.
+	// Encodes the image data as PNG and stores it in the document's embedded resources and rewires the node to reference that resource.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) {
+		let image = node.inputs.iter().find_map(|input| match input.as_value()? {
+			TaggedValue::ImageData(image) => Some(image.clone()),
+			_ => None,
+		});
 
-		// Insert a new empty input for the image
-		document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", "", &[*node_id]);
+		if let Some(image) = image {
+			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
+
+			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);
+			document.resources.registry.resolve(&resource_id, hash);
+
+			let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+		}
+	}
+
+	// Convert text nodes from the old `editor-api` scope + `Font` input to a single font `Resource` input.
+	// The chosen typeface is recorded as a `DataSource::Font` in the document's resource registry and loaded on open.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 13 && matches!(node.inputs.first(), Some(NodeInput::Scope(_))) {
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+
+		if let Some(TaggedValue::Font(font)) = node.inputs.get(2).and_then(|input| input.as_value()) {
+			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);
+			document.resources.registry.push_source_back(
+				&resource_id,
+				DataSource::Font {
+					family: font.font_family.clone(),
+					style: Some(font.font_style.clone()),
+				},
+			);
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+		}
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {
