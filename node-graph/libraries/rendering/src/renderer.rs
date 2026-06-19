@@ -21,7 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -384,6 +384,11 @@ fn emit_svg_fill_path(
 	});
 }
 
+/// Whether the affine transform inverts to a finite matrix (a zero, subnormal, or NaN determinant does not).
+pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
+	transform.matrix2.determinant().recip().is_finite()
+}
+
 fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<peniko::Brush> {
 	let stops = gradient_list.element(0)?;
 
@@ -402,7 +407,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 	let bounds = parent_vector.nonzero_bounding_box();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+	let inverse_parent_transform = if transform_is_invertible(*parent_transform) {
 		parent_transform.inverse()
 	} else {
 		Default::default()
@@ -1069,7 +1074,7 @@ impl Render for List<Vector> {
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
@@ -1316,14 +1321,14 @@ impl Render for List<Vector> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let mut element_transform = set_stroke_transform
 				.map(|stroke_transform| multiplied_transform * stroke_transform.inverse())
 				.unwrap_or(DAffine2::IDENTITY);
 			if let Some(alignment_transform) = render_params.alignment_parent_transform {
 				applied_stroke_transform = alignment_transform;
-				element_transform = if alignment_transform.matrix2.determinant() != 0. {
+				element_transform = if transform_is_invertible(alignment_transform) {
 					multiplied_transform * alignment_transform.inverse()
 				} else {
 					multiplied_transform
@@ -1353,9 +1358,9 @@ impl Render for List<Vector> {
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = element.style.stroke();
-			let can_draw_aligned_stroke = !is_stroke_fully_transparent_at(self, index)
-				&& stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered())
-				&& element.stroke_bezier_paths().all(|p| p.closed());
+			let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
+			let can_draw_aligned_stroke =
+				!stroke_fully_transparent && stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -1396,7 +1401,7 @@ impl Render for List<Vector> {
 								continue;
 							};
 
-							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+							let inverse_element_transform = if transform_is_invertible(element_transform) {
 								element_transform.inverse()
 							} else {
 								Default::default()
@@ -1477,7 +1482,7 @@ impl Render for List<Vector> {
 							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
 								continue;
 							};
-							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+							let inverse_element_transform = if transform_is_invertible(element_transform) {
 								element_transform.inverse()
 							} else {
 								Default::default()
@@ -1589,7 +1594,7 @@ impl Render for List<Vector> {
 		} else {
 			DAffine2::IDENTITY
 		};
-		let item_zero_inverse = if item_zero_transform.matrix2.determinant() != 0. {
+		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
 			item_zero_transform.inverse()
 		} else {
 			DAffine2::IDENTITY
@@ -1700,13 +1705,7 @@ impl Render for List<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
-	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL) {
-		graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
-	} else if let Some(vector) = vector_list.element(index) {
-		!matches!(vector.style.fill(), Fill::None)
-	} else {
-		false
-	};
+	let filled = has_paint_at(vector_list, index, ATTR_FILL) || vector_list.element(index).is_some_and(|vector| !matches!(vector.style.fill(), Fill::None));
 
 	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
 	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
