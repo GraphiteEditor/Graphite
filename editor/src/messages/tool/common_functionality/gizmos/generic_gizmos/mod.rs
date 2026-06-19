@@ -73,10 +73,25 @@ impl GenericGizmo {
 		}
 	}
 
-	fn handle_state(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	/// Distance from the mouse to this gizmo's handle when it is a hover candidate, else `None`.
+	fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
 		match self {
-			Self::Slider(g) => g.handle_state(mouse_position, document, responses),
-			Self::Dial(g) => g.handle_state(mouse_position, document, responses),
+			Self::Slider(g) => g.hover_distance(mouse_position, document),
+			Self::Dial(g) => g.hover_distance(mouse_position, document),
+		}
+	}
+
+	fn enter_hover(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		match self {
+			Self::Slider(g) => g.enter_hover(document, responses),
+			Self::Dial(g) => g.enter_hover(document, responses),
+		}
+	}
+
+	fn exit_hover(&mut self, responses: &mut VecDeque<Message>) {
+		match self {
+			Self::Slider(g) => g.exit_hover(responses),
+			Self::Dial(g) => g.exit_hover(responses),
 		}
 	}
 
@@ -116,19 +131,22 @@ impl GenericGizmo {
 	}
 }
 
-/// A registry-driven gizmo handler. On construction it looks up the selected layer's generator
-/// node in the [gizmo registry](super::gizmo_registry) and builds the appropriate generic gizmos,
-/// so it can stand in for a hand-written `ShapeGizmoHandler` with no node-specific code.
+/// A registry-driven gizmo manager. On construction it looks up the selected layer's generator
+/// node in the [gizmo registry](super::gizmo_registry) and instantiates the appropriate generic
+/// gizmos, so it can stand in for a hand-written `ShapeGizmoHandler` with no node-specific code.
+///
+/// It owns a `Vec<GenericGizmo>` and routes all interaction events to them, resolving priority
+/// when multiple handles overlap (the handle closest to the cursor wins the hover).
 #[derive(Clone, Debug, Default)]
-pub struct GenericGizmoHandler {
+pub struct GenericGizmoManager {
 	gizmos: Vec<GenericGizmo>,
 }
 
-impl GenericGizmoHandler {
-	/// Build a generic handler for `layer` if its node has registered gizmos of a supported type.
-	/// Returns `None` when the layer has no registry entry, so callers can fall through to the
-	/// legacy shape-specific handlers.
-	pub fn detect(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<Self> {
+impl GenericGizmoManager {
+	/// Query the registry for `layer`'s node and instantiate its gizmos. Returns `None` when the
+	/// layer has no registry entry (so callers can fall through to legacy shape-specific handlers)
+	/// or when none of its registered parameters use a currently-supported gizmo type.
+	pub fn detect_gizmos(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<Self> {
 		let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
 		for (identifier, infos) in registered_gizmo_nodes() {
@@ -154,20 +172,39 @@ impl GenericGizmoHandler {
 
 		None
 	}
+
+	/// Index of the gizmo whose handle is closest to the cursor among all hover candidates.
+	/// This is the priority rule for overlapping handles: nearest wins, ties broken by the
+	/// registry declaration order (earlier entries win).
+	fn closest_hover_candidate(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<usize> {
+		self.gizmos
+			.iter()
+			.enumerate()
+			.filter_map(|(index, gizmo)| gizmo.hover_distance(mouse_position, document).map(|distance| (index, distance)))
+			.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+			.map(|(index, _)| index)
+	}
 }
 
-impl ShapeGizmoHandler for GenericGizmoHandler {
+impl ShapeGizmoHandler for GenericGizmoManager {
 	fn is_any_gizmo_hovered(&self) -> bool {
 		self.gizmos.iter().any(GenericGizmo::is_hovered)
 	}
 
 	fn handle_state(&mut self, _selected_shape_layers: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// Each gizmo already knows its own layer; stop once one claims the hover so two handles
-		// never highlight at the same time.
-		for gizmo in &mut self.gizmos {
-			gizmo.handle_state(mouse_position, document, responses);
-			if gizmo.is_hovered() {
-				break;
+		// Don't recompute hover while a drag is in progress: the dragging gizmo keeps ownership.
+		if self.gizmos.iter().any(GenericGizmo::is_dragging) {
+			return;
+		}
+
+		// Resolve priority centrally so two overlapping handles never highlight at once: only the
+		// closest candidate enters the hover state; every other gizmo leaves it.
+		let winner = self.closest_hover_candidate(mouse_position, document);
+		for (index, gizmo) in self.gizmos.iter_mut().enumerate() {
+			if Some(index) == winner {
+				gizmo.enter_hover(document, responses);
+			} else {
+				gizmo.exit_hover(responses);
 			}
 		}
 	}

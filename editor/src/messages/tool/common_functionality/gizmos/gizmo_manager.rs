@@ -3,7 +3,7 @@ use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
-use crate::messages::tool::common_functionality::gizmos::generic_gizmos::GenericGizmoHandler;
+use crate::messages::tool::common_functionality::gizmos::generic_gizmos::GenericGizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
@@ -37,7 +37,7 @@ pub enum ShapeGizmoHandlers {
 	Heart(HeartGizmoHandler),
 	/// Registry-driven generic handler. Used for nodes that declare their gizmos in the
 	/// [gizmo registry](super::gizmo_registry) rather than via a hand-written handler.
-	Generic(GenericGizmoHandler),
+	Generic(GenericGizmoManager),
 }
 
 impl ShapeGizmoHandlers {
@@ -220,7 +220,7 @@ impl GizmoManager {
 		}
 		// Polygon — migrated to the generic, registry-driven gizmo system (sides dial + radius slider).
 		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoHandler::detect(layer, document).map(ShapeGizmoHandlers::Generic);
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Arc
 		if graph_modification_utils::get_arc_id(layer, &document.network_interface).is_some() {
@@ -228,7 +228,7 @@ impl GizmoManager {
 		}
 		// Circle — migrated to the generic, registry-driven gizmo system (radius slider).
 		if graph_modification_utils::get_circle_id(layer, &document.network_interface).is_some() {
-			return GenericGizmoHandler::detect(layer, document).map(ShapeGizmoHandlers::Generic);
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Grid
 		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {

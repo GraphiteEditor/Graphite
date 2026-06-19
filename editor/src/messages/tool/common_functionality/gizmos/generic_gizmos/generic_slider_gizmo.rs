@@ -92,16 +92,11 @@ impl GenericSliderGizmo {
 	}
 
 	/// Detect hover by measuring the mouse's distance to the handle in viewport space.
-	pub fn handle_state(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// Never override an in-progress drag.
-		if self.state == GenericSliderState::Dragging {
-			return;
-		}
-
-		let Some(value) = self.current_value(document) else {
-			self.state = GenericSliderState::Inactive;
-			return;
-		};
+	/// Pure hover test: returns the mouse's distance to the handle when it is a hover candidate, or
+	/// `None` otherwise. The manager uses this distance to resolve priority when several gizmos
+	/// overlap (the closest handle wins). This performs no state mutation.
+	pub fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
+		let value = self.current_value(document)?;
 
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
@@ -109,19 +104,30 @@ impl GenericSliderGizmo {
 
 		// Hide the gizmo when the shape is too small on screen to interact with reliably.
 		if handle.distance(center) < GIZMO_HIDE_THRESHOLD {
-			self.state = GenericSliderState::Inactive;
-			return;
+			return None;
 		}
 
-		if mouse_position.distance(handle) <= SLIDER_HANDLE_HOVER_THRESHOLD {
-			if self.state != GenericSliderState::Hover {
-				self.state = GenericSliderState::Hover;
-				// Capture the reference value now, since `handle_click` (which starts the drag) has no
-				// access to the document.
-				self.initial_value = value;
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
-			}
-		} else if self.state == GenericSliderState::Hover {
+		let distance = mouse_position.distance(handle);
+		(distance <= SLIDER_HANDLE_HOVER_THRESHOLD).then_some(distance)
+	}
+
+	/// Transition into the hovered state (no-op if already hovered or dragging). Capturing the
+	/// reference value here is necessary because `handle_click` (which starts the drag) has no
+	/// access to the document.
+	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.state != GenericSliderState::Inactive {
+			return;
+		}
+		let Some(value) = self.current_value(document) else { return };
+
+		self.state = GenericSliderState::Hover;
+		self.initial_value = value;
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
+	}
+
+	/// Transition out of the hovered state. Leaves an in-progress drag untouched.
+	pub fn exit_hover(&mut self, responses: &mut VecDeque<Message>) {
+		if self.state == GenericSliderState::Hover {
 			self.state = GenericSliderState::Inactive;
 			responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 		}

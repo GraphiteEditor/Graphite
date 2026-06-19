@@ -82,35 +82,41 @@ impl GenericDialGizmo {
 	}
 
 	/// Hover detection: the dial occupies a disc of `DIAL_INDICATOR_RADIUS` around the layer origin.
-	pub fn handle_state(&mut self, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		if self.state == GenericDialState::Dragging {
-			return;
-		}
-
-		if self.current_value(document).is_none() {
-			self.state = GenericDialState::Inactive;
-			return;
-		}
+	/// Pure hover test: returns the mouse's distance to the dial center when it is a hover
+	/// candidate, or `None` otherwise. Used by the manager to resolve overlap priority. Performs
+	/// no state mutation.
+	pub fn hover_distance(&self, mouse_position: DVec2, document: &DocumentMessageHandler) -> Option<f64> {
+		self.current_value(document)?;
 
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		// Hide the dial when the shape is too small on screen.
+		// Hide the dial when the shape is degenerate on screen.
 		let extent = viewport.transform_point2(DVec2::new(1., 0.)).distance(center);
 		if extent < f64::EPSILON {
-			self.state = GenericDialState::Inactive;
-			return;
+			return None;
 		}
 
-		if mouse_position.distance(center) <= DIAL_INDICATOR_RADIUS {
-			if self.state != GenericDialState::Hover {
-				self.state = GenericDialState::Hover;
-				// Capture the reference value now, since `handle_click` (which starts the drag) has no
-				// access to the document.
-				self.initial_value = self.current_value(document).unwrap_or(0);
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
-			}
-		} else if self.state == GenericDialState::Hover {
+		let distance = mouse_position.distance(center);
+		(distance <= DIAL_INDICATOR_RADIUS).then_some(distance)
+	}
+
+	/// Transition into the hovered state (no-op if already hovered or dragging), capturing the
+	/// reference value because `handle_click` has no document access.
+	pub fn enter_hover(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if self.state != GenericDialState::Inactive {
+			return;
+		}
+		let Some(value) = self.current_value(document) else { return };
+
+		self.state = GenericDialState::Hover;
+		self.initial_value = value;
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
+	}
+
+	/// Transition out of the hovered state. Leaves an in-progress drag untouched.
+	pub fn exit_hover(&mut self, responses: &mut VecDeque<Message>) {
+		if self.state == GenericDialState::Hover {
 			self.state = GenericDialState::Inactive;
 			responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 		}
