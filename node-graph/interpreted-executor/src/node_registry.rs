@@ -20,7 +20,7 @@ use graphene_std::render_node::RenderIntermediate;
 use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
+use graphene_std::{AnyGraphicListDyn, Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
@@ -91,6 +91,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<Raster<CPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Graphic>, to: AttributeValueDyn),
+		// Type-erased attribute value conversions for the `Fill` and `Stroke` nodes, which only accept renderable `List` types.
+		into_node!(from: List<Color>, to: AnyGraphicListDyn),
+		into_node!(from: List<GradientStops>, to: AnyGraphicListDyn),
+		into_node!(from: List<Vector>, to: AnyGraphicListDyn),
+		into_node!(from: List<Raster<CPU>>, to: AnyGraphicListDyn),
+		into_node!(from: List<Raster<GPU>>, to: AnyGraphicListDyn),
+		into_node!(from: List<Graphic>, to: AnyGraphicListDyn),
 		// into_node!(from: List<Raster<CPU>>, to: List<Raster<SRGBA8>>),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &PlatformEditorApi, to: &WgpuExecutor),
@@ -160,6 +167,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AnyGraphicListDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Graphic]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::text::Font]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BrushStroke>]),
