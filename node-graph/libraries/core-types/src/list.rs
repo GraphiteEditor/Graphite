@@ -86,7 +86,7 @@ pub const ATTR_STROKE: &str = "stroke";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 
-/// Text item's font `Resource`. Only set by `text_layer`; used by `text_to_vector` and the renderer to reconstruct exact glyph paths.
+/// Text item's font `Resource`. Only set by the Text node; used by `text_to_vector` and the renderer to reconstruct exact glyph paths.
 pub const ATTR_TEXT_FONT: &str = "text_font";
 
 /// Text item's line height ratio relative to the font size (`f64`, implicit default `1.2`). Only stored when it deviates from the default.

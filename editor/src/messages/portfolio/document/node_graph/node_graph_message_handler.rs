@@ -295,10 +295,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let mut node_template = document_node_type.default_node_template();
 				self.context_menu = None;
 
-				// A freshly added Text Layer node carries no font, so give it the default font (registered like the Text tool does)
-				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text_layer::IDENTIFIER) {
+				// A freshly added Text node carries no font, so give it the default font (registered like the Text tool does)
+				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) {
 					let font_resource_id = graph_craft::application_io::resource::ResourceId::new();
-					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text_layer::FontInput::INDEX) {
+					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
 						*font_input = NodeInput::value(TaggedValue::Resource(font_resource_id), false);
 					}
 					responses.add(DocumentMessage::Resource(ResourceMessage::AddFont {

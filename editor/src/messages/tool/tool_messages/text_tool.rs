@@ -106,7 +106,7 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Vec<WidgetInstance> {
-	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_layer_id(layer, &document.network_interface));
+	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface));
 
 	let apply_font = move |font: Font| -> Message {
 		match text_node_id {
@@ -344,7 +344,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					editing_text.typesetting.font_size = font_size;
 				}
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some(node_id) = graph_modification_utils::get_text_layer_id(layer, &context.document.network_interface)
+					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
@@ -359,7 +359,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					editing_text.typesetting.align = align;
 				}
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some(node_id) = graph_modification_utils::get_text_layer_id(layer, &context.document.network_interface)
+					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
@@ -546,7 +546,7 @@ impl TextToolData {
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(graph_modification_utils::get_text_layer_id(self.layer, &document.network_interface).unwrap(), 1),
+				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
 				input: NodeInput::value(TaggedValue::String("".to_string()), false),
 			});
 			responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -631,7 +631,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 	// Detect text layers by the presence of a Text proto node in the chain, not via `metadata().is_text_layer()` which is
 	// populated lazily by the renderer after `RunDocumentGraph`. A freshly created text layer's `text_frames` entry isn't
 	// available yet when SelectionChanged fires, so the metadata check would incorrectly classify it as non-text.
-	graph_modification_utils::get_text_layer_id(layer, &document.network_interface)?;
+	graph_modification_utils::get_text_id(layer, &document.network_interface)?;
 
 	Some(layer)
 }
@@ -846,7 +846,7 @@ impl Fsm for TextToolFsmState {
 					let center_position = centered.then_some(bounds.center_of_transformation);
 
 					let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
-					let Some(node_id) = graph_modification_utils::get_text_layer_id(dragging_layer.id, &document.network_interface) else {
+					let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {
 						warn!("Cannot get text node id");
 						tool_data.layer_dragging.take();
 						return TextToolFsmState::Ready;
@@ -1019,7 +1019,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.set_editing(false, fonts, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(graph_modification_utils::get_text_layer_id(tool_data.layer, &document.network_interface).unwrap(), 1),
+						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);

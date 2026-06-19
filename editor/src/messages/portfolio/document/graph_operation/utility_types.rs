@@ -251,8 +251,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_text(&mut self, text: String, font: Font, typesetting: TypesettingConfig, layer: LayerNodeIdentifier) {
 		let font_resource_id = ResourceId::new();
-		let text = resolve_proto_node_type(graphene_std::text::text_layer::IDENTIFIER)
-			.expect("Text Layer node does not exist")
+		let text = resolve_proto_node_type(graphene_std::text::text::IDENTIFIER)
+			.expect("Text node does not exist")
 			.node_template_input_override([
 				Some(NodeInput::value(TaggedValue::None, false)),
 				Some(NodeInput::value(TaggedValue::String(text), false)),

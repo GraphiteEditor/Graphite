@@ -24,7 +24,7 @@ pub fn lines_clipping(text: &str, font: &Resource, typesetting: TypesettingConfi
 }
 
 /// Shapes each string item of a styled `List<String>` into vector geometry, reading its font and typesetting
-/// from the item's attributes (as set by the 'Text Layer' node) and re-applying its transform and blending
+/// from the item's attributes (as set by the 'Text' node) and re-applying its transform and blending
 /// attributes onto the produced paths. With `separate_glyphs`, each glyph becomes its own item.
 pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> List<Vector> {
 	let mut result = List::new();
