@@ -14,7 +14,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, initial_gradient_transform_for_bbox};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -369,7 +369,7 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 				_ => GradientSpreadMethod::default(),
 			};
 			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::DAffine2(value)) => value,
+				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer))),
 				_ => DAffine2::IDENTITY,
 			};
 
@@ -1977,6 +1977,7 @@ mod test_gradient {
 				let gradient_list = instrumented.grab_input_from_layer::<fill::FillInput<List<GradientStops>>>(layer, &document.network_interface, &editor.runtime)?;
 				let local_transform = instrumented
 					.grab_input_from_layer::<fill::TransformInput>(layer, &document.network_interface, &editor.runtime)
+					.flatten()
 					.unwrap_or_default();
 				let gradient = Gradient {
 					stops: gradient_list.element(0).cloned().unwrap_or_default(),

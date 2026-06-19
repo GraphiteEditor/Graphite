@@ -402,6 +402,7 @@ tagged_value! {
 	DVec2(DVec2),
 	#[serde(alias = "Affine2")]
 	DAffine2(DAffine2),
+	OptionalDAffine2(Option<DAffine2>),
 	FillGradient(Gradient),
 	Font(Font),
 	Footprint(Footprint),

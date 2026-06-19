@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, build_transform_with_y_preservation, get_gradient_stops};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_gradient_stops};
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -32,7 +32,10 @@ use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{
+	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	initial_gradient_transform_for_bbox,
+};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -2447,7 +2450,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					_ => GradientSpreadMethod::default(),
 				};
 				let transform = match document_node.inputs[TransformInput::INDEX].as_value() {
-					Some(&TaggedValue::DAffine2(value)) => value,
+					Some(&TaggedValue::OptionalDAffine2(value)) => {
+						value.unwrap_or_else(|| initial_gradient_transform_for_bbox(context.network_interface.document_metadata().nonzero_bounding_box(layer)))
+					}
 					_ => DAffine2::IDENTITY,
 				};
 				ResolvedFill::Gradient {
@@ -2630,7 +2635,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			} else {
 				"Swap the start and end points of the gradient line."
 			})
-			.on_update(update_value(move |_| TaggedValue::DAffine2(new_transform), node_id, TransformInput::INDEX))
+			.on_update(update_value(move |_| TaggedValue::OptionalDAffine2(Some(new_transform)), node_id, TransformInput::INDEX))
 			.widget_instance();
 		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		spread_methods_row.push(reverse_direction_button);
