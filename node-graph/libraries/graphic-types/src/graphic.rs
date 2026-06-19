@@ -228,16 +228,16 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.filter(|graphic_list| graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty()))
 }
 
-/// Borrowing equivalent of `graphic_list_at(...).is_some()`.
-/// Returns whether the item carries a non-blank paint attribute, without cloning the renderable list.
+/// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
+/// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
 	list.attribute::<List<Graphic>>(attribute, index)
 		.is_some_and(|graphics| graphics.element(0).is_some_and(|graphic| !graphic.is_empty()))
-		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|l| !l.is_empty())
-		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|l| !l.is_empty())
-		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|l| !l.is_empty())
-		|| list.attribute::<List<Raster<CPU>>>(attribute, index).is_some_and(|l| !l.is_empty())
-		|| list.attribute::<List<Raster<GPU>>>(attribute, index).is_some_and(|l| !l.is_empty())
+		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Raster<CPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Raster<GPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 }
 
 /// Look up the fill paint graphics for a vector item, falling back to the legacy

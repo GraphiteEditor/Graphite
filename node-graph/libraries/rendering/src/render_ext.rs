@@ -1,4 +1,4 @@
-use crate::renderer::{RenderParams, format_transform_matrix};
+use crate::renderer::{RenderParams, format_transform_matrix, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -119,7 +119,7 @@ impl RenderExt for List<GradientStops> {
 		let start = transform_points.transform_point2(DVec2::ZERO);
 		let end = transform_points.transform_point2(DVec2::X);
 
-		let gradient_transform = if transformed_bounds.matrix2.determinant().recip().is_finite() {
+		let gradient_transform = if transform_is_invertible(transformed_bounds) {
 			transformed_bounds.inverse()
 		} else {
 			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.

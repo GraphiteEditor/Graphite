@@ -384,6 +384,11 @@ fn emit_svg_fill_path(
 	});
 }
 
+/// Whether the affine transform inverts to a finite matrix (a zero, subnormal, or NaN determinant does not).
+pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
+	transform.matrix2.determinant().recip().is_finite()
+}
+
 fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<peniko::Brush> {
 	let stops = gradient_list.element(0)?;
 
@@ -402,7 +407,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 	let bounds = parent_vector.nonzero_bounding_box();
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let inverse_parent_transform = if parent_transform.matrix2.determinant().recip().is_finite() {
+	let inverse_parent_transform = if transform_is_invertible(*parent_transform) {
 		parent_transform.inverse()
 	} else {
 		Default::default()
@@ -1069,7 +1074,7 @@ impl Render for List<Vector> {
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant().recip().is_finite());
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
@@ -1316,14 +1321,14 @@ impl Render for List<Vector> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
-			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant().recip().is_finite());
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let mut element_transform = set_stroke_transform
 				.map(|stroke_transform| multiplied_transform * stroke_transform.inverse())
 				.unwrap_or(DAffine2::IDENTITY);
 			if let Some(alignment_transform) = render_params.alignment_parent_transform {
 				applied_stroke_transform = alignment_transform;
-				element_transform = if alignment_transform.matrix2.determinant().recip().is_finite() {
+				element_transform = if transform_is_invertible(alignment_transform) {
 					multiplied_transform * alignment_transform.inverse()
 				} else {
 					multiplied_transform
@@ -1396,7 +1401,7 @@ impl Render for List<Vector> {
 								continue;
 							};
 
-							let inverse_element_transform = if element_transform.matrix2.determinant().recip().is_finite() {
+							let inverse_element_transform = if transform_is_invertible(element_transform) {
 								element_transform.inverse()
 							} else {
 								Default::default()
@@ -1477,7 +1482,7 @@ impl Render for List<Vector> {
 							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
 								continue;
 							};
-							let inverse_element_transform = if element_transform.matrix2.determinant().recip().is_finite() {
+							let inverse_element_transform = if transform_is_invertible(element_transform) {
 								element_transform.inverse()
 							} else {
 								Default::default()
@@ -1589,7 +1594,7 @@ impl Render for List<Vector> {
 		} else {
 			DAffine2::IDENTITY
 		};
-		let item_zero_inverse = if item_zero_transform.matrix2.determinant().recip().is_finite() {
+		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
 			item_zero_transform.inverse()
 		} else {
 			DAffine2::IDENTITY
