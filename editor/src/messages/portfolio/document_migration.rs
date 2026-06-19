@@ -1284,15 +1284,17 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
 
-	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> "Text to Vector" pair, which reuses the
-	// same proto identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, so the 13-input count
-	// (the current node has 12) distinguishes them: forward inputs 0..=11 onto the new node and move `separate_glyphs` to `text_to_vector`.
+	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> "Text to Vector" pair, which reuses the same
+	// proto identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current
+	// 12-input node by the trailing `separate_glyphs` input (index 12): forward inputs 0..=11 onto the new node and move it onto `text_to_vector`.
 	let old_text_nodes: Vec<(NodeId, Vec<NodeId>)> = document
 		.network_interface
 		.document_network()
 		.recursive_nodes()
 		.filter_map(|(node_id, node, path)| {
-			(node.inputs.len() == 13 && document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"))))
+			// `separate_glyphs` is a `Bool` value or a wire feeding one; only a different value type there means a newer input, not the old node
+			let has_legacy_separate_glyphs = node.inputs.len() == 13 && node.inputs.get(12).is_some_and(|input| matches!(input.as_value(), None | Some(TaggedValue::Bool(_))));
+			(has_legacy_separate_glyphs && document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"))))
 				.then_some((*node_id, path))
 		})
 		.collect();
