@@ -24,7 +24,7 @@ use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::{FillChoice, FillChoiceUI};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
@@ -571,6 +571,10 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
+		responses.add(GraphOperationMessage::FillSet {
+			layer: self.layer,
+			fill: editing_text.color.map_or(Fill::None, Fill::Solid),
+		});
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
 
@@ -650,14 +654,21 @@ impl Fsm for TextToolFsmState {
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				let transform = document.metadata().transform_to_viewport(tool_data.layer).to_cols_array();
+				// While editing, the text is blanked, so the layer's rendered transform metadata is absent; read the Transform node so the overlay tracks placement
+				let transform = document
+					.metadata()
+					.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
+					.to_cols_array();
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform { transform });
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
 					let far = graphene_std::text::bounding_box(&tool_data.new_text, &font_resource, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
+						let transformed_quad = document
+							.metadata()
+							.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
+							* quad;
 						overlay_context.quad(transformed_quad, None, Some(fill_color));
 					}
 				}
@@ -960,11 +971,17 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Editing;
 				}
 
-				// Otherwise create some new text
-				let constraint_size = has_dragged.then_some((start - end).abs());
+				// Otherwise create some new text. The drag bounds are in viewport space; map them into document space for the text's
+				// transform and wrapping size, then compose with document-to-viewport so the editing overlay (a screen-space CSS matrix) carries the zoom.
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let viewport_to_document = document_to_viewport.inverse();
+				let document_start = viewport_to_document.transform_point2(start);
+				let document_end = viewport_to_document.transform_point2(end);
+
+				let constraint_size = has_dragged.then_some((document_start - document_end).abs());
 				let editing_text = EditingText {
 					text: String::new(),
-					transform: DAffine2::from_translation(start),
+					transform: document_to_viewport * DAffine2::from_translation(document_start),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
 						letter_spacing: tool_options.letter_spacing,
