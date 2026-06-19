@@ -40,6 +40,7 @@ pub struct Manifest {
 	pub format: String,
 	pub format_version: u32,
 	pub document_uuid: u64,
+	// TODO: Move to session?
 	pub peer_id: PeerId,
 	pub editor_version: String,
 	pub stdlib_version: String,
@@ -47,6 +48,7 @@ pub struct Manifest {
 	/// file extension is present.
 	#[serde(default)]
 	pub codecs: PayloadCodecs,
+	// TODO: Move to session?
 	/// RFC 3339 timestamp of the most recent retirement, set by [`crate::Gdd::retire`].
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub last_retired_at: Option<String>,

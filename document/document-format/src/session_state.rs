@@ -6,7 +6,7 @@
 
 use graph_storage::{NetworkId, Rev};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SessionState {
@@ -24,10 +24,10 @@ pub struct SessionState {
 	pub next_node_counter: u64,
 	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
 	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
-	#[serde(default)]
-	pub view_settings: HashMap<String, serde_json::Value>,
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub view_settings: BTreeMap<String, serde_json::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by the stable storage [`NetworkId`].
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
-	#[serde(default)]
-	pub network_view_settings: HashMap<NetworkId, HashMap<String, serde_json::Value>>,
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, serde_json::Value>>,
 }

@@ -190,26 +190,29 @@ impl<L: Layout> Gdd<L> {
 
 	/// The per-peer view settings read from `session.json` (PTZ, rulers, overlays, snapping, collapse).
 	/// Opaque `ui::doc::*` blobs; the editor decodes them. Empty for a fresh document.
-	pub fn view_settings(&self) -> &std::collections::HashMap<String, serde_json::Value> {
+	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, serde_json::Value> {
 		&self.view_settings
 	}
 
 	/// Replace the per-peer view settings and persist them to `session.json`. Called by the editor when
 	/// the viewport or a document-level toggle changes; never enters the registry, history, or CRDT.
-	pub fn set_view_settings(&mut self, view_settings: std::collections::HashMap<String, serde_json::Value>) -> Result<(), Error> {
+	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, serde_json::Value>) -> Result<(), Error> {
 		self.view_settings = view_settings;
 		self.persist_session_state()
 	}
 
 	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
 	/// [`NetworkId`](graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
-	pub fn network_view_settings(&self) -> &std::collections::HashMap<graph_storage::NetworkId, std::collections::HashMap<String, serde_json::Value>> {
+	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
 		&self.network_view_settings
 	}
 
 	/// Replace the per-network view settings and persist them to `session.json`. Per-peer, per-network; never
 	/// enters the registry, history, or CRDT.
-	pub fn set_network_view_settings(&mut self, network_view_settings: std::collections::HashMap<graph_storage::NetworkId, std::collections::HashMap<String, serde_json::Value>>) -> Result<(), Error> {
+	pub fn set_network_view_settings(
+		&mut self,
+		network_view_settings: std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	) -> Result<(), Error> {
 		self.network_view_settings = network_view_settings;
 		self.persist_session_state()
 	}

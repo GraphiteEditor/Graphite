@@ -117,7 +117,7 @@ impl<L: Layout> Gdd<L> {
 				let mut writer = document_container::archive::Zip::writer(cursor)?;
 				self.stream_entries(options, byte_store, &mut writer).await?;
 				if let Some(legacy) = legacy_document {
-					ExportSink::write_entry(&mut writer, self.layout.legacy_basename(), legacy)?;
+					ExportSink::write_entry(&mut writer, self.layout.legacy_path(), legacy)?;
 				}
 				writer.finish_into()?
 			}
@@ -126,7 +126,7 @@ impl<L: Layout> Gdd<L> {
 				let mut writer = document_container::archive::Xz::writer(cursor)?;
 				self.stream_entries(options, byte_store, &mut writer).await?;
 				if let Some(legacy) = legacy_document {
-					ExportSink::write_entry(&mut writer, self.layout.legacy_basename(), legacy)?;
+					ExportSink::write_entry(&mut writer, self.layout.legacy_path(), legacy)?;
 				}
 				writer.finish_into()?
 			}

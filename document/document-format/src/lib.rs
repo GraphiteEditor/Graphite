@@ -81,10 +81,10 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) manifest: Manifest,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
-	pub(crate) view_settings: std::collections::HashMap<String, serde_json::Value>,
+	pub(crate) view_settings: std::collections::BTreeMap<String, serde_json::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
-	pub(crate) network_view_settings: std::collections::HashMap<graph_storage::NetworkId, std::collections::HashMap<String, serde_json::Value>>,
+	pub(crate) network_view_settings: std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -115,25 +115,9 @@ impl<L: Layout> Gdd<L> {
 	/// (the archive reader is synchronous), then each entry is written into `working` via the sync
 	/// `write_non_blocking` surface — durable on folder/memory, eagerly enqueued on OPFS. `working` is
 	/// expected to be a fresh per-document container; entries with colliding paths are overwritten.
-	#[cfg(all(feature = "zip", feature = "xz"))]
-	pub async fn open_from_archive(bytes: &[u8], working: AnyContainer, layout: L) -> Result<Self, Error> {
-		use document_container::AsyncContainer;
-		use document_container::Container;
-		use document_container::backends::memory::MemoryBackend;
-
-		let mut staging = MemoryBackend::new();
-		document_container::archive::open_auto(bytes, &mut staging)?;
-
-		// Copy every entry, recursing into subdirectories: `list` is single-level, so a flat top-level
-		// copy would skip the `resources/<hash>` subtree (the document's resource + declaration bytes).
-		let mut directories = vec![String::new()];
-		while let Some(dir) = directories.pop() {
-			for path in Container::list(&staging, &dir)? {
-				let holder = Container::read(&staging, &path)?;
-				working.write_non_blocking(&path, holder.as_slice())?;
-			}
-			directories.extend(Container::list_dirs(&staging, &dir)?);
-		}
+	#[cfg(any(feature = "zip", feature = "xz"))]
+	pub async fn open_from_archive(bytes: &[u8], mut working: AnyContainer, layout: L) -> Result<Self, Error> {
+		document_container::archive::open_auto(bytes, &mut working)?;
 
 		Self::open_in(working, layout).await
 	}
@@ -198,8 +182,8 @@ impl<L: Layout> Gdd<L> {
 			working: Arc::new(working),
 			layout,
 			manifest,
-			view_settings: std::collections::HashMap::new(),
-			network_view_settings: std::collections::HashMap::new(),
+			view_settings: std::collections::BTreeMap::new(),
+			network_view_settings: std::collections::BTreeMap::new(),
 		})
 	}
 }
@@ -330,12 +314,12 @@ impl<L: Layout> Gdd<L> {
 	/// Synchronous (hot-path safe via `write_non_blocking`): called at the autosave boundary alongside
 	/// the registry snapshot. The bytes are opaque to `Gdd` — it never deserializes them.
 	pub fn store_legacy_document(&self, bytes: &[u8]) -> Result<(), ContainerError> {
-		self.working.write_non_blocking(self.layout.legacy_basename(), bytes)
+		self.working.write_non_blocking(self.layout.legacy_path(), bytes)
 	}
 
 	/// Read back the embedded legacy `.graphite` document, if present. The compare-on-open oracle and
 	/// the recovery fallback both go through here. `None` when no legacy blob was ever written.
 	pub async fn read_legacy_document(&self) -> Option<ByteHolder> {
-		self.working.read(self.layout.legacy_basename()).await.ok()
+		self.working.read(self.layout.legacy_path()).await.ok()
 	}
 }

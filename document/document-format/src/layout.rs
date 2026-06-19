@@ -17,7 +17,7 @@ pub trait Layout {
 	/// The embedded legacy `.graphite` document, stored verbatim during the dual-write soak so the
 	/// new format can be validated against (and recovered from) the old one. Dropped once `.gdd`
 	/// becomes the sole source of truth.
-	fn legacy_basename(&self) -> &str;
+	fn legacy_path(&self) -> &str;
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -45,7 +45,7 @@ impl Layout for GddV1Layout {
 	fn resource_path(&self, hash: &ResourceHash) -> String {
 		format!("{}/{hash}", self.resources_dir())
 	}
-	fn legacy_basename(&self) -> &str {
+	fn legacy_path(&self) -> &str {
 		"legacy.graphite"
 	}
 }
