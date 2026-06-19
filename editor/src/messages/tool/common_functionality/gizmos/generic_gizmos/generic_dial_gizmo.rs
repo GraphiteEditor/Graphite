@@ -1,12 +1,12 @@
-//! A generic, rotary dial that edits a discrete `u32` node parameter (e.g. a polygon's side count).
+//! A generic dial that edits a discrete `u32` node parameter (e.g. a polygon's side count).
 //!
 //! Like [`GenericSliderGizmo`](super::generic_slider_gizmo::GenericSliderGizmo), this is fully
-//! data-driven from the [gizmo registry]: it is anchored at the layer's origin and converts the
-//! angle the user drags around that origin into integer steps.
+//! data-driven from the [gizmo registry]: it is anchored at the layer's origin and converts a
+//! horizontal drag into integer steps (drag right to increase, left to decrease).
 //!
 //! [gizmo registry]: crate::messages::tool::common_functionality::gizmos::gizmo_registry
 
-use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH};
+use crate::consts::NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -22,10 +22,13 @@ use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
-/// How many degrees of rotation correspond to one integer step.
-const DIAL_DEGREES_PER_STEP: f64 = 30.;
+/// Horizontal drag distance (viewport px) that corresponds to one integer step.
+const DIAL_PIXELS_PER_STEP: f64 = 20.;
 /// Viewport radius of the drawn dial indicator.
 const DIAL_INDICATOR_RADIUS: f64 = NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH;
+/// Viewport radius of the clickable hit area. Deliberately larger than the drawn indicator so the
+/// handle is easy to grab and the press doesn't fall through to the layer-move behavior.
+const DIAL_HOVER_RADIUS: f64 = NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH + 8.;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GenericDialState {
@@ -98,7 +101,7 @@ impl GenericDialGizmo {
 		}
 
 		let distance = mouse_position.distance(center);
-		(distance <= DIAL_INDICATOR_RADIUS).then_some(distance)
+		(distance <= DIAL_HOVER_RADIUS).then_some(distance)
 	}
 
 	/// Transition into the hovered state (no-op if already hovered or dragging), capturing the
@@ -122,21 +125,11 @@ impl GenericDialGizmo {
 		}
 	}
 
-	/// Convert the angle swept around the layer origin (relative to the drag start) into integer
-	/// steps, clamped to the registry's bounds.
-	pub fn handle_update(&self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		let viewport = document.metadata().transform_to_viewport(self.layer);
-		let center = viewport.transform_point2(DVec2::ZERO);
-
-		let start_vector = drag_start - center;
-		let current_vector = input.mouse.position - center;
-		let (Some(start_dir), Some(current_dir)) = (start_vector.try_normalize(), current_vector.try_normalize()) else {
-			return;
-		};
-
-		// Signed angle (radians) swept from the drag-start direction to the current direction.
-		let swept_degrees = start_dir.angle_to(current_dir).to_degrees();
-		let steps = (swept_degrees / DIAL_DEGREES_PER_STEP).round() as i64;
+	/// Convert the horizontal drag distance into integer steps (drag right to increase, left to
+	/// decrease), clamped to the registry's bounds.
+	pub fn handle_update(&self, drag_start: DVec2, _document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		let horizontal_delta = input.mouse.position.x - drag_start.x;
+		let steps = (horizontal_delta / DIAL_PIXELS_PER_STEP).round() as i64;
 
 		let min = self.info.min.map(|m| m as i64).unwrap_or(0);
 		let max = self.info.max.map(|m| m as i64).unwrap_or(i64::MAX);
@@ -149,8 +142,9 @@ impl GenericDialGizmo {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Draw the dial ring and a tick pointing toward the current mouse-derived angle.
-	pub fn overlays(&self, document: &DocumentMessageHandler, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+	/// Draw the dial as a grabbable handle at the layer origin: an outer ring (the hit target) plus
+	/// a filled center dot so it reads as draggable.
+	pub fn overlays(&self, document: &DocumentMessageHandler, _mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		if self.state == GenericDialState::Inactive {
 			return;
 		}
@@ -158,18 +152,8 @@ impl GenericDialGizmo {
 		let viewport = document.metadata().transform_to_viewport(self.layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		let extent = viewport.transform_point2(DVec2::new(1., 0.)).distance(center);
-		if extent < GIZMO_HIDE_THRESHOLD / DIAL_INDICATOR_RADIUS {
-			// Shape is extremely small; skip to avoid a cluttered overlay.
-			return;
-		}
-
 		overlay_context.circle(center, DIAL_INDICATOR_RADIUS, None, None);
-
-		// Tick line pointing from the center toward the mouse, giving the dial a sense of direction.
-		if let Some(direction) = (mouse_position - center).try_normalize() {
-			overlay_context.line(center, center + direction * DIAL_INDICATOR_RADIUS, None, None);
-		}
+		overlay_context.manipulator_handle(center, self.state == GenericDialState::Dragging, None);
 	}
 
 	pub fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
