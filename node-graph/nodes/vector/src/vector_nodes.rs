@@ -20,6 +20,7 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::any::Any;
 use std::collections::hash_map::DefaultHasher;
+use vector_types::gradient::initial_gradient_transform_for_bbox;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -194,7 +195,7 @@ async fn fill<F: IntoGraphicList, V: VectorListIterMut + 'n + Send>(
 	_backup_gradient: List<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
-	_transform: DAffine2,
+	_transform: Option<DAffine2>,
 ) -> V {
 	if let Some(gradient) = (&mut fill as &mut dyn Any).downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
@@ -210,8 +211,22 @@ async fn fill<F: IntoGraphicList, V: VectorListIterMut + 'n + Send>(
 		}
 
 		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+			let transform = _transform.unwrap_or_else(|| {
+				// Construct a transform that covers the bounding box of the paint target
+				let mut bounds: Option<[DVec2; 2]> = None;
+				content.for_each_vector_mut(|vector, _| {
+					if let Some([min, max]) = vector.bounding_box() {
+						bounds = Some(match bounds {
+							Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+							None => [min, max],
+						});
+					}
+				});
+				initial_gradient_transform_for_bbox(bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]))
+			});
+
 			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = _transform;
+				*value = transform;
 			}
 		}
 	}

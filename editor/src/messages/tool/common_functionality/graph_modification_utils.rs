@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
@@ -350,7 +350,7 @@ fn legacy_backup_gradient_in_fill_node(fill_node_id: NodeId, network_interface: 
 // TODO: Eventually remove this document upgrade code
 /// Convert a "Fill" node's legacy gradients (the active `fill` and/or the stashed `_backup_gradient`) to absolute space using
 /// the geometry's measured bounding box, writing each back in place. The active fill is written as a `Fill`, the backup as a bare `FillGradient`.
-pub fn migrate_fill_node_gradients_to_absolute(fill_node_id: NodeId, network_interface: &mut NodeNetworkInterface, bounding_box: DAffine2, layer_transform: DAffine2) {
+pub fn migrate_fill_node_gradients_to_absolute(fill_node_id: NodeId, network_interface: &mut NodeNetworkInterface, bounding_box: glam::DAffine2, layer_transform: glam::DAffine2) {
 	if let Some(gradient) = legacy_active_gradient_in_fill_node(fill_node_id, network_interface) {
 		let absolute = gradient.to_absolute(bounding_box, layer_transform);
 		let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Color>>::INDEX);
@@ -436,43 +436,6 @@ pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, tran
 		viewport_end.x > viewport_start.x
 	} else {
 		(viewport_start.x + viewport_start.y) < (viewport_end.x + viewport_end.y)
-	}
-}
-
-/// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
-/// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
-/// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
-/// Falls back to a +90° rotation of `new_x` when `old_x` is degenerate.
-fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec2 {
-	let old_x_length = old_x.length();
-	if old_x_length < 1e-9 {
-		return DVec2::new(-new_x.y, new_x.x);
-	}
-	let ex_old = old_x / old_x_length;
-	let ey_old = DVec2::new(-ex_old.y, ex_old.x);
-
-	let new_x_length = new_x.length();
-	if new_x_length < 1e-9 {
-		return DVec2::ZERO;
-	}
-	let ex_new = new_x / new_x_length;
-	let ey_new = DVec2::new(-ex_new.y, ex_new.x);
-
-	let parallel = old_y.dot(ex_old);
-	let perpendicular = old_y.dot(ey_old);
-	let scale = new_x_length / old_x_length;
-
-	scale * (parallel * ex_new + perpendicular * ey_new)
-}
-
-/// Build a new affine that maps canonical (0,0) -> (1,0) to (new_start, new_end), preserving the y-axis
-/// shape of `old` proportionally to the x-axis length change.
-pub fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end: DVec2) -> DAffine2 {
-	let new_x_axis = new_end - new_start;
-	let preserved_y_axis = scale_y_axis_to_match_new_x(old.matrix2.x_axis, old.matrix2.y_axis, new_x_axis);
-	DAffine2 {
-		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
-		translation: new_start,
 	}
 }
 

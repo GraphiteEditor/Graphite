@@ -3,9 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{
-	build_transform_with_y_preservation, get_fill_input_node_id, get_fill_node_id_with_value, get_upstream_gradient_value_node_id, gradient_chain_target_input,
-};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_fill_node_id_with_value, get_upstream_gradient_value_node_id, gradient_chain_target_input};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
@@ -17,7 +15,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke, build_transform_with_y_preservation};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
@@ -588,13 +586,13 @@ impl<'a> ModifyInputsContext<'a> {
 				.get(&fill_node_id)
 				.and_then(|node| node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX))
 				.and_then(|input| input.as_value())
-				.and_then(|value| if let TaggedValue::DAffine2(t) = value { Some(*t) } else { None })
+				.and_then(|value| if let TaggedValue::OptionalDAffine2(t) = value { *t } else { None })
 				.unwrap_or(DAffine2::IDENTITY);
 
 			let new_transform = build_transform_with_y_preservation(old_transform, new_start, new_end);
 			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-				NodeInput::value(TaggedValue::DAffine2(new_transform), false),
+				NodeInput::value(TaggedValue::OptionalDAffine2(Some(new_transform)), false),
 				false,
 			);
 			return;
