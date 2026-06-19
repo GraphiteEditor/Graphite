@@ -2588,11 +2588,43 @@ impl Render for List<String> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		let Some(element_id) = element_id else { return };
-		metadata.upstream_footprints.insert(element_id, footprint);
-		if !self.is_empty() {
-			metadata.local_transforms.insert(element_id, self.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+		// Click targets are baked relative to item 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`.
+		let item_zero_transform: DAffine2 = if !self.is_empty() {
+			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
+		} else {
+			DAffine2::IDENTITY
+		};
+		let item_zero_inverse = if item_zero_transform.matrix2.determinant() != 0. {
+			item_zero_transform.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
+
+		for index in 0..self.len() {
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer = layer_path.iter_element_values().next_back().copied();
+			let Some(element_id) = caller_element_id.or(layer) else { continue };
+
+			// When recovering element_id from the item's tag (caller passed None), also store the transform metadata.
+			if caller_element_id.is_none() {
+				metadata.upstream_footprints.entry(element_id).or_insert(footprint);
+				metadata.local_transforms.entry(element_id).or_insert(item_zero_transform);
+			}
+
+			let Some((size, item_transform)) = text_item_size_and_transform(self, index) else { continue };
+			let subpath = Subpath::new_rectangle(DVec2::ZERO, size);
+			let mut target = ClickTarget::new_with_subpath(subpath, 0.);
+			target.apply_transform(item_zero_inverse * item_transform);
+			accumulated_click_targets.entry(element_id).or_default().push(Arc::new(target));
+		}
+
+		// One rectangle per text item, reused for the selection outline (there's no letterform geometry to outline at this stage).
+		for (element_id, targets) in accumulated_click_targets {
+			metadata.outlines.insert(element_id, targets.clone());
+			metadata.click_targets.insert(element_id, targets);
 		}
 	}
 
