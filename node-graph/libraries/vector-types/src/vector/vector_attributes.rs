@@ -1224,7 +1224,7 @@ impl Vector {
 
 	pub fn is_branching(&self) -> bool {
 		// Tally segment endpoints per point in one `O(points + segments)` pass, short-circuiting once any point exceeds two
-		let mut connected_count = vec![0_usize; self.point_domain.len()];
+		let mut connected_count = vec![0_u8; self.point_domain.len()];
 		for &point_index in self.segment_domain.start_point().iter().chain(self.segment_domain.end_point()) {
 			connected_count[point_index] += 1;
 			if connected_count[point_index] > 2 {
