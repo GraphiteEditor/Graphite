@@ -1,4 +1,4 @@
-use dyn_any::StaticType;
+use dyn_any::DynAny;
 use std::any::Any;
 use std::future::Future;
 use std::pin::Pin;
@@ -39,7 +39,7 @@ impl<P: AsyncPipeline> Pipeline for P {
 	}
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, DynAny)]
 pub struct PipelineCache {
 	pipeline: Arc<OnceLock<Box<dyn Any + Send + Sync>>>,
 	executor: Arc<OnceLock<WgpuExecutor>>,
@@ -65,8 +65,4 @@ impl std::fmt::Debug for PipelineCache {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("PipelineCache").field("initialized", &self.pipeline.get().is_some()).finish()
 	}
-}
-
-unsafe impl StaticType for PipelineCache {
-	type Static = PipelineCache;
 }
