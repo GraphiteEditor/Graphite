@@ -1714,8 +1714,14 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List
 }
 
 fn extend_free_point_targets(vector: &Vector, transform: DAffine2) -> impl Iterator<Item = ClickTarget> + '_ {
-	vector.point_domain.ids().iter().filter_map(move |&point_id| {
-		if vector.any_connected(point_id) {
+	// Mark every point index touched by a segment endpoint in one `O(points + segments)` pass, avoiding a per-point `any_connected` scan
+	let mut connected = vec![false; vector.point_domain.len()];
+	for &point_index in vector.segment_domain.start_point().iter().chain(vector.segment_domain.end_point()) {
+		connected[point_index] = true;
+	}
+
+	vector.point_domain.ids().iter().enumerate().filter_map(move |(point_index, &point_id)| {
+		if connected[point_index] {
 			return None;
 		}
 

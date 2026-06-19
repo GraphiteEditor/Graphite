@@ -1223,7 +1223,15 @@ impl Vector {
 	}
 
 	pub fn is_branching(&self) -> bool {
-		(0..self.point_domain.len()).any(|point_index| self.segment_domain.connected_count(point_index) > 2)
+		// Tally segment endpoints per point in one `O(points + segments)` pass, short-circuiting once any point exceeds two
+		let mut connected_count = vec![0_usize; self.point_domain.len()];
+		for &point_index in self.segment_domain.start_point().iter().chain(self.segment_domain.end_point()) {
+			connected_count[point_index] += 1;
+			if connected_count[point_index] > 2 {
+				return true;
+			}
+		}
+		false
 	}
 
 	pub fn has_regions(&self) -> bool {
