@@ -1,4 +1,5 @@
 use super::TypesettingConfig;
+use super::path_builder::PathBuilder;
 use core::cell::RefCell;
 use core_types::list::List;
 use glam::DVec2;
@@ -7,8 +8,6 @@ use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
 use vector_types::Vector;
-
-use super::path_builder::PathBuilder;
 
 thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
@@ -27,14 +26,17 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 		// a paragraph if it's the very last line of the buffer or its text ends with `\n`.
 		let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
 
-		let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+		let mut x_offset = 0.;
+		let mut space_extra = 0.;
+
+		if is_last_para_line && let Some(correction) = last_line_correction {
 			let metrics = line.metrics();
 			let content_advance = metrics.advance - metrics.trailing_whitespace;
 			let free_space = alignment_width - content_advance;
 
 			match correction {
-				parley::Alignment::Center => (free_space * 0.5, 0.),
-				parley::Alignment::Right => (free_space, 0.),
+				parley::Alignment::Center => x_offset = free_space * 0.5,
+				parley::Alignment::Right => x_offset = free_space,
 				parley::Alignment::Justify => {
 					// Exclude trailing-whitespace clusters from the divisor so the redistribution stretches only the internal spaces.
 					// Parley's `trailing_whitespace` is in advance units, not bytes, so we re-derive the byte boundary here to filter cluster ranges.
@@ -46,14 +48,13 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 						.runs()
 						.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
 						.sum();
-					let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
-					(0., extra)
+					if space_count > 0 {
+						space_extra = free_space / space_count as f32;
+					}
 				}
-				_ => (0., 0.),
+				_ => {}
 			}
-		} else {
-			(0., 0.)
-		};
+		}
 
 		for item in line.items() {
 			if let PositionedLayoutItem::GlyphRun(glyph_run) = item

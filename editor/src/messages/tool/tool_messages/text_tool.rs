@@ -35,11 +35,11 @@ pub struct TextTool {
 }
 
 pub struct TextOptions {
+	font: Font,
 	font_size: f64,
 	letter_spacing: f64,
-	font: Font,
-	fill: ToolColorOptions,
 	letter_tilt: f64,
+	fill: ToolColorOptions,
 	align: TextAlign,
 	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
 	last_synced_selection: Vec<LayerNodeIdentifier>,
@@ -48,11 +48,11 @@ pub struct TextOptions {
 impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
+			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
 			font_size: 24.,
 			letter_spacing: 0.,
-			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
-			fill: ToolColorOptions::new_enabled(),
 			letter_tilt: 0.,
+			fill: ToolColorOptions::new_enabled(),
 			align: TextAlign::default(),
 			last_synced_selection: Vec::new(),
 		}

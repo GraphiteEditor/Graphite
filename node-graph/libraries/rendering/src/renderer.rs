@@ -6,6 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
+use core_types::consts::DEFAULT_FONT_SIZE;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
@@ -29,11 +30,10 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
-use skrifa::GlyphId;
-use skrifa::MetadataProvider;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as SkrifaFontRef;
+use skrifa::{GlyphId, MetadataProvider};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
@@ -677,7 +677,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.contains_artboard(),
 			Graphic::Color(list) => list.contains_artboard(),
 			Graphic::Gradient(list) => list.contains_artboard(),
-			Graphic::Text(_) => false,
+			Graphic::Text(list) => list.contains_artboard(),
 		}
 	}
 
@@ -2307,8 +2307,8 @@ impl OutlinePen for GlyphOutlinePen<'_> {
 	}
 }
 
-/// Draws each glyph of `glyph_run` into a `BezPath` (with the run's position and faux-italic `tilt_tan` baked in) and calls
-/// `emit` for each non-empty glyph. Zero-geometry glyphs advance by `space_extra` for justified spacing.
+/// Draws each glyph of `glyph_run` into a `BezPath` (with the run's position and faux-italic `tilt_tan` baked in)
+/// and calls `emit` for each non-empty glyph. Zero-geometry glyphs advance by `space_extra` for justified spacing.
 fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, tilt_tan: f64, mut emit: impl FnMut(&BezPath)) {
 	let mut run_x = glyph_run.offset() + x_offset;
 	let run_y = glyph_run.baseline();
@@ -2330,12 +2330,8 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 		let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
 
 		bez_path.truncate(0);
-		let mut pen = GlyphOutlinePen {
-			path: &mut bez_path,
-			ox,
-			oy,
-			tilt_tan,
-		};
+		let path = &mut bez_path;
+		let mut pen = GlyphOutlinePen { path, ox, oy, tilt_tan };
 		if outline.draw(settings, &mut pen).is_ok() && !bez_path.elements().is_empty() {
 			emit(&bez_path);
 		} else if space_extra != 0. && glyph.advance > 0. {
@@ -2343,8 +2339,6 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 		}
 	}
 }
-
-const DEFAULT_FONT_SIZE: f64 = 24.;
 
 impl Render for List<String> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
@@ -2500,6 +2494,7 @@ impl Render for List<String> {
 			});
 		}
 	}
+
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
 		metadata.upstream_footprints.insert(element_id, footprint);
