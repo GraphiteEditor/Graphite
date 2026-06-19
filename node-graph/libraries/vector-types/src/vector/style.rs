@@ -389,7 +389,7 @@ fn daffine2_identity() -> DAffine2 {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
-	/// Stroke color
+	/// Deprecated, use `ATTR_STROKE` instead. This field will be removed after the full migration.
 	pub color: Option<Color>,
 	/// Line thickness
 	pub weight: f64,

@@ -713,7 +713,7 @@ pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 
 /// Returns the stroke color from a layer's upstream Stroke node.
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
-	let color_index = graphene_std::vector::stroke::ColorInput::INDEX;
+	let color_index = graphene_std::vector::stroke::PaintInput::INDEX;
 	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), color_index)?;
 	if let TaggedValue::Color(color) = tagged { Some(*color) } else { None }
 }
@@ -834,7 +834,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			let input_index = graphene_std::vector::stroke::ColorInput::INDEX;
+			let input_index = graphene_std::vector::stroke::PaintInput::INDEX;
 			let value = TaggedValue::Color(color);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else {

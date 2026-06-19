@@ -233,9 +233,9 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(List<Vector>, List<Vector>, List<Vector>, List<Graphic>, List<Graphic>, List<Graphic>)]
 	mut content: List<V>,
-	/// The stroke color.
+	/// The stroke paint.
 	#[default(Color::BLACK)]
-	color: List<Color>,
+	paint: AnyGraphicListDyn,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -265,7 +265,8 @@ where
 	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
 
 	let stroke = Stroke {
-		color: color.element(0).copied(),
+		// Not using Stroke struct's color any more, the field will be cleaned up soon after the full migration to `ATTR_STROKE`.
+		color: None,
 		weight,
 		dash_lengths,
 		dash_offset,
@@ -283,6 +284,7 @@ where
 		vector.style.set_stroke(stroke);
 	});
 
+	content.set_paint_attribute(ATTR_STROKE, paint);
 	content
 }
 
