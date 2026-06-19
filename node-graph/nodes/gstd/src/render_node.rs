@@ -39,6 +39,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<GradientStops>,
+		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 ) -> RenderIntermediate {

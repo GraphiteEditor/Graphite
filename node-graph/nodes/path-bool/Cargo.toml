@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 # Local dependencies
 core-types = { workspace = true }
 graphic-types = { workspace = true }
+text-nodes = { workspace = true }
 node-macro = { workspace = true }
 glam = { workspace = true }
 linesweeper = { workspace = true }

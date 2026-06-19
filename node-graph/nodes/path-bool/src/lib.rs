@@ -278,6 +278,18 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
+				Graphic::Text(text) => {
+					// Shape the glyphs into vectors (each item's own transform is applied), then compose the parent's transform like the other arms
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					text_nodes::shape_text_list(&text, false)
+						.into_iter()
+						.map(|mut sub_vector| {
+							let current_transform: DAffine2 = sub_vector.attribute_cloned_or_default(ATTR_TRANSFORM);
+							*sub_vector.attribute_mut_or_insert_default(ATTR_TRANSFORM) = parent_transform * current_transform;
+							sub_vector
+						})
+						.collect::<Vec<_>>()
+				}
 			}
 		})
 		.collect()

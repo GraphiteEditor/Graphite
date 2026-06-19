@@ -244,7 +244,7 @@ impl RenderExt for List<Graphic> {
 				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params, target);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

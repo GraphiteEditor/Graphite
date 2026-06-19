@@ -7,7 +7,7 @@ use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
-/// Constructs a single-row `List<Artboard>` with the given content and metadata stored as row attributes.
+/// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
 pub async fn create_artboard<T: IntoGraphicList + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
@@ -15,6 +15,7 @@ pub async fn create_artboard<T: IntoGraphicList + 'n>(
 	#[implementations(
 		Context -> List<Graphic>,
 		Context -> List<Vector>,
+		Context -> List<String>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,

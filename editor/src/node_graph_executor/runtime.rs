@@ -9,7 +9,7 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
+use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
@@ -414,10 +414,10 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Graphic list: thumbnail
+			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
 				if update_thumbnails {
-					let bounds = io.output.thumbnail_bounding_box(DAffine2::IDENTITY, true);
+					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
@@ -433,6 +433,13 @@ impl NodeRuntime {
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
 				// Insert the vector modify
 				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
+			}
+			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
+				if update_thumbnails {
+					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
+				}
 			}
 			// Other
 			else {

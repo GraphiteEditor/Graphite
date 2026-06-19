@@ -1,5 +1,6 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
+use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
@@ -37,6 +38,7 @@ macro_rules! for_each_type_default {
 		$action!(List<Vector>);
 		$action!(List<String>);
 		$action!(DocumentNode);
+		$action!(Resource);
 	};
 }
 

@@ -32,6 +32,12 @@ impl Resource {
 	}
 }
 
+impl Default for Resource {
+	fn default() -> Self {
+		Self::empty()
+	}
+}
+
 impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
 	fn from(val: &Resource) -> Self {
 		val.inner.clone()
