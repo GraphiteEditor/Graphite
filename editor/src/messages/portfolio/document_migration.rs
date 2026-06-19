@@ -1309,8 +1309,14 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut text_template) else {
 			continue;
 		};
-		for (index, input) in old_inputs.iter().take(12).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		// The current `text` node reorders the legacy inputs (Letter Tilt moved up to sit right after Letter Spacing), so map each new
+		// input index to the legacy 13-input index it sources from. Legacy order:
+		// [primary, text, font, size, line_height, letter_spacing, has_max_width, max_width, has_max_height, max_height, letter_tilt, align, separate_glyphs].
+		const LEGACY_INPUT_FOR_NEW: [usize; 12] = [0, 1, 2, 3, 4, 5, 10, 6, 7, 8, 9, 11];
+		for (new_index, &legacy_index) in LEGACY_INPUT_FOR_NEW.iter().enumerate() {
+			if let Some(input) = old_inputs.get(legacy_index) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, new_index), input.clone(), network_path);
+			}
 		}
 		let separate_glyphs = old_inputs.get(12).cloned();
 
@@ -1607,7 +1613,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count == 6 {
 				old_inputs[5].clone()
 			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false)
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_spacing), false)
 			},
 			network_path,
 		);
@@ -1634,7 +1640,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 9 {
 				old_inputs[8].clone()
 			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_tilt), false)
 			},
 			network_path,
 		);

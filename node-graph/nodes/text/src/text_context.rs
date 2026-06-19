@@ -112,7 +112,7 @@ impl TextContext {
 		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, DISPLAY_SCALE, false);
 
 		builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
-		builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
+		builder.push_default(StyleProperty::LetterSpacing(typesetting.letter_spacing as f32));
 		builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(std::borrow::Cow::Owned(
 			font_family,
 		)))));
@@ -154,7 +154,7 @@ impl TextContext {
 		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
 		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-			path_builder.render_glyph_run(glyph_run, typesetting.tilt, per_glyph_items, x_offset, space_extra);
+			path_builder.render_glyph_run(glyph_run, typesetting.letter_tilt, per_glyph_items, x_offset, space_extra);
 		});
 
 		path_builder.finalize()

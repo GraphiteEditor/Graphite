@@ -4,8 +4,8 @@ use core_types::blending::BlendMode;
 use core_types::list::List;
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT_SIZE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING, ATTR_TEXT_FONT, ATTR_TEXT_LINE_HEIGHT,
-	ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, ATTR_TRANSFORM,
+	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
@@ -37,18 +37,18 @@ pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> List<Ve
 
 		// Use fallback font when none is explicitly attached.
 		let font: Resource = {
-			let f: Resource = strings.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+			let f: Resource = strings.attribute_cloned_or_default(ATTR_FONT, index);
 			if f.is_empty() { super::FALLBACK_FONT_RESOURCE.clone() } else { f }
 		};
 
 		let defaults = TypesettingConfig::default();
 		let typesetting = TypesettingConfig {
 			font_size: strings.attribute_cloned_or(ATTR_FONT_SIZE, index, defaults.font_size),
-			line_height_ratio: strings.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, defaults.line_height_ratio),
-			character_spacing: strings.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, defaults.character_spacing),
-			max_width: strings.attribute_cloned_or::<Option<f64>>(ATTR_TEXT_MAX_WIDTH, index, defaults.max_width),
-			max_height: strings.attribute_cloned_or::<Option<f64>>(ATTR_TEXT_MAX_HEIGHT, index, defaults.max_height),
-			tilt: strings.attribute_cloned_or(ATTR_TEXT_TILT, index, defaults.tilt),
+			line_height_ratio: strings.attribute_cloned_or(ATTR_LINE_HEIGHT, index, defaults.line_height_ratio),
+			letter_spacing: strings.attribute_cloned_or(ATTR_LETTER_SPACING, index, defaults.letter_spacing),
+			letter_tilt: strings.attribute_cloned_or(ATTR_LETTER_TILT, index, defaults.letter_tilt),
+			max_width: strings.attribute_cloned_or::<Option<f64>>(ATTR_MAX_WIDTH, index, defaults.max_width),
+			max_height: strings.attribute_cloned_or::<Option<f64>>(ATTR_MAX_HEIGHT, index, defaults.max_height),
 			align: strings.attribute_cloned_or(ATTR_TEXT_ALIGN, index, defaults.align),
 		};
 

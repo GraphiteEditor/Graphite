@@ -1,5 +1,5 @@
 use core_types::list::List;
-use core_types::{ATTR_FONT_SIZE, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING, ATTR_TEXT_FONT, ATTR_TEXT_LINE_HEIGHT, ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, Ctx};
+use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -30,10 +30,15 @@ fn text(
 	#[step(0.1)]
 	#[default(1.2)]
 	line_height: f64,
-	/// Additional spacing in document-space pixels added between every character pair.
+	/// Additional spacing in document-space pixels added between every letter pair.
 	#[unit(" px")]
 	#[step(0.1)]
-	character_spacing: f64,
+	letter_spacing: f64,
+	/// Faux-italic slant angle in degrees applied to each letter.
+	#[unit("°")]
+	#[hard_min(-85.)]
+	#[hard_max(85.)]
+	letter_tilt: f64,
 	/// Enables the maximum width constraint so lines can wrap.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_max_width: bool,
@@ -50,11 +55,6 @@ fn text(
 	#[hard_min(1.)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	max_height: f64,
-	/// Faux-italic slant angle in degrees.
-	#[unit("°")]
-	#[hard_min(-85.)]
-	#[hard_max(85.)]
-	tilt: f64,
 	/// Horizontal alignment of each line within the text block.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
@@ -64,25 +64,25 @@ fn text(
 	// Insert only when value deviates from its default as each stored attribute has runtime cost.
 
 	if font != Resource::default() {
-		list.set_attribute(ATTR_TEXT_FONT, 0, font);
+		list.set_attribute(ATTR_FONT, 0, font);
 	}
 	if (size - DEFAULT_FONT_SIZE).abs() > f64::EPSILON {
 		list.set_attribute(ATTR_FONT_SIZE, 0, size);
 	}
 	if (line_height - DEFAULT_LINE_HEIGHT).abs() > f64::EPSILON {
-		list.set_attribute(ATTR_TEXT_LINE_HEIGHT, 0, line_height);
+		list.set_attribute(ATTR_LINE_HEIGHT, 0, line_height);
 	}
-	if character_spacing != 0. {
-		list.set_attribute(ATTR_TEXT_CHARACTER_SPACING, 0, character_spacing);
+	if letter_spacing != 0. {
+		list.set_attribute(ATTR_LETTER_SPACING, 0, letter_spacing);
+	}
+	if letter_tilt != 0. {
+		list.set_attribute(ATTR_LETTER_TILT, 0, letter_tilt);
 	}
 	if has_max_width {
-		list.set_attribute(ATTR_TEXT_MAX_WIDTH, 0, Some(max_width));
+		list.set_attribute(ATTR_MAX_WIDTH, 0, Some(max_width));
 	}
 	if has_max_height {
-		list.set_attribute(ATTR_TEXT_MAX_HEIGHT, 0, Some(max_height));
-	}
-	if tilt != 0. {
-		list.set_attribute(ATTR_TEXT_TILT, 0, tilt);
+		list.set_attribute(ATTR_MAX_HEIGHT, 0, Some(max_height));
 	}
 	if align != TextAlign::default() {
 		list.set_attribute(ATTR_TEXT_ALIGN, 0, align);

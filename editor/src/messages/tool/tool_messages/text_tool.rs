@@ -36,10 +36,10 @@ pub struct TextTool {
 
 pub struct TextOptions {
 	font_size: f64,
-	character_spacing: f64,
+	letter_spacing: f64,
 	font: Font,
 	fill: ToolColorOptions,
-	tilt: f64,
+	letter_tilt: f64,
 	align: TextAlign,
 	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
 	last_synced_selection: Vec<LayerNodeIdentifier>,
@@ -49,10 +49,10 @@ impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
 			font_size: 24.,
-			character_spacing: 0.,
+			letter_spacing: 0.,
 			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
 			fill: ToolColorOptions::new_enabled(),
-			tilt: 0.,
+			letter_tilt: 0.,
 			align: TextAlign::default(),
 			last_synced_selection: Vec::new(),
 		}
@@ -967,10 +967,10 @@ impl Fsm for TextToolFsmState {
 					transform: DAffine2::from_translation(start),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
+						letter_spacing: tool_options.letter_spacing,
+						letter_tilt: tool_options.letter_tilt,
 						max_width: constraint_size.map(|size| size.x),
-						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
-						tilt: tool_options.tilt,
 						align: tool_options.align,
 						..TypesettingConfig::default()
 					},

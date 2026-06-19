@@ -105,19 +105,19 @@ impl PathBuilder {
 		has_geometry
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
 		let mut run_x = glyph_run.offset() + x_offset;
 		let run_y = glyph_run.baseline();
 
 		let run = glyph_run.run();
 
-		// User-requested tilt applied around baseline to avoid vertical displacement
+		// User-requested letter tilt applied around baseline to avoid vertical displacement
 		// Translation ensures rotation point is at the baseline, not origin
 		let skew = if per_glyph_items {
-			DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+			DAffine2::from_cols_array(&[1., 0., -letter_tilt.to_radians().tan(), 1., 0., 0.])
 		} else {
 			DAffine2::from_translation(DVec2::new(0., run_y as f64))
-				* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
+				* DAffine2::from_cols_array(&[1., 0., -letter_tilt.to_radians().tan(), 1., 0., 0.])
 				* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
 		};
 

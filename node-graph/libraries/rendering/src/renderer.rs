@@ -12,9 +12,9 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING, ATTR_TEXT_FONT, ATTR_TEXT_LINE_HEIGHT,
-	ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -2359,33 +2359,33 @@ impl Render for List<String> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let font: Resource = {
-				let f: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+				let f: Resource = self.attribute_cloned_or_default(ATTR_FONT, index);
 				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
 			};
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
-			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
-			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
-			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
-			let tilt: f64 = self.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.);
+			let line_height: f64 = self.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
+			let letter_spacing: f64 = self.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
+			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
+			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
+			let letter_tilt: f64 = self.attribute_cloned_or(ATTR_LETTER_TILT, index, 0.);
 			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let typesetting = text_nodes::TypesettingConfig {
 				font_size,
 				line_height_ratio: line_height,
-				character_spacing: char_spacing,
+				letter_spacing,
+				letter_tilt,
 				max_width,
 				max_height,
 				align,
-				tilt,
 			};
 
 			let mut glyph_paths: Vec<String> = Vec::new();
 
 			text_nodes::TextContext::with_thread_local(|ctx| {
 				let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
-				let tilt_tan = tilt.to_radians().tan();
+				let tilt_tan = letter_tilt.to_radians().tan();
 
 				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
 					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
@@ -2441,15 +2441,15 @@ impl Render for List<String> {
 
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let font: Resource = {
-				let f: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+				let f: Resource = self.attribute_cloned_or_default(ATTR_FONT, index);
 				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
 			};
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
-			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
-			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
-			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
-			let tilt: f64 = self.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.);
+			let line_height: f64 = self.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
+			let letter_spacing: f64 = self.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
+			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
+			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
+			let letter_tilt: f64 = self.attribute_cloned_or(ATTR_LETTER_TILT, index, 0.);
 			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
@@ -2459,11 +2459,11 @@ impl Render for List<String> {
 			let typesetting = text_nodes::TypesettingConfig {
 				font_size,
 				line_height_ratio: line_height,
-				character_spacing: char_spacing,
+				letter_spacing,
+				letter_tilt,
 				max_width,
 				max_height,
 				align,
-				tilt,
 			};
 
 			let affine = Affine::new((transform * item_transform).to_cols_array());
@@ -2481,7 +2481,7 @@ impl Render for List<String> {
 					scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds);
 				}
 
-				let tilt_tan = tilt.to_radians().tan();
+				let tilt_tan = letter_tilt.to_radians().tan();
 
 				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
 					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
@@ -2512,25 +2512,25 @@ impl Render for List<String> {
 		for index in 0..self.len() {
 			let Some(text) = self.element(index) else { continue };
 			let font: Resource = {
-				let f: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
+				let f: Resource = self.attribute_cloned_or_default(ATTR_FONT, index);
 				if f.is_empty() { text_nodes::FALLBACK_FONT_RESOURCE.clone() } else { f }
 			};
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
-			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
-			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
-			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
+			let line_height: f64 = self.attribute_cloned_or(ATTR_LINE_HEIGHT, index, 1.2);
+			let letter_spacing: f64 = self.attribute_cloned_or(ATTR_LETTER_SPACING, index, 0.);
+			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_MAX_WIDTH, index, None);
+			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
 			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let typesetting = text_nodes::TypesettingConfig {
 				font_size,
 				line_height_ratio: line_height,
-				character_spacing: char_spacing,
+				letter_spacing,
+				letter_tilt: 0.,
 				max_width,
 				max_height,
 				align,
-				tilt: 0.,
 			};
 
 			// Falls back to a single-em square if fonts are not yet registered.

@@ -94,10 +94,10 @@ impl TextAlign {
 pub struct TypesettingConfig {
 	pub font_size: f64,
 	pub line_height_ratio: f64,
-	pub character_spacing: f64,
+	pub letter_spacing: f64,
+	pub letter_tilt: f64,
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
-	pub tilt: f64,
 	pub align: TextAlign,
 }
 
@@ -106,10 +106,10 @@ impl Default for TypesettingConfig {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			character_spacing: 0.,
+			letter_spacing: 0.,
+			letter_tilt: 0.,
 			max_width: None,
 			max_height: None,
-			tilt: 0.,
 			align: TextAlign::default(),
 		}
 	}

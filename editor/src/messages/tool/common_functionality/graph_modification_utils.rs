@@ -484,7 +484,7 @@ pub fn get_text<'a>(
 	let Some(&TaggedValue::F64(line_height_ratio)) = inputs.get(graphene_std::text::text::LineHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(character_spacing)) = inputs.get(graphene_std::text::text::CharacterSpacingInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(letter_spacing)) = inputs.get(graphene_std::text::text::LetterSpacingInput::INDEX)?.as_value() else {
 		return None;
 	};
 	let Some(&TaggedValue::Bool(has_max_width)) = inputs.get(graphene_std::text::text::HasMaxWidthInput::INDEX)?.as_value() else {
@@ -499,7 +499,7 @@ pub fn get_text<'a>(
 	let Some(&TaggedValue::F64(max_height)) = inputs.get(graphene_std::text::text::MaxHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(tilt)) = inputs.get(graphene_std::text::text::TiltInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(letter_tilt)) = inputs.get(graphene_std::text::text::LetterTiltInput::INDEX)?.as_value() else {
 		return None;
 	};
 	let Some(&TaggedValue::TextAlign(align)) = inputs.get(graphene_std::text::text::AlignInput::INDEX)?.as_value() else {
@@ -509,10 +509,10 @@ pub fn get_text<'a>(
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
+		letter_spacing,
+		letter_tilt,
 		max_width: has_max_width.then_some(max_width),
 		max_height: has_max_height.then_some(max_height),
-		character_spacing,
-		tilt,
 		align,
 	};
 	Some((text, font, typesetting))

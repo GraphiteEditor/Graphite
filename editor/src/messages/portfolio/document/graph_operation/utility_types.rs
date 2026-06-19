@@ -259,12 +259,12 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::Resource(font_resource_id), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.font_size), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.line_height_ratio), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
+				Some(NodeInput::value(TaggedValue::F64(typesetting.letter_spacing), false)),
+				Some(NodeInput::value(TaggedValue::F64(typesetting.letter_tilt), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_width.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 			]);
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
