@@ -12,13 +12,12 @@ use core_types::{
 	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::{AnyGraphicListDyn, Vector};
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
-use std::any::Any;
 use std::collections::hash_map::DefaultHasher;
 use vector_types::gradient::initial_gradient_transform_for_bbox;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
@@ -42,7 +41,7 @@ trait VectorListIterMut {
 
 	fn vector_count(&self) -> usize;
 
-	fn set_paint_attribute(&mut self, key: &str, paint: impl IntoGraphicList);
+	fn set_paint_attribute(&mut self, key: &str, paint: AnyGraphicListDyn);
 }
 
 impl VectorListIterMut for List<Graphic> {
@@ -60,11 +59,11 @@ impl VectorListIterMut for List<Graphic> {
 		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
 	}
 
-	fn set_paint_attribute(&mut self, key: &str, paint: impl IntoGraphicList) {
+	fn set_paint_attribute(&mut self, key: &str, paint: AnyGraphicListDyn) {
 		for graphic in self.iter_element_values_mut() {
 			let Some(vector_list) = graphic.as_vector_mut() else { continue };
 			for index in 0..vector_list.len() {
-				vector_list.set_attribute(key, index, paint.clone());
+				vector_list.set_attribute_value_dyn(key, index, paint.clone().into());
 			}
 		}
 	}
@@ -82,9 +81,9 @@ impl VectorListIterMut for List<Vector> {
 		self.len()
 	}
 
-	fn set_paint_attribute(&mut self, key: &str, paint: impl IntoGraphicList) {
+	fn set_paint_attribute(&mut self, key: &str, paint: AnyGraphicListDyn) {
 		for index in 0..self.len() {
-			self.set_attribute(key, index, paint.clone());
+			self.set_attribute_value_dyn(key, index, paint.clone().into());
 		}
 	}
 }
@@ -156,48 +155,21 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<F: IntoGraphicList, V: VectorListIterMut + 'n + Send>(
+async fn fill<V: VectorListIterMut + 'n + Send>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(
-		List<Vector>,
-		List<Vector>,
-		List<Vector>,
-		List<Vector>,
-		List<Vector>,
-		List<Vector>,
-		List<Graphic>,
-		List<Graphic>,
-		List<Graphic>,
-		List<Graphic>,
-		List<Graphic>,
-		List<Graphic>,
-	)]
+	#[implementations(List<Vector>, List<Graphic>)]
 	mut content: V,
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
-	#[implementations(
-		List<Color>,
-		List<GradientStops>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-	)]
-	mut fill: F,
+	mut fill: AnyGraphicListDyn,
 	_backup_color: List<Color>,
 	_backup_gradient: List<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
 ) -> V {
-	if let Some(gradient) = (&mut fill as &mut dyn Any).downcast_mut::<List<GradientStops>>() {
+	if let Some(gradient) = fill.0.as_any_mut().downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
 				*value = _gradient_type;

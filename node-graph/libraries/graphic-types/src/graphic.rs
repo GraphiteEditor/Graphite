@@ -1,11 +1,11 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, AnyAttributeValue, AttributeValueDyn, Item, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
-use dyn_any::DynAny;
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
@@ -427,6 +427,52 @@ impl IntoGraphicList for DAffine2 {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
 	}
+}
+
+/// Type-erased list of any graphics that implement the `IntoGraphicList` trait.
+/// Lets a node accept any `List<U>` source via the auto-inserted `IntoNode<AnyGraphicListDyn>`,
+/// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
+pub struct AnyGraphicListDyn(pub Box<dyn AnyAttributeValue>);
+
+impl<T: IntoGraphicList> From<T> for AnyGraphicListDyn {
+	fn from(value: T) -> Self {
+		Self(Box::new(value))
+	}
+}
+
+impl From<AnyGraphicListDyn> for AttributeValueDyn {
+	fn from(value: AnyGraphicListDyn) -> Self {
+		AttributeValueDyn(value.0)
+	}
+}
+
+impl Clone for AnyGraphicListDyn {
+	fn clone(&self) -> Self {
+		Self(self.0.clone_box())
+	}
+}
+impl Default for AnyGraphicListDyn {
+	fn default() -> Self {
+		Self(Box::new(List::<Color>::default()))
+	}
+}
+impl std::fmt::Debug for AnyGraphicListDyn {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "AnyGraphicListDyn({})", self.0.display_string())
+	}
+}
+impl PartialEq for AnyGraphicListDyn {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.display_string() == other.0.display_string()
+	}
+}
+impl CacheHash for AnyGraphicListDyn {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.display_string().cache_hash(state);
+	}
+}
+unsafe impl StaticType for AnyGraphicListDyn {
+	type Static = Self;
 }
 
 // DAffine2

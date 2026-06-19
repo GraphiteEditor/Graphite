@@ -457,7 +457,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Color>>::INDEX);
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX);
 
 		match &fill {
 			Fill::None => {
@@ -545,7 +545,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Try to set the value of a Fill node, if exists
 		if let Some(fill_id) = get_fill_node_id_with_value(output_layer, self.network_interface) {
 			self.set_input_with_refresh(
-				InputConnector::node(fill_id, graphene_std::vector::fill::FillInput::<List<GradientStops>>::INDEX),
+				InputConnector::node(fill_id, graphene_std::vector::fill::FillInput::INDEX),
 				NodeInput::value(TaggedValue::Gradient(stops), false),
 				false,
 			);

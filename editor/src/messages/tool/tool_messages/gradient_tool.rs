@@ -1956,13 +1956,25 @@ mod test_gradient {
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
+	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::List;
 	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
 	use super::gradient_space_transform;
+
+	// Same node+index as `FillInput`, retyped to the pre-erasure value the instrumentation monitor actually captures.
+	struct FillGradientInput;
+	impl NodeInputDecleration for FillGradientInput {
+		const INDEX: usize = fill::FillInput::INDEX;
+		type Result = List<GradientStops>;
+		fn identifier() -> ProtoNodeIdentifier {
+			fill::FillInput::identifier()
+		}
+	}
 
 	async fn get_gradients(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
 		let instrumented = match editor.eval_graph().await {
@@ -1974,7 +1986,7 @@ mod test_gradient {
 		let layers = document.metadata().all_layers();
 		layers
 			.filter_map(|layer| {
-				let gradient_list = instrumented.grab_input_from_layer::<fill::FillInput<List<GradientStops>>>(layer, &document.network_interface, &editor.runtime)?;
+				let gradient_list = instrumented.grab_input_from_layer::<FillGradientInput>(layer, &document.network_interface, &editor.runtime)?;
 				let local_transform = instrumented
 					.grab_input_from_layer::<fill::TransformInput>(layer, &document.network_interface, &editor.runtime)
 					.flatten()
