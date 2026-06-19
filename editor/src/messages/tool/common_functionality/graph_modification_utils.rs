@@ -463,7 +463,7 @@ pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 /// Gets properties from the Text node. Resolves the font selection by reading the resource id and lookup via the fonts message handler.
-pub fn get_text_layer<'a>(
+pub fn get_text<'a>(
 	layer: LayerNodeIdentifier,
 	network_interface: &'a NodeNetworkInterface,
 	fonts: &FontsMessageHandler,

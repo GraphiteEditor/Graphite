@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_text_layer};
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_text};
 use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
@@ -69,7 +69,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	}
 
 	// Fallback: recompute from text content (e.g. layer hasn't rendered yet)
-	let Some((text, font, typesetting)) = get_text_layer(layer, &document.network_interface, fonts, &document.resources) else {
+	let Some((text, font, typesetting)) = get_text(layer, &document.network_interface, fonts, &document.resources) else {
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
 	let font = fonts.get_resource_or_queue_load(&font, responses);

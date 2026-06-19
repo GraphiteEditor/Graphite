@@ -19,7 +19,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub use core_types as gcore;
 pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
-pub use text_context::TextContext;
+pub use text_context::{TextContext, for_each_styled_glyph_run};
 pub use to_path::*;
 pub use vector_types;
 

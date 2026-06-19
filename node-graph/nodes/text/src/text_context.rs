@@ -4,7 +4,7 @@ use core_types::list::List;
 use glam::DVec2;
 use graphene_resource::{Resource, ResourceHash};
 use parley::fontique::{Blob, FamilyId, FontInfo};
-use parley::{AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
 use vector_types::Vector;
 
@@ -12,6 +12,57 @@ use super::path_builder::PathBuilder;
 
 thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
+}
+
+/// Iterates the glyph runs of a laid-out text in reading order, computing each line's last-line alignment correction
+/// (`x_offset` and per-space `space_extra`) and skipping runs clipped by `max_height`. Shared by the vector shaper and the
+/// SVG/Vello text renderers so the alignment logic lives in one place.
+pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: TypesettingConfig, mut visit: impl FnMut(&GlyphRun<'_, ()>, f32, f32)) {
+	let alignment_width = typesetting.max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
+	let last_line_correction = typesetting.align.last_line_correction();
+
+	for line in layout.lines() {
+		let range = line.text_range();
+		// Parley always includes a hard-break `\n` as the last byte of the preceding line's range, so the line is at the end of
+		// a paragraph if it's the very last line of the buffer or its text ends with `\n`.
+		let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
+
+		let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+			let metrics = line.metrics();
+			let content_advance = metrics.advance - metrics.trailing_whitespace;
+			let free_space = alignment_width - content_advance;
+
+			match correction {
+				parley::Alignment::Center => (free_space * 0.5, 0.),
+				parley::Alignment::Right => (free_space, 0.),
+				parley::Alignment::Justify => {
+					// Exclude trailing-whitespace clusters from the divisor so the redistribution stretches only the internal spaces.
+					// Parley's `trailing_whitespace` is in advance units, not bytes, so we re-derive the byte boundary here to filter cluster ranges.
+					let line_text = text.get(range.clone()).unwrap_or("");
+					let trailing_len = line_text.len() - line_text.trim_end().len();
+					let visible_end_index = range.end - trailing_len;
+
+					let space_count: usize = line
+						.runs()
+						.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
+						.sum();
+					let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
+					(0., extra)
+				}
+				_ => (0., 0.),
+			}
+		} else {
+			(0., 0.)
+		};
+
+		for item in line.items() {
+			if let PositionedLayoutItem::GlyphRun(glyph_run) = item
+				&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
+			{
+				visit(&glyph_run, x_offset, space_extra);
+			}
+		}
+	}
 }
 
 /// Unified thread-local text processing context that combines font and layout management
@@ -100,53 +151,11 @@ impl TextContext {
 			})
 			.unwrap_or_default();
 
-		let alignment_width = typesetting.max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
-		let last_line_correction = typesetting.align.last_line_correction();
-
 		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
-		for line in layout.lines() {
-			let range = line.text_range();
-			// Parley always includes a hard-break `\n` as the last byte of the preceding line's range, so the line
-			// is at the end of a paragraph if it's the very last line of the buffer or its text ends with `\n`.
-			let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
-
-			let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
-				let metrics = line.metrics();
-				let content_advance = metrics.advance - metrics.trailing_whitespace;
-				let free_space = alignment_width - content_advance;
-
-				match correction {
-					parley::Alignment::Center => (free_space * 0.5, 0.),
-					parley::Alignment::Right => (free_space, 0.),
-					parley::Alignment::Justify => {
-						// Exclude trailing-whitespace clusters from the divisor so the redistribution stretches only the internal spaces.
-						// Parley's `trailing_whitespace` is in advance units, not bytes, so we re-derive the byte boundary here to filter cluster ranges.
-						let line_text = text.get(range.clone()).unwrap_or("");
-						let trailing_len = line_text.len() - line_text.trim_end().len();
-						let visible_end_index = range.end - trailing_len;
-
-						let space_count: usize = line
-							.runs()
-							.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
-							.sum();
-						let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
-						(0., extra)
-					}
-					_ => (0., 0.),
-				}
-			} else {
-				(0., 0.)
-			};
-
-			for item in line.items() {
-				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
-					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
-				{
-					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_items, x_offset, space_extra);
-				}
-			}
-		}
+		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+			path_builder.render_glyph_run(glyph_run, typesetting.tilt, per_glyph_items, x_offset, space_extra);
+		});
 
 		path_builder.finalize()
 	}

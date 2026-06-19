@@ -29,7 +29,6 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
-use parley::PositionedLayoutItem;
 use skrifa::GlyphId;
 use skrifa::MetadataProvider;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -2270,53 +2269,15 @@ impl Render for List<GradientStops> {
 	}
 }
 
-/// Helper struct to write path data to a string
-struct SvgGlyphPen {
-	d: String,
-	ox: f64,
-	oy: f64,
-	tilt_tan: f64,
-}
-
-impl SvgGlyphPen {
-	#[inline]
-	fn px(&self, x: f32, y: f32) -> f64 {
-		self.ox + x as f64 + (y as f64 * self.tilt_tan)
-	}
-
-	#[inline]
-	fn py(&self, y: f32) -> f64 {
-		self.oy - y as f64
-	}
-}
-
-impl OutlinePen for SvgGlyphPen {
-	fn move_to(&mut self, x: f32, y: f32) {
-		write!(self.d, "M {} {} ", self.px(x, y), self.py(y)).ok();
-	}
-	fn line_to(&mut self, x: f32, y: f32) {
-		write!(self.d, "L {} {} ", self.px(x, y), self.py(y)).ok();
-	}
-	fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-		write!(self.d, "Q {} {} {} {} ", self.px(x1, y1), self.py(y1), self.px(x, y), self.py(y)).ok();
-	}
-	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-		write!(self.d, "C {} {} {} {} {} {} ", self.px(x1, y1), self.py(y1), self.px(x2, y2), self.py(y2), self.px(x, y), self.py(y)).ok();
-	}
-	fn close(&mut self) {
-		self.d.push_str("Z ");
-	}
-}
-
-/// Helper struct to build a `kurbo::BezPath` for Vello rendering.
-struct VelloPen<'a> {
+/// Builds a `kurbo::BezPath` from a glyph outline, baking in the glyph origin (`ox`, `oy`) and faux-italic shear (`tilt_tan`).
+struct GlyphOutlinePen<'a> {
 	path: &'a mut BezPath,
 	ox: f64,
 	oy: f64,
 	tilt_tan: f64,
 }
 
-impl VelloPen<'_> {
+impl GlyphOutlinePen<'_> {
 	#[inline]
 	fn px(&self, x: f32, y: f32) -> f64 {
 		self.ox + x as f64 + (y as f64 * self.tilt_tan)
@@ -2328,7 +2289,7 @@ impl VelloPen<'_> {
 	}
 }
 
-impl OutlinePen for VelloPen<'_> {
+impl OutlinePen for GlyphOutlinePen<'_> {
 	fn move_to(&mut self, x: f32, y: f32) {
 		self.path.move_to((self.px(x, y), self.py(y)));
 	}
@@ -2343,6 +2304,43 @@ impl OutlinePen for VelloPen<'_> {
 	}
 	fn close(&mut self) {
 		self.path.close_path();
+	}
+}
+
+/// Draws each glyph of `glyph_run` into a `BezPath` (with the run's position and faux-italic `tilt_tan` baked in) and calls
+/// `emit` for each non-empty glyph. Zero-geometry glyphs advance by `space_extra` for justified spacing.
+fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, tilt_tan: f64, mut emit: impl FnMut(&BezPath)) {
+	let mut run_x = glyph_run.offset() + x_offset;
+	let run_y = glyph_run.baseline();
+	let run = glyph_run.run();
+	let font = run.font();
+	let font_size_pts = run.font_size();
+	let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
+
+	let Ok(font_ref) = SkrifaFontRef::from_index(font.data.as_ref(), font.index) else { return };
+	let outlines = font_ref.outline_glyphs();
+
+	let mut bez_path = BezPath::new();
+	for glyph in glyph_run.glyphs() {
+		let ox = (run_x + glyph.x) as f64;
+		let oy = (run_y - glyph.y) as f64;
+		run_x += glyph.advance;
+
+		let Some(outline) = outlines.get(GlyphId::from(glyph.id)) else { continue };
+		let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
+
+		bez_path.truncate(0);
+		let mut pen = GlyphOutlinePen {
+			path: &mut bez_path,
+			ox,
+			oy,
+			tilt_tan,
+		};
+		if outline.draw(settings, &mut pen).is_ok() && !bez_path.elements().is_empty() {
+			emit(&bez_path);
+		} else if space_extra != 0. && glyph.advance > 0. {
+			run_x += space_extra;
+		}
 	}
 }
 
@@ -2387,84 +2385,13 @@ impl Render for List<String> {
 
 			text_nodes::TextContext::with_thread_local(|ctx| {
 				let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
-				let max_width_f32 = max_width.map(|w| w as f32);
-				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
-				let last_line_correction = align.last_line_correction();
 				let tilt_tan = tilt.to_radians().tan();
 
-				for line in layout.lines() {
-					let range = line.text_range();
-					let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
-
-					let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
-						let metrics = line.metrics();
-						let content_advance = metrics.advance - metrics.trailing_whitespace;
-						let free_space = alignment_width - content_advance;
-						// Correction is needed because Parley doesn't remove trailing whitespaces
-						match correction {
-							parley::Alignment::Center => (free_space * 0.5, 0.),
-							parley::Alignment::Right => (free_space, 0.),
-							parley::Alignment::Justify => {
-								let line_text = text.get(range.clone()).unwrap_or("");
-								let trailing_len = line_text.len() - line_text.trim_end().len();
-								let visible_end_index = range.end - trailing_len;
-
-								let space_count: usize = line
-									.runs()
-									.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
-									.sum();
-								let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
-								(0., extra)
-							}
-							_ => (0., 0.),
-						}
-					} else {
-						(0., 0.)
-					};
-
-					for item in line.items() {
-						let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
-						if max_height.is_some_and(|mh| glyph_run.baseline() > mh as f32) {
-							continue;
-						}
-
-						let mut run_x = glyph_run.offset() + x_offset;
-						let run_y = glyph_run.baseline();
-						let run = glyph_run.run();
-						let font = run.font();
-						let font_size_pts = run.font_size();
-						let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
-
-						let font_data = font.data.as_ref();
-						let Ok(font_ref) = SkrifaFontRef::from_index(font_data, font.index) else { continue };
-						let outlines = font_ref.outline_glyphs();
-
-						let mut pen = SvgGlyphPen {
-							d: String::new(),
-							ox: 0.,
-							oy: 0.,
-							tilt_tan,
-						};
-						for glyph in glyph_run.glyphs() {
-							let ox = (run_x + glyph.x) as f64;
-							let oy = (run_y - glyph.y) as f64;
-							run_x += glyph.advance;
-
-							let glyph_id = GlyphId::from(glyph.id);
-							let Some(outline) = outlines.get(glyph_id) else { continue };
-							let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
-
-							pen.d.clear();
-							pen.ox = ox;
-							pen.oy = oy;
-							if outline.draw(settings, &mut pen).is_ok() && !pen.d.is_empty() {
-								glyph_paths.push(pen.d.clone());
-							} else if space_extra != 0. && glyph.advance > 0. {
-								run_x += space_extra;
-							}
-						}
-					}
-				}
+				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
+						glyph_paths.push(bez_path.to_svg());
+					});
+				});
 			});
 
 			if glyph_paths.is_empty() {
@@ -2543,12 +2470,10 @@ impl Render for List<String> {
 
 			text_nodes::TextContext::with_thread_local(|ctx| {
 				let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
-				let max_width_f32 = max_width.map(|w| w as f32);
-				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
-				let last_line_correction = align.last_line_correction();
 
 				let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
 				if needs_layer {
+					let alignment_width = max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
 					let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
 					let padding = font_size;
 					let bounds = kurbo::Rect::new(-padding, -padding, alignment_width as f64 + padding, layout.height() as f64 + padding);
@@ -2558,83 +2483,16 @@ impl Render for List<String> {
 
 				let tilt_tan = tilt.to_radians().tan();
 
-				for line in layout.lines() {
-					let range = line.text_range();
-					let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
-
-					let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
-						let metrics = line.metrics();
-						let content_advance = metrics.advance - metrics.trailing_whitespace;
-						let free_space = alignment_width - content_advance;
-
-						match correction {
-							parley::Alignment::Center => (free_space * 0.5, 0.),
-							parley::Alignment::Right => (free_space, 0.),
-							parley::Alignment::Justify => {
-								let line_text = text.get(range.clone()).unwrap_or("");
-								let trailing_len = line_text.len() - line_text.trim_end().len();
-								let visible_end_index = range.end - trailing_len;
-
-								let space_count: usize = line
-									.runs()
-									.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
-									.sum();
-								let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
-								(0., extra)
-							}
-							_ => (0., 0.),
+				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
+						if let RenderMode::Outline = render_params.render_mode {
+							let (outline_stroke, outline_color) = get_outline_styles(render_params);
+							scene.stroke(&outline_stroke, affine, outline_color, None, bez_path);
+						} else {
+							scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
 						}
-					} else {
-						(0., 0.)
-					};
-
-					for item in line.items() {
-						let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
-						if max_height.is_some_and(|mh| glyph_run.baseline() > mh as f32) {
-							continue;
-						}
-
-						let mut run_x = glyph_run.offset() + x_offset;
-						let run_y = glyph_run.baseline();
-						let run = glyph_run.run();
-						let font = run.font();
-						let font_size_pts = run.font_size();
-						let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
-
-						let font_data = font.data.as_ref();
-						let Ok(font_ref) = SkrifaFontRef::from_index(font_data, font.index) else { continue };
-						let outlines = font_ref.outline_glyphs();
-
-						let mut bez_path = BezPath::new();
-						for glyph in glyph_run.glyphs() {
-							let ox = (run_x + glyph.x) as f64;
-							let oy = (run_y - glyph.y) as f64;
-							run_x += glyph.advance;
-
-							let glyph_id = GlyphId::from(glyph.id);
-							let Some(outline) = outlines.get(glyph_id) else { continue };
-							let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
-
-							bez_path.truncate(0);
-							let mut pen = VelloPen {
-								path: &mut bez_path,
-								ox,
-								oy,
-								tilt_tan,
-							};
-							if outline.draw(settings, &mut pen).is_ok() && !bez_path.elements().is_empty() {
-								if let RenderMode::Outline = render_params.render_mode {
-									let (outline_stroke, outline_color) = get_outline_styles(render_params);
-									scene.stroke(&outline_stroke, affine, outline_color, None, &bez_path);
-								} else {
-									scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, &bez_path);
-								}
-							} else if space_extra != 0. && glyph.advance > 0. {
-								run_x += space_extra;
-							}
-						}
-					}
-				}
+					});
+				});
 
 				if needs_layer {
 					scene.pop_layer();

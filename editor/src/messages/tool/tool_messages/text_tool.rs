@@ -298,7 +298,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some((_, font, typesetting)) = graph_modification_utils::get_text_layer(layer, &context.document.network_interface, context.fonts, &context.document.resources)
+					&& let Some((_, font, typesetting)) = graph_modification_utils::get_text(layer, &context.document.network_interface, context.fonts, &context.document.resources)
 				{
 					self.options.align = typesetting.align;
 					self.options.font_size = typesetting.font_size;
@@ -516,7 +516,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting) = graph_modification_utils::get_text_layer(self.layer, &document.network_interface, fonts, &document.resources)?;
+		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface, fonts, &document.resources)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font,
@@ -571,10 +571,6 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		// responses.add(GraphOperationMessage::FillSet {
-		// 	layer: self.layer,
-		// 	fill: if let Some(color) = editing_text.color { Fill::Solid(color) } else { Fill::None },
-		// });
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
 
@@ -701,7 +697,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting)) = graph_modification_utils::get_text_layer(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
+						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
 							let font_resource = fonts.get_resource_or_queue_load(&font, responses);
 							if lines_clipping(text.as_str(), &font_resource, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
