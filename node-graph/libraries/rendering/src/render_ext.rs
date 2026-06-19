@@ -1,10 +1,10 @@
-use crate::renderer::{RenderParams, format_transform_matrix, transform_is_invertible};
+use crate::renderer::{RenderParams, format_transform_matrix, gradient_placement, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
@@ -121,20 +121,7 @@ impl RenderExt for List<GradientStops> {
 
 		let document_transform = item_transform * local_gradient_transform;
 
-		let placement = match gradient_type {
-			// A sheared linear gradient is not expressible in vello, no matter what transform is applied to the vector or the brush.
-			// So to keep the SVG rendering consistent with vello, we replace the second column of the document transform
-			// with the perpendicular vector of the first column, which makes the gradient band always perpendicular to the axis, the same way vello renders it.
-			GradientType::Linear => {
-				let axis = document_transform.matrix2.x_axis;
-				DAffine2 {
-					matrix2: DMat2::from_cols(axis, axis.perp()),
-					translation: document_transform.translation,
-				}
-			}
-			// Radial is 2D, and both vello and SVG can keep the full matrix so a non-uniform/skewed transform makes an ellipse.
-			GradientType::Radial => document_transform,
-		};
+		let placement = gradient_placement(document_transform, gradient_type);
 		let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
 		let gradient_transform = if gradient_transform.is_empty() {
 			String::new()

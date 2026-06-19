@@ -18,7 +18,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, stroke_graphic_list_at};
@@ -377,6 +377,24 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
+/// Maps a gradient's `transform` into the frame handed to the renderer: radial keeps the full matrix
+/// (so a non-uniform transform makes an ellipse), while linear is de-sheared to its equivalent gradient line
+/// (the axis projected onto the band normal), which Vello can represent since it stores only the two endpoints.
+pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
+	match gradient_type {
+		GradientType::Radial => transform,
+		GradientType::Linear => {
+			let axis = transform.matrix2.x_axis;
+			let band_normal = transform.matrix2.y_axis.perp();
+			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
+			DAffine2 {
+				matrix2: DMat2::from_cols(line, line.perp()),
+				translation: transform.translation,
+			}
+		}
+	}
+}
+
 fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
@@ -392,10 +410,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_
 		});
 	}
 
-	// Map the unit gradient to device space with the full transform.
-	// Keeping the whole matrix so a non-uniform transform applies to the gradient, which can make a radial gradient into an ellipse.
-	// For a linear gradient, vello only uses the axis and always renders perpendicular bands, so the full matrix is equivalent to the two endpoints.
-	let gradient_to_device = multiplied_transform * gradient_transform;
+	let gradient_to_device = gradient_placement(multiplied_transform * gradient_transform, gradient_type);
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
