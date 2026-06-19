@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	// Get reference to wgpu executor and clone device handle
 	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
-	let device = wgpu_executor_ref.context.device.clone();
+	let device = wgpu_executor_ref.context().device.clone();
 
 	let preferences = EditorPreferences {
 		max_render_region_size: EditorPreferences::default().max_render_region_size,

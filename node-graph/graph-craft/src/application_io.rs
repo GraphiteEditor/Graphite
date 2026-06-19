@@ -9,7 +9,7 @@ pub use graphene_application_io::ApplicationIo;
 #[derive(Default)]
 pub struct PlatformApplicationIo {
 	#[cfg(feature = "wgpu")]
-	pub(crate) gpu_executor: Option<WgpuExecutor>,
+	gpu_executor: Option<WgpuExecutor>,
 	resources: Option<Box<dyn resource::LoadResource>>,
 }
 

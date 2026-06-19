@@ -2362,6 +2362,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// `load_resource` no longer takes the `editor-api`
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::platform_application_io::load_resource::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
+	}
+
+	// `wgpu-executor` scope was removed, change to the auto injected scope node `graphene_std::platform_application_io::wgpu_executor`
+	for (i, input) in node.inputs.iter().enumerate() {
+		if let NodeInput::Scope(name) = input
+			&& *name == "wgpu-executor"
+		{
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, i),
+				NodeInput::Scope("graphene_std::platform_application_io::WgpuExecutorNode".into()),
+				network_path,
+			);
+		}
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
