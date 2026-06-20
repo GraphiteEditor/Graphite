@@ -155,6 +155,7 @@ impl From<List<GradientStops>> for Fill {
 			end: transform.transform_point2(DVec2::X),
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
+			transform: DAffine2::IDENTITY,
 		})
 	}
 }

@@ -285,6 +285,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 							start: transform.transform_point2(DVec2::ZERO),
 							end: transform.transform_point2(DVec2::X),
 							absolute: true,
+							transform: DAffine2::IDENTITY,
 						}));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 

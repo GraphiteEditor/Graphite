@@ -1389,7 +1389,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							let fill_node_id = graph_modification_utils::get_fill_node_id(layer, &self.network_interface)?;
 							let bounds = self.metadata().nonzero_bounding_box(layer);
 							let bounding_box = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-							Some((fill_node_id, Fill::Gradient(gradient.to_absolute(bounding_box))))
+							let layer_transform = self.metadata().upstream_transform(layer.to_node());
+							Some((fill_node_id, Fill::Gradient(gradient.to_absolute(bounding_box, layer_transform))))
 						})
 						.collect();
 

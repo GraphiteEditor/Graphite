@@ -198,13 +198,15 @@ pub fn fill_to_graphic_list(fill: &Fill, bounding_box_transform: DAffine2) -> Op
 		Fill::None => None,
 		Fill::Solid(color) => Some(List::new_from_element((*color).into())),
 		Fill::Gradient(gradient) => {
+			let gradient_transform = gradient.transform * gradient.to_transform();
+
 			// TODO: Eventually remove this document upgrade code
-			// Absolute gradients carry their transform directly into the new pipeline. Legacy ones are bounding-box-relative,
-			// so bake the bbox in and flag them to reproduce the pre-#4241 rendering until the deferred migration converts them.
+			// Absolute gradients carry their effective frame into the new pipeline; legacy bounding-box gradients bake the bbox
+			// in and flag the legacy render path until the deferred migration converts them.
 			let (transform, legacy) = if gradient.absolute {
-				(gradient.to_transform(), false)
+				(gradient_transform, false)
 			} else {
-				(bounding_box_transform * gradient.to_transform(), true)
+				(bounding_box_transform * gradient_transform, true)
 			};
 			let gradient_item = Item::new_from_element(gradient.stops.clone())
 				.with_attribute(ATTR_TRANSFORM, transform)

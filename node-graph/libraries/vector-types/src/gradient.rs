@@ -2,7 +2,7 @@ use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
@@ -490,6 +490,12 @@ pub struct Gradient {
 	/// them and sets it `true`. Once all documents are migrated, the legacy rendering path can be removed.
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub absolute: bool,
+	// TODO: Eventually remove this document upgrade code
+	/// An extra frame adjustment composed onto the `start`/`end` frame (`transform * to_transform()`), letting the gradient
+	/// describe shapes the endpoint pair cannot, such as an elliptical radial. It defaults to identity, so existing documents
+	/// (which only have `start`/`end`) are unaffected; the migration stores a non-identity value only where it's needed.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub transform: DAffine2,
 }
 
 impl Default for Gradient {
@@ -502,6 +508,7 @@ impl Default for Gradient {
 			spread_method: GradientSpreadMethod::Pad,
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 }
@@ -521,31 +528,34 @@ impl std::fmt::Display for Gradient {
 
 impl Gradient {
 	// TODO: Eventually remove this document upgrade code
-	/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one whose `start`/`end`
-	/// are in the geometry's local space, chosen so the deshearing render pipeline reproduces the legacy appearance.
-	/// `bounding_box` maps [0,1] onto the geometry's bounding box.
-	pub fn to_absolute(&self, bounding_box: DAffine2) -> Gradient {
-		let (start, end) = match self.gradient_type {
-			// The deshearing render is field-preserving, so place the end where the field's gradient (the band normal of
-			// `bounding_box * to_transform`) reaches t = 1, rather than the visually-mapped end which would shear differently.
-			GradientType::Linear => {
-				let field_frame = bounding_box * self.to_transform();
-				let determinant = field_frame.matrix2.determinant();
-				let start = bounding_box.transform_point2(self.start);
-				if determinant.recip().is_finite() {
-					let field = -field_frame.matrix2.y_axis.perp() / determinant;
-					(start, start + field / field.length_squared())
-				} else {
-					(start, bounding_box.transform_point2(self.end))
-				}
-			}
-			// The radial brush is isotropic, so the bbox-mapped endpoints reproduce it (exactly for similarity layer transforms).
-			GradientType::Radial => (bounding_box.transform_point2(self.start), bounding_box.transform_point2(self.end)),
+	/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one in the geometry's local space.
+	/// `bounding_box` maps [0,1] onto the geometry's bounding box; `layer_transform` is the layer's own transform,
+	/// used to bake the elliptical adjustment that reproduces the legacy isotropic radial through a non-uniform layer.
+	pub fn to_absolute(&self, bounding_box: DAffine2, layer_transform: DAffine2) -> Gradient {
+		let start = bounding_box.transform_point2(self.start);
+		let end = bounding_box.transform_point2(self.end);
+		let direction = end - start;
+
+		// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
+		// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
+		let radial_invertible =
+			self.gradient_type == GradientType::Radial && layer_transform.is_finite() && layer_transform.matrix2.determinant().recip().is_finite() && direction.length_squared() > 1e-20;
+		let transform = if radial_invertible {
+			let radius = (layer_transform.matrix2 * direction).length();
+			let circle = DAffine2 {
+				matrix2: DMat2::from_diagonal(DVec2::splat(radius)),
+				translation: layer_transform.transform_point2(start),
+			};
+			let base = DAffine2::from_cols(direction, direction.perp(), start);
+			(layer_transform.inverse() * circle) * base.inverse()
+		} else {
+			DAffine2::IDENTITY
 		};
 
 		Gradient {
 			start,
 			end,
+			transform,
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
 			..self.clone()
@@ -575,6 +585,7 @@ impl Gradient {
 			spread_method,
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 
@@ -598,6 +609,7 @@ impl Gradient {
 			spread_method,
 			// TODO: Eventually remove this document upgrade code
 			absolute: self.absolute,
+			transform: if time < 0.5 { self.transform } else { other.transform },
 		}
 	}
 

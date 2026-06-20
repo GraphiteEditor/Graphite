@@ -825,6 +825,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				spread_method,
 				// TODO: Eventually remove this document upgrade code
 				absolute: true,
+				transform: DAffine2::IDENTITY,
 			})
 		}
 		usvg::Paint::RadialGradient(radial) => {
@@ -856,6 +857,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				spread_method,
 				// TODO: Eventually remove this document upgrade code
 				absolute: true,
+				transform: DAffine2::IDENTITY,
 			})
 		}
 		usvg::Paint::Pattern(_) => {
