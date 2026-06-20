@@ -215,6 +215,12 @@ pub fn color_to_graphic_list(color: Option<Color>) -> Option<List<Graphic>> {
 	color.as_ref().map(|color| List::new_from_element((*color).into()))
 }
 
+/// Whether a normalized paint graphic list actually carries renderable paint.
+/// A 0-item list, or a list whose first graphic is empty, is treated as no paint.
+pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
+	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
+}
+
 /// Look up the paint graphics stored under attribute for a vector item, normalizing any graphic list type to `List<Graphic>`.
 pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
 	list.attribute::<List<Graphic>>(attribute, index)
@@ -225,14 +231,13 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.or_else(|| list.attribute::<List<Raster<CPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<GPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		// Treat a blank attribute as absent so consumers fall back to the legacy `style` instead of masking it.
-		.filter(|graphic_list| graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty()))
+		.filter(|graphic_list| is_paint_present(graphic_list))
 }
 
 /// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
 /// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	list.attribute::<List<Graphic>>(attribute, index)
-		.is_some_and(|graphics| graphics.element(0).is_some_and(|graphic| !graphic.is_empty()))
+	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
 		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())

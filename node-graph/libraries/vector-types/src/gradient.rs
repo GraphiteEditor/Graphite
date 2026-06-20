@@ -458,6 +458,15 @@ impl GradientStops {
 
 		result
 	}
+
+	pub fn lerp(&self, other: &Self, time: f64) -> Self {
+		let stops = self.iter().zip(other.iter()).map(|(a, b)| {
+			let position = a.position + (b.position - a.position) * time;
+			let color = a.color.lerp(&b.color, time as f32);
+			GradientStop { position, midpoint: 0.5, color }
+		});
+		GradientStops::new(stops)
+	}
 }
 
 #[repr(C)]

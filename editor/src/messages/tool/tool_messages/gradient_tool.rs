@@ -398,8 +398,7 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 			transform: DAffine2::IDENTITY,
 		})
 	} else {
-		// Try to find a legacy Fill::Gradient that is selected in a Fill node
-		graph_modification_utils::get_gradient(layer, network_interface)
+		None
 	}
 }
 
@@ -2001,6 +2000,8 @@ mod test_gradient {
 						.unwrap_or_default(),
 					start: local_transform.transform_point2(DVec2::ZERO),
 					end: local_transform.transform_point2(DVec2::X),
+					absolute: true,
+					transform: DAffine2::IDENTITY,
 				};
 				let transform = gradient_space_transform(layer, document);
 				Some((gradient, transform))

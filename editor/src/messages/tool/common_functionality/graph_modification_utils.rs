@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
@@ -15,8 +15,8 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::vector::{GradientStops, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bbox};
+use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -309,17 +309,6 @@ pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &No
 	Some(*node_id)
 }
 
-/// Get the current gradient of a layer from the closest "Fill" node.
-pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	let fill_index = 1;
-
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
-		return None;
-	};
-	Some(gradient.clone())
-}
-
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
 	// Try to find the gradient stops value that is created by a Fill node first
@@ -356,14 +345,6 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 			.unwrap_or(metadata.document_to_viewport);
 	}
 
-	// TODO: Eventually remove this document upgrade code
-	// Only an existing legacy `Fill::Gradient` is in (0, 0)..(1, 1) bounding-box space; migrated and newly-created gradients are absolute (layer space).
-	if get_gradient(layer, network_interface).is_some_and(|gradient| !gradient.absolute) {
-		let bounds = metadata.nonzero_bounding_box(layer);
-		let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		return metadata.transform_to_viewport(layer) * bound_transform;
-	}
-
 	metadata.transform_to_viewport(layer)
 }
 
@@ -381,13 +362,11 @@ pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, tran
 
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
-	let fill_index = 1;
-
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let &TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let &TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? else {
 		return None;
 	};
-	Some(color)
+	color
 }
 
 /// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.
@@ -644,11 +623,40 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 	}
 }
 
+// TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated.
 /// Returns the `Fill` value from a layer's upstream Fill node.
 pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
-	let fill_index = graphene_std::vector::fill::FillInput::INDEX;
-	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER), fill_index)?;
-	if let TaggedValue::Fill(fill) = tagged { Some(fill.clone()) } else { None }
+	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
+	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+
+	match fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? {
+		&TaggedValue::Color(color) => Some(color.map_or(Fill::None, Fill::Solid)),
+		TaggedValue::Gradient(stops) => {
+			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientType(value)) => value,
+				_ => GradientType::default(),
+			};
+			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+				_ => GradientSpreadMethod::default(),
+			};
+			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer))),
+				_ => DAffine2::IDENTITY,
+			};
+			Some(Fill::Gradient(Gradient {
+				stops: stops.clone(),
+				gradient_type,
+				spread_method,
+				start: transform.transform_point2(DVec2::ZERO),
+				end: transform.transform_point2(DVec2::X),
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
+				transform: DAffine2::IDENTITY,
+			}))
+		}
+		_ => None,
+	}
 }
 
 /// Returns the stroke color from a layer's upstream Stroke node.
