@@ -1261,7 +1261,7 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				tool_data.drag_start = document_to_viewport.inverse().transform_point2(mouse);
-				tool_data.drag_start_unsnapped = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				tool_data.drag_start_unsnapped = point.document_point;
 				tool_data.auto_pan_shift = DVec2::ZERO;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
