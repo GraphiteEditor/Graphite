@@ -1764,7 +1764,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				use graphene_std::vector::generator_nodes::*;
 
-				let is_fill = matches!(value, TaggedValue::Fill(_));
+				let is_fill = matches!(value, TaggedValue::Gradient(_) | TaggedValue::Color(_));
 				let reference = network_interface.reference(&node_id, selection_network_path);
 				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
 				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
