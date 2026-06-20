@@ -1,12 +1,11 @@
-use std::sync::Arc;
 use wgpu::{Adapter, Backends, Device, Features, Instance, Queue};
 
 #[derive(Debug, Clone)]
 pub struct Context {
-	pub device: Arc<Device>,
-	pub queue: Arc<Queue>,
-	pub instance: Arc<Instance>,
-	pub adapter: Arc<Adapter>,
+	pub device: Device,
+	pub queue: Queue,
+	pub instance: Instance,
+	pub adapter: Adapter,
 }
 
 impl Context {
@@ -58,12 +57,7 @@ impl ContextBuilder {
 		let instance = self.build_instance();
 		let adapter = self.request_adapter(&instance).await?;
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context {
-			device: Arc::new(device),
-			queue: Arc::new(queue),
-			adapter: Arc::new(adapter),
-			instance: Arc::new(instance),
-		})
+		Some(Context { device, queue, adapter, instance })
 	}
 }
 impl ContextBuilder {
@@ -113,12 +107,7 @@ impl ContextBuilder {
 		let adapter = if let Some(adapter) = selected_adapter { adapter } else { self.request_adapter(&instance).await? };
 
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context {
-			device: Arc::new(device),
-			queue: Arc::new(queue),
-			adapter: Arc::new(adapter),
-			instance: Arc::new(instance),
-		})
+		Some(Context { device, queue, adapter, instance })
 	}
 	async fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
 	where

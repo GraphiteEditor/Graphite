@@ -17,6 +17,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		Context -> DAffine2,
 		Context -> DVec2,
 		Context -> List<Graphic>,
+		Context -> List<String>,
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,

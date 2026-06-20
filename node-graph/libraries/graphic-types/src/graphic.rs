@@ -22,6 +22,7 @@ pub enum Graphic {
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
 	Gradient(List<GradientStops>),
+	Text(List<String>),
 }
 
 impl Default for Graphic {
@@ -100,6 +101,18 @@ impl From<GradientStops> for Graphic {
 impl From<List<GradientStops>> for Graphic {
 	fn from(gradient: List<GradientStops>) -> Self {
 		Graphic::Gradient(gradient)
+	}
+}
+
+// String
+impl From<String> for Graphic {
+	fn from(text: String) -> Self {
+		Graphic::Text(List::new_from_element(text))
+	}
+}
+impl From<List<String>> for Graphic {
+	fn from(text: List<String>) -> Self {
+		Graphic::Text(text)
 	}
 }
 
@@ -215,6 +228,18 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.filter(|graphic_list| graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty()))
 }
 
+/// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
+/// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
+pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
+	list.attribute::<List<Graphic>>(attribute, index)
+		.is_some_and(|graphics| graphics.element(0).is_some_and(|graphic| !graphic.is_empty()))
+		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Raster<CPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Raster<GPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+}
+
 /// Look up the fill paint graphics for a vector item, falling back to the legacy
 /// `style.fill` when the attribute is absent or empty.
 /// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
@@ -325,6 +350,12 @@ impl TryFromGraphic for GradientStops {
 	}
 }
 
+impl TryFromGraphic for String {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		if let Graphic::Text(t) = graphic { Some(t) } else { None }
+	}
+}
+
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicList {
 	fn into_graphic_list(self) -> List<Graphic>;
@@ -378,6 +409,17 @@ impl IntoGraphicList for List<Color> {
 impl IntoGraphicList for List<GradientStops> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::Gradient(self))
+	}
+}
+
+impl IntoGraphicList for List<String> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let mut graphic_list = List::new_from_element(Graphic::Text(self));
+		if !layer_path.is_empty() {
+			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		}
+		graphic_list
 	}
 }
 
@@ -457,6 +499,7 @@ impl Graphic {
 			Graphic::RasterGPU(list) => all_clipped(list),
 			Graphic::Color(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
+			Graphic::Text(list) => all_clipped(list),
 		}
 	}
 
@@ -500,7 +543,7 @@ impl Graphic {
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 		}
 	}
 
@@ -520,7 +563,7 @@ impl Graphic {
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 		}
 	}
 
@@ -539,6 +582,7 @@ impl Graphic {
 			Graphic::Gradient(list) => list.is_empty(),
 			Graphic::RasterCPU(list) => list.is_empty(),
 			Graphic::RasterGPU(list) => list.is_empty(),
+			Graphic::Text(list) => list.is_empty(),
 		}
 	}
 }
@@ -552,6 +596,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -563,6 +608,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -592,6 +638,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
+			Self::Text(list) => list.render_complexity(),
 		}
 	}
 }

@@ -259,7 +259,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
 	#[expose]
-	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Color>, List<GradientStops>)]
 	content: List<I>,
 	/// Minimum range of randomized sizes given to each placed copy.
 	#[default(1)]

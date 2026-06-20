@@ -1,4 +1,4 @@
-use crate::renderer::{RenderParams, format_transform_matrix};
+use crate::renderer::{RenderParams, format_transform_matrix, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -65,7 +65,9 @@ impl RenderExt for List<Color> {
 		_render_params: &RenderParams,
 		target: PaintTarget,
 	) -> Self::Output {
-		let Some(color) = self.element(0) else { return r#" fill="none""#.to_string() };
+		let Some(color) = self.element(0) else {
+			return format!(r#" {}="none""#, target.paint_attr());
+		};
 
 		let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
 		if color.a() < 1. {
@@ -117,7 +119,7 @@ impl RenderExt for List<GradientStops> {
 		let start = transform_points.transform_point2(DVec2::ZERO);
 		let end = transform_points.transform_point2(DVec2::X);
 
-		let gradient_transform = if transformed_bounds.matrix2.determinant() != 0. {
+		let gradient_transform = if transform_is_invertible(transformed_bounds) {
 			transformed_bounds.inverse()
 		} else {
 			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
@@ -244,7 +246,7 @@ impl RenderExt for List<Graphic> {
 				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params, target);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

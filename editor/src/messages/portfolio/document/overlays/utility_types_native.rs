@@ -1109,10 +1109,10 @@ impl OverlayContextInternal {
 		let typesetting = TypesettingConfig {
 			font_size: FONT_SIZE,
 			line_height_ratio: 1.2,
-			character_spacing: 0.,
+			letter_spacing: 0.,
+			letter_tilt: 0.,
 			max_width: None,
 			max_height: None,
-			tilt: 0.,
 			align: TextAlign::AlignLeft,
 		};
 

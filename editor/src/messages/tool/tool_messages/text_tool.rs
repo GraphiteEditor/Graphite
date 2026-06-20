@@ -35,11 +35,11 @@ pub struct TextTool {
 }
 
 pub struct TextOptions {
-	font_size: f64,
-	character_spacing: f64,
 	font: Font,
+	font_size: f64,
+	letter_spacing: f64,
+	letter_tilt: f64,
 	fill: ToolColorOptions,
-	tilt: f64,
 	align: TextAlign,
 	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
 	last_synced_selection: Vec<LayerNodeIdentifier>,
@@ -48,11 +48,11 @@ pub struct TextOptions {
 impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
-			font_size: 24.,
-			character_spacing: 0.,
 			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
+			font_size: 24.,
+			letter_spacing: 0.,
+			letter_tilt: 0.,
 			fill: ToolColorOptions::new_enabled(),
-			tilt: 0.,
 			align: TextAlign::default(),
 			last_synced_selection: Vec::new(),
 		}
@@ -298,7 +298,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some((_, font, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface, context.fonts, &context.document.resources)
+					&& let Some((_, font, typesetting)) = graph_modification_utils::get_text(layer, &context.document.network_interface, context.fonts, &context.document.resources)
 				{
 					self.options.align = typesetting.align;
 					self.options.font_size = typesetting.font_size;
@@ -516,7 +516,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting, _) = graph_modification_utils::get_text(self.layer, &document.network_interface, fonts, &document.resources)?;
+		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface, fonts, &document.resources)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font,
@@ -573,7 +573,7 @@ impl TextToolData {
 		});
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
-			fill: if let Some(color) = editing_text.color { Fill::Solid(color) } else { Fill::None },
+			fill: editing_text.color.map_or(Fill::None, Fill::Solid),
 		});
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
@@ -654,14 +654,21 @@ impl Fsm for TextToolFsmState {
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				let transform = document.metadata().transform_to_viewport(tool_data.layer).to_cols_array();
+				// While editing, the text is blanked, so the layer's rendered transform metadata is absent; read the Transform node so the overlay tracks placement
+				let transform = document
+					.metadata()
+					.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
+					.to_cols_array();
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform { transform });
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
 					let far = graphene_std::text::bounding_box(&tool_data.new_text, &font_resource, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
+						let transformed_quad = document
+							.metadata()
+							.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
+							* quad;
 						overlay_context.quad(transformed_quad, None, Some(fill_color));
 					}
 				}
@@ -701,7 +708,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
+						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
 							let font_resource = fonts.get_resource_or_queue_load(&font, responses);
 							if lines_clipping(text.as_str(), &font_resource, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
@@ -964,17 +971,23 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Editing;
 				}
 
-				// Otherwise create some new text
-				let constraint_size = has_dragged.then_some((start - end).abs());
+				// Otherwise create some new text. The drag bounds are in viewport space; map them into document space for the text's
+				// transform and wrapping size, then compose with document-to-viewport so the editing overlay (a screen-space CSS matrix) carries the zoom.
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let viewport_to_document = document_to_viewport.inverse();
+				let document_start = viewport_to_document.transform_point2(start);
+				let document_end = viewport_to_document.transform_point2(end);
+
+				let constraint_size = has_dragged.then_some((document_start - document_end).abs());
 				let editing_text = EditingText {
 					text: String::new(),
-					transform: DAffine2::from_translation(start),
+					transform: document_to_viewport * DAffine2::from_translation(document_start),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
+						letter_spacing: tool_options.letter_spacing,
+						letter_tilt: tool_options.letter_tilt,
 						max_width: constraint_size.map(|size| size.x),
-						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
-						tilt: tool_options.tilt,
 						align: tool_options.align,
 						..TypesettingConfig::default()
 					},
