@@ -129,7 +129,13 @@ impl Polygon {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			update_radius_sign(end, start, layer, document, responses);
 
-			let dimensions = (start - end).abs();
+			// Convert viewport dimensions to document space
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let viewport_delta = end - start;
+			let document_delta = document_to_viewport.inverse().transform_vector2(viewport_delta);
+			let document_center = document_to_viewport.inverse().transform_point2((start + end) / 2.);
+
+			let dimensions = document_delta.abs();
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
 			let mut scale = DVec2::ONE;
@@ -153,8 +159,8 @@ impl Polygon {
 
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-				transform_in: TransformIn::Viewport,
+				transform: DAffine2::from_scale_angle_translation(scale, 0., document_center),
+				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
 		}
