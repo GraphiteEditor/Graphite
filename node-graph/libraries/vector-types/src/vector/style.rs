@@ -671,6 +671,10 @@ impl PathStyle {
 		&self.fill
 	}
 
+	pub fn fill_mut(&mut self) -> &mut Fill {
+		&mut self.fill
+	}
+
 	/// Get the current path's [Stroke].
 	///
 	/// # Example

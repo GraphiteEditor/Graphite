@@ -129,13 +129,20 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	};
 	let mut row = if let Some(index) = copy_from_index {
 		let mut attributes = vector.clone_item_attributes(index);
+		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
 		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
+		let mut element = Vector {
 			style: copy_from.style.clone(),
 			..Default::default()
 		};
+		// An absolute gradient lives in the geometry's space, so bake the same transform into it to track the baked points
+		if let Fill::Gradient(gradient) = element.style.fill_mut()
+			&& gradient.absolute
+		{
+			gradient.transform = copy_from_transform * gradient.transform;
+		}
 		Item::from_parts(element, attributes)
 	} else {
 		Item::<Vector>::default()
