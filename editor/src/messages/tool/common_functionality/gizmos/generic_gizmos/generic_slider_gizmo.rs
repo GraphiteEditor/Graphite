@@ -16,9 +16,9 @@ use crate::messages::tool::common_functionality::gizmos::generic_gizmos::read_f6
 use crate::messages::tool::common_functionality::gizmos::gizmo_registry::{GizmoInfo, PositionHint};
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
+use graph_craft::document::NodeId;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeId;
 use std::collections::VecDeque;
 
 /// Pixel radius within which the mouse is considered to be hovering the handle.
@@ -91,7 +91,6 @@ impl GenericSliderGizmo {
 		}
 	}
 
-	/// Detect hover by measuring the mouse's distance to the handle in viewport space.
 	/// Pure hover test: returns the mouse's distance to the handle when it is a hover candidate, or
 	/// `None` otherwise. The manager uses this distance to resolve priority when several gizmos
 	/// overlap (the closest handle wins). This performs no state mutation.
