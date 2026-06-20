@@ -802,6 +802,8 @@ struct GradientToolData {
 	selected_gradient: Option<SelectedGradient>,
 	snap_manager: SnapManager,
 	drag_start: DVec2,
+	/// The pointer-down position before snapping (document space), used to detect whether the mouse moved between the press and a double-click.
+	drag_start_unsnapped: DVec2,
 	auto_panning: AutoPanning,
 	auto_pan_shift: DVec2,
 	gradient_angle: f64,
@@ -1061,8 +1063,9 @@ impl Fsm for GradientToolFsmState {
 				}
 			}
 			(_, GradientToolMessage::DoubleClick) => {
-				// Only reset if the mouse hasn't moved so we don't trigger from a click-then-click-and-drag being reported as a double-click
-				let drag_start_viewport = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start);
+				// Only reset if the mouse hasn't moved so we don't trigger from a click-then-click-and-drag being reported as a double-click.
+				// Compared against the unsnapped press position so a snap point near the stop doesn't make a stationary mouse look moved.
+				let drag_start_viewport = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_unsnapped);
 				if input.mouse.position.distance(drag_start_viewport) <= DRAG_THRESHOLD
 					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
 				{
@@ -1258,6 +1261,7 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				tool_data.drag_start = document_to_viewport.inverse().transform_point2(mouse);
+				tool_data.drag_start_unsnapped = point.document_point;
 				tool_data.auto_pan_shift = DVec2::ZERO;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
