@@ -39,9 +39,9 @@ use vector_types::{GradientSpreadMethod, GradientType};
 trait VectorListIterMut {
 	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
 
-	fn vector_count(&self) -> usize;
+	fn for_each_vector_list_mut(&mut self, f: impl FnMut(&mut List<Vector>));
 
-	fn set_paint_attribute(&mut self, key: &str, paint: AnyGraphicListDyn);
+	fn vector_count(&self) -> usize;
 }
 
 impl VectorListIterMut for List<Graphic> {
@@ -55,17 +55,16 @@ impl VectorListIterMut for List<Graphic> {
 		}
 	}
 
-	fn vector_count(&self) -> usize {
-		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
+	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
+		for graphic in self.iter_element_values_mut() {
+			if let Some(vector_list) = graphic.as_vector_mut() {
+				f(vector_list);
+			};
+		}
 	}
 
-	fn set_paint_attribute(&mut self, key: &str, paint: AnyGraphicListDyn) {
-		for graphic in self.iter_element_values_mut() {
-			let Some(vector_list) = graphic.as_vector_mut() else { continue };
-			for index in 0..vector_list.len() {
-				vector_list.set_attribute_value_dyn(key, index, paint.clone().into());
-			}
-		}
+	fn vector_count(&self) -> usize {
+		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
 	}
 }
 
@@ -77,14 +76,12 @@ impl VectorListIterMut for List<Vector> {
 		}
 	}
 
-	fn vector_count(&self) -> usize {
-		self.len()
+	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
+		f(self);
 	}
 
-	fn set_paint_attribute(&mut self, key: &str, paint: AnyGraphicListDyn) {
-		for index in 0..self.len() {
-			self.set_attribute_value_dyn(key, index, paint.clone().into());
-		}
+	fn vector_count(&self) -> usize {
+		self.len()
 	}
 }
 
@@ -203,7 +200,11 @@ async fn fill<V: VectorListIterMut + 'n + Send>(
 		}
 	}
 
-	content.set_paint_attribute(ATTR_FILL, fill);
+	content.for_each_vector_list_mut(|vector_list| {
+		for index in 0..vector_list.len() {
+			vector_list.set_attribute_value_dyn(ATTR_FILL, index, fill.clone().into());
+		}
+	});
 	content
 }
 
@@ -284,7 +285,11 @@ where
 		vector.style.set_stroke(stroke);
 	});
 
-	content.set_paint_attribute(ATTR_STROKE, paint);
+	content.for_each_vector_list_mut(|vector_list| {
+		for index in 0..vector_list.len() {
+			vector_list.set_attribute_value_dyn(ATTR_STROKE, index, paint.clone().into());
+		}
+	});
 	content
 }
 
