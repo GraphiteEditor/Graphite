@@ -363,6 +363,9 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 			spread_method: chain_state.spread_method,
 			start: chain_state.transform.transform_point2(DVec2::ZERO),
 			end: chain_state.transform.transform_point2(DVec2::X),
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			transform: DAffine2::IDENTITY,
 		})
 	} else {
 		// Try to find a legacy Fill::Gradient that is selected in a Fill node

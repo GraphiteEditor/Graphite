@@ -4,7 +4,7 @@ use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
@@ -193,15 +193,26 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 
 /// Converts a `Fill` enum into the `List<Graphic>` representation used as paint storage.
 /// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
-pub fn fill_to_graphic_list(fill: &Fill) -> Option<List<Graphic>> {
+pub fn fill_to_graphic_list(fill: &Fill, bounding_box_transform: DAffine2) -> Option<List<Graphic>> {
 	match fill {
 		Fill::None => None,
 		Fill::Solid(color) => Some(List::new_from_element((*color).into())),
 		Fill::Gradient(gradient) => {
+			let gradient_transform = gradient.transform * gradient.to_transform();
+
+			// TODO: Eventually remove this document upgrade code
+			// Absolute gradients carry their effective frame into the new pipeline; legacy bounding-box gradients bake the bbox
+			// in and flag the legacy render path until the deferred migration converts them.
+			let (transform, legacy) = if gradient.absolute {
+				(gradient_transform, false)
+			} else {
+				(bounding_box_transform * gradient_transform, true)
+			};
 			let gradient_item = Item::new_from_element(gradient.stops.clone())
-				.with_attribute(ATTR_TRANSFORM, gradient.to_transform())
+				.with_attribute(ATTR_TRANSFORM, transform)
 				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
-				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method);
+				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method)
+				.with_attribute(ATTR_GRADIENT_LEGACY, legacy);
 			let gradient_list = List::new_from_item(gradient_item);
 
 			Some(List::new_from_element(Graphic::Gradient(gradient_list)))
@@ -246,7 +257,9 @@ pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool 
 pub fn fill_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
 	graphic_list_at(list, index, ATTR_FILL).or_else(|| {
 		let vector = list.element(index)?;
-		fill_to_graphic_list(vector.style.fill()).map(Cow::Owned)
+		let bounds = vector.nonzero_bounding_box();
+		let bounding_box_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		fill_to_graphic_list(vector.style.fill(), bounding_box_transform).map(Cow::Owned)
 	})
 }
 

@@ -14,11 +14,11 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
-	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, stroke_graphic_list_at};
@@ -356,7 +356,6 @@ fn emit_svg_fill_path(
 	element_transform: DAffine2,
 	applied_stroke_transform: DAffine2,
 	bounds_matrix: DAffine2,
-	transformed_bounds_matrix: DAffine2,
 	render_params: &RenderParams,
 ) {
 	render.leaf_tag("path", |attributes| {
@@ -367,18 +366,7 @@ fn emit_svg_fill_path(
 		}
 		let defs = &mut attributes.0.svg_defs;
 		let fill_attribute = fill_graphic_list
-			.map(|list| {
-				list.render(
-					defs,
-					item_transform,
-					element_transform,
-					applied_stroke_transform,
-					bounds_matrix,
-					transformed_bounds_matrix,
-					render_params,
-					PaintTarget::Fill,
-				)
-			})
+			.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
@@ -389,12 +377,33 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
-fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<peniko::Brush> {
+/// Maps a gradient's `transform` into the frame handed to the renderer: radial keeps the full matrix (so a
+/// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
+/// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
+/// represent since it stores only two endpoints.
+pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
+	match gradient_type {
+		GradientType::Radial => transform,
+		GradientType::Linear => {
+			let axis = transform.matrix2.x_axis;
+			let band_normal = transform.matrix2.y_axis.perp();
+			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
+			DAffine2 {
+				matrix2: DMat2::from_cols(line, line.perp()),
+				translation: transform.translation,
+			}
+		}
+	}
+}
+
+fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+	// TODO: Eventually remove this document upgrade code
+	let legacy_bounding_box: bool = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_LEGACY, 0);
 
 	let mut peniko_stops = peniko::ColorStops::new();
 	for (position, color, _) in stops.interpolated_samples() {
@@ -404,18 +413,20 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 		});
 	}
 
-	let bounds = parent_vector.nonzero_bounding_box();
-	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-	let inverse_parent_transform = if transform_is_invertible(*parent_transform) {
-		parent_transform.inverse()
+	// TODO: Eventually remove this document upgrade code
+	// Legacy bounding-box gradients reproduce the pre-#4241 renderer: literal endpoints in the layer's own space, with the
+	// parent transform applied as the brush so its shear bends the bands. New gradients use the unit gradient placed by the desheared frame.
+	let (start, end, gradient_to_device) = if legacy_bounding_box {
+		let inverse_parent_transform = if transform_is_invertible(*parent_transform) {
+			parent_transform.inverse()
+		} else {
+			Default::default()
+		};
+		let mod_points = inverse_parent_transform * *multiplied_transform * gradient_transform;
+		(mod_points.transform_point2(DVec2::ZERO), mod_points.transform_point2(DVec2::X), *parent_transform)
 	} else {
-		Default::default()
+		(DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type))
 	};
-	let mod_points = inverse_parent_transform * multiplied_transform * bound_transform * gradient_transform;
-
-	let start = mod_points.transform_point2(DVec2::ZERO);
-	let end = mod_points.transform_point2(DVec2::X);
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
@@ -424,16 +435,13 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 				end: to_point(end),
 			}
 			.into(),
-			GradientType::Radial => {
-				let radius = start.distance(end);
-				peniko::RadialGradientPosition {
-					start_center: to_point(start),
-					start_radius: 0.,
-					end_center: to_point(start),
-					end_radius: radius as f32,
-				}
-				.into()
+			GradientType::Radial => peniko::RadialGradientPosition {
+				start_center: to_point(start),
+				start_radius: 0.,
+				end_center: to_point(start),
+				end_radius: start.distance(end) as f32,
 			}
+			.into(),
 		},
 		extend: match spread_method {
 			GradientSpreadMethod::Pad => peniko::Extend::Pad,
@@ -445,7 +453,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vect
 		..Default::default()
 	});
 
-	Some(brush)
+	Some((brush, gradient_to_device))
 }
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
@@ -1084,7 +1092,6 @@ impl Render for List<Vector> {
 			let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
 
 			let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
-			let transformed_bounds_matrix = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 			let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
 			let mut path = String::new();
@@ -1126,7 +1133,6 @@ impl Render for List<Vector> {
 					element_transform,
 					applied_stroke_transform,
 					bounds_matrix,
-					transformed_bounds_matrix,
 					render_params,
 				);
 			}
@@ -1158,7 +1164,6 @@ impl Render for List<Vector> {
 						element_transform,
 						applied_stroke_transform,
 						bounds_matrix,
-						transformed_bounds_matrix,
 						render_params,
 					);
 				}
@@ -1207,16 +1212,7 @@ impl Render for List<Vector> {
 					.stroke()
 					.map(|stroke| {
 						if stroke_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
-							stroke.render(
-								defs,
-								item_transform,
-								element_transform,
-								applied_stroke_transform,
-								bounds_matrix,
-								transformed_bounds_matrix,
-								&render_params,
-								PaintTarget::Stroke,
-							)
+							stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 						} else {
 							String::new()
 						}
@@ -1235,16 +1231,7 @@ impl Render for List<Vector> {
 								Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
 								_ => stroke_bounds_matrix,
 							};
-							list.render(
-								defs,
-								item_transform,
-								element_transform,
-								applied_stroke_transform,
-								paint_bounds,
-								transformed_bounds_matrix,
-								&render_params,
-								PaintTarget::Stroke,
-							)
+							list.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
 						})
 						.unwrap_or_else(|| r#" stroke="none""#.to_string())
 				} else {
@@ -1256,18 +1243,7 @@ impl Render for List<Vector> {
 				} else {
 					fill_graphic_list
 						.as_deref()
-						.map(|list| {
-							list.render(
-								defs,
-								item_transform,
-								element_transform,
-								applied_stroke_transform,
-								bounds_matrix,
-								transformed_bounds_matrix,
-								&render_params,
-								PaintTarget::Fill,
-							)
-						})
+						.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
 						.unwrap_or_else(|| r#" fill="none""#.to_string())
 				};
 
@@ -1303,7 +1279,6 @@ impl Render for List<Vector> {
 					element_transform,
 					applied_stroke_transform,
 					bounds_matrix,
-					transformed_bounds_matrix,
 					render_params,
 				);
 			}
@@ -1397,7 +1372,7 @@ impl Render for List<Vector> {
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
 						Graphic::Gradient(list) => {
-							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &parent_transform, &multiplied_transform) else {
 								continue;
 							};
 
@@ -1406,7 +1381,7 @@ impl Render for List<Vector> {
 							} else {
 								Default::default()
 							};
-							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
 						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
@@ -1479,7 +1454,7 @@ impl Render for List<Vector> {
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 						}
 						Graphic::Gradient(list) => {
-							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &parent_transform, &multiplied_transform) else {
 								continue;
 							};
 							let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -1487,7 +1462,7 @@ impl Render for List<Vector> {
 							} else {
 								Default::default()
 							};
-							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}

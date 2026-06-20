@@ -292,6 +292,12 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
 }
 
+// TODO: Eventually remove this document upgrade code
+/// Get the layer's "Fill" node itself (whose `fill` input holds the paint value), not the node feeding that input.
+pub fn get_fill_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
+}
+
 /// Get the node connected to Fill's fill input, if any.
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
@@ -337,10 +343,16 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 			.map(|footprint| footprint.transform)
 			.unwrap_or(metadata.document_to_viewport);
 	}
-	let multiplied = metadata.transform_to_viewport(layer);
-	let bounds = metadata.nonzero_bounding_box(layer);
-	let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-	multiplied * bound_transform
+
+	// TODO: Eventually remove this document upgrade code
+	// Only an existing legacy `Fill::Gradient` is in (0, 0)..(1, 1) bounding-box space; migrated and newly-created gradients are absolute (layer space).
+	if get_gradient(layer, network_interface).is_some_and(|gradient| !gradient.absolute) {
+		let bounds = metadata.nonzero_bounding_box(layer);
+		let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		return metadata.transform_to_viewport(layer) * bound_transform;
+	}
+
+	metadata.transform_to_viewport(layer)
 }
 
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
