@@ -12,6 +12,7 @@ use core_types::{
 	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
+use graphic_types::graphic::{fill_graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{AnyGraphicListDyn, Vector};
 use graphic_types::{Graphic, IntoGraphicList};
@@ -30,7 +31,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{Fill, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{GradientSpreadMethod, GradientType};
 
@@ -125,26 +126,29 @@ where
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	let mut i: usize = 0;
-	content.for_each_vector_mut(|vector, _transform| {
-		let factor = match randomize {
-			true => rng.random::<f64>(),
-			false => match repeat_every {
-				0 => i as f64 / (length - 1).max(1) as f64,
-				1 => 0.,
-				_ => i as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
-			},
-		};
+	content.for_each_vector_list_mut(|vector_list| {
+		for index in 0..vector_list.len() {
+			let factor = match randomize {
+				true => rng.random::<f64>(),
+				false => match repeat_every {
+					0 => i as f64 / (length - 1).max(1) as f64,
+					1 => 0.,
+					_ => i as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
+				},
+			};
 
-		let color = gradient.evaluate(factor);
+			let color = gradient.evaluate(factor);
+			let paint = AnyGraphicListDyn::from(List::new_from_element(color));
 
-		if fill {
-			vector.style.set_fill(Fill::Solid(color));
+			if fill {
+				vector_list.set_attribute_value_dyn(ATTR_FILL, index, paint.clone().into());
+			}
+			if stroke && vector_list.element(index).and_then(|vector| vector.style.stroke()).is_some() {
+				vector_list.set_attribute_value_dyn(ATTR_STROKE, index, paint.into());
+			}
+
+			i += 1;
 		}
-		if stroke && let Some(stroke) = vector.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
-			vector.style.set_stroke(stroke);
-		}
-
-		i += 1;
 	});
 
 	content
@@ -1200,9 +1204,12 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 	let graphic_list = content.into_graphic_list();
 	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
 
+	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint_at(&flattened, index, ATTR_FILL)).collect();
+
 	let mut output: List<Vector> = flattened
 		.into_iter()
-		.flat_map(|row| {
+		.zip(has_fills)
+		.flat_map(|(row, has_fill)| {
 			let (mut vector, attributes) = row.into_parts();
 
 			let stroke = vector.style.stroke().clone().unwrap_or_default();
@@ -1252,14 +1259,7 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 				solidified_stroke.append_bezpath(solidified);
 			}
 
-			// We set the solidified stroke's fill to the stroke's color and without a stroke.
-			if let Some(stroke) = vector.style.stroke() {
-				solidified_stroke.style.set_fill(Fill::solid_or_none(stroke.color));
-			}
-
 			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
-			let has_attr_fill = attributes.keys().any(|k| k == ATTR_FILL);
-			let has_fill = has_attr_fill || !vector.style.fill().is_none();
 			let fill_row = has_fill.then(|| {
 				vector.style.clear_stroke();
 				let mut fill_attributes = attributes.clone();
@@ -2214,6 +2214,53 @@ async fn morph<I: IntoGraphicList>(
 		}
 	}
 
+	// Lerp between two graphics. Currently supports combinations of a solid color and a gradient.
+	fn lerp_graphic(a: Option<&List<Graphic>>, b: Option<&List<Graphic>>, time: f64) -> Option<List<Graphic>> {
+		let transparent = List::new_from_element(Color::TRANSPARENT).into_graphic_list();
+
+		let a = a.filter(|graphic_list| is_paint_present(graphic_list));
+		let b = b.filter(|graphic_list| is_paint_present(graphic_list));
+
+		let (a, b) = match (a, b) {
+			(None, None) => return None,
+			(Some(a), None) => (a, &transparent),
+			(None, Some(b)) => (&transparent, b),
+			(Some(a), Some(b)) => (a, b),
+		};
+
+		let graphic = match (a.element(0), b.element(0)) {
+			// Solid × Solid
+			(Some(Graphic::Color(color_list_a)), Some(Graphic::Color(color_list_b))) => color_list_a
+				.element(0)
+				.zip(color_list_b.element(0))
+				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
+
+			// Solid × Gradient
+			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
+				let mut solid_to_gradient = stops_b.clone();
+				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
+				Graphic::from(solid_to_gradient.lerp(stops_b, time))
+			}),
+
+			// Gradient × Solid
+			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
+				let mut gradient_to_solid = stops_a.clone();
+				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
+				Graphic::from(stops_a.lerp(&gradient_to_solid, time))
+			}),
+
+			// Gradient × Gradient
+			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a
+				.element(0)
+				.zip(gradient_list_b.element(0))
+				.map(|(stops_a, stops_b)| Graphic::from(stops_a.lerp(stops_b, time))),
+
+			_ => None,
+		};
+
+		graphic.map(List::new_from_element)
+	}
+
 	// Preserve original `List<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
 	let mut graphic_list_content = content.clone().into_graphic_list();
 
@@ -2472,9 +2519,35 @@ async fn morph<I: IntoGraphicList>(
 		return List::new_from_item(Item::from_parts(endpoint_element.clone(), attributes));
 	}
 
-	let mut vector = Vector {
-		style: source_element.style.lerp(&target_element.style, time),
-		..Default::default()
+	let mut vector = Vector::default();
+	vector.style.stroke = match (source_element.style.stroke.as_ref(), target_element.style.stroke.as_ref()) {
+		(Some(a), Some(b)) => Some(a.lerp(b, time)),
+		(Some(a), None) => {
+			if time < 0.5 {
+				Some(a.clone())
+			} else {
+				None
+			}
+		}
+		(None, Some(b)) => {
+			if time < 0.5 {
+				Some(b.clone())
+			} else {
+				None
+			}
+		}
+		(None, None) => None,
+	};
+
+	let fill_paint = {
+		let source = fill_graphic_list_at(&content, source_index);
+		let target = fill_graphic_list_at(&content, target_index);
+		lerp_graphic(source.as_deref(), target.as_deref(), time)
+	};
+	let stroke_paint = {
+		let source = stroke_graphic_list_at(&content, source_index);
+		let target = stroke_graphic_list_at(&content, target_index);
+		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 
 	// Work directly with manipulator groups, bypassing the BezPath intermediate representation.
@@ -2625,16 +2698,23 @@ async fn morph<I: IntoGraphicList>(
 	let primary_index = if time < 0.5 { source_index } else { target_index };
 	let layer_path: List<NodeId> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
 
-	List::new_from_item(
-		Item::new_from_element(vector)
-			.with_attribute(ATTR_TRANSFORM, lerped_transform)
-			.with_attribute(ATTR_BLEND_MODE, lerped_blend_mode)
-			.with_attribute(ATTR_OPACITY, lerped_opacity)
-			.with_attribute(ATTR_OPACITY_FILL, lerped_fill)
-			.with_attribute(ATTR_CLIPPING_MASK, lerped_clip)
-			.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content),
-	)
+	let mut item = Item::new_from_element(vector)
+		.with_attribute(ATTR_TRANSFORM, lerped_transform)
+		.with_attribute(ATTR_BLEND_MODE, lerped_blend_mode)
+		.with_attribute(ATTR_OPACITY, lerped_opacity)
+		.with_attribute(ATTR_OPACITY_FILL, lerped_fill)
+		.with_attribute(ATTR_CLIPPING_MASK, lerped_clip)
+		.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
+		.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
+
+	if let Some(fill) = fill_paint {
+		item.set_attribute(ATTR_FILL, fill);
+	}
+	if let Some(stroke) = stroke_paint {
+		item.set_attribute(ATTR_STROKE, stroke);
+	}
+
+	List::new_from_item(item)
 }
 
 fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Vector {
@@ -3242,6 +3322,36 @@ mod test {
 		);
 		// The interpolated transform carries the midpoint translation (approximate due to arc-length parameterization)
 		assert!((morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
+	}
+
+	#[tokio::test]
+	async fn morph_interpolates_fill() {
+		let rect = || {
+			let mut v = Vector::default();
+			v.append_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+			v
+		};
+
+		let item_a = Item::new_from_element(rect())
+			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
+			.with_attribute(ATTR_FILL, List::new_from_element(Color::RED).into_graphic_list());
+		let item_b = Item::new_from_element(rect())
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation((-100., -100.).into()))
+			.with_attribute(ATTR_FILL, List::new_from_element(Color::BLUE).into_graphic_list());
+
+		let mut content = List::new_from_item(item_a);
+		content.push(item_b);
+
+		let morphed = super::morph(Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default()).await;
+
+		let fill = fill_graphic_list_at(&morphed, 0).expect("morph should keep the fill paint at the midpoint");
+
+		// Interpolated color between red and blue should have >0 value on both R and B
+		let Some(Graphic::Color(colors)) = fill.element(0) else {
+			panic!("expected a solid color fill, got {:?}", fill.element(0));
+		};
+		let color = *colors.element(0).expect("color present");
+		assert!(color.r() > 0. && color.b() > 0., "fill should be a red↔blue blend, got {color:?}");
 	}
 
 	#[track_caller]
