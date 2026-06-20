@@ -823,6 +823,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				gradient_type,
 				stops,
 				spread_method,
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
 			})
 		}
 		usvg::Paint::RadialGradient(radial) => {
@@ -852,6 +854,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				gradient_type,
 				stops,
 				spread_method,
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
 			})
 		}
 		usvg::Paint::Pattern(_) => {

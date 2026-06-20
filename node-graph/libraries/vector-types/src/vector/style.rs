@@ -153,6 +153,8 @@ impl From<List<GradientStops>> for Fill {
 			spread_method,
 			start: transform.transform_point2(DVec2::ZERO),
 			end: transform.transform_point2(DVec2::X),
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
 		})
 	}
 }

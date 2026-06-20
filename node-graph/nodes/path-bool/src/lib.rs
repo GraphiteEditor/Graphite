@@ -1,7 +1,11 @@
 use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
+use core_types::{
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
+	Ctx,
+};
 use glam::{DAffine2, DVec2};
+use graphic_types::vector_types::gradient::{Gradient, GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -272,7 +276,16 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					.map(|row| {
 						let (stops, attributes) = row.into_parts();
 						let mut element = Vector::default();
-						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient { stops, ..Default::default() }));
+						// Convert the gradient's transform to absolute endpoints, matching `From<List<GradientStops>> for Fill`
+						let transform = attributes.get::<DAffine2>(ATTR_TRANSFORM).cloned().unwrap_or_default();
+						element.style.set_fill(Fill::Gradient(Gradient {
+							stops,
+							gradient_type: attributes.get::<GradientType>(ATTR_GRADIENT_TYPE).cloned().unwrap_or_default(),
+							spread_method: attributes.get::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).cloned().unwrap_or_default(),
+							start: transform.transform_point2(DVec2::ZERO),
+							end: transform.transform_point2(DVec2::X),
+							absolute: true,
+						}));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)

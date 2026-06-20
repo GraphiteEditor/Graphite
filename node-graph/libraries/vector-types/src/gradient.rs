@@ -484,6 +484,12 @@ pub struct Gradient {
 	pub end: DVec2,
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub spread_method: GradientSpreadMethod,
+	// TODO: Eventually remove this document upgrade code
+	/// Whether `start`/`end` are absolute (layer-space) rather than in the legacy [0,1] bounding-box space.
+	/// Documents predating the gradient migration deserialize this as `false`; the deferred migration converts
+	/// them and sets it `true`. Once all documents are migrated, the legacy rendering path can be removed.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub absolute: bool,
 }
 
 impl Default for Gradient {
@@ -494,6 +500,8 @@ impl Default for Gradient {
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
 			spread_method: GradientSpreadMethod::Pad,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
 		}
 	}
 }
@@ -512,6 +520,38 @@ impl std::fmt::Display for Gradient {
 }
 
 impl Gradient {
+	// TODO: Eventually remove this document upgrade code
+	/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one whose `start`/`end`
+	/// are in the geometry's local space, chosen so the deshearing render pipeline reproduces the legacy appearance.
+	/// `bounding_box` maps [0,1] onto the geometry's bounding box.
+	pub fn to_absolute(&self, bounding_box: DAffine2) -> Gradient {
+		let (start, end) = match self.gradient_type {
+			// The deshearing render is field-preserving, so place the end where the field's gradient (the band normal of
+			// `bounding_box * to_transform`) reaches t = 1, rather than the visually-mapped end which would shear differently.
+			GradientType::Linear => {
+				let field_frame = bounding_box * self.to_transform();
+				let determinant = field_frame.matrix2.determinant();
+				let start = bounding_box.transform_point2(self.start);
+				if determinant.recip().is_finite() {
+					let field = -field_frame.matrix2.y_axis.perp() / determinant;
+					(start, start + field / field.length_squared())
+				} else {
+					(start, bounding_box.transform_point2(self.end))
+				}
+			}
+			// The radial brush is isotropic, so the bbox-mapped endpoints reproduce it (exactly for similarity layer transforms).
+			GradientType::Radial => (bounding_box.transform_point2(self.start), bounding_box.transform_point2(self.end)),
+		};
+
+		Gradient {
+			start,
+			end,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			..self.clone()
+		}
+	}
+
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
 	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType, spread_method: GradientSpreadMethod) -> Self {
 		let stops = GradientStops::new([
@@ -533,6 +573,8 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
 		}
 	}
 
@@ -554,6 +596,8 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			// TODO: Eventually remove this document upgrade code
+			absolute: self.absolute,
 		}
 	}
 

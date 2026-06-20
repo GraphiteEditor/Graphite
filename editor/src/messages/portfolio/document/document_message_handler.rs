@@ -124,6 +124,11 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
+	// TODO: Eventually remove this document upgrade code
+	/// Set when a freshly-opened document still has legacy bounding-box-relative gradients; the deferred gradient
+	/// migration converts them to absolute after the first graph run (when geometry bounds are available) and clears this.
+	#[serde(skip)]
+	pub(crate) pending_gradient_migration: bool,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -181,6 +186,8 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
+			// TODO: Eventually remove this document upgrade code
+			pending_gradient_migration: false,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
@@ -1364,6 +1371,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					})
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
+			}
+			// TODO: Eventually remove this document upgrade code
+			DocumentMessage::MigrateLegacyGradients => {
+				if self.pending_gradient_migration {
+					self.pending_gradient_migration = false;
+
+					// Read each layer's legacy gradient and compute its absolute form from the now-available local bounds
+					let layers: Vec<_> = self.metadata().all_layers().collect();
+					let conversions: Vec<(NodeId, Fill)> = layers
+						.into_iter()
+						.filter_map(|layer| {
+							let gradient = graph_modification_utils::get_gradient(layer, &self.network_interface)?;
+							if gradient.absolute {
+								return None;
+							}
+							let fill_node_id = graph_modification_utils::get_fill_node_id(layer, &self.network_interface)?;
+							let bounds = self.metadata().nonzero_bounding_box(layer);
+							let bounding_box = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+							Some((fill_node_id, Fill::Gradient(gradient.to_absolute(bounding_box))))
+						})
+						.collect();
+
+					let converted_any = !conversions.is_empty();
+					for (fill_node_id, fill) in conversions {
+						self.network_interface
+							.set_input(&InputConnector::node(fill_node_id, 1), NodeInput::value(TaggedValue::Fill(fill), false), &[]);
+					}
+					if converted_any {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
 			}
 			DocumentMessage::UpdateOutlines { outlines } => {
 				let layer_outlines = outlines
