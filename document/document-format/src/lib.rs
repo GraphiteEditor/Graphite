@@ -238,6 +238,16 @@ impl<L: Layout> Gdd<L> {
 		self.session.registry()
 	}
 
+	/// The in-memory manifest. `Gdd` is its sole writer, so this is authoritative without re-reading
+	/// disk.
+	pub fn manifest(&self) -> &Manifest {
+		&self.manifest
+	}
+
+	pub fn layout(&self) -> &L {
+		&self.layout
+	}
+
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`](graph_storage::NetworkId), so the
 	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
@@ -256,22 +266,12 @@ impl<L: Layout> Gdd<L> {
 		self.session.all_referenced_resource_hashes()
 	}
 
-	pub fn layout(&self) -> &L {
-		&self.layout
-	}
-
 	/// Drop the session and return the working-copy container + layout.
 	/// Intended for test code that needs to reopen against the same container; panics if the container
 	/// is still shared by a `Gdd` clone (tests don't clone before calling this).
 	pub fn into_storage(self) -> (AnyContainer, L) {
 		let working = Arc::try_unwrap(self.working).unwrap_or_else(|_| panic!("into_storage called while the working-copy container is still shared by a Gdd clone"));
 		(working, self.layout)
-	}
-
-	/// The in-memory manifest. `Gdd` is its sole writer, so this is authoritative without re-reading
-	/// disk.
-	pub fn manifest(&self) -> &Manifest {
-		&self.manifest
 	}
 
 	/// Resolve the proto-node declarations referenced by the registry into a [`graph_storage::Declarations`]

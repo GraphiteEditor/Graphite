@@ -1,9 +1,7 @@
 //! Unified error type for the `document-format` crate.
 //!
 //! Every fallible [`crate::Gdd`] method returns [`Result<T>`]. Variants are grouped by failure
-//! domain (container I/O, codec, CRDT, format validation, export), not by which method produced
-//! them, so callers match one enum. Each method documents the variants it can actually return in
-//! an `# Errors` section.
+//! domain (container I/O, codec, CRDT, format validation, export)
 
 use document_container::ContainerError;
 #[cfg(feature = "conversion")]
