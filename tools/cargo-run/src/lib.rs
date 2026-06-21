@@ -77,8 +77,12 @@ pub fn target_dir() -> PathBuf {
 	}
 }
 
+pub fn install_dir() -> PathBuf {
+	target_dir().join("cargo-run")
+}
+
 pub fn bin_dir() -> PathBuf {
-	target_dir().join("cargo-run").join("bin")
+	install_dir().join("bin")
 }
 
 #[derive(Debug, thiserror::Error)]

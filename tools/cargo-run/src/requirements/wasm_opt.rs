@@ -1,11 +1,10 @@
 use super::InstallAction;
 use crate::cmd::prelude::*;
-use crate::{bin_dir, workspace_dir};
+use crate::{install_dir, workspace_dir};
 
 /// Pinned Binaryen release used by [`install_action`].
 /// NOTICE: keep in sync with the `BINARYEN_VERSION` pinned across the CI workflows, and update [`SHA256`] below.
 const VERSION: &str = "130";
-/// SHA-256 checksums of each pinned tarball, from the `.sha256` assets published beside the release.
 const SHA256: &[(&str, &str)] = &[
 	("x86_64-windows", "cc09c874f4332d00aa32ab72745a9b98c9a172f795762f21d03e70638a3f7f4c"),
 	("arm64-windows", "b18c9cbe000562b1ee5d9cb60146616a949aca504903ad63f27fd9fd679898a7"),
@@ -33,11 +32,15 @@ pub fn install_action() -> InstallAction {
 	let Some(sha256) = SHA256.iter().find_map(|(p, s)| (*p == platform).then_some(*s)) else {
 		return InstallAction::None;
 	};
-	let out = bin_dir().to_string_lossy().into_owned();
+	let out = install_dir().to_string_lossy().into_owned();
 	let description = format!("Download wasm-opt {VERSION} from {url} (sha256 {sha256})");
-	let expression = utils::internal("download")
-		.args([&url, sha256, &out, "--extract", "--strip", "2", "--include", "wasm-opt"])
-		.dir(workspace_dir());
+
+	let args = [&url, sha256, &out, "--extract", "--strip", "1", "--include", "bin/wasm-opt"];
+
+	#[cfg(target_os = "macos")]
+	let args = args.into_iter().chain(["--include", "lib/libbinaryen.dylib"]).collect::<Vec<_>>();
+
+	let expression = utils::internal("download").args(args).dir(workspace_dir());
 
 	InstallAction::Expression { description, expression }
 }
