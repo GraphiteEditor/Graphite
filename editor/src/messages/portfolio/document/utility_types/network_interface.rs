@@ -1,6 +1,7 @@
 mod deserialization;
 mod memo_network;
 mod resolved_types;
+pub mod storage_metadata;
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
@@ -3470,6 +3471,37 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Copy every piece of transient view and selection state from `other_interface` onto `self`, for each
+	/// network at every nesting level: navigation metadata (pan/zoom), selection undo/redo history, and the
+	/// document-to-viewport canvas camera. Used when an interface is rebuilt from storage (the `Gdd` undo/redo
+	/// cursor) and must keep the user's current view and selection rather than reset them, since the registry
+	/// models document content only. `resolved_types` is a separate runtime cache the caller handles.
+	pub fn copy_all_transient_view_state(&mut self, other_interface: &NodeNetworkInterface) {
+		let mut stack = vec![vec![]];
+		while let Some(path) = stack.pop() {
+			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
+				continue;
+			};
+
+			if let Some(other_network_metadata) = other_interface.network_metadata(&path) {
+				let self_persistent = &mut self_network_metadata.persistent_metadata;
+				let other_persistent = &other_network_metadata.persistent_metadata;
+				self_persistent.navigation_metadata = other_persistent.navigation_metadata.clone();
+				self_persistent.previewing = other_persistent.previewing;
+				self_persistent.selection_undo_history = other_persistent.selection_undo_history.clone();
+				self_persistent.selection_redo_history = other_persistent.selection_redo_history.clone();
+			}
+
+			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
+				let mut current_path: Vec<NodeId> = path.clone();
+				current_path.push(*node_id);
+				current_path
+			}));
+		}
+
+		self.document_metadata.document_to_viewport = other_interface.document_metadata.document_to_viewport;
+	}
+
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
@@ -6857,6 +6889,9 @@ pub struct NodePersistentMetadata {
 impl NodePersistentMetadata {
 	pub fn new(position: NodePosition) -> Self {
 		Self { position }
+	}
+	pub fn position(&self) -> &NodePosition {
+		&self.position
 	}
 }
 

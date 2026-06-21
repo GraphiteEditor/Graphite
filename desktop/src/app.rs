@@ -100,7 +100,7 @@ impl App {
 		let wake = Arc::new(move || {
 			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
 		});
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), wgpu_context.clone(), wake);
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), dirs::app_autosave_documents_dir(), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,

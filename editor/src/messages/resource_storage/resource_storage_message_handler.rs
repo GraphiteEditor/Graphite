@@ -13,6 +13,20 @@ impl LoadResource for ResourcesHandle {
 	}
 }
 
+impl ResourceStorage for ResourcesHandle {
+	fn store(&self, data: &[u8]) -> ResourceHash {
+		self.inner.store(data)
+	}
+
+	fn contains(&self, hash: &ResourceHash) -> bool {
+		self.inner.contains(hash)
+	}
+
+	fn garbage_collect(&self, used: &[ResourceHash]) {
+		self.inner.garbage_collect(used)
+	}
+}
+
 #[derive(ExtractField)]
 pub struct ResourceStorageMessageHandler {
 	storage: Option<Arc<dyn ResourceStorage>>,
@@ -27,6 +41,18 @@ impl ResourceStorageMessageHandler {
 		Box::new(ResourcesHandle {
 			inner: self.storage.clone().expect("Resource storage not initialized"),
 		})
+	}
+
+	/// The backing store as a `&dyn ResourceStorage`, for write paths (e.g. persisting declaration
+	/// bytes on commit). `None` before initialization.
+	pub fn storage(&self) -> Option<&dyn ResourceStorage> {
+		self.storage.as_deref()
+	}
+
+	/// An owned, cloneable handle that both loads and stores, for `'static` async tasks that need to
+	/// read and write the cache off-thread. `None` before initialization.
+	pub fn store_handle(&self) -> Option<ResourcesHandle> {
+		self.storage.clone().map(|inner| ResourcesHandle { inner })
 	}
 }
 

@@ -8,7 +8,8 @@ use graphene_std::raster::Image;
 use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(derivative::Derivative, serde::Serialize, serde::Deserialize)]
+#[derivative(Clone, Debug, PartialEq)]
 pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]
@@ -40,6 +41,20 @@ pub enum PortfolioMessage {
 	},
 	DeleteDocument {
 		document_id: DocumentId,
+	},
+	/// Delivers an asynchronously-built `Gdd` working copy into its document. Emitted by the mount
+	/// future spawned in `load_document` once the working-copy container is ready. The payload is
+	/// not serializable and a clone carries no `Gdd` (`clone_to_none`); it only ever travels once,
+	/// from the mount future to the receiving handler. `reopened` is true when an existing working copy
+	/// was opened (not freshly created): the persisted cursor is trusted as-is and the mount-time
+	/// re-commit is skipped, since re-committing the legacy runtime would stack a spurious interaction on the
+	/// restored cursor and make the first undo a no-op.
+	DocumentStorageMounted {
+		document_id: DocumentId,
+		reopened: bool,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		gdd: Option<document_format::GddV1>,
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
@@ -89,6 +104,34 @@ pub enum PortfolioMessage {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		document_serialized_content: String,
+	},
+	/// Open a `.gdd` document container (archive bytes), building the runtime from its stored registry.
+	OpenGddDocument {
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
+		content: Vec<u8>,
+	},
+	/// Delivers a document built asynchronously from a `.gdd` archive (registry → runtime, working copy
+	/// mounted) into the portfolio. Non-serializable payload that travels once, like `DocumentStorageMounted`.
+	GddDocumentLoaded {
+		document_id: DocumentId,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		document: Option<Box<DocumentMessageHandler>>,
+	},
+	/// Delivers the interface rebuilt from the `Gdd` undo/redo cursor (which moved + persisted synchronously),
+	/// so the async registry rebuild can swap into the live document. `interface` is `None` if the rebuild
+	/// failed (logged at the source). `had_oracle` records whether the legacy snapshot applied synchronously,
+	/// so the swap can debug-compare the rebuild against it. Non-serializable payload that travels once, like
+	/// `GddDocumentLoaded`.
+	GddUndoRedoRebuilt {
+		document_id: DocumentId,
+		had_oracle: bool,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		interface: Option<Box<crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface>>,
 	},
 	LoadDocument {
 		document_id: DocumentId,
@@ -179,4 +222,9 @@ pub enum PortfolioMessage {
 		/// New sizes for the children at that split node.
 		sizes: Vec<f64>,
 	},
+}
+
+/// Clone helper for the non-serializable `gdd` payload: a cloned mount message carries no `Gdd`.
+fn clone_to_none<T>(_: &Option<T>) -> Option<T> {
+	None
 }
