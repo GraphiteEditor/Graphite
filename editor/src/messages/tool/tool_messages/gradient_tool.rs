@@ -8,7 +8,9 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_fill_node_id_with_value, get_gradient_stops, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{
+	self, NodeGraphLayer, get_fill_node_id_with_value, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
@@ -510,7 +512,7 @@ struct SelectedGradient {
 	dragging: GradientDragTarget,
 	initial_gradient: Gradient,
 	// TODO: Remove (and the matching branches in `render_gradient` / pointer-up) once `List<GradientStops>` replaces legacy `Fill::Gradient`
-	is_gradient_list: bool,
+	is_gradient_chain: bool,
 }
 
 fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: DVec2) -> Option<f64> {
@@ -560,7 +562,7 @@ impl SelectedGradient {
 			gradient: gradient.clone(),
 			dragging: GradientDragTarget::End,
 			initial_gradient: gradient,
-			is_gradient_list: get_gradient_stops(layer, &document.network_interface).is_some(),
+			is_gradient_chain: get_upstream_gradient_value_node_id(layer, &document.network_interface).is_some(),
 		}
 	}
 
@@ -777,7 +779,7 @@ impl SelectedGradient {
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(layer) = self.layer {
 			// TODO: Drop the `Fill::Gradient` branch when all gradients become `List<GradientStops>`
-			if self.is_gradient_list {
+			if self.is_gradient_chain {
 				dispatch_gradient_writes(layer, &self.gradient, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -1202,7 +1204,7 @@ impl Fsm for GradientToolFsmState {
 				// The gradient has only one point and so should become a fill
 				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `List<GradientStops>`
 				if selected_gradient.gradient.stops.len() == 1 {
-					if selected_gradient.is_gradient_list {
+					if selected_gradient.is_gradient_chain {
 						selected_gradient.render_gradient(responses);
 					} else if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
@@ -1299,7 +1301,7 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
-					let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
+					let is_gradient_chain = get_upstream_gradient_value_node_id(layer, &document.network_interface).is_some();
 
 					// Check for dragging a midpoint diamond
 					if drag_hint.is_none() {
@@ -1327,7 +1329,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									dragging: GradientDragTarget::Midpoint(i),
 									initial_gradient: gradient.clone(),
-									is_gradient_list,
+									is_gradient_chain,
 								});
 
 								break;
@@ -1368,7 +1370,7 @@ impl Fsm for GradientToolFsmState {
 								gradient: gradient.clone(),
 								dragging: drag_target,
 								initial_gradient: gradient.clone(),
-								is_gradient_list,
+								is_gradient_chain,
 							});
 						}
 					}
@@ -1385,7 +1387,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									dragging: dragging_target,
 									initial_gradient: gradient.clone(),
-									is_gradient_list,
+									is_gradient_chain,
 								})
 							}
 						}
@@ -1850,7 +1852,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 			continue;
 		}
 
-		if get_gradient_stops(layer, &context.document.network_interface).is_some() {
+		if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: stops.clone() });
 			updated_any_layer = true;
 		} else if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
