@@ -971,13 +971,11 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Editing;
 				}
 
-				// Otherwise create some new text. The composition with document-to-viewport lets the editing overlay (a screen-space CSS matrix) carry the zoom.
-				let document_to_viewport = document.metadata().document_to_viewport;
-
+				// Otherwise create some new text. The window-aligned transform is in viewport space, so the editing overlay (a screen-space CSS matrix) carries the zoom.
 				let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
 				let editing_text = EditingText {
 					text: String::new(),
-					transform: document_to_viewport * window_aligned_transform(document, start, DVec2::ONE),
+					transform: window_aligned_transform(document, start, DVec2::ONE),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
 						letter_spacing: tool_options.letter_spacing,

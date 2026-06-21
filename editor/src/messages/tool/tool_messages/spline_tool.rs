@@ -437,7 +437,7 @@ impl Fsm for SplineToolFsmState {
 				// For newly created layers, the deferred TransformSet may not yet be reflected
 				// in the metadata, so compute local position from the known viewport start.
 				tool_data.next_point = if let Some(start) = tool_data.new_layer_viewport_start {
-					viewport_pos - start
+					document_to_viewport.inverse().transform_vector2(viewport_pos - start)
 				} else {
 					let transform = document.metadata().transform_to_viewport(layer);
 					transform.inverse().transform_point2(viewport_pos)
