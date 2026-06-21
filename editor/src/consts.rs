@@ -176,6 +176,9 @@ pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 
 // DOCUMENT
 pub const FILE_EXTENSION: &str = "graphite";
+/// New document container format. Save now writes a `.gdd` (with the legacy `.graphite` embedded as a
+/// fallback during the dual-write soak); `.graphite` stays a supported open/import input.
+pub const GDD_FILE_EXTENSION: &str = "gdd";
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
 pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;

@@ -25,7 +25,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, working_copy_root: std::path::PathBuf, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -36,7 +36,7 @@ impl DesktopWrapper {
 		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 
 		Self {
-			editor: Editor::new(env, uuid_random_seed, resource_storage, application_io, schedule_wake),
+			editor: Editor::new(env, uuid_random_seed, resource_storage, Some(working_copy_root), application_io, schedule_wake),
 		}
 	}
 

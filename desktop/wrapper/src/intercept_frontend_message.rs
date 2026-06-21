@@ -42,8 +42,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 					default_filename: name,
 					default_folder: folder,
 					filters: vec![FileFilter {
-						name: "Graphite".to_string(),
-						extensions: vec!["graphite".to_string()],
+						name: "Graphite Document".to_string(),
+						extensions: vec!["gdd".to_string()],
 					}],
 					context: SaveFileDialogContext::Document { document_id, content },
 				});

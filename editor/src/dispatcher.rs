@@ -89,9 +89,10 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>, working_copy_root: Option<std::path::PathBuf>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
+		s.message_handlers.portfolio_message_handler.set_working_copy_root(working_copy_root);
 		s
 	}
 
