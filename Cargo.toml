@@ -27,6 +27,7 @@ members = [
 	"node-graph/preprocessor",
 	"proc-macros",
 	"tools/cargo-run",
+	"tools/cargo-run/internal/*",
 	"tools/crate-hierarchy-viz",
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
