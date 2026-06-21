@@ -106,7 +106,6 @@ fn extract_tar_gz(body: &[u8], dir: &Path, strip: usize, include: &[String]) -> 
 		}
 		entry.unpack(&target).map_err(|e| Error::Io(e, format!("unpacking '{}'", target.display())))?;
 	}
-	eprintln!("Extracted into ./{}", dir.display());
 	Ok(())
 }
 

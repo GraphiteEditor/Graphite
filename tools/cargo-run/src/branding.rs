@@ -4,7 +4,7 @@ use crate::{Error, workspace_dir};
 const INFO_FILE: &str = ".branding";
 const DIR: &str = "branding";
 
-pub fn ensure() -> Result<(), Error> {
+pub fn setup() -> Result<(), Error> {
 	let workspace = workspace_dir();
 	let info_path = workspace.join(INFO_FILE);
 	let dir_path = workspace.join(DIR);

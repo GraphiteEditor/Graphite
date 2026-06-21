@@ -88,7 +88,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 	requirements::check(task)?;
 
 	if !matches!(task.target, Target::Cli) {
-		branding::ensure()?;
+		branding::setup()?;
 	}
 
 	match (&task.action, &task.target, &task.profile) {
