@@ -98,10 +98,9 @@ fn run() -> Result<(), Error> {
 	let current_hash = format!("{:016x}", hasher.finish());
 
 	if current_hash == fs::read_to_string(&current_hash_path).unwrap_or_default() {
-		eprintln!("No changes in licenses detected, skipping generation.");
 		return Ok(());
 	}
-	eprintln!("Changes in licenses detected, generating new license file.");
+	eprintln!("Changes in licenses detected, generating new license file...");
 
 	let licenses = merge_filter_dedup_and_sort(vec![
 		cargo_source.licenses()?,
