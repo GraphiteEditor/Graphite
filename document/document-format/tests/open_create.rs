@@ -198,7 +198,7 @@ fn export_folder_round_trips_through_open() {
 		let dir = tempfile::tempdir().unwrap();
 		let dest = dir.path().join("export");
 
-		gdd.export(&dest, ExportFormat::Folder, ExportOptions::default(), &empty_byte_store())
+		gdd.export(&dest, ExportFormat::Folder, ExportOptions::default(), &empty_byte_store(), None)
 			.await
 			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
 
@@ -228,7 +228,7 @@ fn export_zip_round_trips_via_deserialize() {
 		let dir = tempfile::tempdir().unwrap();
 		let dest = dir.path().join("doc.gdd.zip");
 
-		gdd.export(&dest, ExportFormat::Zip, ExportOptions::default(), &empty_byte_store())
+		gdd.export(&dest, ExportFormat::Zip, ExportOptions::default(), &empty_byte_store(), None)
 			.await
 			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
 
@@ -260,7 +260,7 @@ fn export_rejects_invalid_options() {
 			embed_all_resources: false,
 		};
 
-		match gdd.export(&dest, ExportFormat::Folder, options, &empty_byte_store()).await {
+		match gdd.export(&dest, ExportFormat::Folder, options, &empty_byte_store(), None).await {
 			Err(Error::InvalidExportOptions(_)) => {}
 			Ok(_) => panic!("expected InvalidOptions, got Ok"),
 			Err(other) => panic!("expected InvalidOptions, got {other:?}"),
@@ -373,7 +373,7 @@ fn export_carries_resources() {
 
 		let dir = tempfile::tempdir().unwrap();
 		let dest = dir.path().join("export");
-		gdd.export(&dest, ExportFormat::Folder, ExportOptions::default(), &empty_byte_store()).await.unwrap();
+		gdd.export(&dest, ExportFormat::Folder, ExportOptions::default(), &empty_byte_store(), None).await.unwrap();
 
 		let resource_file = dest.join("resources").join(format!("{hash}"));
 		assert!(resource_file.exists(), "exported resource file should exist at {resource_file:?}");
@@ -424,6 +424,7 @@ fn embed_all_resources_materializes_link_only_resource() {
 				..Default::default()
 			},
 			&byte_store,
+			None,
 		)
 		.await
 		.unwrap_or_else(|error| panic!("export failed: {error:?}"));
@@ -480,7 +481,7 @@ fn export_materializes_embedded_resource_from_byte_store() {
 		let dir = tempfile::tempdir().unwrap();
 		let dest = dir.path().join("plain");
 		// Default options: embed_all_resources is false.
-		gdd.export(&dest, ExportFormat::Folder, ExportOptions::default(), &byte_store)
+		gdd.export(&dest, ExportFormat::Folder, ExportOptions::default(), &byte_store, None)
 			.await
 			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
 

@@ -52,6 +52,8 @@ impl Archive for Zip {
 }
 
 impl<W: Write + Seek> ArchiveWriter for ZipWriter<W> {
+	type Sink = W;
+
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<()> {
 		validate_path(path)?;
 		self.inner.start_file(path, self.options).map_err(zip_err)?;
@@ -59,16 +61,7 @@ impl<W: Write + Seek> ArchiveWriter for ZipWriter<W> {
 		Ok(())
 	}
 
-	fn finish(self) -> Result<()> {
-		self.inner.finish().map_err(zip_err)?;
-		Ok(())
-	}
-}
-
-impl<W: Write + Seek> ZipWriter<W> {
-	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
-	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
-	pub fn finish_into(self) -> Result<W> {
+	fn finish_into(self) -> Result<W> {
 		self.inner.finish().map_err(zip_err)
 	}
 }

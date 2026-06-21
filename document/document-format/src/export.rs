@@ -1,13 +1,11 @@
 //! Export: walking the working copy through an archive codec, keeping payloads as-is.
 //!
-//! [`ExportFormat`] / [`ExportOptions`] are the public knobs; the [`Gdd`] export methods drive a
+//! [`ExportFormat`] / [`ExportOptions`] are the public settings; the [`Gdd`] export methods drive a
 //! [`ExportSink`] (folder / zip / xz) through the manifest → registry → history → resources sequence.
 
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 
-#[cfg(any(feature = "zip", feature = "xz"))]
-use document_container::archive::Archive;
 use graphene_resource::{LoadResource, Resource, ResourceHash};
 
 use crate::error::Error;
@@ -21,10 +19,10 @@ use crate::{Gdd, MANIFEST_CODEC, io};
 pub enum ExportFormat {
 	/// Copy the working copy to a destination folder.
 	Folder,
-	/// Wrap as a `.gdd.zip` archive (deflate, pure-Rust `zip` crate).
+	/// Wrap as a `.gdd.zip` archive.
 	#[cfg(feature = "zip")]
 	Zip,
-	/// Wrap as a `.gdd.xz` archive (whole-archive xz via `lzma-rust2`).
+	/// Wrap as a `.gdd.tar.xz` archive (whole-archive xz via `lzma-rust2`).
 	#[cfg(feature = "xz")]
 	Xz,
 }
@@ -39,7 +37,7 @@ pub struct ExportOptions {
 	/// Whether to include `history.jsonl`. `false` produces a flat snapshot (registry only),
 	/// useful for sharing without revealing edit history and for cutting file size.
 	pub include_history: bool,
-	/// Materialize every `DataSource::FilePath` resource into `resources/<hash>` for portability.
+	/// Materialize every non-`DataSource::Embedded` resource into `resources/<hash>` for portability.
 	/// Does not mutate the in-memory `Gdd`.
 	pub embed_all_resources: bool,
 }
@@ -67,12 +65,13 @@ impl Default for ExportOptions {
 impl<L: Layout> Gdd<L> {
 	/// Stream the working copy to `dest` as a folder/zip/xz archive, keeping payload codecs as-is.
 	/// Does not mutate `self` and does not buffer the export. Native-only (writes a filesystem path).
+	/// `legacy_document` is embedded verbatim at [`Layout::legacy_path`] when present.
 	///
 	/// # Errors
 	/// [`Error::InvalidExportOptions`] for incoherent options, [`Error::MissingResource`] if an
 	/// embedded resource's bytes are absent from `byte_store`.
 	#[cfg(not(target_family = "wasm"))]
-	pub async fn export(&self, dest: &Path, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource) -> Result<(), Error> {
+	pub async fn export(&self, dest: &Path, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource, legacy_document: Option<&[u8]>) -> Result<(), Error> {
 		options.validate().map_err(Error::InvalidExportOptions)?;
 
 		match format {
@@ -80,22 +79,19 @@ impl<L: Layout> Gdd<L> {
 				let mut folder = document_container::backends::folder::FolderBackend::create(dest)?;
 				let mut sink = FolderSink { folder: &mut folder };
 				self.stream_entries(options, byte_store, &mut sink).await?;
+				if let Some(legacy) = legacy_document {
+					sink.write_entry(self.layout.legacy_path(), legacy)?;
+				}
 			}
 			#[cfg(feature = "zip")]
 			ExportFormat::Zip => {
 				let file = std::fs::File::create(dest).map_err(document_container::ContainerError::Io)?;
-				let mut writer = document_container::archive::Zip::writer(file)?;
-				self.stream_entries(options, byte_store, &mut writer).await?;
-				use document_container::archive::ArchiveWriter;
-				writer.finish()?;
+				self.export_archive::<document_container::archive::Zip, _>(file, options, byte_store, legacy_document).await?;
 			}
 			#[cfg(feature = "xz")]
 			ExportFormat::Xz => {
 				let file = std::fs::File::create(dest).map_err(document_container::ContainerError::Io)?;
-				let mut writer = document_container::archive::Xz::writer(file)?;
-				self.stream_entries(options, byte_store, &mut writer).await?;
-				use document_container::archive::ArchiveWriter;
-				writer.finish()?;
+				self.export_archive::<document_container::archive::Xz, _>(file, options, byte_store, legacy_document).await?;
 			}
 		}
 
@@ -104,7 +100,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// In-memory variant of [`export`](Self::export) returning the archive bytes. Available on every
 	/// target (no `std::fs`) but buffers the whole archive. `legacy_document` is embedded verbatim at
-	/// [`Layout::legacy_basename`]. `ExportFormat::Folder` has no single-file form and is rejected.
+	/// [`Layout::legacy_path`]. `ExportFormat::Folder` has no single-file form and is rejected.
 	#[cfg(any(feature = "zip", feature = "xz"))]
 	pub async fn export_to_bytes(&self, format: ExportFormat, options: ExportOptions, byte_store: &dyn LoadResource, legacy_document: Option<&[u8]>) -> Result<Vec<u8>, Error> {
 		options.validate().map_err(Error::InvalidExportOptions)?;
@@ -113,26 +109,31 @@ impl<L: Layout> Gdd<L> {
 		let buffer = match format {
 			ExportFormat::Folder => return Err(Error::InvalidExportOptions("folder export has no single-file byte form")),
 			#[cfg(feature = "zip")]
-			ExportFormat::Zip => {
-				let mut writer = document_container::archive::Zip::writer(cursor)?;
-				self.stream_entries(options, byte_store, &mut writer).await?;
-				if let Some(legacy) = legacy_document {
-					ExportSink::write_entry(&mut writer, self.layout.legacy_path(), legacy)?;
-				}
-				writer.finish_into()?
-			}
+			ExportFormat::Zip => self.export_archive::<document_container::archive::Zip, _>(cursor, options, byte_store, legacy_document).await?,
 			#[cfg(feature = "xz")]
-			ExportFormat::Xz => {
-				let mut writer = document_container::archive::Xz::writer(cursor)?;
-				self.stream_entries(options, byte_store, &mut writer).await?;
-				if let Some(legacy) = legacy_document {
-					ExportSink::write_entry(&mut writer, self.layout.legacy_path(), legacy)?;
-				}
-				writer.finish_into()?
-			}
+			ExportFormat::Xz => self.export_archive::<document_container::archive::Xz, _>(cursor, options, byte_store, legacy_document).await?,
 		};
 
 		Ok(buffer.into_inner())
+	}
+
+	/// Stream entries into a fresh `A` archive over `output`, append the optional legacy blob, then
+	/// finalize and hand back the inner sink. The shared body of both archive export paths.
+	#[cfg(any(feature = "zip", feature = "xz"))]
+	async fn export_archive<A, W>(&self, output: W, options: ExportOptions, byte_store: &dyn LoadResource, legacy_document: Option<&[u8]>) -> Result<W, Error>
+	where
+		A: document_container::archive::Archive,
+		W: std::io::Write + std::io::Seek + Send,
+		A::Writer<W>: ExportSink + document_container::archive::ArchiveWriter<Sink = W>,
+	{
+		use document_container::archive::ArchiveWriter;
+
+		let mut writer = A::writer(output)?;
+		self.stream_entries(options, byte_store, &mut writer).await?;
+		if let Some(legacy) = legacy_document {
+			ExportSink::write_entry(&mut writer, self.layout.legacy_path(), legacy)?;
+		}
+		Ok(writer.finish_into()?)
 	}
 
 	/// Drive a sink through manifest → session → registry → history → resources, one entry at a time,

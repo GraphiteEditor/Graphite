@@ -60,9 +60,20 @@ pub trait Archive {
 	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()>;
 }
 
-pub trait ArchiveWriter {
+pub trait ArchiveWriter: Sized {
+	type Sink;
+
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<()>;
-	fn finish(self) -> Result<()>;
+
+	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
+	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
+	fn finish_into(self) -> Result<Self::Sink>;
+
+	/// Finish the archive, discarding the sink. For file-backed archives the bytes are already on disk.
+	fn finish(self) -> Result<()> {
+		self.finish_into()?;
+		Ok(())
+	}
 }
 
 /// Archive container formats distinguishable by their leading magic bytes.
