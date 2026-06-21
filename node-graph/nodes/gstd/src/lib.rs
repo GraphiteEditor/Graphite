@@ -6,6 +6,7 @@ pub mod render_node;
 pub mod render_pixel_preview;
 pub mod text;
 pub use blending_nodes;
+pub use brush_next_nodes as brush_next;
 pub use brush_nodes as brush;
 pub use core_types::*;
 pub use graphene_application_io as application_io;

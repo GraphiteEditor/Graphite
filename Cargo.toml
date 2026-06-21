@@ -80,6 +80,7 @@ vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
 rendering = { path = "node-graph/libraries/rendering" }
 brush-nodes = { path = "node-graph/nodes/brush" }
+brush-next-nodes = { path = "node-graph/nodes/brush-next" }
 blending-nodes = { path = "node-graph/nodes/blending" }
 graphene-core = { path = "node-graph/nodes/gcore" }
 graphic-nodes = { path = "node-graph/nodes/graphic" }

@@ -1,0 +1,23 @@
+[package]
+name = "brush-next-nodes"
+description = "Next-generation GPU brush rendering nodes for Graphene"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+core-types = { workspace = true }
+raster-types = { workspace = true, features = ["wgpu"] }
+wgpu-executor = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }

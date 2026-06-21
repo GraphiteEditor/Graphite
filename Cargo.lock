@@ -367,6 +367,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "brush-next-nodes"
+version = "0.0.0"
+dependencies = [
+ "bytemuck",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "node-macro",
+ "raster-types",
+ "wgpu",
+ "wgpu-executor",
+]
+
+[[package]]
 name = "brush-nodes"
 version = "0.1.0"
 dependencies = [
@@ -2113,6 +2127,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "blending-nodes",
+ "brush-next-nodes",
  "brush-nodes",
  "bytemuck",
  "core-types",

@@ -49,6 +49,7 @@ rendering = { workspace = true }
 graphene-application-io = { workspace = true }
 raster-nodes = { workspace = true }
 brush-nodes = { workspace = true }
+brush-next-nodes = { workspace = true }
 graphene-core = { workspace = true }
 graphic-nodes = { workspace = true }
 repeat-nodes = { workspace = true }
