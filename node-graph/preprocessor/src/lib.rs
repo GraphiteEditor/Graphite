@@ -2,7 +2,7 @@
 extern crate log;
 
 use graph_craft::Type;
-use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;

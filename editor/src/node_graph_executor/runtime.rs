@@ -348,7 +348,7 @@ impl NodeRuntime {
 	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
-		if let Err(e) = { self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) } {
+		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
 		}
 
