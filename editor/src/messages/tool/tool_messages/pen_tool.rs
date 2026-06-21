@@ -1,7 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -12,6 +11,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 	sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
+use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
@@ -1373,13 +1373,7 @@ impl PenToolData {
 		// Defer the transform setup and point insertion until after the layer is created
 		responses.add(DeferMessage::AfterGraphRun {
 			messages: vec![
-				GraphOperationMessage::TransformSet {
-					layer,
-					transform: DAffine2::from_translation(viewport_vec),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: false,
-				}
-				.into(),
+				translation_transform_set(document, layer, viewport_vec),
 				GraphOperationMessage::Vector {
 					layer,
 					modification_type: VectorModificationType::InsertPoint { id, position: DVec2::ZERO },

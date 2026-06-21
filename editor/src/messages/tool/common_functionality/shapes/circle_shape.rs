@@ -1,15 +1,14 @@
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::resize::{viewport_zoom, window_aligned_transform_set};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 
@@ -101,7 +100,7 @@ impl Circle {
 			return;
 		};
 
-		let dimensions = (start - end).abs();
+		let dimensions = ((start - end) / viewport_zoom(document)).abs();
 
 		// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
 		let radius: f64 = if dimensions.x > dimensions.y { dimensions.y / 2. } else { dimensions.x / 2. };
@@ -111,11 +110,6 @@ impl Circle {
 			input: NodeInput::value(TaggedValue::F64(radius), false),
 		});
 
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., start.midpoint(end)),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
-		});
+		responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));
 	}
 }
