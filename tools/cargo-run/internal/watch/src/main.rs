@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const EXCLUDED_DIRECTORIES: &[&str] = &["target", ".git", "frontend/node_modules", "frontend/dist", "frontend/wrapper/pkg"];
+const EXCLUDED_DIRECTORIES: &[&str] = &["target", ".git", "frontend/node_modules", "frontend/dist", "frontend/wrapper/pkg", "tools"];
 const INCLUDED_EXTENSIONS: &[&str] = &["rs"];
 
 const DEBOUNCE: Duration = Duration::from_millis(500);
@@ -23,17 +23,16 @@ fn main() -> ExitCode {
 			return ExitCode::FAILURE;
 		}
 	};
-	println!("Watching for changes...");
 	loop {
 		std::thread::park();
 	}
 }
 
-pub struct WatchGuard {
+struct WatchGuard {
 	_debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
 }
 
-pub fn watch(steps: impl IntoIterator<Item = Expression>) -> Result<WatchGuard, Error> {
+fn watch(steps: impl IntoIterator<Item = Expression>) -> Result<WatchGuard, Error> {
 	let steps: Vec<Expression> = steps.into_iter().collect();
 	let root = std::env::current_dir()
 		.and_then(|p| p.canonicalize())

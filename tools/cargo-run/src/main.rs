@@ -140,7 +140,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 }
 
 fn prepend_path() {
-	let mut paths = vec![target_dir().join("cargo-run").join("bin")];
+	let mut paths = vec![bin_dir()];
 	if let Some(path) = std::env::var_os("PATH") {
 		paths.extend(std::env::split_paths(&path));
 	}

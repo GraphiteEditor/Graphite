@@ -4,6 +4,8 @@ use std::io::IsTerminal;
 use crate::cmd::prelude::*;
 use crate::*;
 
+mod wasm_opt;
+
 #[derive(Default, Clone)]
 pub struct Requirement {
 	command: &'static str,
@@ -27,16 +29,8 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "rustc",
 			args: &["--print", "target-libdir", "--target", "wasm32-unknown-unknown"],
 			check: Check::Matches(&|out| std::path::Path::new(out.trim()).is_dir()),
-			name: "Rust Wasm Toolchain",
+			name: "Rust (Wasm Target)",
 			install: "rustup target add wasm32-unknown-unknown".into(),
-			skip: Some(&|task| matches!(task.target, Target::Cli)),
-			..Default::default()
-		},
-		Requirement {
-			command: "cargo-about",
-			args: &["--version"],
-			name: "Cargo About",
-			install: "cargo install cargo-about".into(),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
@@ -45,6 +39,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			args: &["--version"],
 			name: "Wasm Opt",
 			version: Some(">=130"),
+			install: wasm_opt::install_action(),
 			skip: Some(&|task| {
 				matches!(task.target, Target::Cli)
 					|| match task.profile {
@@ -65,6 +60,14 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			..Default::default()
 		},
 		Requirement {
+			command: "cargo-about",
+			args: &["--version"],
+			name: "Cargo About",
+			install: "cargo install cargo-about".into(),
+			skip: Some(&|task| matches!(task.target, Target::Cli)),
+			..Default::default()
+		},
+		Requirement {
 			command: "node",
 			args: &["--version"],
 			name: "Node.js",
@@ -75,6 +78,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "cmake",
 			args: &["--version"],
 			name: "CMake",
+			install: InstallAction::ManualInstructions("https://cmake.org/download/ or find it in your system's package manager"),
 			skip: Some(&|task| !matches!(task.target, Target::Desktop) || cfg!(target_os = "linux")),
 			..Default::default()
 		},
@@ -82,6 +86,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "ninja",
 			args: &["--version"],
 			name: "Ninja",
+			install: InstallAction::ManualInstructions("https://github.com/ninja-build/ninja/releases or find it in your system's package manager"),
 			skip: Some(&|task| !matches!(task.target, Target::Desktop) || cfg!(target_os = "linux")),
 			..Default::default()
 		},
@@ -97,7 +102,7 @@ pub fn check(task: &Task) -> Result<(), Error> {
 	eprintln!("Checking Requirements:");
 
 	let mut installable: Vec<Requirement> = Vec::new();
-	let mut failures: Vec<String> = Vec::new();
+	let mut manual: Vec<(Requirement, String)> = Vec::new();
 
 	for dep in requirements(task) {
 		match cmd(dep.command, dep.args.iter().copied()).output_unchecked() {
@@ -114,15 +119,15 @@ pub fn check(task: &Task) -> Result<(), Error> {
 									Some(version) if req.matches(&version) => eprintln!(" ✓ {} ({version})", dep.name),
 									Some(version) => {
 										eprintln!(" ✗ {} (found {version}, requires {req_str})", dep.name);
-										if dep.install.is_some() {
+										if dep.install.is_auto_installable() {
 											installable.push(dep);
 										} else {
-											failures.push(format!("{}: version mismatch (found {version}, requires {req_str})", dep.name));
+											manual.push((dep, format!("version mismatch (found {version}, requires {req_str})")));
 										}
 									}
 									None => {
 										eprintln!(" ✗ {} (could not parse version from '{line}')", dep.name);
-										failures.push(format!("{}: could not parse version from '{line}'", dep.name));
+										manual.push((dep, format!("could not parse version from '{line}'")));
 									}
 								}
 							}
@@ -131,8 +136,10 @@ pub fn check(task: &Task) -> Result<(), Error> {
 					Check::Matches(check) => {
 						if !check(stdout.to_string()) {
 							eprintln!(" ✗ {} - check failed", dep.name);
-							if dep.install.is_some() {
+							if dep.install.is_auto_installable() {
 								installable.push(dep);
+							} else {
+								manual.push((dep, "check failed".into()));
 							}
 						} else {
 							eprintln!(" ✓ {}", dep.name);
@@ -143,18 +150,18 @@ pub fn check(task: &Task) -> Result<(), Error> {
 			Ok(output) => {
 				let stderr = String::from_utf8_lossy(&output.stderr);
 				eprintln!(" ✗ {} - command failed: {}", dep.name, stderr.trim());
-				if dep.install.is_some() {
+				if dep.install.is_auto_installable() {
 					installable.push(dep);
 				} else {
-					failures.push(format!("{}: not installed or not working", dep.name));
+					manual.push((dep.clone(), format!("`{}` not installed or not working", dep.command)));
 				}
 			}
 			Err(_) => {
 				eprintln!(" ✗ {} - not found", dep.name);
-				if dep.install.is_some() {
+				if dep.install.is_auto_installable() {
 					installable.push(dep);
 				} else {
-					failures.push(format!("{}: not found in PATH", dep.name));
+					manual.push((dep.clone(), format!("`{}` not found in PATH", dep.command)));
 				}
 			}
 		}
@@ -162,20 +169,20 @@ pub fn check(task: &Task) -> Result<(), Error> {
 
 	eprintln!();
 
-	if installable.is_empty() && failures.is_empty() {
+	if installable.is_empty() && manual.is_empty() {
 		return Ok(());
 	}
 
-	let total = installable.len() + failures.len();
+	let total = installable.len() + manual.len();
 	eprintln!("{total} requirement{} not met:", if total > 1 { "s" } else { "" });
 	for dep in &installable {
 		eprintln!("  - {}", dep.name);
 	}
-	for msg in &failures {
-		eprintln!("  - {msg}");
+	for (dep, msg) in &manual {
+		eprintln!("  - {}: {msg}", dep.name);
 	}
 
-	if !failures.is_empty() {
+	if !manual.is_empty() {
 		eprintln!();
 		eprintln!("See: https://graphite.art/volunteer/guide/project-setup/");
 	}
@@ -187,7 +194,7 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		return Ok(());
 	}
 
-	if installable.is_empty() && failures.is_empty() {
+	if installable.is_empty() && manual.is_empty() {
 		return Ok(());
 	}
 
@@ -195,13 +202,17 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		eprintln!();
 		eprintln!("The following can be installed automatically:");
 		for dep in &installable {
-			eprintln!(" {}: {}", dep.name, dep.install.description());
+			match &dep.install {
+				InstallAction::Command(cmd) => eprintln!("  - {}: {}", dep.name, cmd),
+				InstallAction::Expression { description, .. } => eprintln!("  - {description}"),
+				InstallAction::None | InstallAction::ManualInstructions(_) => unreachable!(),
+			}
 		}
 		eprintln!();
 		if installable.len() == 1 {
-			eprint!("Install it now? [Y/n] ");
+			eprint!("Install it now? [y/N] ");
 		} else {
-			eprint!("Install them now? [Y/n] ");
+			eprint!("Install them now? [y/N] ");
 		}
 
 		let mut input = String::new();
@@ -209,55 +220,54 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		let input = input.trim();
 
 		if input.eq_ignore_ascii_case("y") || input.eq_ignore_ascii_case("yes") {
-			let mut successfully_installed = Vec::new();
-
-			for (i, dep) in installable.iter().enumerate() {
+			for dep in installable.into_iter() {
 				eprintln!("Installing {}...", dep.name);
 				match &dep.install {
 					InstallAction::Command(install_cmd) => {
 						let parts: Vec<&str> = install_cmd.split_whitespace().collect();
 						let expr = cmd(parts[0], parts[1..].iter().copied()).unchecked();
 						match Expression::run(&expr) {
-							Ok(output) if output.status.success() => successfully_installed.push(i),
-							Ok(_) => eprintln!("Failed to install {}", dep.name),
+							Ok(output) if !output.status.success() => {
+								let stderr = String::from_utf8_lossy(&output.stderr);
+								manual.push((dep, format!("installation command failed: {}", stderr.trim())));
+							}
 							Err(e) => return Err(Error::Command(e)),
+							_ => {}
 						}
 					}
-					InstallAction::Function { function, .. } => {
-						if let Err(e) = function() {
+					InstallAction::Expression { expression, .. } => {
+						if let Err(e) = expression.clone().run() {
 							eprintln!("{e}");
 							eprintln!("Failed to install {}", dep.name);
-						} else {
-							successfully_installed.push(i);
+							manual.push((dep, format!("failed to install ({e})")));
 						}
 					}
-					InstallAction::None => unreachable!(),
+					InstallAction::None | InstallAction::ManualInstructions(_) => unreachable!(),
 				}
 			}
+		}
+	}
 
-			for i in successfully_installed.into_iter().rev() {
-				installable.remove(i);
+	if !manual.is_empty() {
+		eprintln!();
+		eprintln!("Please install the following dependenc{}:", if manual.len() == 1 { "y" } else { "ies" });
+		for (dep, msg) in &manual {
+			match dep.install {
+				InstallAction::ManualInstructions(instructions) => eprintln!("  - {}: {}", dep.name, instructions),
+				_ => eprintln!("  - {}: {}", dep.name, msg),
 			}
 		}
 	}
 
-	if !failures.is_empty() {
+	if (!manual.is_empty()) && is_interactive {
 		eprintln!();
-		eprintln!("The following requirements must be resolved manually:");
-		for msg in &failures {
-			eprintln!("  - {msg}");
-		}
-	}
-
-	if (!installable.is_empty() || !failures.is_empty()) && is_interactive {
-		eprintln!();
-		eprintln!("Continue without resolving these requirements? [y/N]");
+		eprintln!("Attempt to continue regardless of unmet requirements? [y/N]");
 
 		let mut input = String::new();
 		std::io::stdin().read_line(&mut input).map_err(|e| Error::Io(e, "Failed to read from stdin".into()))?;
 		let input = input.trim();
 
-		if input.eq_ignore_ascii_case("n") || input.eq_ignore_ascii_case("no") {
+		if !input.eq_ignore_ascii_case("y") && !input.eq_ignore_ascii_case("yes") {
 			return Err(Error::RequirementsNotMet);
 		}
 	}
@@ -300,24 +310,16 @@ enum InstallAction {
 	#[default]
 	None,
 	Command(&'static str),
-	#[expect(dead_code)] // TODO: Remove after followup pr landed
-	Function {
-		description: &'static str,
-		function: &'static dyn Fn() -> Result<(), Error>,
+	Expression {
+		description: String,
+		expression: Expression,
 	},
+	ManualInstructions(&'static str),
 }
 
 impl InstallAction {
-	fn is_some(&self) -> bool {
-		!matches!(self, InstallAction::None)
-	}
-
-	fn description(&self) -> &'static str {
-		match self {
-			InstallAction::None => "",
-			InstallAction::Command(cmd) => cmd,
-			InstallAction::Function { description, .. } => description,
-		}
+	fn is_auto_installable(&self) -> bool {
+		!matches!(self, InstallAction::None | InstallAction::ManualInstructions(_))
 	}
 }
 

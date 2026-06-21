@@ -511,6 +511,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-run-internal-download"
+version = "0.0.0"
+dependencies = [
+ "cargo-run",
+ "flate2",
+ "sha2",
+ "tar",
+ "ureq",
+]
+
+[[package]]
 name = "cargo-run-internal-watch"
 version = "0.0.0"
 dependencies = [
