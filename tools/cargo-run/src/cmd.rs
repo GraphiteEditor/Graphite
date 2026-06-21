@@ -84,6 +84,14 @@ pub enum TerminalColor {
 	Magenta,
 	Cyan,
 	White,
+	BrightBlack,
+	BrightRed,
+	BrightGreen,
+	BrightYellow,
+	BrightBlue,
+	BrightMagenta,
+	BrightCyan,
+	BrightWhite,
 	Reset,
 }
 impl TerminalColor {
@@ -97,6 +105,14 @@ impl TerminalColor {
 			Self::Magenta => "\x1b[35m",
 			Self::Cyan => "\x1b[36m",
 			Self::White => "\x1b[37m",
+			Self::BrightBlack => "\x1b[90m",
+			Self::BrightRed => "\x1b[91m",
+			Self::BrightGreen => "\x1b[92m",
+			Self::BrightYellow => "\x1b[93m",
+			Self::BrightBlue => "\x1b[94m",
+			Self::BrightMagenta => "\x1b[95m",
+			Self::BrightCyan => "\x1b[96m",
+			Self::BrightWhite => "\x1b[97m",
 			Self::Reset => "\x1b[0m",
 		}
 	}
