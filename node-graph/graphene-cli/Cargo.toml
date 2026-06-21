@@ -17,8 +17,8 @@ graphene-std = { workspace = true }
 interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 preprocessor = { workspace = true }
-document-format = { workspace = true }
-document-container = { workspace = true }
+document-format = { workspace = true, features = ["zip", "xz"] }
+document-container = { workspace = true, features = ["zip", "xz"] }
 
 # Workspace dependencies
 log = { workspace = true }

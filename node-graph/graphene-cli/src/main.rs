@@ -267,8 +267,10 @@ fn init_logging(log_level: u8) {
 		.unwrap();
 }
 
-fn compile_graph(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>) -> Result<ProtoNetwork, Box<dyn Error>> {
+fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let preprocessor = preprocessor::Preprocessor::new();
+
+	let mut network = wrap_network_in_scope(network, editor_api);
 
 	// A `.gdd` resolves resource hashes from its registry; a legacy `.graphite` has no resource store, so it
 	// preprocesses against an empty registry (matching the pre-`.gdd` CLI behavior).
@@ -279,10 +281,8 @@ fn compile_graph(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, g
 		None => preprocessor.preprocess(&mut network, &ResourceRegistry::default()).expect("Failed to expand network"),
 	}
 
-	let wrapped_network = wrap_network_in_scope(network, editor_api);
-
 	let compiler = Compiler {};
-	compiler.compile_single(wrapped_network).map_err(|x| x.into())
+	compiler.compile_single(network).map_err(|x| x.into())
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
