@@ -1,15 +1,16 @@
 mod export;
 
 use clap::{Args, Parser, Subcommand};
+use document_container::AnyContainer;
+use document_container::backends::memory::MemoryBackend;
+use document_format::{GddV1, GddV1Layout};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::application_io::EditorPreferences;
-use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -84,6 +85,11 @@ enum Command {
 		duration: Option<f64>,
 	},
 	ListNodeIdentifiers,
+
+	/// Extract embedded legacy .graphite file from the new .gdd file
+	ExtractLegacyDoc {
+		document: PathBuf,
+	},
 }
 
 #[derive(Debug, Args)]
@@ -104,6 +110,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let document_path = match app.command {
 		Command::Compile { ref document, .. } => document,
 		Command::Export { ref document, .. } => document,
+		Command::ExtractLegacyDoc { ref document } => document,
 		Command::ListNodeIdentifiers => {
 			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
 			nodes.sort_by_key(|x| x.as_str().to_string());
@@ -114,10 +121,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}
 	};
 
-	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
+	let archive = std::fs::read(document_path).expect("Failed to open file");
+	let container = AnyContainer::Memory(MemoryBackend::new());
+	let gdd = document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)
+		.await
+		.expect("Failed to open document");
+
+	if let Command::ExtractLegacyDoc { ref document } = app.command {
+		let legacy_doc = gdd.read_legacy_document().await.expect("gdd file did not contain legacy .graphite document");
+		let mut new_path = document.to_path_buf();
+		new_path.set_extension("graphite");
+		std::fs::write(new_path.clone(), legacy_doc).expect("Failed to write write .graphite file");
+		eprintln!("Saved file to {}", new_path.to_string_lossy());
+		return Ok(());
+	}
 
 	log::info!("Creating GPU context");
-	let application_io = block_on(PlatformApplicationIo::new());
+	let mut application_io = block_on(PlatformApplicationIo::new());
+	application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
 
 	// Convert application_io to Arc first
 	let application_io_arc = Arc::new(application_io);
@@ -137,8 +158,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
 	});
+	let declarations = gdd.declarations(&gdd).await;
+	let (node_network, _metadata) = gdd.registry().to_runtime_with_metadata(&declarations)?;
 
-	let proto_graph = compile_graph(document_string, editor_api)?;
+	let proto_graph = compile_graph(node_network, editor_api, &gdd)?;
 
 	match app.command {
 		Command::Compile { print_proto, .. } => {
@@ -218,34 +241,13 @@ fn init_logging(log_level: u8) {
 		.unwrap();
 }
 
-// Migrations are done in the editor which is unfortunately not available here.
-// TODO: remove this and share migrations between the editor and the CLI.
-fn fix_nodes(network: &mut NodeNetwork) {
-	for node in network.nodes.values_mut() {
-		match &mut node.implementation {
-			// Recursively fix
-			DocumentNodeImplementation::Network(network) => fix_nodes(network),
-			// This replicates the migration from the editor linked:
-			// https://github.com/GraphiteEditor/Graphite/blob/d68f91ccca69e90e6d2df78d544d36cd1aaf348e/editor/src/messages/portfolio/portfolio_message_handler.rs#L535
-			// Since the CLI doesn't have the document node definitions, a less robust method of just patching the inputs is used.
-			DocumentNodeImplementation::ProtoNode(proto_node_identifier)
-				if (proto_node_identifier.as_str().starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.as_str().starts_with("graphene_core::AddArtboardNode"))
-					&& node.inputs.len() < 3 =>
-			{
-				node.inputs.push(NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath));
-			}
-			_ => {}
-		}
-	}
-}
-fn compile_graph(document_string: String, editor_api: Arc<PlatformEditorApi>) -> Result<ProtoNetwork, Box<dyn Error>> {
-	let mut network = load_network(&document_string);
-	fix_nodes(&mut network);
-
-	let mut wrapped_network = wrap_network_in_scope(network, editor_api);
-
+fn compile_graph(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: &GddV1) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let preprocessor = preprocessor::Preprocessor::new();
-	preprocessor.preprocess(&mut wrapped_network, &ResourceRegistry::default()).expect("Failed to expand network"); // TODO: actually load the resources from the document
+	preprocessor
+		.preprocess_with_resolver(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|r| r.hash))
+		.expect("Failed to expand network");
+
+	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 
 	let compiler = Compiler {};
 	compiler.compile_single(wrapped_network).map_err(|x| x.into())
