@@ -87,6 +87,10 @@ fn run_task(task: &Task) -> Result<(), Error> {
 
 	requirements::check(task)?;
 
+	if !matches!(task.target, Target::Cli) {
+		branding::ensure()?;
+	}
+
 	match (&task.action, &task.target, &task.profile) {
 		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => frontend::watch(false)?,
 		(Action::Run, Target::Web, Profile::Release) => frontend::watch(true)?,

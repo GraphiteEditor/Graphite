@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+pub mod branding;
 pub mod cmd;
 pub mod frontend;
 pub mod requirements;
