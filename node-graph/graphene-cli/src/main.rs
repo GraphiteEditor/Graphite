@@ -276,9 +276,9 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 	// preprocesses against an empty registry (matching the pre-`.gdd` CLI behavior).
 	match gdd {
 		Some(gdd) => preprocessor
-			.preprocess_with_resolver(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|r| r.hash))
+			.preprocess(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|r| r.hash))
 			.expect("Failed to expand network"),
-		None => preprocessor.preprocess(&mut network, &ResourceRegistry::default()).expect("Failed to expand network"),
+		None => { preprocessor.preprocess(&mut network, &|_| None) }.expect("Failed to expand network"),
 	}
 
 	let compiler = Compiler {};

@@ -20,11 +20,7 @@ pub struct Preprocessor {
 }
 
 impl Preprocessor {
-	pub fn preprocess(&self, network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
-		self.preprocess_with_resolver(network, &|resource_id| resources.hash(&resource_id))
-	}
-
-	pub fn preprocess_with_resolver(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
 		self.replace_resource_inputs(network, resolve_resource)?;
 		self.expand_network(network);
