@@ -491,6 +491,51 @@ fn export_materializes_embedded_resource_from_byte_store() {
 	});
 }
 
+/// A document with un-retired hot ops (e.g. a freshly converted document saved without a gesture
+/// boundary, or a save mid-drag) must export losslessly: the hot log travels alongside history and the
+/// reopened document reflects the staged edits. Regression for the converted-artwork "no history"
+/// export, which previously failed at `embed_resource_sources` and fell back to the legacy blob.
+#[test]
+fn export_round_trips_unretired_hot_ops() {
+	use graph_craft::application_io::resource::ResourceStorage;
+	use graph_storage::NoMetadata;
+	use graphene_resource::{DataSource, ResourceId, ResourceRegistry};
+
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(3), 0xF15E, "ed".into(), "std".into())
+			.await
+			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+
+		let payload = b"hot resource bytes";
+		let hash = graphene_resource::ResourceHash::from(&payload[..]);
+		let byte_store = empty_byte_store();
+		byte_store.store(payload);
+
+		let mut resources = ResourceRegistry::new();
+		let id = ResourceId::new();
+		resources.push_source_back(&id, DataSource::Embedded);
+		resources.resolve(&id, hash);
+
+		// Stage into the working copy without retiring, leaving the conversion in the hot log.
+		gdd.stage_runtime_snapshot(&network_referencing_resource(id), &NoMetadata, &resources, &byte_store)
+			.unwrap_or_else(|error| panic!("stage_runtime_snapshot failed: {error:?}"));
+		assert!(!gdd.session().hot_log().is_empty(), "staging without retiring should leave hot ops");
+		assert!(gdd.registry().resources.contains_key(&id), "working registry should reflect the staged resource");
+
+		// Export to an archive and reopen it from scratch: the staged (hot) state must survive.
+		let archive = gdd
+			.export_to_bytes(document_format::ExportFormat::Zip, document_format::ExportOptions::default(), &byte_store, None)
+			.await
+			.unwrap_or_else(|error| panic!("export_to_bytes failed: {error:?}"));
+
+		let reopened = GddV1::open_from_archive(&archive, empty_container(), GddV1Layout)
+			.await
+			.unwrap_or_else(|error| panic!("open_from_archive failed: {error:?}"));
+
+		assert!(reopened.registry().resources.contains_key(&id), "the staged resource must survive export and reopen");
+	});
+}
+
 #[test]
 fn open_in_rejects_future_format_version() {
 	futures::executor::block_on(async {

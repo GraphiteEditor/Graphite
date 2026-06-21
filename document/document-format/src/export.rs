@@ -191,10 +191,11 @@ impl<L: Layout> Gdd<L> {
 		export_session.embed_resource_sources(links_to_promote)?;
 
 		if options.include_registry {
-			sink.write_entry(
-				&io::path_for(self.layout.registry_basename(), codecs.registry),
-				&codecs.registry.write_single(export_session.registry())?,
-			)?;
+			// With history, the persisted snapshot is the retired registry and the hot log layers on top
+			// (mirrors `Session::load`); without history it must be the full working registry, since
+			// `bootstrap_from_registry` reconstructs the whole document from it alone.
+			let snapshot = if options.include_history { export_session.retired_registry() } else { export_session.registry() };
+			sink.write_entry(&io::path_for(self.layout.registry_basename(), codecs.registry), &codecs.registry.write_single(snapshot)?)?;
 		}
 
 		if options.include_history {
@@ -204,6 +205,17 @@ impl<L: Layout> Gdd<L> {
 			}
 			if !buffer.is_empty() {
 				sink.write_entry(&io::path_for(self.layout.history_basename(), codecs.history), &buffer)?;
+			}
+
+			// Carry the un-retired hot ops alongside history so a document exported mid-gesture (e.g. a save
+			// during a tool drag) isn't shipped with its pending edits dropped. `open` replays them on top of
+			// the retired snapshot, same as the working copy does.
+			let mut hot_buffer = Vec::new();
+			for hot_op in export_session.hot_log() {
+				codecs.hot_log.append(&mut hot_buffer, hot_op)?;
+			}
+			if !hot_buffer.is_empty() {
+				sink.write_entry(&io::path_for(self.layout.hot_log_basename(), codecs.hot_log), &hot_buffer)?;
 			}
 		}
 

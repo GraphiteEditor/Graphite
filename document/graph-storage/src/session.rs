@@ -55,6 +55,12 @@ impl Session {
 		&self.document.working_registry
 	}
 
+	/// The registry after applying retired history only, without the unretired hot tail. Persisted as the
+	/// snapshot alongside `history` + hot log so a reopen restores the same retired-then-hot layering.
+	pub fn retired_registry(&self) -> &Registry {
+		&self.document.retired_snapshot
+	}
+
 	/// Diff the current registry against a fresh conversion of `network`, then commit each emitted
 	/// op as its own `Delta` on the local chain. One `clock.tick()` per op (strictly causal within
 	/// a commit). Returns the new `Rev`s in commit order (empty if nothing changed) plus the
@@ -111,15 +117,15 @@ impl Session {
 			ops.push(RegistryDelta::AddSource { id, key, source: embedded.clone() });
 		}
 
-		// Caller contract: this runs on a throwaway export clone with no unretired hot ops, so the
-		// working registry equals the snapshot. Overwriting working with the advanced snapshot below
-		// would otherwise drop hot-zone edits, so reject the call rather than corrupt state.
-		if !self.document.hot_log.is_empty() {
-			return Err(CrdtError::HotLogNotEmpty);
-		}
-
+		// These are retired deltas, so `commit_ops` advances the retired snapshot and history. The working
+		// registry sits at `retired_snapshot + hot tail`, so mirror each committed delta onto it with its own
+		// timestamp rather than cloning the snapshot over it, which would discard any unretired hot-zone edits.
 		let revs = self.commit_ops(ops, false)?;
-		self.document.working_registry = self.document.retired_snapshot.clone();
+		for &rev in &revs {
+			let Some(delta) = self.document.history.get(rev) else { continue };
+			let (kind, timestamp) = (delta.kind.clone(), delta.timestamp);
+			self.document.apply_op_idempotent(kind, timestamp)?;
+		}
 		Ok(revs)
 	}
 
@@ -549,8 +555,6 @@ pub enum CrdtError {
 	/// PeerId is already registered to a different UserId.
 	#[error("Peer {0:?} is already registered to a different user")]
 	PeerRegistrationConflict(PeerId),
-	#[error("Operation requires an empty hot log")]
-	HotLogNotEmpty,
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
 }
