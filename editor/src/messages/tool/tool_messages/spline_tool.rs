@@ -1,7 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -12,6 +11,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 	sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
+use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
@@ -414,16 +414,7 @@ impl Fsm for SplineToolFsmState {
 
 				// Position the layer at the initial mouse position via Transform
 				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						GraphOperationMessage::TransformSet {
-							layer,
-							transform: DAffine2::from_translation(viewport_vec),
-							transform_in: TransformIn::Viewport,
-							skip_rerender: false,
-						}
-						.into(),
-						NodeGraphMessage::RunDocumentGraph.into(),
-					],
+					messages: vec![translation_transform_set(document, layer, viewport_vec), NodeGraphMessage::RunDocumentGraph.into()],
 				});
 
 				SplineToolFsmState::Drawing
@@ -483,7 +474,7 @@ impl Fsm for SplineToolFsmState {
 					// For newly created layers, the deferred TransformSet may not yet be reflected
 					// in the metadata, so compute local position from the known viewport start.
 					tool_data.next_point = if let Some(start) = tool_data.new_layer_viewport_start {
-						viewport_pos - start
+						document_to_viewport.inverse().transform_vector2(viewport_pos - start)
 					} else {
 						let transform = document.metadata().transform_to_viewport(layer);
 						transform.inverse().transform_point2(viewport_pos)

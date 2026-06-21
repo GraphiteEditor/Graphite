@@ -181,3 +181,51 @@ impl Resize {
 		self.layer = None;
 	}
 }
+
+/// The viewport zoom factor, taken from the document-to-viewport transform so it accounts for zoom snapping and canvas flipping.
+/// Divide a viewport-space measurement by this to convert it to document units.
+pub fn viewport_zoom(document: &DocumentMessageHandler) -> f64 {
+	document.metadata().document_to_viewport.matrix2.determinant().abs().sqrt()
+}
+
+/// Document-space transform for a freshly drawn layer whose size lives in its generator node: a translation to `viewport_position` plus a
+/// counter-rotation cancelling the viewport's tilt and flip (so the layer appears window-aligned), with the zoom deliberately left out.
+/// `aspect` is an optional unitless local-frame stretch (e.g. for polygons and stars); pass [`DVec2::ONE`] for none.
+pub fn window_aligned_transform(document: &DocumentMessageHandler, viewport_position: DVec2, aspect: DVec2) -> DAffine2 {
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let zoom = viewport_zoom(document);
+
+	// The viewport's rotation and flip with the zoom removed.
+	let mut orientation = document_to_viewport.inverse();
+	orientation.translation = DVec2::ZERO;
+	orientation.matrix2 = orientation.matrix2.mul_scalar(zoom);
+
+	let document_position = document_to_viewport.inverse().transform_point2(viewport_position);
+	DAffine2::from_translation(document_position) * orientation * DAffine2::from_scale(aspect)
+}
+
+/// `TransformSet` applying [`window_aligned_transform`] to a freshly drawn layer, via [`TransformIn::Viewport`] so the parent transform is
+/// resolved at execution time (also correct when the layer's placement is deferred until after the graph runs).
+pub fn window_aligned_transform_set(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, viewport_position: DVec2, aspect: DVec2) -> Message {
+	GraphOperationMessage::TransformSet {
+		layer,
+		transform: document.metadata().document_to_viewport * window_aligned_transform(document, viewport_position, aspect),
+		transform_in: TransformIn::Viewport,
+		skip_rerender: false,
+	}
+	.into()
+}
+
+/// `TransformSet` placing a freshly drawn path-like layer (Pen, Freehand, Spline, Line, Arrow) at `viewport_position` with only a translation: the drawn geometry holds the shape (including tilt), so the Transform node stays a pure document-space offset.
+pub fn translation_transform_set(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, viewport_position: DVec2) -> Message {
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_position = document_to_viewport.inverse().transform_point2(viewport_position);
+
+	GraphOperationMessage::TransformSet {
+		layer,
+		transform: document_to_viewport * DAffine2::from_translation(document_position),
+		transform_in: TransformIn::Viewport,
+		skip_rerender: false,
+	}
+	.into()
+}

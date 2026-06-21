@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 	ToolColorOptions, apply_fill_only_color_pick, apply_fill_only_enabled, refresh_slot_working_color, selection_changed_since_last_sync, solid, sync_fill_only,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::resize::{Resize, viewport_zoom, window_aligned_transform};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
@@ -971,17 +971,13 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Editing;
 				}
 
-				// Otherwise create some new text. The drag bounds are in viewport space; map them into document space for the text's
-				// transform and wrapping size, then compose with document-to-viewport so the editing overlay (a screen-space CSS matrix) carries the zoom.
+				// Otherwise create some new text. The composition with document-to-viewport lets the editing overlay (a screen-space CSS matrix) carry the zoom.
 				let document_to_viewport = document.metadata().document_to_viewport;
-				let viewport_to_document = document_to_viewport.inverse();
-				let document_start = viewport_to_document.transform_point2(start);
-				let document_end = viewport_to_document.transform_point2(end);
 
-				let constraint_size = has_dragged.then_some((document_start - document_end).abs());
+				let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
 				let editing_text = EditingText {
 					text: String::new(),
-					transform: document_to_viewport * DAffine2::from_translation(document_start),
+					transform: document_to_viewport * window_aligned_transform(document, start, DVec2::ONE),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
 						letter_spacing: tool_options.letter_spacing,
