@@ -139,18 +139,19 @@ impl<L: Layout> Gdd<L> {
 		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
 
+		let peer = session_state.peer_id;
 		let mut session = match (has_registry, has_history) {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(manifest.peer_id, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
+				Session::load(peer, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(manifest.peer_id, registry)?
+				Session::bootstrap_from_registry(peer, registry)?
 			}
-			(false, _) => Session::replay_from_history(manifest.peer_id, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+			(false, _) => Session::replay_from_history(peer, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
 		};
 
 		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
@@ -173,10 +174,11 @@ impl<L: Layout> Gdd<L> {
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
 	pub async fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
-		let manifest = Manifest::new(document_uuid, peer, editor_version, stdlib_version);
+		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
-		io::write_single(&working, layout.session_basename(), codecs.session, &SessionState::default())?;
+		let session_state = SessionState { peer_id: peer, ..Default::default() };
+		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
 
 		let session = Session::with_peer(peer);
 		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
@@ -317,6 +319,7 @@ impl<L: Layout> Gdd<L> {
 	/// Store the legacy `.graphite` document bytes verbatim inside the working copy (dual-write soak).
 	/// Synchronous (hot-path safe via `write_non_blocking`): called at the autosave boundary alongside
 	/// the registry snapshot. The bytes are opaque to `Gdd` — it never deserializes them.
+	// TODO: Add feature gate for legacy embedding
 	pub fn store_legacy_document(&self, bytes: &[u8]) -> Result<(), ContainerError> {
 		self.working.write_non_blocking(self.layout.legacy_path(), bytes)
 	}

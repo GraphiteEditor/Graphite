@@ -169,6 +169,7 @@ impl<L: Layout> Gdd<L> {
 
 	fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
+			peer_id: self.session.peer(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),

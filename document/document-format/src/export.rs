@@ -145,6 +145,7 @@ impl<L: Layout> Gdd<L> {
 
 		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
 		let session_state = SessionState {
+			peer_id: self.session.peer(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),

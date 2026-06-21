@@ -1,6 +1,5 @@
 //! Bootstrap file for a `.gdd` document. Always JSON regardless of payload codec choice.
 
-use graph_storage::PeerId;
 use serde::{Deserialize, Serialize};
 
 use crate::Codec;
@@ -38,12 +37,12 @@ impl Default for PayloadCodecs {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
 	pub format: String,
+
 	pub format_version: u32,
-	pub document_uuid: u64,
-	// TODO: Move to session?
-	pub peer_id: PeerId,
 	pub editor_version: String,
 	pub stdlib_version: String,
+
+	pub document_uuid: u64,
 	/// Codec used for each non-manifest payload on disk. Authoritative — never inferred from which
 	/// file extension is present.
 	#[serde(default)]
@@ -51,12 +50,11 @@ pub struct Manifest {
 }
 
 impl Manifest {
-	pub fn new(document_uuid: u64, peer_id: PeerId, editor_version: String, stdlib_version: String) -> Self {
+	pub fn new(document_uuid: u64, editor_version: String, stdlib_version: String) -> Self {
 		Self {
 			format: FORMAT_MAGIC.to_string(),
 			format_version: SUPPORTED_FORMAT_VERSION,
 			document_uuid,
-			peer_id,
 			editor_version,
 			stdlib_version,
 			codecs: PayloadCodecs::default(),

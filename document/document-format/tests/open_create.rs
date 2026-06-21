@@ -67,7 +67,7 @@ fn open_in_rejects_wrong_format_magic() {
 		let container = empty_container();
 		let layout = GddV1Layout;
 
-		let mut bogus = Manifest::new(0xC0DE, PeerId(1), "ed".into(), "std".into());
+		let mut bogus = Manifest::new(0xC0DE, "ed".into(), "std".into());
 		bogus.format = "not-gdd".into();
 		io::write_single(&container, layout.manifest_basename(), Codec::Json, &bogus).unwrap();
 
@@ -86,8 +86,9 @@ fn manifest_returns_what_create_in_wrote() {
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
+		assert_eq!(gdd.session().peer(), PeerId(13));
+
 		let manifest = gdd.manifest();
-		assert_eq!(manifest.peer_id, PeerId(13));
 		assert_eq!(manifest.document_uuid, 0xC0FFEE);
 		assert_eq!(manifest.editor_version, "ed-1.2");
 		assert_eq!(manifest.stdlib_version, "std-0.7");
@@ -570,7 +571,7 @@ fn open_in_rejects_future_format_version() {
 		let container = empty_container();
 		let layout = GddV1Layout;
 
-		let mut future_version = Manifest::new(0xC0DE, PeerId(1), "ed".into(), "std".into());
+		let mut future_version = Manifest::new(0xC0DE, "ed".into(), "std".into());
 		future_version.format_version = manifest::SUPPORTED_FORMAT_VERSION + 1;
 		io::write_single(&container, layout.manifest_basename(), Codec::Json, &future_version).unwrap();
 

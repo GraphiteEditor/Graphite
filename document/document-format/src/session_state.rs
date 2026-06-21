@@ -4,12 +4,17 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use graph_storage::{NetworkId, Rev};
+use graph_storage::{NetworkId, PeerId, Rev};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SessionState {
+	/// This peer's identity for the document, stable per (device, document). Per-peer rather than
+	/// document identity, so it lives with the cursor here, not in the manifest. Used for CRDT
+	/// tiebreaking and minting peer-scoped IDs.
+	#[serde(default)]
+	pub peer_id: PeerId,
 	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
 	/// document (no commits yet).
 	#[serde(default)]
