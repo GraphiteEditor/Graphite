@@ -292,6 +292,12 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
 }
 
+// TODO: Eventually remove this document upgrade code
+/// Get the layer's "Fill" node itself (whose `fill` input holds the paint value), not the node feeding that input.
+pub fn get_fill_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
+}
+
 /// Get the node connected to Fill's fill input, if any.
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
@@ -337,10 +343,16 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 			.map(|footprint| footprint.transform)
 			.unwrap_or(metadata.document_to_viewport);
 	}
-	let multiplied = metadata.transform_to_viewport(layer);
-	let bounds = metadata.nonzero_bounding_box(layer);
-	let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-	multiplied * bound_transform
+
+	// TODO: Eventually remove this document upgrade code
+	// Only an existing legacy `Fill::Gradient` is in (0, 0)..(1, 1) bounding-box space; migrated and newly-created gradients are absolute (layer space).
+	if get_gradient(layer, network_interface).is_some_and(|gradient| !gradient.absolute) {
+		let bounds = metadata.nonzero_bounding_box(layer);
+		let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		return metadata.transform_to_viewport(layer) * bound_transform;
+	}
+
+	metadata.transform_to_viewport(layer)
 }
 
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
@@ -468,57 +480,54 @@ pub fn get_text<'a>(
 	network_interface: &'a NodeNetworkInterface,
 	fonts: &FontsMessageHandler,
 	resources: &ResourceMessageHandler,
-) -> Option<(&'a String, Font, TypesettingConfig, bool)> {
+) -> Option<(&'a String, Font, TypesettingConfig)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?;
 
-	let Some(TaggedValue::String(text)) = &inputs[graphene_std::text::text::TextInput::INDEX].as_value() else {
+	let Some(TaggedValue::String(text)) = inputs.get(graphene_std::text::text::TextInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let font = match &inputs[graphene_std::text::text::FontInput::INDEX].as_value() {
+	let font = match inputs.get(graphene_std::text::text::FontInput::INDEX)?.as_value() {
 		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
 		_ => Font::default(),
 	};
-	let Some(&TaggedValue::F64(font_size)) = inputs[graphene_std::text::text::SizeInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(font_size)) = inputs.get(graphene_std::text::text::SizeInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(line_height_ratio)) = inputs[graphene_std::text::text::LineHeightInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(line_height_ratio)) = inputs.get(graphene_std::text::text::LineHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(character_spacing)) = inputs[graphene_std::text::text::CharacterSpacingInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(letter_spacing)) = inputs.get(graphene_std::text::text::LetterSpacingInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(has_max_width)) = inputs[graphene_std::text::text::HasMaxWidthInput::INDEX].as_value() else {
+	let Some(&TaggedValue::Bool(has_max_width)) = inputs.get(graphene_std::text::text::HasMaxWidthInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_width)) = inputs[graphene_std::text::text::MaxWidthInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(max_width)) = inputs.get(graphene_std::text::text::MaxWidthInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(has_max_height)) = inputs[graphene_std::text::text::HasMaxHeightInput::INDEX].as_value() else {
+	let Some(&TaggedValue::Bool(has_max_height)) = inputs.get(graphene_std::text::text::HasMaxHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_height)) = inputs[graphene_std::text::text::MaxHeightInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(max_height)) = inputs.get(graphene_std::text::text::MaxHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(tilt)) = inputs[graphene_std::text::text::TiltInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(letter_tilt)) = inputs.get(graphene_std::text::text::LetterTiltInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::TextAlign(align)) = inputs[graphene_std::text::text::AlignInput::INDEX].as_value() else {
-		return None;
-	};
-	let Some(&TaggedValue::Bool(per_glyph_items)) = inputs[graphene_std::text::text::SeparateGlyphsInput::INDEX].as_value() else {
+	let Some(&TaggedValue::TextAlign(align)) = inputs.get(graphene_std::text::text::AlignInput::INDEX)?.as_value() else {
 		return None;
 	};
 
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
+		letter_spacing,
+		letter_tilt,
 		max_width: has_max_width.then_some(max_width),
 		max_height: has_max_height.then_some(max_height),
-		character_spacing,
-		tilt,
 		align,
 	};
-	Some((text, font, typesetting, per_glyph_items))
+	Some((text, font, typesetting))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {

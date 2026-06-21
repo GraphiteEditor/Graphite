@@ -856,8 +856,13 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		return (vec![], None);
 	};
 
-	if let Some(TaggedValue::Resource(resource_id)) = input.as_non_exposed_value() {
-		let font = fonts.id_font(resources, *resource_id).unwrap_or_default();
+	// A freshly added node carries the empty-resource `TypeDefault` placeholder until a font is chosen
+	let font = match input.as_non_exposed_value() {
+		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
+		Some(TaggedValue::TypeDefault(_)) => Font::default(),
+		_ => return (first_widgets, second_widgets),
+	};
+	{
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![

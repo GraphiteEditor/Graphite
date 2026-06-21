@@ -1891,30 +1891,28 @@ impl PortfolioMessageHandler {
 		if trimmed.is_empty() { self.generate_new_document_name(exclude) } else { trimmed.to_string() }
 	}
 
-	/// `exclude` lets a renaming caller skip its own current name so a document can rename back to its
-	/// existing slot rather than colliding with itself and getting bumped to the next number.
+	/// `exclude` lets a renaming caller skip its own current name so a document can rename back to
+	/// its existing slot rather than colliding with itself and getting bumped to the next number.
 	pub fn generate_new_document_name(&self, exclude: Option<DocumentId>) -> String {
-		let mut doc_title_numbers = self
+		let untitled = DEFAULT_DOCUMENT_NAME;
+
+		// Collect the numbers already used by existing default-named documents, skipping the excluded one
+		let taken_numbers = self
 			.document_ids
 			.iter()
-			.filter(|id| exclude != Some(**id))
-			.filter_map(|id| self.document_details(*id))
+			.filter(|&&id| exclude != Some(id))
+			.filter_map(|&id| self.document_details(id))
 			.filter_map(|doc| {
-				doc.name
-					.rsplit_once(DEFAULT_DOCUMENT_NAME)
-					.map(|(prefix, number)| (prefix.is_empty()).then(|| number.trim().parse::<isize>().ok()).flatten().unwrap_or(1))
+				let rest = doc.name.strip_prefix(untitled)?.trim();
+				if rest.is_empty() { Some(1) } else { rest.parse::<usize>().ok() }
 			})
-			.collect::<Vec<isize>>();
+			.collect::<HashSet<usize>>();
 
-		doc_title_numbers.sort_unstable();
-		doc_title_numbers.iter_mut().enumerate().for_each(|(i, number)| *number = *number - i as isize - 2);
-		// Uses binary search to find the index of the element where number is bigger than i
-		let new_doc_title_num = doc_title_numbers.binary_search(&0).unwrap_or_else(|e| e) + 1;
+		// Pick the lowest number not already in use (a match always exists since the range is unbounded)
+		let new_number = (1..).find(|number| !taken_numbers.contains(number)).unwrap_or(1);
 
-		match new_doc_title_num {
-			1 => DEFAULT_DOCUMENT_NAME.to_string(),
-			_ => format!("{DEFAULT_DOCUMENT_NAME} {new_doc_title_num}"),
-		}
+		// Return "Untitled Document" for the first, then "Untitled Document {N}" for subsequent ones
+		if new_number == 1 { untitled.to_string() } else { format!("{untitled} {new_number}") }
 	}
 
 	// TODO: Eventually remove this document upgrade code

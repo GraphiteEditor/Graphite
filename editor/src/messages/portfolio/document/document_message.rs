@@ -225,6 +225,8 @@ pub enum DocumentMessage {
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	},
+	// TODO: Eventually remove this document upgrade code
+	MigrateLegacyGradients,
 	UpdateOutlines {
 		outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	},

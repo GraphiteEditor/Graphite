@@ -163,6 +163,12 @@ impl ProtoNodeIdentifier {
 	}
 }
 
+impl From<ProtoNodeIdentifier> for Cow<'static, str> {
+	fn from(val: ProtoNodeIdentifier) -> Self {
+		val.name
+	}
+}
+
 impl Display for ProtoNodeIdentifier {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.debug_tuple("ProtoNodeIdentifier").field(&self.name).finish()

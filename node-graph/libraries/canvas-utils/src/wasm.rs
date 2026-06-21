@@ -62,7 +62,7 @@ impl CanvasSurfaceHandle {
 		if self.1.is_none() {
 			let canvas = self.0.get().canvas.clone();
 			let surface = executor
-				.context
+				.context()
 				.instance
 				.create_surface(wgpu::SurfaceTarget::Canvas(canvas))
 				.expect("Failed to create surface from canvas");
@@ -86,21 +86,23 @@ impl Canvas for CanvasSurfaceHandle {
 #[cfg(feature = "wgpu")]
 impl CanvasSurface for CanvasSurfaceHandle {
 	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) {
+		let context = executor.context();
+
 		let source_texture: &wgpu::Texture = image_texture.as_ref();
 
 		let surface = self.surface(executor);
 
 		// Blit the texture to the surface
-		let mut encoder = executor.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("Texture to Surface Blit"),
 		});
 
 		let size = source_texture.size();
 
 		// Configure the surface at physical resolution (for HiDPI displays)
-		let surface_caps = surface.get_capabilities(&executor.context.adapter);
+		let surface_caps = surface.get_capabilities(&context.adapter);
 		surface.configure(
-			&executor.context.device,
+			&context.device,
 			&wgpu::SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
 				format: wgpu::TextureFormat::Rgba8Unorm,
@@ -134,7 +136,7 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			source_texture.size(),
 		);
 
-		executor.context.queue.submit([encoder.finish()]);
+		context.queue.submit([encoder.finish()]);
 		surface_texture.present();
 	}
 }
