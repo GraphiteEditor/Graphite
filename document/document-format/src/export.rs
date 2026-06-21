@@ -65,7 +65,6 @@ impl Default for ExportOptions {
 impl<L: Layout> Gdd<L> {
 	/// Stream the working copy to `dest` as a folder/zip/xz archive, keeping payload codecs as-is.
 	/// Does not mutate `self` and does not buffer the export. Native-only (writes a filesystem path).
-	/// `legacy_document` is embedded verbatim at [`Layout::legacy_path`] when present.
 	///
 	/// # Errors
 	/// [`Error::InvalidExportOptions`] for incoherent options, [`Error::MissingResource`] if an
@@ -147,6 +146,7 @@ impl<L: Layout> Gdd<L> {
 		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
 		let session_state = SessionState {
 			head_rev: self.session.head_rev(),
+			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
 			view_settings: self.view_settings.clone(),

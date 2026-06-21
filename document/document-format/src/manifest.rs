@@ -48,10 +48,6 @@ pub struct Manifest {
 	/// file extension is present.
 	#[serde(default)]
 	pub codecs: PayloadCodecs,
-	// TODO: Move to session?
-	/// RFC 3339 timestamp of the most recent retirement, set by [`crate::Gdd::retire`].
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub last_retired_at: Option<String>,
 }
 
 impl Manifest {
@@ -64,7 +60,6 @@ impl Manifest {
 			editor_version,
 			stdlib_version,
 			codecs: PayloadCodecs::default(),
-			last_retired_at: None,
 		}
 	}
 }

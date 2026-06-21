@@ -180,9 +180,37 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 		assert!(reopened.registry().networks.contains_key(&NetworkId(42)), "hot op's effect should be replayed");
 		assert_eq!(reopened.session().history().count(), 1);
 		assert_eq!(reopened.session().hot_log().len(), 1);
+	});
+}
 
-		// Manifest bumped.
-		assert!(reopened.manifest().last_retired_at.is_some(), "retire should bump last_retired_at");
+/// The published frontier (`last_broadcast_rev`, the silent/published undo boundary) persists in
+/// `session.json` and is restored on reopen.
+#[test]
+fn last_broadcast_rev_persists_across_reopen() {
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+			.await
+			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+
+		// Retire one op so there is a real retired rev to mark as published.
+		let op = HotOp {
+			op: RegistryDelta::AddNetwork {
+				id: ROOT_NETWORK,
+				network: Network::default(),
+			},
+			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+		};
+		gdd.apply_hot_op(op).unwrap();
+		let retired = gdd.retire(TimeStamp { counter: 1, peer: PeerId(5) }).unwrap_or_else(|error| panic!("retire failed: {error:?}"));
+		let published = *retired.last().expect("one retired rev");
+
+		assert_eq!(gdd.session().last_broadcast_rev(), None, "nothing is published before publish_up_to");
+		gdd.publish_up_to(published).unwrap_or_else(|error| panic!("publish_up_to failed: {error:?}"));
+		assert_eq!(gdd.session().last_broadcast_rev(), Some(published));
+
+		let (working, layout) = gdd.into_storage();
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		assert_eq!(reopened.session().last_broadcast_rev(), Some(published), "published frontier should survive reopen");
 	});
 }
 

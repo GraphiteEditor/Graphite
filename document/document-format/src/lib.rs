@@ -63,9 +63,9 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
 /// to disk continuously (every retirement appends to the history file and re-snapshots the registry).
 ///
 /// The per-edit persist path (`commit_from_runtime`, `apply_hot_op`, `retire`) is synchronous and
-/// read-free: the manifest is cached in memory (so payload codecs and `last_retired_at` need no
-/// disk read), and writes go through the container's sync write surface. Only `open` / `create` /
-/// `export` are async, since they read.
+/// read-free: the manifest is cached in memory (so payload codecs need no disk read), and writes go
+/// through the container's sync write surface. Only `open` / `create` / `export` are async, since they
+/// read.
 /// `Clone` shares the working-copy container (`Arc<AnyContainer>`) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
 /// `Session` is cloned (a snapshot copy); the container is shared.
@@ -75,9 +75,8 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) working: Arc<AnyContainer>,
 	pub(crate) layout: L,
 	/// In-memory copy of the manifest, kept authoritative since `Gdd` is its sole writer. Holds the
-	/// per-payload codecs (so the persist path never probes the filesystem) and `last_retired_at`
-	/// (so retirement writes the manifest without first reading it). Lets the persist path stay
-	/// fully read-free and synchronous.
+	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
+	/// and synchronous.
 	pub(crate) manifest: Manifest,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
@@ -153,6 +152,11 @@ impl<L: Layout> Gdd<L> {
 			}
 			(false, _) => Session::replay_from_history(manifest.peer_id, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
 		};
+
+		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
+		if let Some(rev) = session_state.last_broadcast_rev {
+			session.publish_up_to(rev);
+		}
 
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 

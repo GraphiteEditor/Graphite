@@ -14,6 +14,10 @@ pub struct SessionState {
 	/// document (no commits yet).
 	#[serde(default)]
 	pub head_rev: Option<Rev>,
+	/// Published frontier: the latest retired commit broadcast to a peer. Commits after it are silently
+	/// rewritable on undo; commits at or before it are published. `None` until broadcast transport lands.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub last_broadcast_rev: Option<Rev>,
 	/// Revs the user has undone past, so redo survives a reopen. (The legacy `VecDeque` redo history
 	/// is not persisted, so within the shadow phase this is strictly more capable than the live editor.)
 	#[serde(default)]

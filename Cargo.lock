@@ -1273,7 +1273,6 @@ dependencies = [
 name = "document-format"
 version = "0.0.0"
 dependencies = [
- "chrono",
  "core-types",
  "document-container",
  "futures",

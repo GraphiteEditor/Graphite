@@ -27,7 +27,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rmp-serde = { workspace = true }
 futures = { workspace = true }
-chrono = { workspace = true }
 thiserror = "2.0"
 log = { workspace = true }
 

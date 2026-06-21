@@ -170,6 +170,7 @@ impl<L: Layout> Gdd<L> {
 	fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			head_rev: self.session.head_rev(),
+			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
 			view_settings: self.view_settings.clone(),
@@ -201,6 +202,13 @@ impl<L: Layout> Gdd<L> {
 		self.persist_session_state()
 	}
 
+	/// Advance the published frontier to `rev` and persist it to `session.json`, so the silent/published
+	/// undo boundary survives a reopen. Called by the (future) broadcast transport as commits are shared.
+	pub fn publish_up_to(&mut self, rev: graph_storage::Rev) -> Result<(), Error> {
+		self.session.publish_up_to(rev);
+		self.persist_session_state()
+	}
+
 	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
 	/// [`NetworkId`](graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
 	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
@@ -225,8 +233,8 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Working-copy checkpoint: promote hot ops with timestamp `≤ up_to` into retired deltas,
-	/// append them to the history file, rewrite the hot log with remaining (unretired) ops,
-	/// re-snapshot the registry, and bump `last_retired_at` on the manifest. Synchronous.
+	/// append them to the history file, rewrite the hot log with remaining (unretired) ops, and
+	/// re-snapshot the registry. Synchronous.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
 		self.retire_inner(up_to, false)
 	}
@@ -257,9 +265,6 @@ impl<L: Layout> Gdd<L> {
 		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
 
 		self.persist_session_state()?;
-
-		// Bump cached manifest timestamp and persist it.
-		self.update_manifest(|m| m.last_retired_at = Some(chrono::Utc::now().to_rfc3339()))?;
 
 		Ok(new_revs)
 	}

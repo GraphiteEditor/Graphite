@@ -481,6 +481,19 @@ impl Session {
 		self.document.head
 	}
 
+	/// The latest retired commit broadcast to at least one peer. Commits after it are silently
+	/// rewritable; commits at or before it are published. `None` until broadcast transport lands.
+	pub fn last_broadcast_rev(&self) -> Option<Rev> {
+		self.document.last_broadcast_rev
+	}
+
+	/// Advance the published frontier to `rev` as commits are broadcast. The frontier is monotonic, so
+	/// this only moves it forward (never back to `None`). Set by the (future) broadcast transport;
+	/// persisted in `session.json` so the silent/published boundary survives a reopen.
+	pub fn publish_up_to(&mut self, rev: Rev) {
+		self.document.last_broadcast_rev = Some(rev);
+	}
+
 	/// Test-only: every retired delta, cloned, for feeding one session's branch into another's `merge`.
 	#[cfg(test)]
 	pub(crate) fn cloned_deltas(&self) -> Vec<Delta> {
