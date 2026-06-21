@@ -7,10 +7,12 @@ use document_format::{GddV1, GddV1Layout};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::application_io::EditorPreferences;
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
+use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -121,13 +123,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}
 	};
 
-	let archive = std::fs::read(document_path).expect("Failed to open file");
-	let container = AnyContainer::Memory(MemoryBackend::new());
-	let gdd = document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)
-		.await
-		.expect("Failed to open document");
+	// Load the document by extension: `.gdd` opens the new archive format, anything else is treated as a
+	// legacy `.graphite` document. The legacy path has no `Gdd`, so resources fall back to the default registry.
+	let is_gdd = document_path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
+
+	let gdd = if is_gdd {
+		let archive = std::fs::read(document_path).expect("Failed to open file");
+		let container = AnyContainer::Memory(MemoryBackend::new());
+		let gdd = document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)
+			.await
+			.expect("Failed to open document");
+		Some(gdd)
+	} else {
+		None
+	};
 
 	if let Command::ExtractLegacyDoc { ref document } = app.command {
+		let gdd = gdd.as_ref().expect("ExtractLegacyDoc requires a .gdd document");
 		let legacy_doc = gdd.read_legacy_document().await.expect("gdd file did not contain legacy .graphite document");
 		let mut new_path = document.to_path_buf();
 		new_path.set_extension("graphite");
@@ -136,9 +148,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		return Ok(());
 	}
 
+	// Build the runtime network: from the `.gdd` registry, or by loading a legacy `.graphite` document.
+	let node_network = match &gdd {
+		Some(gdd) => {
+			let declarations = gdd.declarations(gdd).await;
+			let (node_network, _metadata) = gdd.registry().to_runtime_with_metadata(&declarations)?;
+			node_network
+		}
+		None => {
+			let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
+			load_network(&document_string)
+		}
+	};
+
 	log::info!("Creating GPU context");
 	let mut application_io = block_on(PlatformApplicationIo::new());
-	application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
+	if let Some(gdd) = &gdd {
+		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
+	}
 
 	// Convert application_io to Arc first
 	let application_io_arc = Arc::new(application_io);
@@ -158,10 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
 	});
-	let declarations = gdd.declarations(&gdd).await;
-	let (node_network, _metadata) = gdd.registry().to_runtime_with_metadata(&declarations)?;
-
-	let proto_graph = compile_graph(node_network, editor_api, &gdd)?;
+	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref())?;
 
 	match app.command {
 		Command::Compile { print_proto, .. } => {
@@ -241,13 +265,19 @@ fn init_logging(log_level: u8) {
 		.unwrap();
 }
 
-fn compile_graph(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: &GddV1) -> Result<ProtoNetwork, Box<dyn Error>> {
+fn compile_graph(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let preprocessor = preprocessor::Preprocessor::new();
-	preprocessor
-		.preprocess_with_resolver(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|r| r.hash))
-		.expect("Failed to expand network");
 
-	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
+	// A `.gdd` resolves resource hashes from its registry; a legacy `.graphite` has no resource store, so it
+	// preprocesses against an empty registry (matching the pre-`.gdd` CLI behavior).
+	match gdd {
+		Some(gdd) => preprocessor
+			.preprocess_with_resolver(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|r| r.hash))
+			.expect("Failed to expand network"),
+		None => preprocessor.preprocess(&mut network, &ResourceRegistry::default()).expect("Failed to expand network"),
+	}
+
+	let wrapped_network = wrap_network_in_scope(network, editor_api);
 
 	let compiler = Compiler {};
 	compiler.compile_single(wrapped_network).map_err(|x| x.into())
