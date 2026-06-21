@@ -1270,6 +1270,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-format"
+version = "0.0.0"
+dependencies = [
+ "core-types",
+ "document-container",
+ "futures",
+ "graph-craft",
+ "graph-storage",
+ "graphene-resource",
+ "log",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

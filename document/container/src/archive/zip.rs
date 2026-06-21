@@ -1,7 +1,7 @@
 //! Zip archive codec.
 
 use crate::archive::{Archive, ArchiveWriter, checked_entry_size};
-use crate::{Container, ContainerError, Result, validate_path};
+use crate::{AsyncContainer, ContainerError, Result, validate_path};
 use std::io::{Read, Seek, Write};
 
 use zip::ZipArchive;
@@ -24,7 +24,7 @@ impl Archive for Zip {
 		})
 	}
 
-	fn open<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
+	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()> {
 		let mut archive = ZipArchive::new(source).map_err(zip_err)?;
 
 		// Zip headers declare each entry's uncompressed size up front; `checked_entry_size` caps the running
@@ -41,7 +41,7 @@ impl Archive for Zip {
 
 			let size = checked_entry_size(&mut total_size, entry.size())?;
 
-			dest.write_sized(&name, size, &mut |buffer| {
+			dest.write_sized_non_blocking(&name, size, &mut |buffer| {
 				entry.read_exact(buffer).map_err(ContainerError::Io)?;
 				Ok(())
 			})?;
@@ -52,6 +52,8 @@ impl Archive for Zip {
 }
 
 impl<W: Write + Seek> ArchiveWriter for ZipWriter<W> {
+	type Sink = W;
+
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<()> {
 		validate_path(path)?;
 		self.inner.start_file(path, self.options).map_err(zip_err)?;
@@ -59,16 +61,7 @@ impl<W: Write + Seek> ArchiveWriter for ZipWriter<W> {
 		Ok(())
 	}
 
-	fn finish(self) -> Result<()> {
-		self.inner.finish().map_err(zip_err)?;
-		Ok(())
-	}
-}
-
-impl<W: Write + Seek> ZipWriter<W> {
-	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
-	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
-	pub fn finish_into(self) -> Result<W> {
+	fn finish_into(self) -> Result<W> {
 		self.inner.finish().map_err(zip_err)
 	}
 }
