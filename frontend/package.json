@@ -7,8 +7,7 @@
 	"type": "module",
 	"scripts": {
 		"check": "svelte-check --fail-on-warnings && eslint",
-		"fix": "eslint --fix",
-		"setup": "node package-installer.js"
+		"fix": "eslint --fix"
 	},
 	"//": "NOTE: `source-sans-pro` is never to be upgraded to 3.x because that renders 1px above its intended position.",
 	"///": "Waiting on <https://github.com/import-js/eslint-plugin-import/issues/3227> before we can update @eslint/js and eslint to 10.x",
