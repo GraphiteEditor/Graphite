@@ -24,7 +24,7 @@ impl Preprocessor {
 		self.preprocess_with_resolver(network, &|resource_id| resources.hash(&resource_id))
 	}
 
-	pub fn preprocess_with_resolver(&self, network: &mut NodeNetwork, resolve_resource: &impl Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+	pub fn preprocess_with_resolver(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
 		self.replace_resource_inputs(network, resolve_resource)?;
 		self.expand_network(network);
@@ -46,7 +46,7 @@ impl Preprocessor {
 	}
 
 	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &impl Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
 		let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 

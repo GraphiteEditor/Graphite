@@ -128,22 +128,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let is_gdd = document_path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
 
 	let gdd = if is_gdd {
-		let archive = std::fs::read(document_path).expect("Failed to open file");
+		let archive = std::fs::read(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
 		let container = AnyContainer::Memory(MemoryBackend::new());
 		let gdd = document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)
 			.await
-			.expect("Failed to open document");
+			.map_err(|error| format!("Failed to open document: {error}"))?;
 		Some(gdd)
 	} else {
 		None
 	};
 
 	if let Command::ExtractLegacyDoc { ref document } = app.command {
-		let gdd = gdd.as_ref().expect("ExtractLegacyDoc requires a .gdd document");
-		let legacy_doc = gdd.read_legacy_document().await.expect("gdd file did not contain legacy .graphite document");
-		let mut new_path = document.to_path_buf();
+		let Some(gdd) = &gdd else { return Err("ExtractLegacyDoc requires a .gdd document".into()) };
+		let Some(legacy_doc) = gdd.read_legacy_document().await else {
+			return Err("gdd file did not contain a legacy .graphite document".into());
+		};
+		let mut new_path = document.clone();
 		new_path.set_extension("graphite");
-		std::fs::write(new_path.clone(), legacy_doc).expect("Failed to write write .graphite file");
+		std::fs::write(&new_path, legacy_doc).map_err(|error| format!("Failed to write .graphite file: {error}"))?;
 		eprintln!("Saved file to {}", new_path.to_string_lossy());
 		return Ok(());
 	}
@@ -156,13 +158,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			node_network
 		}
 		None => {
-			let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
+			let document_string = std::fs::read_to_string(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
 			load_network(&document_string)
 		}
 	};
 
 	log::info!("Creating GPU context");
-	let mut application_io = block_on(PlatformApplicationIo::new());
+	let mut application_io = PlatformApplicationIo::new().await;
 	if let Some(gdd) = &gdd {
 		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
 	}
