@@ -254,6 +254,18 @@ impl<L: Layout> Gdd<L> {
 		&self.layout
 	}
 
+	/// The per-peer view settings read from `session.json` (PTZ, rulers, overlays, snapping, collapse).
+	/// Opaque `ui::doc::*` blobs; the editor decodes them. Empty for a fresh document.
+	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, serde_json::Value> {
+		&self.view_settings
+	}
+
+	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
+	/// [`NetworkId`](graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
+	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
+		&self.network_view_settings
+	}
+
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`](graph_storage::NetworkId), so the
 	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
@@ -266,7 +278,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Every resource hash referenced by the current registry or anywhere in history, so resource GC keeps
-	/// redoable/re-undoable gestures' resources (notably proto-node declaration bytes) alive even when an
+	/// redoable/re-undoable interactions' resources (notably proto-node declaration bytes) alive even when an
 	/// undo has dropped them from the current registry.
 	pub fn all_referenced_resource_hashes(&self) -> std::collections::HashSet<ResourceHash> {
 		self.session.all_referenced_resource_hashes()

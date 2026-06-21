@@ -34,7 +34,7 @@ pub struct ExportOptions {
 	/// registry would rewrite whole-file on every retirement. Consumers replay history from an
 	/// empty registry.
 	pub include_registry: bool,
-	/// Whether to include `history.jsonl`. `false` produces a flat snapshot (registry only),
+	/// Whether to include history + hot-log. `false` produces a flat snapshot (registry only),
 	/// useful for sharing without revealing edit history and for cutting file size.
 	pub include_history: bool,
 	/// Materialize every non-`DataSource::Embedded` resource into `resources/<hash>` for portability.
@@ -208,7 +208,7 @@ impl<L: Layout> Gdd<L> {
 				sink.write_entry(&io::path_for(self.layout.history_basename(), codecs.history), &buffer)?;
 			}
 
-			// Carry the un-retired hot ops alongside history so a document exported mid-gesture (e.g. a save
+			// Carry the un-retired hot ops alongside history so a document exported mid-interaction (e.g. a save
 			// during a tool drag) isn't shipped with its pending edits dropped. `open` replays them on top of
 			// the retired snapshot, same as the working copy does.
 			let mut hot_buffer = Vec::new();

@@ -42,7 +42,7 @@ pub struct Manifest {
 	pub editor_version: String,
 	pub stdlib_version: String,
 
-	pub document_uuid: u64,
+	pub document_id: u64,
 	/// Codec used for each non-manifest payload on disk. Authoritative — never inferred from which
 	/// file extension is present.
 	#[serde(default)]
@@ -50,11 +50,11 @@ pub struct Manifest {
 }
 
 impl Manifest {
-	pub fn new(document_uuid: u64, editor_version: String, stdlib_version: String) -> Self {
+	pub fn new(document_id: u64, editor_version: String, stdlib_version: String) -> Self {
 		Self {
 			format: FORMAT_MAGIC.to_string(),
 			format_version: SUPPORTED_FORMAT_VERSION,
-			document_uuid,
+			document_id,
 			editor_version,
 			stdlib_version,
 			codecs: PayloadCodecs::default(),

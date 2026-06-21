@@ -66,13 +66,6 @@ impl<L: Layout> Gdd<L> {
 		self.working.remove_non_blocking(&self.layout.resource_path(hash))
 	}
 
-	pub fn resource_proxy(&self) -> ResourceProxy<L>
-	where
-		L: Clone,
-	{
-		ResourceProxy(self.working.clone(), self.layout.clone())
-	}
-
 	/// Enumerate every resource currently in the working copy. Paths that don't parse as a
 	/// `ResourceHash` (foreign files dropped into the resources directory) are silently skipped.
 	pub async fn resource_hashes(&self) -> Result<Vec<ResourceHash>, ContainerError> {
@@ -90,6 +83,13 @@ impl<L: Layout> Gdd<L> {
 			}
 		}
 		Ok(hashes)
+	}
+
+	pub fn resource_proxy(&self) -> ResourceProxy<L>
+	where
+		L: Clone,
+	{
+		ResourceProxy(self.working.clone(), self.layout.clone())
 	}
 }
 

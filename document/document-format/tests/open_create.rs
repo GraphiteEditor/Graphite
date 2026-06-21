@@ -89,7 +89,7 @@ fn manifest_returns_what_create_in_wrote() {
 		assert_eq!(gdd.session().peer(), PeerId(13));
 
 		let manifest = gdd.manifest();
-		assert_eq!(manifest.document_uuid, 0xC0FFEE);
+		assert_eq!(manifest.document_id, 0xC0FFEE);
 		assert_eq!(manifest.editor_version, "ed-1.2");
 		assert_eq!(manifest.stdlib_version, "std-0.7");
 		assert_eq!(manifest.format, manifest::FORMAT_MAGIC);
@@ -520,7 +520,7 @@ fn export_materializes_embedded_resource_from_byte_store() {
 	});
 }
 
-/// A document with un-retired hot ops (e.g. a freshly converted document saved without a gesture
+/// A document with un-retired hot ops (e.g. a freshly converted document saved without an interaction
 /// boundary, or a save mid-drag) must export losslessly: the hot log travels alongside history and the
 /// reopened document reflects the staged edits. Regression for the converted-artwork "no history"
 /// export, which previously failed at `embed_resource_sources` and fell back to the legacy blob.

@@ -40,6 +40,14 @@ pub async fn exists(container: &AnyContainer, basename: &str, codec: Codec) -> b
 	container.exists(&path_for(basename, codec)).await
 }
 
+/// Encode `value` with `codec` and write to `{basename}.{ext}`. Synchronous: the write goes through
+/// the container's sync write surface (durable on folder/memory, enqueued on OPFS).
+pub fn write_single<T: Serialize>(container: &AnyContainer, basename: &str, codec: Codec, value: &T) -> Result<(), crate::Error> {
+	let bytes = codec.write_single(value)?;
+	container.write_non_blocking(&path_for(basename, codec), &bytes)?;
+	Ok(())
+}
+
 async fn read_bytes(container: &AnyContainer, basename: &str, codec: Codec) -> Result<document_container::ByteHolder, ReadError> {
 	let path = path_for(basename, codec);
 	if !container.exists(&path).await {
@@ -49,12 +57,4 @@ async fn read_bytes(container: &AnyContainer, basename: &str, codec: Codec) -> R
 		});
 	}
 	Ok(container.read(&path).await?)
-}
-
-/// Encode `value` with `codec` and write to `{basename}.{ext}`. Synchronous: the write goes through
-/// the container's sync write surface (durable on folder/memory, enqueued on OPFS).
-pub fn write_single<T: Serialize>(container: &AnyContainer, basename: &str, codec: Codec, value: &T) -> Result<(), crate::Error> {
-	let bytes = codec.write_single(value)?;
-	container.write_non_blocking(&path_for(basename, codec), &bytes)?;
-	Ok(())
 }

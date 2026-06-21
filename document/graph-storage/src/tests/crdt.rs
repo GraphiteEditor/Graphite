@@ -779,7 +779,7 @@ fn no_op_commit_preserves_redo_stack() {
 
 /// `embed_resource_sources` commits its `AddSource` deltas as retired, then mirrors them onto the
 /// working registry. With unretired hot ops present it must keep the hot-zone edits (export of a
-/// mid-gesture document is lossless) rather than clobbering the working registry with the snapshot.
+/// mid-interaction document is lossless) rather than clobbering the working registry with the snapshot.
 #[test]
 fn embed_resource_sources_preserves_unretired_hot_ops() {
 	let mut session = Session::with_peer(PeerId(1));

@@ -45,8 +45,9 @@ impl<L: Layout> Gdd<L> {
 	/// Stage a runtime snapshot as hot ops without retiring: diff the runtime against the working
 	/// registry, append the hot frames (so a crash recovers the work), and persist proto-node
 	/// declaration bytes. The working registry reflects the edit immediately, but nothing enters durable
-	/// retired history until [`retire_pending_gesture`](Self::retire_pending_gesture). Staging on every
-	/// edit while retiring only at gesture boundaries lets several edits coalesce into one retired gesture.
+	/// retired history until [`retire_pending_interaction`](Self::retire_pending_interaction). Staging on
+	/// every edit while retiring only at interaction boundaries lets several edits coalesce into one retired
+	/// interaction.
 	///
 	/// # Errors
 	/// [`Error::Commit`] if the runtime diff is rejected by the session. On an [`Error::Container`] /
@@ -75,21 +76,21 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Retire every pending hot op into durable history as a single gesture (marking the batch's last
-	/// delta as the gesture boundary), then re-snapshot the registry. One gesture is one undo unit, so
-	/// the caller invokes this at each undo-step boundary and before any undo/redo. A no-op when there
+	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last
+	/// delta as the interaction boundary), then re-snapshot the registry. One interaction is one undo unit,
+	/// so the caller invokes this at each undo-step boundary and before any undo/redo. A no-op when there
 	/// are no pending hot ops.
-	pub fn retire_pending_gesture(&mut self) -> Result<Vec<Rev>, Error> {
+	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
 		let Some(up_to) = self.session.hot_log().iter().map(|hot_op| hot_op.timestamp).max() else {
 			return Ok(Vec::new());
 		};
 		self.retire_inner(up_to, true)
 	}
 
-	/// Commit a runtime snapshot as one complete gesture: stage it, then immediately retire it into
-	/// durable history. Convenience for callers that produce a whole gesture atomically (tests, and any
+	/// Commit a runtime snapshot as one complete interaction: stage it, then immediately retire it into
+	/// durable history. Convenience for callers that produce a whole interaction atomically (tests, and any
 	/// one-shot commit). Equivalent to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot) followed
-	/// by [`retire_pending_gesture`](Self::retire_pending_gesture).
+	/// by [`retire_pending_interaction`](Self::retire_pending_interaction).
 	#[cfg(feature = "conversion")]
 	pub fn commit_from_runtime<M: NodeMetadataSource>(
 		&mut self,
@@ -99,7 +100,7 @@ impl<L: Layout> Gdd<L> {
 		byte_store: &dyn ResourceStorage,
 	) -> Result<Vec<Rev>, Error> {
 		self.stage_runtime_snapshot(network, metadata, resources, byte_store)?;
-		self.retire_pending_gesture()
+		self.retire_pending_interaction()
 	}
 
 	/// Apply a hot op from the broadcast stream, appending one frame to the hot log.
@@ -119,14 +120,14 @@ impl<L: Layout> Gdd<L> {
 	/// hot frame (so a crash before retirement still recovers the work), then retires up to the last
 	/// staged timestamp, which drains exactly these ops and re-snapshots the registry. Returns the
 	/// retired `Rev`s. A no-op when nothing was staged.
-	pub(crate) fn append_and_retire(&mut self, hot_ops: &[HotOp], gesture: bool) -> Result<Vec<Rev>, Error> {
+	pub(crate) fn append_and_retire(&mut self, hot_ops: &[HotOp], interaction_end: bool) -> Result<Vec<Rev>, Error> {
 		let Some(last) = hot_ops.last() else { return Ok(Vec::new()) };
 
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
 
-		self.retire_inner(last.timestamp, gesture)
+		self.retire_inner(last.timestamp, interaction_end)
 	}
 
 	/// Encode the history deltas identified by `revs` and append them to the history file. `revs` comes
@@ -146,9 +147,9 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Set a local annotation (e.g. a commit message) on an existing retired delta and re-persist it.
-	/// Unlike the per-gesture marker written inline at retire, this targets an already-written delta, so
+	/// Unlike the per-interaction marker written inline at retire, this targets an already-written delta, so
 	/// the whole history file is rewritten in topological order. O(history) — fine for occasional user
-	/// labeling, not for per-gesture marking (which uses the inline path). No-op if `rev` is unknown.
+	/// labeling, not for per-interaction marking (which uses the inline path). No-op if `rev` is unknown.
 	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
@@ -190,12 +191,6 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// The per-peer view settings read from `session.json` (PTZ, rulers, overlays, snapping, collapse).
-	/// Opaque `ui::doc::*` blobs; the editor decodes them. Empty for a fresh document.
-	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, serde_json::Value> {
-		&self.view_settings
-	}
-
 	/// Replace the per-peer view settings and persist them to `session.json`. Called by the editor when
 	/// the viewport or a document-level toggle changes; never enters the registry, history, or CRDT.
 	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, serde_json::Value>) -> Result<(), Error> {
@@ -208,12 +203,6 @@ impl<L: Layout> Gdd<L> {
 	pub fn publish_up_to(&mut self, rev: graph_storage::Rev) -> Result<(), Error> {
 		self.session.publish_up_to(rev);
 		self.persist_session_state()
-	}
-
-	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
-	/// [`NetworkId`](graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
-	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
-		&self.network_view_settings
 	}
 
 	/// Replace the per-network view settings and persist them to `session.json`. Per-peer, per-network; never
@@ -240,13 +229,13 @@ impl<L: Layout> Gdd<L> {
 		self.retire_inner(up_to, false)
 	}
 
-	/// `gesture`: mark the batch's last delta as a gesture boundary (one undo unit) before its history
-	/// frame is written, so the marker persists on reopen without a later frame rewrite.
-	fn retire_inner(&mut self, up_to: TimeStamp, gesture: bool) -> Result<Vec<Rev>, Error> {
+	/// `interaction_end`: mark the batch's last delta as an interaction boundary (one undo unit) before its
+	/// history frame is written, so the marker persists on reopen without a later frame rewrite.
+	fn retire_inner(&mut self, up_to: TimeStamp, interaction_end: bool) -> Result<Vec<Rev>, Error> {
 		let new_revs = self.session.retire(up_to)?;
 
 		// Mark before `append_history_deltas` so the on-disk frame carries the boundary.
-		if gesture && let Some(&last) = new_revs.last() {
+		if interaction_end && let Some(&last) = new_revs.last() {
 			self.session.mark_interaction_end(last);
 		}
 
@@ -262,9 +251,7 @@ impl<L: Layout> Gdd<L> {
 		self.working
 			.write_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &hot_buffer)?;
 
-		// Re-snapshot registry.
-		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
-
+		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 
 		Ok(new_revs)
