@@ -3,7 +3,7 @@ use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
-use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
+use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
@@ -73,6 +73,16 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
 	pub workspace_panel_layout: WorkspacePanelLayout,
+	/// Parent directory that holds every document's `Gdd` working copy; a given document mounts at
+	/// `working_copy_root.join(format!("{id:x}"))`. A filesystem path on native; on web it is
+	/// converted to an OPFS directory name at the container-construction seam. `None` means no
+	/// persistent location is configured (tests, headless) — documents mount an in-memory working
+	/// copy instead, so the mount path still runs but writes nowhere durable.
+	working_copy_root: Option<PathBuf>,
+	/// Number of `.gdd` opens whose async build is in flight. While non-zero, resource GC is skipped:
+	/// the opening document's resources are being extracted into the cache but it isn't in `documents`
+	/// yet, so GC would wrongly evict them (notably proto-node declaration bytes).
+	pending_gdd_opens: usize,
 }
 
 #[message_handler_data]
@@ -206,7 +216,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let Some(document) = self.document(document_id) else { return };
+				let Some(byte_store) = resource_storage.storage() else { return };
+				let Some(document) = self.documents.get_mut(&document_id) else { return };
+				document.commit_storage_snapshot(byte_store);
 				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
@@ -381,6 +393,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
+			PortfolioMessage::DocumentStorageMounted { document_id, reopened, gdd } => {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Document was closed before its working copy finished mounting; drop the `Gdd`.
+					return;
+				};
+				document.storage = gdd;
+				// On a fresh mount, capture the current runtime state into the working copy: edits made
+				// during the mount window were skipped by `commit_storage_snapshot` (no-op while unmounted),
+				// so this initial commit brings the working copy up to date. On a reopen the working copy
+				// already holds the persisted cursor; re-committing here would stack a spurious interaction on it
+				// and make the first undo a no-op, so trust the restored cursor and skip the commit.
+				if !reopened && let Some(byte_store) = resource_storage.storage() {
+					document.commit_storage_snapshot(byte_store);
+					// Seal the freshly-converted document as the base revision: the conversion is a completed
+					// import, not an in-progress interaction, so retire it into history rather than leaving it in
+					// the hot log (where it would never reach an interaction boundary on a save without edits).
+					document.retire_storage_interaction();
+				}
+			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
@@ -396,6 +427,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// We don't know what can be safely garbage collected
 					return;
 				}
+				if self.pending_gdd_opens > 0 {
+					// A .gdd open is extracting its resources into the cache but isn't in `documents` yet,
+					// so its hashes would look unused. Skip this cycle; GC resumes once the open lands.
+					return;
+				}
 
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
@@ -409,6 +445,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
+					// Also keep resources referenced by the `.gdd` storage anywhere in history (notably proto-node
+					// declaration bytes), which the runtime resource registry doesn't track but the working copy
+					// and `.gdd` export need in the global cache. History-wide, not just the current registry:
+					// an undo drops an interaction's resources from the working registry, but redo still needs them.
+					if let Some(storage) = &document.storage {
+						used_resources.extend(storage.all_referenced_resource_hashes());
+					}
 				}
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
@@ -594,7 +637,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses);
+				self.load_document(new_document, document_id, resource_storage, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::MoveAllPanelTabs {
@@ -731,6 +774,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							document_serialized_content: content,
 						});
 					}
+					FileContent::GddDocument(content) => {
+						let document_path = if path.is_absolute() { Some(path) } else { None };
+						responses.add(PortfolioMessage::OpenGddDocument {
+							document_name: name,
+							document_path,
+							content,
+						});
+					}
 					FileContent::Svg(svg) => {
 						responses.add(PortfolioMessage::OpenSvg { name, svg });
 					}
@@ -756,6 +807,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							document_name: name,
 							document_path: Some(path),
 							document_serialized_content: content,
+						});
+					}
+					FileContent::GddDocument(content) => {
+						// Treat importing a `.gdd` document as opening it (same as the legacy path above).
+						responses.add(PortfolioMessage::OpenGddDocument {
+							document_name: name,
+							document_path: Some(path),
+							content,
 						});
 					}
 					FileContent::Svg(svg) => {
@@ -798,6 +857,66 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_serialized_content,
 				});
 				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::OpenGddDocument {
+				document_name,
+				document_path,
+				content,
+			} => {
+				let document_id = DocumentId(generate_uuid());
+				let Some(store_handle) = resource_storage.store_handle() else {
+					log::error!("Cannot open .gdd: resource storage not initialized");
+					return;
+				};
+				// Suppress resource GC until the open completes: the document's resources are extracted
+				// into the cache before it joins `documents`, so GC would otherwise evict them mid-open.
+				self.pending_gdd_opens += 1;
+				responses.add(open_gdd_document_future(
+					self.working_copy_root.clone(),
+					document_id,
+					document_name,
+					document_path,
+					content,
+					store_handle,
+				));
+			}
+			PortfolioMessage::GddDocumentLoaded {
+				document_id,
+				document_name,
+				document_path,
+				document,
+			} => {
+				self.pending_gdd_opens = self.pending_gdd_opens.saturating_sub(1);
+
+				let Some(mut document) = document.map(|boxed| *boxed) else {
+					// The build failed and already logged; nothing to insert.
+					return;
+				};
+				document.finalize_storage_load();
+				document.set_save_state(true);
+
+				let name = document_name
+					.filter(|name| !name.trim().is_empty())
+					.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
+					.unwrap_or_else(|| DEFAULT_DOCUMENT_NAME.to_string());
+				document.name = self.resolve_document_name(name, None);
+				document.path = document_path;
+
+				// The working copy is already mounted (we opened the .gdd), so skip the async re-mount.
+				self.load_document(document, document_id, resource_storage, responses);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface } => {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Document was closed before its undo/redo rebuild completed; drop the payload.
+					return;
+				};
+				let Some(interface) = interface.map(|boxed| *boxed) else {
+					// The rebuild failed and already logged; leave the live document untouched.
+					return;
+				};
+
+				document.apply_gdd_cursor_rebuild(interface, had_oracle, responses);
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
@@ -944,7 +1063,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.name = self.resolve_document_name(candidate_name, None);
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, responses);
+				self.load_document(document, document_id, resource_storage, responses);
 
 				responses.add(AppWindowMessage::Focus);
 
@@ -1844,6 +1963,12 @@ impl PortfolioMessageHandler {
 		Self { executor, ..Default::default() }
 	}
 
+	/// Set the parent directory under which each document's `Gdd` working copy is mounted. `None`
+	/// mounts in-memory working copies (no durable location configured).
+	pub fn set_working_copy_root(&mut self, root: Option<PathBuf>) {
+		self.working_copy_root = root;
+	}
+
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
 		self.documents.get(&document_id)
 	}
@@ -1941,6 +2066,7 @@ impl PortfolioMessageHandler {
 				Ok(content) => FileContent::Document(content),
 				Err(_) => FileContent::Unsupported,
 			},
+			GDD_FILE_EXTENSION => FileContent::GddDocument(content),
 			"svg" => match String::from_utf8(content) {
 				Ok(content) => FileContent::Svg(content),
 				Err(_) => FileContent::Unsupported,
@@ -1960,7 +2086,7 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
 		let is_new_document = !self.document_ids.contains(&document_id);
 		if is_new_document {
 			self.document_ids.push_back(document_id);
@@ -1987,6 +2113,59 @@ impl PortfolioMessageHandler {
 		if is_new_document {
 			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		}
+
+		// Mount the per-document `Gdd` working copy asynchronously (its container is built off-thread).
+		// The document is already usable; the working copy attaches once the future resolves. With no
+		// configured root the working copy is in-memory, so the mount path still runs uniformly.
+		// Pass the just-loaded runtime network + a resource handle so a reopen can compare the stored
+		// `.gdd` against this legacy load (compare-on-open).
+		let legacy_network = self
+			.documents
+			.get(&document_id)
+			.map(|document| document.network_interface.document_network().clone())
+			.unwrap_or_default();
+		responses.add(Self::mount_document_storage(self.working_copy_root.clone(), document_id, legacy_network, resource_storage.resources()));
+	}
+
+	/// Build the `FutureMessage` that constructs (or reopens) the document's `Gdd` working copy and
+	/// delivers it back via [`PortfolioMessage::DocumentStorageMounted`]. With a configured root the
+	/// working copy lives at `<root>/<id_hex>`; without one it is in-memory.
+	///
+	/// On a *reopen* (existing working copy), the freshly-read `.gdd` is converted back to a runtime
+	/// network and compared against `legacy_network` (the document the user actually loaded) before
+	/// the working copy attaches. This is the dual-write soak's compare-on-open: it validates the
+	/// `.gdd` *read* path (deserialize + hot-log replay), which the in-process `verify_storage_round_trip`
+	/// can't, since that never touches persisted bytes. Legacy stays authoritative; divergence is logged.
+	fn mount_document_storage(
+		working_copy_root: Option<std::path::PathBuf>,
+		document_id: DocumentId,
+		legacy_network: graph_craft::document::NodeNetwork,
+		byte_store: Box<dyn graph_craft::application_io::resource::LoadResource>,
+	) -> Message {
+		let path = working_copy_root.map(|root| root.join(format!("{:x}", document_id.0)));
+		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
+		let peer = graph_storage::PeerId(generate_uuid());
+
+		let future = async move {
+			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {
+				Ok(result) => result,
+				Err(error) => {
+					log::error!("Failed to mount document storage for {document_id:?}: {error}");
+					return Message::NoOp;
+				}
+			};
+
+			if reopened {
+				compare_storage_against_runtime(&gdd, &legacy_network, byte_store.as_ref(), document_id).await;
+			}
+
+			Message::Portfolio(PortfolioMessage::DocumentStorageMounted {
+				document_id,
+				reopened,
+				gdd: Some(gdd),
+			})
+		};
+		future.into()
 	}
 
 	/// Returns an iterator over the open documents in order.
@@ -2150,6 +2329,301 @@ fn display_name_with_fallback(info: &DocumentInfo) -> String {
 		format!("Untitled Document ({:x})", info.id.0)
 	} else {
 		info.name.clone()
+	}
+}
+
+/// Build a document's `Gdd` working copy. With `Some(path)` it opens an existing on-disk working
+/// copy (reopen / autosave recovery) or creates a fresh one bound to `peer`, choosing the backend
+/// per platform: a folder on native, an OPFS directory on web (where `path` is the OPFS directory
+/// name). With `None` it creates a fresh in-memory working copy (tests, headless) that persists
+/// nowhere durable.
+///
+/// Returns the working copy plus whether it was reopened from an existing on-disk working copy
+/// (`true`) versus freshly created (`false`). Only a reopen has independently-read stored state and
+/// an embedded legacy blob worth comparing against the legacy load (compare-on-open).
+async fn build_or_open_working_copy(
+	path: Option<&std::path::Path>,
+	peer: graph_storage::PeerId,
+	document_uuid: u64,
+	version: String,
+) -> Result<(document_format::GddV1, bool), document_format::Error> {
+	use document_container::AnyContainer;
+	use document_format::{GddV1, GddV1Layout};
+
+	let Some(path) = path else {
+		let container = AnyContainer::Memory(document_container::backends::memory::MemoryBackend::new());
+		let gdd = GddV1::create_in(container, GddV1Layout, peer, document_uuid, version.clone(), version).await?;
+		return Ok((gdd, false));
+	};
+
+	#[cfg(not(target_family = "wasm"))]
+	let (container, exists) = {
+		use document_container::backends::folder::FolderBackend;
+		let exists = path.join("manifest.json").is_file();
+		let backend = if exists { FolderBackend::open(path)? } else { FolderBackend::create(path)? };
+		(AnyContainer::Folder(backend), exists)
+	};
+
+	#[cfg(target_family = "wasm")]
+	let (container, exists) = {
+		use document_container::AsyncContainer;
+		use document_container::backends::opfs::OpfsBackend;
+		let directory_name = path
+			.to_str()
+			.ok_or(document_format::Error::Container(document_container::ContainerError::InvalidPath(path.display().to_string())))?;
+		let backend = OpfsBackend::open(directory_name).await?;
+		let exists = backend.exists("manifest.json").await;
+		(AnyContainer::Opfs(backend), exists)
+	};
+
+	let gdd = if exists {
+		GddV1::open_in(container, GddV1Layout).await?
+	} else {
+		GddV1::create_in(container, GddV1Layout, peer, document_uuid, version.clone(), version).await?
+	};
+	Ok((gdd, exists))
+}
+
+/// Build the per-document container for a working copy at `path` (folder native, OPFS web), or an
+/// in-memory container when `path` is `None`. Does not open or create a `Gdd` — just the backend.
+async fn build_per_document_container(path: Option<&std::path::Path>) -> Result<document_container::AnyContainer, document_format::Error> {
+	use document_container::AnyContainer;
+
+	let Some(path) = path else {
+		return Ok(AnyContainer::Memory(document_container::backends::memory::MemoryBackend::new()));
+	};
+
+	#[cfg(not(target_family = "wasm"))]
+	{
+		use document_container::backends::folder::FolderBackend;
+		let backend = if path.join("manifest.json").is_file() {
+			FolderBackend::open(path)?
+		} else {
+			FolderBackend::create(path)?
+		};
+		Ok(AnyContainer::Folder(backend))
+	}
+
+	#[cfg(target_family = "wasm")]
+	{
+		use document_container::backends::opfs::OpfsBackend;
+		let directory_name = path
+			.to_str()
+			.ok_or(document_format::Error::Container(document_container::ContainerError::InvalidPath(path.display().to_string())))?;
+		let backend = OpfsBackend::open(directory_name).await?;
+		Ok(AnyContainer::Opfs(backend))
+	}
+}
+
+/// Build the `FutureMessage` that opens a `.gdd` archive: materialize it into the per-document working
+/// copy, build the runtime from the stored registry, validate it against the embedded legacy blob, and
+/// deliver the finished document via [`PortfolioMessage::GddDocumentLoaded`]. Resource bytes carried in
+/// the archive are extracted into `store_handle` (the app-global cache) so declarations and the runtime
+/// resolve. The registry build is authoritative; the embedded legacy blob is the always-checked oracle
+/// and the fallback if the build fails.
+fn open_gdd_document_future(
+	working_copy_root: Option<std::path::PathBuf>,
+	document_id: DocumentId,
+	document_name: Option<String>,
+	document_path: Option<std::path::PathBuf>,
+	content: Vec<u8>,
+	store_handle: crate::messages::resource_storage::ResourcesHandle,
+) -> Message {
+	let path = working_copy_root.map(|root| root.join(format!("{:x}", document_id.0)));
+
+	let future = async move {
+		let document = build_document_from_gdd(path.as_deref(), &content, &store_handle, document_id).await;
+		Message::Portfolio(PortfolioMessage::GddDocumentLoaded {
+			document_id,
+			document_name,
+			document_path,
+			document: document.map(Box::new),
+		})
+	};
+	future.into()
+}
+
+/// Build the `FutureMessage` that rebuilds a document's interface from its `Gdd` undo/redo cursor. The
+/// cursor already moved and persisted synchronously in the handler; `gdd` is a snapshot clone at that
+/// post-move position. This loads the cursor's declarations, converts the registry back to a runtime
+/// network with full metadata, builds the interface, and delivers it via [`PortfolioMessage::GddUndoRedoRebuilt`]
+/// so the handler can swap it in (preserving transients) and compare against the legacy oracle. `interface`
+/// is `None` on failure (logged here), in which case the handler leaves the live document untouched.
+pub(crate) fn rebuild_gdd_cursor_future(gdd: document_format::GddV1, store_handle: crate::messages::resource_storage::ResourcesHandle, document_id: DocumentId, had_oracle: bool) -> Message {
+	use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::build_interface_from_storage;
+
+	let future = async move {
+		let declarations = gdd.declarations(&store_handle).await;
+		let interface = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
+			Ok((network, node_entries, network_entries)) => match build_interface_from_storage(network, node_entries, network_entries) {
+				Ok(interface) => Some(Box::new(interface)),
+				Err(error) => {
+					log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to build interface: {error}");
+					None
+				}
+			},
+			Err(error) => {
+				log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to convert registry to runtime: {error}");
+				None
+			}
+		};
+
+		Message::Portfolio(PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface })
+	};
+	future.into()
+}
+
+/// Core of the `.gdd` open: archive -> working copy -> `Gdd` -> runtime interface, with the embedded
+/// legacy blob loaded for validation (always compared) and fallback (used if the registry build fails).
+/// Returns the built document, or `None` if neither the registry build nor the legacy fallback worked.
+async fn build_document_from_gdd(
+	path: Option<&std::path::Path>,
+	content: &[u8],
+	store_handle: &impl graph_craft::application_io::resource::ResourceStorage,
+	document_id: DocumentId,
+) -> Option<DocumentMessageHandler> {
+	use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{apply_network_view_settings, build_interface_from_storage, network_ids_from_entries};
+	use document_format::{GddV1, GddV1Layout};
+
+	let container = match build_per_document_container(path).await {
+		Ok(container) => container,
+		Err(error) => {
+			log::error!("Opening .gdd for {document_id:?}: failed to build working copy container: {error}");
+			return None;
+		}
+	};
+
+	let gdd = match GddV1::open_from_archive(content, container, GddV1Layout).await {
+		Ok(gdd) => gdd,
+		Err(error) => {
+			log::error!("Opening .gdd for {document_id:?}: failed to open archive: {error}");
+			return None;
+		}
+	};
+
+	// Extract resource bytes carried in the archive into the global cache so declarations + runtime resolve.
+	match gdd.resource_hashes().await {
+		Ok(hashes) => {
+			for hash in hashes {
+				match gdd.read_resource(&hash).await {
+					Ok(holder) => {
+						store_handle.store(holder.as_slice());
+					}
+					Err(error) => log::error!("Opening .gdd for {document_id:?}: failed to read resource {hash}: {error}"),
+				}
+			}
+		}
+		Err(error) => log::error!("Opening .gdd for {document_id:?}: failed to list resources: {error}"),
+	}
+
+	// Full legacy load of the embedded blob: serves as both the validation oracle and the fallback.
+	let legacy_document = gdd
+		.read_legacy_document()
+		.await
+		.and_then(|holder| String::from_utf8(holder.as_slice().to_vec()).ok())
+		.and_then(|serialized| DocumentMessageHandler::deserialize_document(&document_migration_string_preprocessing(serialized)).ok());
+
+	// Build the runtime from the stored registry (authoritative).
+	let declarations = gdd.declarations(store_handle).await;
+	let interface = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
+		Ok((network, node_entries, network_entries)) => {
+			let network_ids = network_ids_from_entries(&network_entries);
+			match build_interface_from_storage(network, node_entries, network_entries) {
+				Ok(mut interface) => {
+					// Restore the per-network, per-peer view state (node-graph nav + previewing) from
+					// `session.json`; it travels in the archive but isn't in the registry/history.
+					apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
+					Some(interface)
+				}
+				Err(error) => {
+					log::error!("Opening .gdd for {document_id:?}: failed to build interface: {error}");
+					None
+				}
+			}
+		}
+		Err(error) => {
+			log::error!("Opening .gdd for {document_id:?}: failed to convert registry to runtime: {error}");
+			None
+		}
+	};
+
+	// Compare the registry build against the legacy oracle (always, when both are available). Normalize the
+	// benign generic-vs-resolved `call_argument` difference (see `normalize_call_arguments_for_compare`) so
+	// it doesn't flag.
+	if let Some(interface) = interface {
+		if let Some(legacy) = &legacy_document {
+			let mut built = interface.document_network().clone();
+			let mut oracle = legacy.network_interface.document_network().clone();
+			normalize_call_arguments_for_compare(&mut built);
+			normalize_call_arguments_for_compare(&mut oracle);
+			if built != oracle {
+				log::error!(
+					"Open-.gdd divergence for {document_id:?}: registry-built document differs from the embedded legacy blob\n{}",
+					crate::messages::portfolio::document::diff_networks(&oracle, &built)
+				);
+			}
+		}
+		return Some(DocumentMessageHandler::from_storage(interface, gdd, String::new(), None));
+	}
+
+	// Registry build failed: fall back to the embedded legacy document.
+	log::warn!("Opening .gdd for {document_id:?}: registry build failed, falling back to embedded legacy document");
+	if legacy_document.is_none() {
+		log::error!("Opening .gdd for {document_id:?}: no embedded legacy document to fall back to");
+	}
+	legacy_document
+}
+
+/// Compare-on-open: convert the reopened `.gdd`'s stored registry back to a runtime network and diff
+/// it against `legacy_network` (the document the user actually loaded). Validates the `.gdd` read path
+/// against the legacy load. Legacy is authoritative during the soak, so this only logs divergence; it
+/// never swaps the candidate in. Cold-path (runs once per open, off the edit hot path).
+async fn compare_storage_against_runtime(
+	gdd: &document_format::GddV1,
+	legacy_network: &graph_craft::document::NodeNetwork,
+	byte_store: &dyn graph_craft::application_io::resource::LoadResource,
+	document_id: DocumentId,
+) {
+	let declarations = gdd.declarations(byte_store).await;
+	let mut candidate = match gdd.registry().to_runtime_with_metadata(&declarations) {
+		Ok((network, _entries)) => network,
+		Err(error) => {
+			log::error!("Compare-on-open for {document_id:?}: .gdd registry failed to convert to runtime: {error}");
+			return;
+		}
+	};
+
+	// One open/restore path resolves a node's generic `call_argument` (e.g. a layer's inner monitor node's
+	// `T`) to a concrete `Context`, while storage faithfully keeps the authored `T`. That generic-vs-resolved
+	// difference is benign (it's recomputed during compilation), so normalize it on both sides before
+	// comparing to keep the soak signal focused on real drift.
+	let mut legacy = legacy_network.clone();
+	normalize_call_arguments_for_compare(&mut legacy);
+	normalize_call_arguments_for_compare(&mut candidate);
+
+	if candidate != legacy {
+		log::error!(
+			"Compare-on-open divergence for {document_id:?}: the reopened .gdd does not match the legacy load\n{}",
+			crate::messages::portfolio::document::diff_networks(&legacy, &candidate)
+		);
+	}
+}
+
+/// Canonicalize every node's `call_argument` (recursively, including nested networks) so a generic `T`
+/// and its compilation-resolved concrete `Context` compare equal. Storage keeps the authored generic
+/// form, but one load/restore path resolves it to `Context`; that difference is benign for the
+/// compare-on-open soak check. Concrete `call_arguments` other than `Context` are left untouched.
+fn normalize_call_arguments_for_compare(network: &mut graph_craft::document::NodeNetwork) {
+	use graph_craft::Type;
+
+	let context = graph_craft::concrete!(graphene_std::Context);
+	for node in network.nodes.values_mut() {
+		if node.call_argument == context {
+			node.call_argument = Type::Generic(std::borrow::Cow::Borrowed("T"));
+		}
+		if let graph_craft::document::DocumentNodeImplementation::Network(inner) = &mut node.implementation {
+			normalize_call_arguments_for_compare(inner);
+		}
 	}
 }
 

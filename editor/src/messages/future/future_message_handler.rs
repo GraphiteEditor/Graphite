@@ -7,6 +7,11 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 
 use crate::messages::prelude::*;
 
+// Native spawns onto a multi-thread tokio runtime, so the boxed future must be `Send`. Wasm uses
+// `spawn_local` on the single JS thread, where `Send` is unavailable (OPFS/`JsFuture` are `!Send`)
+// and unnecessary. `WasmNotSend` (`Send` on native, no-op on wasm) expresses the input bound on
+// `MessageFuture::new`; the stored trait-object alias still needs a `cfg` split because `Send` is
+// an auto trait usable in a `dyn` bound while `WasmNotSend` is not.
 #[cfg(not(target_family = "wasm"))]
 type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + Send + 'static>>;
 #[cfg(target_family = "wasm")]
@@ -132,7 +137,7 @@ impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandle
 
 #[cfg(not(target_family = "wasm"))]
 fn default_spawner() -> Arc<dyn MessageSpawner> {
-	Arc::new(TokioSpawner::default())
+	Arc::new(TokioSpawner)
 }
 
 #[cfg(target_family = "wasm")]
@@ -140,37 +145,27 @@ fn default_spawner() -> Arc<dyn MessageSpawner> {
 	Arc::new(WasmSpawner)
 }
 
+/// Process-global runtime for editor async work. Held in a `LazyLock` so it lives for the lifetime
+/// of the process and is never dropped: dropping a `tokio::runtime::Runtime` blocks to join its
+/// worker threads, which panics if it happens inside an async context (e.g. a `#[tokio::test]` body
+/// or the desktop event loop). A leaked-for-process runtime sidesteps that entirely.
 #[cfg(not(target_family = "wasm"))]
-struct TokioSpawner {
-	/// Built lazily on first spawn. `multi_thread(1)` lets Tokio manage its own driver.
-	runtime: std::sync::OnceLock<tokio::runtime::Runtime>,
-}
+static EDITOR_ASYNC_RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
+	tokio::runtime::Builder::new_multi_thread()
+		.worker_threads(1)
+		.thread_name("graphite-async")
+		.enable_all()
+		.build()
+		.expect("failed to construct async-message tokio runtime")
+});
 
 #[cfg(not(target_family = "wasm"))]
-impl Default for TokioSpawner {
-	fn default() -> Self {
-		Self { runtime: std::sync::OnceLock::new() }
-	}
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl TokioSpawner {
-	fn runtime(&self) -> &tokio::runtime::Runtime {
-		self.runtime.get_or_init(|| {
-			tokio::runtime::Builder::new_multi_thread()
-				.worker_threads(1)
-				.thread_name("graphite-async")
-				.enable_all()
-				.build()
-				.expect("failed to construct async-message tokio runtime")
-		})
-	}
-}
+struct TokioSpawner;
 
 #[cfg(not(target_family = "wasm"))]
 impl MessageSpawner for TokioSpawner {
 	fn spawn(&self, future: InnerMessageFuture, results: UnboundedSender<Message>, wake: Wake) {
-		self.runtime().spawn(async move {
+		EDITOR_ASYNC_RUNTIME.spawn(async move {
 			let message = future.await;
 			let _ = results.unbounded_send(message);
 			wake();

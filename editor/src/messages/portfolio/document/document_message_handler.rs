@@ -5,7 +5,7 @@ use super::utility_types::network_interface::{self, NodeNetworkInterface, Transa
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
-	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -64,7 +64,8 @@ pub struct DocumentMessageContext<'a> {
 	pub fonts: &'a FontsMessageHandler,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
+#[derive(derivative::Derivative, serde::Serialize, serde::Deserialize, ExtractField)]
+#[derivative(Clone, Debug)]
 #[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================
@@ -91,6 +92,13 @@ pub struct DocumentMessageHandler {
 	/// Resources embedded in the document.
 	#[serde(default, skip_serializing_if = "ResourceMessageHandler::is_empty")]
 	pub resources: ResourceMessageHandler,
+	/// Per-document `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None`
+	/// until the mount future built by `load_document` resolves (the working-copy container is
+	/// constructed asynchronously). Not serialized. A clone shares the same working-copy container
+	/// (`Gdd` holds an `Arc<AnyContainer>`), so a cloned document still reads the live working copy.
+	#[serde(skip, default)]
+	#[derivative(Debug = "ignore")]
+	pub storage: Option<document_format::GddV1>,
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
@@ -172,6 +180,7 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
+			storage: None,
 			collapsed: CollapsedLayers::default(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -396,8 +405,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, resource_storage, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, resource_storage, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -784,7 +793,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Emit the transaction as an explicit StartTransaction ... CommitTransaction pair bracketing the
+				// mutations, rather than `AddTransaction`. `AddTransaction` prepends its Start/Commit as a tight
+				// pair that the dispatcher drains before these sibling mutation messages, so the commit closes
+				// before the layer is added and the storage staging sees an empty diff. Interleaving the pair
+				// around the mutations makes them all siblings drained in order (Start, mutate, Commit), so the
+				// commit observes the paste and stages it.
+				responses.add(DocumentMessage::StartTransaction);
 
 				let layer = graph_modification_utils::new_image_layer(image, layer_node_id, layer_parent, responses);
 
@@ -793,7 +808,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						node_id: layer.to_node(),
 						network_path: Vec::new(),
 						alias: name,
-						skip_adding_history_step: false,
+						// Fold the name into the paste's single transaction so the whole paste is one undo step.
+						skip_adding_history_step: true,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -813,6 +829,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
+
+				responses.add(DocumentMessage::CommitTransaction);
 
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
@@ -851,7 +869,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						node_id: layer.to_node(),
 						network_path: Vec::new(),
 						alias: name,
-						skip_adding_history_step: false,
+						// Fold the name into the paste's single transaction so the whole paste is one undo step.
+						skip_adding_history_step: true,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -985,28 +1004,52 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
-				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
+				let name = format!("{}.{}", self.name.clone(), GDD_FILE_EXTENSION);
 				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
+				// The clone shares the live working-copy container (Arc), so its storage reads the state the
+				// queued AutoSaveActiveDocument just committed.
 				let mut document = self.clone();
 				let resources_load_handle = resource_storage.resources();
+				let export_load_handle = resource_storage.resources();
 
 				responses.add(async move {
 					document.resources.collect_garbage(document.used_resources(false).as_ref());
 					document.resources.embed_resources(resources_load_handle).await;
 
-					let content = document.serialize_document().into_bytes().into();
+					// The legacy .graphite blob, resources embedded inline so it stays self-contained as the .gdd recovery fallback.
+					let legacy_document = document.serialize_document().into_bytes();
+
+					// Export the working copy as a .gdd with the legacy blob embedded; fall back to the bare legacy blob if there is no working copy or the export fails.
+					let content = match &document.storage {
+						Some(storage) => storage
+							.export_to_bytes(
+								document_format::ExportFormat::Xz,
+								document_format::ExportOptions::default(),
+								export_load_handle.as_ref(),
+								Some(&legacy_document),
+							)
+							.await
+							.unwrap_or_else(|error| {
+								log::error!("Save: building .gdd export failed, falling back to legacy .graphite: {error}");
+								legacy_document
+							}),
+						None => {
+							log::warn!("Save: working copy not mounted yet, saving legacy .graphite only");
+							legacy_document
+						}
+					};
 
 					Message::Frontend(FrontendMessage::TriggerSaveDocument {
 						document_id,
 						name,
 						path,
 						folder,
-						content,
+						content: content.into(),
 					})
 				});
 			}
@@ -1252,6 +1295,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
+				// A new undo step is beginning, so the previous interaction's staged hot ops are complete:
+				// retire them into one durable Gdd interaction. This aligns one Gdd interaction to one legacy
+				// undo step (a tool drag fires several `CommitTransaction`s but one `StartTransaction`).
+				self.retire_storage_interaction();
+
 				self.network_interface.start_transaction();
 				let network_interface_clone = self.network_interface.clone();
 				self.document_undo_history.push_back(network_interface_clone);
@@ -1281,6 +1329,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
+
+				// Stage this commit into the `Gdd` working copy. Retirement into a durable interaction happens
+				// at the undo-step boundary (`StartTransaction`), so several commits in one user action
+				// coalesce into one undo unit. Legacy snapshot undo stays authoritative.
+				if let Some(byte_store) = resource_storage.storage() {
+					self.commit_storage_snapshot(byte_store);
+				}
+
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
@@ -1707,6 +1763,40 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Build a document handler from a `.gdd` working copy: the runtime `interface` rebuilt from the
+	/// stored registry plus the mounted `Gdd`. The caller converts the registry to `interface`; this
+	/// restores the document-level `ui::doc::*` settings and resource registry and takes ownership of
+	/// the working copy. Post-load fixups (`load_structure`, validation, graph run) are the loader's job.
+	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, name: String, path: Option<std::path::PathBuf>) -> Self {
+		let mut document = Self {
+			network_interface: interface,
+			name,
+			path,
+			..Default::default()
+		};
+
+		document.apply_stored_document_settings(&storage.view_settings().clone());
+		match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => document.resources.registry = resource_registry,
+			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
+		}
+		document.storage = Some(storage);
+
+		document
+	}
+
+	/// Post-load fixups for a document built from storage: per-node input/output metadata validation
+	/// and the layer-structure rebuild. Mirrors the essential part of the legacy load path; the
+	/// old-file layer-stacking realignment is skipped (a current-format `.gdd` doesn't need it).
+	pub fn finalize_storage_load(&mut self) {
+		for (node_id, node, path) in self.network_interface.document_network().clone().recursive_nodes() {
+			self.network_interface.validate_input_metadata(node_id, node, &path);
+			self.network_interface.validate_output_names(node_id, node, &path);
+		}
+
+		self.network_interface.load_structure();
+	}
+
 	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
 	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
 		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
@@ -1880,6 +1970,274 @@ impl DocumentMessageHandler {
 	/// Empty when the selection lives in the root document network.
 	pub fn selection_network_path(&self) -> &[NodeId] {
 		&self.selection_network_path
+	}
+
+	/// Retire the pending staged hot ops (the current interaction) into durable Gdd history as one undo
+	/// unit. Called at each undo-step boundary (a new `StartTransaction`) and before undo/redo, so the
+	/// per-`CommitTransaction` staging coalesces into one retired interaction aligned with the legacy step.
+	pub(crate) fn retire_storage_interaction(&mut self) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.retire_pending_interaction() {
+			log::error!("Storage interaction retirement failed: {error}");
+		}
+	}
+
+	/// Stage the runtime network into the document's `Gdd` working copy at each `CommitTransaction`.
+	/// No-op while the working copy is still unmounted (its container is built asynchronously on
+	/// document open); the mount picks up the current runtime state once it attaches. The staged hot ops
+	/// are retired into durable history by [`retire_storage_interaction`](Self::retire_storage_interaction) at
+	/// undo-step boundaries. Proto-node declaration bytes are persisted into `byte_store` (the app-global
+	/// resource cache).
+	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView};
+
+		if self.storage.is_none() {
+			return;
+		}
+
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::collect_network_view_settings;
+
+		let network = self.network_interface.document_network().clone();
+		let view = StorageMetadataView::new(&self.network_interface);
+
+		// Per-network view state (node-graph nav + previewing) is per-peer too, so collect it (keyed by the
+		// stable `NetworkId` the storage layer resolves) for `session.json`. Computed before the mutable
+		// `storage` borrow below.
+		let network_view_settings = self
+			.storage
+			.as_ref()
+			.and_then(|storage| storage.network_ids(&network, &view).ok())
+			.map(|network_ids| collect_network_view_settings(&self.network_interface, &network_ids));
+
+		// Per-peer view settings (PTZ, rulers, ...) persist in `session.json`, not the registry, so they
+		// stay out of the CRDT/history (not undoable, not synced, may differ per viewer).
+		let view_settings = DocumentSettings {
+			document_ptz: &self.document_ptz,
+			render_mode: &self.render_mode,
+			overlays_visibility: &self.overlays_visibility_settings,
+			rulers_visible: self.rulers_visible,
+			snapping_state: &self.snapping_state,
+			collapsed: &self.collapsed,
+		}
+		.to_view_map();
+
+		// Serialize the legacy document from the same `self` state captured above, so the embedded
+		// blob and the registry snapshot describe one consistent document (no interleaved edit).
+		let legacy_document = self.serialize_document();
+
+		// `view` borrows disjoint `self` fields, so the mutable `storage` borrow is independent.
+		let storage = self.storage.as_mut().expect("checked present above");
+		// Stage into the working copy without retiring: a tool drag fires several `CommitTransaction`s
+		// but is one legacy undo step, so the deltas accumulate as hot ops and coalesce into one retired
+		// interaction at the next undo-step boundary (`retire_pending_interaction`).
+		if let Err(error) = storage.stage_runtime_snapshot(&network, &view, &self.resources.registry, byte_store) {
+			log::error!("Storage snapshot staging failed: {error}");
+			return;
+		}
+
+		if let Err(error) = storage.set_view_settings(view_settings) {
+			log::error!("Persisting view settings failed: {error}");
+		}
+
+		if let Some(network_view_settings) = network_view_settings
+			&& let Err(error) = storage.set_network_view_settings(network_view_settings)
+		{
+			log::error!("Persisting per-network view settings failed: {error}");
+		}
+
+		// Dual-write soak: embed the legacy `.graphite` bytes inside the `.gdd` working copy so the new
+		// format can be validated against (and recovered from) the old one on open.
+		if let Err(error) = storage.store_legacy_document(legacy_document.as_bytes()) {
+			log::error!("Embedding legacy document into working copy failed: {error}");
+		}
+
+		#[cfg(debug_assertions)]
+		self.verify_storage_round_trip(&network, &view);
+	}
+
+	/// Restore the per-peer view settings persisted in `session.json` (the `ui::doc::*`-keyed
+	/// `view_settings` map) into the runtime handler fields. Each setting is applied only if present and
+	/// decodable; missing or undecodable keys leave the current field untouched. Inverse of the view-
+	/// settings half of `commit_storage_snapshot`; used when the `.gdd` is the load source.
+	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
+		use graph_storage::attr::session::doc;
+
+		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
+			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())
+		}
+
+		if let Some(value) = decode(view_settings, doc::PTZ) {
+			self.document_ptz = value;
+		}
+		if let Some(value) = decode(view_settings, doc::RENDER_MODE) {
+			self.render_mode = value;
+		}
+		if let Some(value) = decode(view_settings, doc::OVERLAYS) {
+			self.overlays_visibility_settings = value;
+		}
+		if let Some(value) = decode(view_settings, doc::RULERS_VISIBLE) {
+			self.rulers_visible = value;
+		}
+		if let Some(value) = decode(view_settings, doc::SNAPPING) {
+			self.snapping_state = value;
+		}
+		if let Some(value) = decode(view_settings, doc::COLLAPSED) {
+			self.collapsed = value;
+		}
+	}
+
+	/// Debug-only: stored registry should equal a fresh `from_runtime`, and a `to_runtime` of the
+	/// stored registry should equal the original network. Panics on drift so the dual-write soak
+	/// fails loud in dev (and in tests); release builds skip this entirely and autosave never crashes.
+	#[cfg(debug_assertions)]
+	fn verify_storage_round_trip(
+		&self,
+		network: &graph_craft::document::NodeNetwork,
+		view: &crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::StorageMetadataView,
+	) {
+		let Some(storage) = &self.storage else { return };
+		let peer = storage.session().peer();
+
+		let conversion = graph_storage::Registry::convert_from_runtime(network, view, &self.resources.registry, peer).expect("storage round-trip: from_runtime failed");
+		let target = &conversion.registry;
+		let declarations = conversion.declarations().expect("storage round-trip: declaration rebuild failed");
+
+		let stored = storage.registry();
+		assert!(stored.value_equal(target), "storage round-trip: registry value drift after commit\n{}", diff_registries(stored, target));
+		assert!(stored.order_consistent(target), "storage round-trip: timestamp order inconsistent between stored and target");
+
+		let (round_tripped, _entries) = stored.to_runtime_with_metadata(&declarations).expect("storage round-trip: to_runtime failed");
+		assert!(
+			&round_tripped == network,
+			"storage round-trip: network drift after to_runtime\n{}",
+			diff_networks(network, &round_tripped)
+		);
+	}
+
+	/// Move the `Gdd` undo/redo cursor (the authoritative path) and spawn the async future that rebuilds the
+	/// interface from the cursor and swaps it in. Synchronous: flushes the open interaction, moves the cursor
+	/// (persisting `session.json`), then clones the post-move `Gdd` and queues the rebuild. `had_oracle`
+	/// records whether the legacy snapshot already applied, so the completion can compare; it travels with
+	/// the spawned message. Returns whether the cursor moved (so callers know a rebuild is pending).
+	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, resource_storage: &ResourceStorageMessageHandler, had_oracle: bool, undo: bool, responses: &mut VecDeque<Message>) -> bool {
+		// Flush any open interaction into retired history first: undo/redo operate on the retired chain, so
+		// the most recent edit must be a committed interaction before the cursor moves.
+		self.retire_storage_interaction();
+
+		let Some(storage) = self.storage.as_mut() else { return false };
+
+		let moved = if undo {
+			if !storage.can_undo() {
+				return false;
+			}
+			storage.undo().map(|_| ())
+		} else {
+			if !storage.can_redo() {
+				return false;
+			}
+			storage.redo().map(|_| ())
+		};
+		if let Err(error) = moved {
+			log::error!("Storage undo/redo cursor move failed: {error}");
+			return false;
+		}
+
+		let Some(store_handle) = resource_storage.store_handle() else {
+			log::error!("Storage undo/redo: resource storage not initialized; cannot rebuild interface");
+			return false;
+		};
+
+		// Clone the post-move `Gdd` (a `Session` snapshot at the new cursor; the container is `Arc`-shared)
+		// so the `'static` rebuild future reads the rewound state while the live document keeps its cursor.
+		let gdd = storage.clone();
+		responses.add(crate::messages::portfolio::portfolio_message_handler::rebuild_gdd_cursor_future(
+			gdd,
+			store_handle,
+			document_id,
+			had_oracle,
+		));
+		true
+	}
+
+	/// Swap in the interface rebuilt from the `Gdd` cursor (authoritative), preserving transient state the
+	/// registry doesn't model (navigation metadata, resolved types) by copying it from the current live
+	/// interface. When `had_oracle` is set (the legacy snapshot applied synchronously), debug builds compare
+	/// the rebuilt network against the legacy-restored one and log drift before overwriting. Always
+	/// overwrites: the `Gdd` cursor is the source of truth, including the across-reopen case where no legacy
+	/// snapshot exists.
+	pub(crate) fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, responses: &mut VecDeque<Message>) {
+		// The registry models document content only, so the rebuilt interface has default view and selection
+		// state. Carry the user's current view, selection, and resolved types from the live interface so undo
+		// changes the document without moving the camera, clearing the selection, or jumping the node graph.
+		rebuilt.copy_all_transient_view_state(&self.network_interface);
+		std::mem::swap(&mut rebuilt.resolved_types, &mut self.network_interface.resolved_types);
+		rebuilt.load_structure();
+
+		#[cfg(debug_assertions)]
+		if had_oracle {
+			self.compare_rebuild_against_legacy(&rebuilt);
+		}
+
+		self.network_interface = rebuilt;
+
+		// The live `Gdd` cursor's registry should match a fresh `from_runtime` of the now-swapped interface.
+		#[cfg(debug_assertions)]
+		self.verify_storage_cursor_matches_runtime();
+
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
+	}
+
+	/// Debug-only: the rebuilt network should equal the legacy-restored one. Logs drift (does not panic) so
+	/// cursor/conversion bugs surface in dev without crashing the live editor while the path hardens.
+	#[cfg(debug_assertions)]
+	fn compare_rebuild_against_legacy(&self, rebuilt: &NodeNetworkInterface) {
+		let legacy = self.network_interface.document_network();
+		let candidate = rebuilt.document_network();
+		if candidate != legacy {
+			log::error!("undo/redo rebuild diverged from the legacy snapshot\n{}", diff_networks(legacy, candidate));
+			#[cfg(test)]
+			panic!()
+		}
+	}
+
+	/// Debug-only: after a `Gdd` cursor move, the cursor's registry should equal a fresh `from_runtime`
+	/// of the current (legacy-restored) interface. Logs drift (see the call site for why it does not
+	/// panic) so cursor bugs surface in dev without crashing the editor.
+	#[cfg(debug_assertions)]
+	fn verify_storage_cursor_matches_runtime(&self) {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::StorageMetadataView;
+
+		let Some(storage) = &self.storage else { return };
+		let peer = storage.session().peer();
+
+		let network = self.network_interface.document_network().clone();
+		let view = StorageMetadataView::new(&self.network_interface);
+		let Ok(mut conversion) = graph_storage::Registry::convert_from_runtime(&network, &view, &self.resources.registry, peer) else {
+			log::error!("undo/redo shadow: from_runtime failed");
+			return;
+		};
+
+		let stored = storage.registry();
+
+		// The runtime keeps resources alive while they're referenced by undo/redo history (so legacy redo
+		// can restore them), but the `Gdd` cursor reverts the interaction's `AddResource`. So a resource the
+		// runtime carries which the cursor dropped is expected, not drift, as long as it's history-only
+		// (not referenced by the current network). Drop those from the conversion before comparing.
+		let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
+		conversion.registry.resources.retain(|id, _| stored.resources.contains_key(id) || current_resources.contains(id));
+
+		if !stored.value_equal(&conversion.registry) {
+			// Logged, not panicked: any remaining drift is a real cursor or conversion bug to triage, but
+			// the shadow must not crash the live editor while we harden it toward a hard panic.
+			log::error!(
+				"undo/redo shadow: cursor registry diverged from the restored interface\n{}",
+				diff_registries(stored, &conversion.registry)
+			);
+		}
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -2159,13 +2517,23 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(previous_network) = self.undo(viewport, responses) else { return };
+	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
+		// Apply the legacy snapshot synchronously so its `VecDeque` stays consistent and can serve as the
+		// rebuild's oracle. The `Gdd` cursor then moves + persists and spawns the async rebuild that becomes
+		// authoritative, overwriting the live interface when it lands. When no legacy snapshot applied (e.g.
+		// an across-reopen undo where the legacy stack is empty but the persisted `Gdd` cursor can still
+		// move), the rebuild overwrites with no comparison.
+		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
+			self.document_redo_history.push_back(previous_network);
+			if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				self.document_redo_history.pop_front();
+			}
+			true
+		} else {
+			false
+		};
 
-		self.document_redo_history.push_back(previous_network);
-		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			self.document_redo_history.pop_front();
-		}
+		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
 	}
 
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
@@ -2195,14 +2563,20 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
-		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
-		let Some(previous_network) = self.redo(viewport, responses) else { return };
+	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
+		// Mirror `undo_with_history`: apply the legacy snapshot synchronously (oracle), then move the `Gdd`
+		// cursor and spawn the authoritative async rebuild.
+		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
+			self.document_undo_history.push_back(previous_network);
+			if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				self.document_undo_history.pop_front();
+			}
+			true
+		} else {
+			false
+		};
 
-		self.document_undo_history.push_back(previous_network);
-		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			self.document_undo_history.pop_front();
-		}
+		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
@@ -3546,6 +3920,240 @@ impl DocumentMessageHandler {
 			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
 		}
 		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
+	}
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn diff_registries(stored: &graph_storage::Registry, target: &graph_storage::Registry) -> String {
+	use std::fmt::Write;
+	let mut out = String::new();
+
+	let stored_node_ids: std::collections::BTreeSet<_> = stored.node_instances.keys().copied().collect();
+	let target_node_ids: std::collections::BTreeSet<_> = target.node_instances.keys().copied().collect();
+	let missing_nodes: Vec<_> = target_node_ids.difference(&stored_node_ids).collect();
+	let extra_nodes: Vec<_> = stored_node_ids.difference(&target_node_ids).collect();
+	let shared_node_diffs: Vec<_> = stored_node_ids
+		.intersection(&target_node_ids)
+		.filter(|id| !stored.node_instances[id].value_equal(&target.node_instances[id]))
+		.collect();
+
+	let stored_network_ids: std::collections::BTreeSet<_> = stored.networks.keys().copied().collect();
+	let target_network_ids: std::collections::BTreeSet<_> = target.networks.keys().copied().collect();
+	let missing_networks: Vec<_> = target_network_ids.difference(&stored_network_ids).collect();
+	let extra_networks: Vec<_> = stored_network_ids.difference(&target_network_ids).collect();
+	let shared_network_diffs: Vec<_> = stored_network_ids
+		.intersection(&target_network_ids)
+		.filter(|id| !stored.networks[id].value_equal(&target.networks[id]))
+		.collect();
+
+	let _ = writeln!(out, "  nodes:    stored={} target={}", stored_node_ids.len(), target_node_ids.len());
+	if !missing_nodes.is_empty() {
+		let _ = writeln!(out, "    missing from stored: {missing_nodes:?}");
+	}
+	if !extra_nodes.is_empty() {
+		let _ = writeln!(out, "    extra in stored:     {extra_nodes:?}");
+	}
+	if !shared_node_diffs.is_empty() {
+		let _ = writeln!(out, "    differing payloads:  {shared_node_diffs:?}");
+		for id in &shared_node_diffs {
+			let stored_node = &stored.node_instances[id];
+			let target_node = &target.node_instances[id];
+			let _ = writeln!(out, "      node {id}:");
+			diff_node(&mut out, stored_node, target_node);
+		}
+	}
+
+	let _ = writeln!(out, "  networks: stored={} target={}", stored_network_ids.len(), target_network_ids.len());
+	if !missing_networks.is_empty() {
+		let _ = writeln!(out, "    missing from stored: {missing_networks:?}");
+	}
+	if !extra_networks.is_empty() {
+		let _ = writeln!(out, "    extra in stored:     {extra_networks:?}");
+	}
+	if !shared_network_diffs.is_empty() {
+		let _ = writeln!(out, "    differing payloads:  {shared_network_diffs:?}");
+		for id in &shared_network_diffs {
+			let stored_network = &stored.networks[id];
+			let target_network = &target.networks[id];
+			let _ = writeln!(out, "      network {id}:");
+			diff_network(&mut out, stored_network, target_network);
+		}
+	}
+
+	let stored_resources: std::collections::BTreeSet<_> = stored.resources.keys().copied().collect();
+	let target_resources: std::collections::BTreeSet<_> = target.resources.keys().copied().collect();
+	let missing_resources: Vec<_> = target_resources.difference(&stored_resources).collect();
+	let extra_resources: Vec<_> = stored_resources.difference(&target_resources).collect();
+	if !missing_resources.is_empty() || !extra_resources.is_empty() {
+		let _ = writeln!(out, "  resources: stored={} target={}", stored_resources.len(), target_resources.len());
+		if !missing_resources.is_empty() {
+			let _ = writeln!(out, "    missing from stored: {missing_resources:?}");
+		}
+		if !extra_resources.is_empty() {
+			let _ = writeln!(out, "    extra in stored:     {extra_resources:?}");
+		}
+	}
+
+	if stored.attributes != target.attributes {
+		let stored_keys: std::collections::BTreeSet<_> = stored.attributes.keys().collect();
+		let target_keys: std::collections::BTreeSet<_> = target.attributes.keys().collect();
+		let _ = writeln!(out, "  document attributes differ: stored_keys={stored_keys:?} target_keys={target_keys:?}");
+	}
+
+	out
+}
+
+#[cfg(debug_assertions)]
+fn diff_node(out: &mut String, stored: &graph_storage::Node, target: &graph_storage::Node) {
+	use std::fmt::Write;
+
+	if stored.implementation() != target.implementation() {
+		let _ = writeln!(out, "        implementation: stored={:?} target={:?}", stored.implementation(), target.implementation());
+	}
+	if stored.network() != target.network() {
+		let _ = writeln!(out, "        network back-pointer: stored={} target={}", stored.network(), target.network());
+	}
+
+	let stored_inputs = stored.inputs();
+	let target_inputs = target.inputs();
+	if stored_inputs.len() != target_inputs.len() {
+		let _ = writeln!(out, "        inputs.len: stored={} target={}", stored_inputs.len(), target_inputs.len());
+	}
+	for (i, (s, t)) in stored_inputs.iter().zip(target_inputs.iter()).enumerate() {
+		if s != t {
+			let value_differs = s.input != t.input;
+			let timestamp_differs = s.timestamp != t.timestamp;
+			let _ = writeln!(out, "        input[{i}]: value_differs={value_differs} timestamp_differs={timestamp_differs}");
+			if value_differs {
+				let _ = writeln!(out, "          stored.value={:?}\n          target.value={:?}", s.input, t.input);
+			}
+			if s.attributes != t.attributes {
+				diff_attributes(out, &format!("        input[{i}].attributes"), &s.attributes, &t.attributes);
+			}
+		}
+	}
+
+	if stored.attributes() != target.attributes() {
+		diff_attributes(out, "        attributes", stored.attributes(), target.attributes());
+	}
+}
+
+#[cfg(debug_assertions)]
+fn diff_network(out: &mut String, stored: &graph_storage::Network, target: &graph_storage::Network) {
+	use std::fmt::Write;
+
+	if stored.exports.len() != target.exports.len() {
+		let _ = writeln!(out, "        exports.len: stored={} target={}", stored.exports.len(), target.exports.len());
+	}
+	for (i, (s, t)) in stored.exports.iter().zip(target.exports.iter()).enumerate() {
+		if s != t {
+			let target_differs = s.target != t.target;
+			let timestamp_differs = s.timestamp != t.timestamp;
+			let _ = writeln!(out, "        export[{i}]: target_differs={target_differs} timestamp_differs={timestamp_differs}");
+			if target_differs {
+				let _ = writeln!(out, "          stored.target={:?}\n          target.target={:?}", s.target, t.target);
+			}
+		}
+	}
+
+	if stored.attributes != target.attributes {
+		diff_attributes(out, "        attributes", &stored.attributes, &target.attributes);
+	}
+}
+
+#[cfg(debug_assertions)]
+fn diff_attributes(out: &mut String, label: &str, stored: &graph_storage::Attributes, target: &graph_storage::Attributes) {
+	use std::fmt::Write;
+
+	let stored_keys: std::collections::BTreeSet<_> = stored.keys().collect();
+	let target_keys: std::collections::BTreeSet<_> = target.keys().collect();
+	let missing: Vec<_> = target_keys.difference(&stored_keys).collect();
+	let extra: Vec<_> = stored_keys.difference(&target_keys).collect();
+	let differing: Vec<_> = stored_keys.intersection(&target_keys).filter(|k| stored.get(**k) != target.get(**k)).collect();
+
+	let _ = writeln!(out, "{label}: missing_from_stored={missing:?} extra_in_stored={extra:?} differing_values={differing:?}");
+}
+
+/// Human-readable summary of how two networks differ (exports, node set, per-node payloads, scope
+/// injections). Used by the debug-only `verify_storage_round_trip` and by compare-on-open, which runs
+/// in release too, so this is not debug-gated.
+pub(crate) fn diff_networks(expected: &graph_craft::document::NodeNetwork, actual: &graph_craft::document::NodeNetwork) -> String {
+	use std::fmt::Write;
+	let mut out = String::new();
+
+	if expected.exports != actual.exports {
+		let _ = writeln!(out, "  exports differ: expected={} actual={}", expected.exports.len(), actual.exports.len());
+		for (i, (exp, act)) in expected.exports.iter().zip(actual.exports.iter()).enumerate() {
+			if exp != act {
+				let _ = writeln!(out, "    [{i}] expected={exp:?}\n        actual=  {act:?}");
+			}
+		}
+	}
+
+	let expected_ids: std::collections::BTreeSet<_> = expected.nodes.keys().copied().collect();
+	let actual_ids: std::collections::BTreeSet<_> = actual.nodes.keys().copied().collect();
+	let missing: Vec<_> = expected_ids.difference(&actual_ids).collect();
+	let extra: Vec<_> = actual_ids.difference(&expected_ids).collect();
+	let differing: Vec<_> = expected_ids.intersection(&actual_ids).filter(|id| expected.nodes.get(id) != actual.nodes.get(id)).collect();
+
+	if !missing.is_empty() || !extra.is_empty() || !differing.is_empty() {
+		let _ = writeln!(out, "  nodes: expected={} actual={}", expected_ids.len(), actual_ids.len());
+		if !missing.is_empty() {
+			let _ = writeln!(out, "    missing from actual: {missing:?}");
+		}
+		if !extra.is_empty() {
+			let _ = writeln!(out, "    extra in actual:     {extra:?}");
+		}
+		if !differing.is_empty() {
+			let _ = writeln!(out, "    differing payloads:  {differing:?}");
+			for id in &differing {
+				if let (Some(exp), Some(act)) = (expected.nodes.get(id), actual.nodes.get(id)) {
+					let _ = writeln!(out, "    node {id}:");
+					diff_document_node(&mut out, exp, act);
+				}
+			}
+		}
+	}
+
+	if expected.scope_injections != actual.scope_injections {
+		let _ = writeln!(out, "  scope_injections differ");
+	}
+
+	out
+}
+
+/// Field-level diff between two runtime `DocumentNode`s with the same ID, so the compare-on-open log
+/// names *which* field diverged rather than just the node ID. `original_location` is `#[serde(skip)]`
+/// and recomputed at load, so it's a likely culprit for a payload mismatch that doesn't affect behavior.
+fn diff_document_node(out: &mut String, expected: &graph_craft::document::DocumentNode, actual: &graph_craft::document::DocumentNode) {
+	use std::fmt::Write;
+
+	if expected.inputs != actual.inputs {
+		let _ = writeln!(out, "      inputs differ (len expected={} actual={})", expected.inputs.len(), actual.inputs.len());
+		for (i, (e, a)) in expected.inputs.iter().zip(actual.inputs.iter()).enumerate() {
+			if e != a {
+				let _ = writeln!(out, "        input[{i}]: expected={e:?}\n                   actual=  {a:?}");
+			}
+		}
+	}
+	if expected.call_argument != actual.call_argument {
+		let _ = writeln!(out, "      call_argument: expected={:?} actual={:?}", expected.call_argument, actual.call_argument);
+	}
+	if expected.implementation != actual.implementation {
+		let _ = writeln!(out, "      implementation: expected={:?} actual={:?}", expected.implementation, actual.implementation);
+	}
+	if expected.visible != actual.visible {
+		let _ = writeln!(out, "      visible: expected={} actual={}", expected.visible, actual.visible);
+	}
+	if expected.skip_deduplication != actual.skip_deduplication {
+		let _ = writeln!(out, "      skip_deduplication: expected={} actual={}", expected.skip_deduplication, actual.skip_deduplication);
+	}
+	if expected.context_features != actual.context_features {
+		let _ = writeln!(out, "      context_features: expected={:?} actual={:?}", expected.context_features, actual.context_features);
+	}
+	if expected.original_location != actual.original_location {
+		let _ = writeln!(out, "      original_location differs (recomputed at load, not stored):");
+		let _ = writeln!(out, "        expected={:?}\n        actual=  {:?}", expected.original_location, actual.original_location);
 	}
 }
 
