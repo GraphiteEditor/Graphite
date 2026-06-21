@@ -77,6 +77,10 @@ pub fn target_dir() -> PathBuf {
 	}
 }
 
+pub fn bin_dir() -> PathBuf {
+	target_dir().join("cargo-run").join("bin")
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
 	#[error("One or more requirements were not met")]

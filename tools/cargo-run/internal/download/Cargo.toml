@@ -1,0 +1,13 @@
+[package]
+name = "cargo-run-internal-download"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+cargo-run = { path = "../.." }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+sha2 = { version = "0.10" }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = { version = "0.4", default-features = false }

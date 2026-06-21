@@ -29,11 +29,11 @@ fn main() -> ExitCode {
 	}
 }
 
-pub struct WatchGuard {
+struct WatchGuard {
 	_debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
 }
 
-pub fn watch(steps: impl IntoIterator<Item = Expression>) -> Result<WatchGuard, Error> {
+fn watch(steps: impl IntoIterator<Item = Expression>) -> Result<WatchGuard, Error> {
 	let steps: Vec<Expression> = steps.into_iter().collect();
 	let root = std::env::current_dir()
 		.and_then(|p| p.canonicalize())

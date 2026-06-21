@@ -4,6 +4,8 @@ use std::io::IsTerminal;
 use crate::cmd::prelude::*;
 use crate::*;
 
+mod wasm_opt;
+
 #[derive(Default, Clone)]
 pub struct Requirement {
 	command: &'static str,
@@ -45,6 +47,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			args: &["--version"],
 			name: "Wasm Opt",
 			version: Some(">=130"),
+			install: wasm_opt::install_action(),
 			skip: Some(&|task| {
 				matches!(task.target, Target::Cli)
 					|| match task.profile {
@@ -193,15 +196,19 @@ pub fn check(task: &Task) -> Result<(), Error> {
 
 	if !installable.is_empty() {
 		eprintln!();
-		eprintln!("The following can be installed automatically:");
+		eprintln!("The following can be resolved automatically:");
 		for dep in &installable {
-			eprintln!(" {}: {}", dep.name, dep.install.description());
+			match &dep.install {
+				InstallAction::Command(cmd) => eprintln!("  - {}: {}", dep.name, cmd),
+				InstallAction::Expression { description, .. } => eprintln!("  - {description}"),
+				InstallAction::None => unreachable!(),
+			}
 		}
 		eprintln!();
 		if installable.len() == 1 {
-			eprint!("Install it now? [Y/n] ");
+			eprint!("Install it now? [y/N] ");
 		} else {
-			eprint!("Install them now? [Y/n] ");
+			eprint!("Install them now? [y/N] ");
 		}
 
 		let mut input = String::new();
@@ -209,34 +216,30 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		let input = input.trim();
 
 		if input.eq_ignore_ascii_case("y") || input.eq_ignore_ascii_case("yes") {
-			let mut successfully_installed = Vec::new();
-
-			for (i, dep) in installable.iter().enumerate() {
+			for dep in installable.into_iter() {
 				eprintln!("Installing {}...", dep.name);
 				match &dep.install {
 					InstallAction::Command(install_cmd) => {
 						let parts: Vec<&str> = install_cmd.split_whitespace().collect();
 						let expr = cmd(parts[0], parts[1..].iter().copied()).unchecked();
 						match Expression::run(&expr) {
-							Ok(output) if output.status.success() => successfully_installed.push(i),
-							Ok(_) => eprintln!("Failed to install {}", dep.name),
+							Ok(output) if !output.status.success() => {
+								let stderr = String::from_utf8_lossy(&output.stderr);
+								failures.push(format!("{} installation command failed: {}", dep.name, stderr.trim()));
+							}
 							Err(e) => return Err(Error::Command(e)),
+							_ => {}
 						}
 					}
-					InstallAction::Function { function, .. } => {
-						if let Err(e) = function() {
+					InstallAction::Expression { expression, .. } => {
+						if let Err(e) = expression.clone().run() {
+							failures.push(format!("{}: failed to install ({e})", dep.name));
 							eprintln!("{e}");
 							eprintln!("Failed to install {}", dep.name);
-						} else {
-							successfully_installed.push(i);
 						}
 					}
 					InstallAction::None => unreachable!(),
 				}
-			}
-
-			for i in successfully_installed.into_iter().rev() {
-				installable.remove(i);
 			}
 		}
 	}
@@ -249,7 +252,7 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		}
 	}
 
-	if (!installable.is_empty() || !failures.is_empty()) && is_interactive {
+	if (!failures.is_empty()) && is_interactive {
 		eprintln!();
 		eprintln!("Continue without resolving these requirements? [y/N]");
 
@@ -257,7 +260,7 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		std::io::stdin().read_line(&mut input).map_err(|e| Error::Io(e, "Failed to read from stdin".into()))?;
 		let input = input.trim();
 
-		if input.eq_ignore_ascii_case("n") || input.eq_ignore_ascii_case("no") {
+		if !input.eq_ignore_ascii_case("y") && !input.eq_ignore_ascii_case("yes") {
 			return Err(Error::RequirementsNotMet);
 		}
 	}
@@ -300,24 +303,15 @@ enum InstallAction {
 	#[default]
 	None,
 	Command(&'static str),
-	#[expect(dead_code)] // TODO: Remove after followup pr landed
-	Function {
-		description: &'static str,
-		function: &'static dyn Fn() -> Result<(), Error>,
+	Expression {
+		description: String,
+		expression: Expression,
 	},
 }
 
 impl InstallAction {
 	fn is_some(&self) -> bool {
 		!matches!(self, InstallAction::None)
-	}
-
-	fn description(&self) -> &'static str {
-		match self {
-			InstallAction::None => "",
-			InstallAction::Command(cmd) => cmd,
-			InstallAction::Function { description, .. } => description,
-		}
 	}
 }
 
