@@ -15,8 +15,12 @@ use rand_chacha::ChaCha8Rng;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
+use rendering::usvg_utils::extract_graphite_gradient_stops;
+use rendering::usvg_utils::{ParsedSvgGroup, ParsedSvgNode, extract_usvg_node, extract_usvg_path};
 use std::fmt::Debug;
 use std::hash::Hash;
+use vector_types::vector::PointId;
+use vector_types::{Subpath, Vector};
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -224,6 +228,122 @@ pub fn mask(
 			Some(row)
 		})
 		.collect()
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[node_macro::node(category("Raster"), path(core_types::vector))]
+pub fn vectorize(_ctx: impl Ctx, image: List<Raster<CPU>>) -> List<Vector> {
+	use visioncortex::PathSimplifyMode;
+	use vtracer::{ColorImage, ColorMode, Config, Hierarchical, convert};
+
+	image
+		.into_iter()
+		.map(|row| {
+			// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let image_data = row.element();
+			let color_image = ColorImage {
+				width: image_data.width() as usize,
+				height: image_data.height() as usize,
+				pixels: image_data.to_flat_u8().0,
+			};
+			let config: Config = Config {
+				color_mode: ColorMode::Color,
+				hierarchical: Hierarchical::Stacked,
+				filter_speckle: 4,
+				color_precision: 6,
+				layer_difference: 16,
+				mode: PathSimplifyMode::Spline,
+				corner_threshold: 60,
+				length_threshold: 4.,
+				max_iterations: 10,
+				splice_threshold: 45,
+				path_precision: Some(6),
+			};
+
+			let vectorized_image = convert(color_image, config).expect("failed to obtain an SvgFile from vtracer.");
+			let image_svg = vectorized_image.to_string();
+			let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
+				Ok(t) => t,
+				Err(e) => {
+					// TODO: use proper error statements
+					panic!("Failed to create a usvg tree:\n{e}");
+				}
+			};
+			// println!("vectorized_image: {}", image_svg);
+
+			let mut subpaths: Vec<Subpath<PointId>> = vec![];
+			let graphite_gradient_stops = extract_graphite_gradient_stops(&image_svg);
+			let mut i = 1;
+			for child in svg_tree.root().children() {
+				match child {
+					usvg::Node::Path(path) => {
+						let parsed_path = extract_usvg_path(child, path, &graphite_gradient_stops);
+						let mut child_subpaths = parsed_path.subpaths.clone();
+						child_subpaths.iter_mut().for_each(|s| s.apply_transform(parsed_path.transform));
+						subpaths.extend(child_subpaths);
+
+						println!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
+						i += 1;
+					}
+					usvg::Node::Group(_) => {
+						let parsed_node = extract_usvg_node(child, &graphite_gradient_stops);
+						let parsed_group = if let ParsedSvgNode::Group(group) = parsed_node {
+							group
+						} else {
+							panic!("Must return a SVG group.");
+						};
+
+						for child in parsed_group.children {
+							if let ParsedSvgNode::Path(path) = child {
+								let mut child_subpaths = path.subpaths.clone();
+								child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
+								subpaths.extend(child_subpaths);
+
+								println!("Reading path (in a group) {} from a total of {}.", i, svg_tree.root().children().len());
+								i += 1;
+							}
+						}
+					}
+					_ => {}
+				}
+			}
+
+			/*
+			let mut path = BezPath::new();
+			for subpath in vectorized_image.paths.iter() {
+				let svg_path = subpath.to_string();
+				println!("svg_path: {}", svg_path);
+				// TODO: use usvg instead to read from the svg path
+				let bezpath: BezPath = kurbo::BezPath::from_svg(svg_path.as_str()).expect("failed to convert SVG into BezPath.");
+
+				for curve in bezpath.segments() {
+					match curve {
+						PathSeg::Line(line) => {
+							println!("Inserting line: {:?}", line);
+							let a = transform.transform_point2(point_to_dvec2(line.p1));
+							path.line_to(kurbo::Point::new(a.x, a.y));
+						}
+						PathSeg::Quad(quad_bez) => {
+							println!("Inserting quad_bez: {:?}", quad_bez);
+							let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
+							let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
+							path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
+						}
+						PathSeg::Cubic(cubic_bez) => {
+							println!("Inserting cubic_bez: {:?}", cubic_bez);
+							let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
+							let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
+							let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
+							path.curve_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y), kurbo::Point::new(c.x, c.y));
+						}
+					}
+				}
+			}
+			*/
+			let vector = Vector::from_subpaths(subpaths, true);
+			Item::from_parts(vector, row.attributes().clone())
+		})
+		.collect::<List<Vector>>()
 }
 
 #[node_macro::node(category(""))]
