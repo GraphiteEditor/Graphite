@@ -25,16 +25,14 @@ The `Registry` is a **flat** node graph. All nodes from all nested networks live
 pub struct Registry {
     pub node_instances: HashMap<NodeId, Node>,                 // all nodes, flat
     pub networks: HashMap<NetworkId, Network>,                  // exports + per-network attrs
-    pub exported_nodes: Vec<NodeId>,                            // library API surface
-    pub peer_users: HashMap<PeerId, UserId>,                    // per-device → per-human identity
     pub resources: ResourceStore,                               // content-addressable resources (images, fonts, declarations)
+    pub peer_users: HashMap<PeerId, UserId>,                    // per-device → per-human identity
     pub attributes: Attributes,                                 // document-level metadata
 }
 
 pub struct Node {
     pub implementation: Implementation,     // ProtoNode(ResourceId) or Network(net)
     pub inputs: Vec<InputSlot>,
-    pub inputs_attributes: Vec<Attributes>,
     pub attributes: Attributes,
     pub network: NetworkId,
 }
@@ -42,6 +40,7 @@ pub struct Node {
 pub struct InputSlot {
     pub input: NodeInput,
     pub timestamp: TimeStamp,
+    pub attributes: Attributes,             // per-input metadata, LWW per key
 }
 
 pub struct Network {
@@ -64,9 +63,9 @@ The renderable graph lives in `networks[&ROOT_NETWORK]`. By convention the rende
 ## Two exports concepts
 
 - **`Network.exports`** — the outputs of a callable network. Used by parent networks and (on `ROOT_NETWORK`) by the renderer. High-frequency edits.
-- **`Registry.exported_nodes`** — the document's library API: nodes an importing document can reference. A node exposed here may itself be backed by a network via `Implementation::Network`. Library metadata (display name, category, ...) lives as `library::*` attributes on the referenced node. Low-frequency edits.
+- **Exported nodes** — the document's library API: nodes an importing document can reference. A node exposed here may itself be backed by a network via `Implementation::Network`. Library metadata (display name, category, ...) lives as `library::*` attributes on the referenced node. Low-frequency edits. The list is a document-level attribute (`Registry.attributes["exported_nodes"]`) rather than a dedicated field, so it rides the ordinary `ChangeDocumentAttribute` LWW path with its own per-key timestamp.
 
-Library import (how `.gdd` files reference each other and surface library nodes) is the subject of a follow-up RFC.
+Library import (how `.gdd` files reference each other and surface library nodes) is the subject of a follow-up RFC; the `exported_nodes` attribute key is reserved but not yet read or written.
 
 ## Attributes — the type-erased metadata bucket
 
@@ -78,7 +77,7 @@ pub struct Value {
     pub timestamp: TimeStamp,
 }
 
-pub type Attributes = HashMap<String, Value>;
+pub type Attributes = BTreeMap<String, Value>;
 ```
 
 Keys are namespaced (`ui::position`, `compute::call_argument`, `library::display_name`, ...). Values are JSON; the per-value `TimeStamp` drives LWW on concurrent edits.
@@ -91,24 +90,25 @@ A `RegistryDelta` is one atomic change to the registry, simultaneously a history
 
 ```rs
 pub enum RegistryDelta {
-    AddNode      { node_id: NodeId, node: Node },
-    RemoveNode   { node_id: NodeId, snapshot: Node },
-    ChangeNodeInput          { node_id: NodeId, input_idx: usize, new_input: NodeInput },
-    ChangeNodeAttribute      { node_id: NodeId, delta: AttributeDelta },
-    ChangeNodeInputAttribute { node_id: NodeId, input_idx: usize, delta: AttributeDelta },
-    SetExport     { network: NetworkId, slot: u32, target: Option<NodeInput> },
-    ChangeNetworkAttribute  { network: NetworkId, delta: AttributeDelta },   // per-network ui::nav::*, ...
-    AddNetwork    { network: NetworkId, contents: Network },
-    RemoveNetwork { network: NetworkId, snapshot: Network },
-    SetExportedNodes        { nodes: Vec<NodeId> },
-    ChangeDocumentAttribute { delta: AttributeDelta },
-    RegisterPeer            { peer: PeerId, user: UserId },
+    AddNode      { id: NodeId, node: Node },
+    RemoveNode   { id: NodeId, snapshot: Node },
+    ChangeNodeInput          { id: NodeId, index: u32, new_input: NodeInput },
+    ChangeNodeAttribute      { id: NodeId, delta: AttributeDelta },
+    ChangeNodeInputAttribute { id: NodeId, index: u32, delta: AttributeDelta },
+    SetNetworkExport         { id: NetworkId, index: u32, export: Option<NodeInput> },
+    ChangeNetworkAttribute  { id: NetworkId, delta: AttributeDelta },   // per-network ui::nav::*, ...
+    AddNetwork    { id: NetworkId, network: Network },
+    RemoveNetwork { id: NetworkId, snapshot: Network },
+    ChangeDocumentAttribute { delta: AttributeDelta },                  // incl. the exported_nodes list
+    RegisterPeer            { peer: PeerId, user: UserId },             // self-inverse; see below
     // Resources (incl. proto-node declarations):
     SetResourceHash { id: ResourceId, hash: Option<ResourceHash> },     // LWW on the resolved hash
-    AddSource       { id: ResourceId, key: SourceKey, source: Value },  // add-wins entry in the source chain
+    AddSource       { id: ResourceId, key: SourceKey, source: serde_json::Value },  // add-wins entry in the source chain
     RemoveSource    { id: ResourceId, key: SourceKey },
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
+    Merge           { extra_parents: Vec<Rev> },                        // joins divergent tips; registry no-op
+    Other(serde_json::Value),                                           // forward-compatible escape hatch
 }
 
 /// `value: None` is the removal case. Timestamp lives on the wrapping `Delta`.
@@ -118,29 +118,31 @@ pub struct AttributeDelta {
 }
 ```
 
-Each delta is wrapped with metadata for history, identity, and causality. `Rev` is content-addressed: `blake3` truncated to 128 bits of `(parents, author, timestamp, delta_type)`, so identical content always produces the same `Rev` and concurrent retirements that converge collapse by construction.
+Each delta is wrapped with metadata for history, identity, and causality. `Rev` is content-addressed: `blake3` truncated to 128 bits of `(parent, author, timestamp, kind)`, so identical content always produces the same `Rev` and concurrent retirements that converge collapse by construction.
 
 ```rs
-pub type Rev = u128;
+pub type Rev = NonZeroU128;
 
 pub struct Delta {
     pub id: Rev,
-    pub parents: Vec<Rev>,           // multi-parent for JJ-style merges
+    pub parent: Option<Rev>,         // primary parent; None for the root delta
     pub author: PeerId,
     pub timestamp: TimeStamp,
-    pub delta_type: RegistryDelta,
+    pub kind: RegistryDelta,
     pub reverse: RegistryDelta,      // precomputed for undo; excluded from id
     pub attributes: Attributes,      // mutable local annotations; excluded from id
 }
 ```
 
-One timestamp per `Delta` applies to every LWW-eligible write inside its `delta_type` — slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
+The history DAG is multi-parent, but a delta stores only its primary `parent`. Extra parents ride a dedicated `RegistryDelta::Merge { extra_parents }` op, which joins divergent tips into one node and is a registry no-op on replay. So a merge's identity is its parent set alone: two peers merging the same tips mint the identical `Rev` and it dedups.
+
+One timestamp per `Delta` applies to every LWW-eligible write inside its `kind` — slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
 `Delta.attributes` is a type-erased annotation bucket (same shape as the registry's attribute buckets) for mutable, local-only labels — the `compute::gesture_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so annotating a delta never changes its content-addressed identity; an inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
 
 ## History as a tree
 
-History is a multi-parent DAG. Branching is implicit: every concurrent or out-of-sync edit creates a branch by virtue of sharing a parent with another delta. A user's first commit after observing remote work adds the remote tip as an additional parent, so merges ride on the user's own edit rather than introducing phantom merge commits.
+History is a multi-parent DAG. Branching is implicit: every concurrent or out-of-sync edit creates a branch by virtue of sharing a parent with another delta. Divergent tips are rejoined by an explicit `Merge` delta listing the joined tips, which is a registry no-op (it only collapses the tips so `head` stays a single `Rev`).
 
 ```
               D1 ── D2 ── D3        (one user's session)
@@ -178,17 +180,17 @@ The silent zone is the implemented path (solo editing has no transport yet); the
 
 **Gestures, not deltas.** One user action retires into several deltas (one per `(node, field)` group), so undo steps per *gesture*: the last delta of each gesture is tagged with the `compute::gesture_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is a `gesture_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack; redo re-applies forward to it.
 
-**Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `delta_type`). These carry the *original* timestamp, which would tie — and so lose — the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
+**Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `kind`). These carry the *original* timestamp, which would tie — and so lose — the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
 
 **Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against and forward-applies to the snapshot, so the reverse captures the true prior value; the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal *by value* (their LWW field timestamps can differ, since retirement re-stamps the snapshot at a fresh time); undo/redo restore that equality by resyncing the snapshot to the rewound working registry.
 
 ## Concurrency model — CmRDT
 
-The format uses an operation-based CRDT. The transport layer delivers ops in causal order exactly once (TCP plus the multi-parent chain in each `Delta`); the storage layer assumes this and requires only that concurrent op pairs commute. It does not need idempotency, state-merge, or out-of-order replay.
+The format uses an operation-based CRDT. The transport layer delivers ops in causal order exactly once (TCP plus the parent links threading the `Delta` DAG); the storage layer assumes this and requires only that concurrent op pairs commute. It does not need idempotency, state-merge, or out-of-order replay.
 
 Graph-shape invariants (the graph remaining a DAG, the result compiling) are best-effort: conflicts that produce a non-compiling graph surface as wiring or type errors rather than being masked by the CRDT.
 
-Identity is two-tier: `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping); `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes an append-only entry to `Registry.peer_users`. Causal delivery guarantees the registration arrives before any of that peer's other ops.
+Identity is two-tier: `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping); `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes an append-only entry to `Registry.peer_users`. Causal delivery guarantees the registration arrives before any of that peer's other ops. The mapping is permanent (first write wins; a conflicting re-registration errors, an identical one is a no-op), so `RegisterPeer` is its own reverse — replaying it during undo is a no-op rather than needing a distinct removal variant.
 
 ## Editor pipeline
 
@@ -332,16 +334,16 @@ Because inputs are stamped, `NodeInput::Node` references are set directly via `C
 
 - **Timestamps.** `TimeStamp = (u64, PeerId)` — a Lamport counter with a peer-ID tiebreak. Comparison is lexicographic. Wall-clock time is not used.
 - **NodeId identity.** Every new `AddNode` issues a peer-scoped ID, so concurrent creates cannot collide.
-- **Causal delivery.** `apply_delta` requires every entry in `delta.parents` is already in local history. The storage layer does not buffer; out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` + history) before streaming deltas.
+- **Causal delivery.** `apply_delta` requires every parent of the delta (its `parent` plus any `Merge` extra parents) is already in local history. The storage layer does not buffer; out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` + history) before streaming deltas.
 - **Removal.** Physical, no tombstones. If a later op targets an absent node or network, the receiver replays the most recent `AddNode` / network creation from history before applying. `RemoveNode` and `RemoveNetwork` each carry a `snapshot` of the removed entity so their reverse can rebuild in O(1) without re-walking history — required because retirement recomputes an op's reverse *after* the hot op already applied the removal, when the live entity is gone. Removal is therefore non-durable under concurrent edits: any concurrent reference to a removed node revives it.
-- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), per-attribute-value (the `TimeStamp` in `Attributes`), and whole-list for `SetExportedNodes` via a sidecar timestamp in `Registry.attributes` under `library::exported_nodes_ts`. The timestamp driving every LWW arm comes from the wrapping `Delta`; `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`) and `Set` vs. `Remove` has a defined winner.
+- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`; `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`) and `Set` vs. `Remove` has a defined winner.
 - **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an add-wins ordered OR-set keyed by `SourceKey` (fractional priority + peer tiebreak): concurrent `AddSource`s at distinct keys all survive; a re-add at the same key is LWW. Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs (`RemoveResource` snapshots the entry for O(1) reverse).
 
-The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetExport`s with different targets resolve by LWW, but the resulting wiring may be wrong; downstream consumers see it as a compile or wiring error.
+The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetNetworkExport`s with different targets resolve by LWW, but the resulting wiring may be wrong; downstream consumers see it as a compile or wiring error.
 
 ## History storage
 
-`HashMap<Rev, Delta>` plus a `head: Rev` (the local cursor; advances only on local commits) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows `delta.parents`; the default walk follows the first parent to reconstruct a single peer's local chain. Branches are siblings under a shared parent; merges aren't modeled as nodes — they're implicit in a delta listing multiple parents.
+`HashMap<Rev, Delta>` plus a `head: Rev` (the local cursor; advances only on local commits) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`; this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent; a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
 
 ## Editor metadata
 
@@ -383,4 +385,4 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 - **Runtime-level aliasing for shared node-network definitions.** Storage already supports `Implementation::Network` as a reference; once the runtime supports sharing natively, the converter preserves it.
 - **Online migration service** — active editors drop migrations older than some threshold; old documents go through a remote upgrade pipeline first.
 - **Distributed / signed history.** Content-addressed `Rev` plus signing enables multi-author provenance and verifiable history.
-- **Libraries as files** — a follow-up RFC will specify how `.gdd` files act as importable libraries via `Registry.exported_nodes`.
+- **Libraries as files** — a follow-up RFC will specify how `.gdd` files act as importable libraries via the document's `exported_nodes` list.
