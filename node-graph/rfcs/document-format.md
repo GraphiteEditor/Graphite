@@ -56,7 +56,7 @@ pub struct ExportSlot {
 pub const ROOT_NETWORK: NetworkId = 0;
 ```
 
-`peer_users` records the append-only `PeerId → UserId` mapping written by each device's first contribution (see [Concurrency model](#concurrency-model--cmrdt)).
+`peer_users` records the append-only `PeerId → UserId` mapping written by each device's first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
 
 The renderable graph lives in `networks[&ROOT_NETWORK]`. By convention the renderer consumes slot 0 of its exports. The editor can pick a different slot via type-based heuristics or user choice.
 
@@ -135,6 +135,8 @@ pub struct Delta {
 ```
 
 The history DAG is multi-parent, but a delta stores only its primary `parent`. Extra parents ride a dedicated `RegistryDelta::Merge { extra_parents }` op, which joins divergent tips into one node and is a registry no-op on replay. So a merge's identity is its parent set alone: two peers merging the same tips mint the identical `Rev` and it dedups.
+
+Because `parent` is itself a `Rev`, an `id` transitively commits to the delta's whole ancestry, the same Merkle chaining a Git commit hash gives. A `Delta`'s `id` is therefore recomputable from its identity fields, and history loaded from an untrusted source is checked by rehashing every delta and rejecting any whose stored `id` does not match (the load path skips this for trusted local data, since the rehash is not free over a large history).
 
 One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`. Slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
@@ -365,6 +367,8 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **CmRDT vs. state-based CRDT or OT.** State-based CRDTs require a merge function and large state vectors. OT requires a central server to mediate transforms. CmRDT only requires per-op commutativity plus a causal-order delivery layer, which the transport provides.
 
+**Merkle `Rev` (parent in the hash) vs. a position-independent content id.** A `Rev` hashes `(parent, author, timestamp, kind)`, and since `parent` is itself a `Rev`, every `Rev` transitively commits to its whole ancestry. This is the Git commit-hash model: a Git commit folds its parent SHA, tree, author, committer, and message into its own SHA, so changing any ancestor rewrites every descendant hash. We keep that model for the same two reasons Git gets value from it. First, tamper-evidence: rehashing detects any rewrite of history (see [Deltas](#deltas)). Second, the chain doubles as the causal structure the CRDT already needs. We then diverge from Git in one deliberate place: a `Merge` is hashed over its sorted parent set alone, with author and timestamp excluded, so two peers merging the same tips mint the *identical* `Rev` and it dedups into one shared node. Git does the opposite (its merge commits carry author/time/message and so never converge), because Git reconciles through a human pushing and pulling rather than through automatic DAG convergence. The cost of parent-in-hash is the one Git also pays: reordering or rebasing an op rewrites every descendant `Rev`, so identity is not stable across [history linearization](#future-possibilities). A pure content-derived id (no parent) would survive reordering but would forfeit both convergence-by-construction and free tamper-evidence, so it is the wrong primary identity. The position-independent use case is better served by a separate, computed id (see the patch-id analogue under [Future possibilities](#future-possibilities)) rather than by weakening `Rev`.
+
 **Ad-hoc resurrection vs. tombstones.** Tombstones add a permanent footprint to the data model and a GC policy question. Resurrection reuses the history log already needed for undo as the recovery mechanism, keeping the live `Registry` lean. The cost is that `RemoveNode` is not durable under concurrent edits.
 
 **Type-erased attributes vs. typed metadata fields.** Migrations operate on attribute values without keeping old Rust struct shapes alive. The cost is per-value overhead, mitigable without changing the model.
@@ -381,6 +385,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 - **Per-library format versioning** so a breaking change in one library doesn't bump the version for documents that don't use it.
 - **History linearization.** Prune unused branches from a convoluted tree to produce a clean undo/redo history.
+- **A patch-id analogue for position-independent identity.** A `Rev` rewrites under reordering because it commits to its parent, so it cannot answer "is this the same logical edit as that one, somewhere else in history?" Git solves the same problem with `git patch-id`, a hash of the normalized *diff* that is independent of parent and commit metadata. The analogue here is a `content_id` hashed over the op payload with the bookkeeping fields (parent, author, Lamport timestamp) normalized out. Crucially it need not enter the data model: it is derivable from a `Delta` on demand, so it can be computed when linearization or cross-document dedup needs it without adding a stored field or touching the format version. This keeps `Rev` as the sole stored identity while still enabling identity-preserving linearization and recognizing a shared edit across documents.
 - **Runtime-native deltas.** Move delta computation out of the storage layer into the runtime, eliminating per-edit `Registry` re-conversion.
 - **Incremental compilation driven by deltas.** The compiler consumes runtime deltas and recompiles only changed regions.
 - **Runtime-level aliasing for shared node-network definitions.** Storage already supports `Implementation::Network` as a reference, and once the runtime supports sharing natively, the converter preserves it.
