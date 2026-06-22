@@ -103,7 +103,7 @@ pub enum RegistryDelta {
     RegisterPeer            { peer: PeerId, user: UserId },             // self-inverse; see below
     // Resources (incl. proto-node declarations):
     SetResourceHash { id: ResourceId, hash: Option<ResourceHash> },     // LWW on the resolved hash
-    AddSource       { id: ResourceId, key: SourceKey, source: serde_json::Value },  // add-wins entry in the source chain
+    AddSource       { id: ResourceId, key: SourceKey, source: serde_json::Value },  // insert/LWW entry in the source chain
     RemoveSource    { id: ResourceId, key: SourceKey },
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
@@ -287,7 +287,7 @@ Everything content-addressable is a resource: raster images, fonts, embedded WAS
 pub type ResourceStore = HashMap<ResourceId, ResourceEntry>;
 
 pub struct ResourceEntry {
-    pub sources: Vec<(SourceKey, SourceValue)>,     // fallback chain, sorted by key, add-wins OR-set
+    pub sources: Vec<(SourceKey, SourceValue)>,     // fallback chain, sorted by key, LWW-element-set
     pub hash: Option<ResourceHash>,                  // resolved content hash (LWW)
     pub hash_timestamp: TimeStamp,
 }
@@ -296,7 +296,7 @@ pub struct SourceKey   { pub priority: Priority, pub peer: PeerId }  // fraction
 pub struct SourceValue { pub source: serde_json::Value, pub timestamp: TimeStamp }
 ```
 
-A node references a resource by `ResourceId`. The entry maps it to a chain of `DataSource`s tried in order (`Embedded` bytes by hash, `FilePath`, `Url`, `Font`) plus the resolved `ResourceHash`. The chain is an **add-wins ordered OR-set**: each entry's `SourceKey` carries a fractional `Priority` so a peer can insert between two sources without renumbering, and concurrent insertions at the same priority converge via the `PeerId` tiebreak. The `hash` is **LWW** (content-derived, so concurrent resolves agree by construction).
+A node references a resource by `ResourceId`. The entry maps it to a chain of `DataSource`s tried in order (`Embedded` bytes by hash, `FilePath`, `Url`, `Font`) plus the resolved `ResourceHash`. The chain is an **ordered LWW-element-set** keyed by `SourceKey`: each key carries a fractional `Priority` so a peer can insert between two sources without renumbering, and concurrent insertions at the same priority get distinct keys via the `PeerId` tiebreak. Distinct-key adds (the normal cross-peer case) therefore all survive. A same-key add versus remove resolves by LWW on the per-`Delta` timestamp rather than add-wins, so there are no tombstones, and causal delivery linearizes an add and its later removal. The `hash` is **LWW** (content-derived, so concurrent resolves agree by construction).
 
 Each `DataSource` is stored as `serde_json::Value` rather than a typed enum, with the same motivation as the `Attributes` bucket: type-erasure lets migrations restructure variants without keeping old enum shapes alive. `DataSource` stays typed at the runtime layer, and conversion happens at the serialization boundary. Unknown variants are a hard error on load.
 
@@ -337,7 +337,7 @@ Because inputs are stamped, `NodeInput::Node` references are set directly via `C
 - **Causal delivery.** `apply_delta` requires that every parent of the delta (its `parent` plus any `Merge` extra parents) is already in local history. The storage layer does not buffer, and out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` plus history) before streaming deltas.
 - **Removal.** Physical, with no tombstones. If a later op targets an absent node or network, the receiver replays the most recent `AddNode` or network creation from history before applying. `RemoveNode` and `RemoveNetwork` each carry a `snapshot` of the removed entity so their reverse can rebuild in O(1) without re-walking history. This is required because retirement recomputes an op's reverse *after* the hot op already applied the removal, when the live entity is gone. Removal is therefore non-durable under concurrent edits, since any concurrent reference to a removed node revives it.
 - **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
-- **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an add-wins ordered OR-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add at the same key is LWW. Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs (`RemoveResource` snapshots the entry for O(1) reverse).
+- **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an ordered LWW-element-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add or a remove at the same key is LWW on the per-`Delta` timestamp (no tombstones, so a same-key add/remove is order-sensitive only without causal delivery). Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs (`RemoveResource` snapshots the entry for O(1) reverse).
 
 The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetNetworkExport`s with different targets resolve by LWW, but the resulting wiring may be wrong, and downstream consumers see it as a compile or wiring error.
 
@@ -375,7 +375,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **One self-describing binary codec (MessagePack).** Every persisted body (deltas, the registry, node-input values, and `ProtoNode` declarations) is a type-erased `serde_json::Value`, so it needs a self-describing codec to deserialize and to keep the serde-alias migration path alive. MessagePack provides that at a few percent size cost. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
 
-**Source chain as a sorted `Vec` vs. `BTreeMap`.** `SourceKey` is a struct, so a `BTreeMap`-keyed chain cannot serialize to JSON (string keys only). A sorted `Vec` of pairs keeps the same ordering and add-wins semantics losslessly across every codec.
+**Source chain as a sorted `Vec` vs. `BTreeMap`.** `SourceKey` is a struct, so a `BTreeMap`-keyed chain cannot serialize to JSON (string keys only). A sorted `Vec` of pairs keeps the same ordering and per-key LWW semantics losslessly across every codec.
 
 # Future possibilities
 
