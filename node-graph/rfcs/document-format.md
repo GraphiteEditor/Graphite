@@ -53,7 +53,7 @@ pub struct ExportSlot {
     pub timestamp: TimeStamp,
 }
 
-pub const ROOT_NETWORK: NetworkId = 0;
+pub const ROOT_NETWORK: NetworkId = NetworkId(0);
 ```
 
 `peer_users` records the append-only `PeerId → UserId` mapping written by each device's first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
@@ -80,7 +80,7 @@ pub struct Value {
 pub type Attributes = BTreeMap<String, Value>;
 ```
 
-Keys are namespaced (`ui::position`, `compute::call_argument`, `library::display_name`, and so on). Values are JSON, and the per-value `TimeStamp` drives LWW on concurrent edits.
+Keys carry a namespace where one applies, mostly the `ui::*` editor-metadata keys (`ui::position`, `ui::display_name`, and so on). Compute fields use bare keys (`call_argument`, `context_features`, `original_node_id`). Values are JSON, and the per-value `TimeStamp` drives LWW on concurrent edits.
 
 Type-erasure exists for migrations: storage data can be transformed without keeping old Rust struct shapes alive just to deserialize them.
 
@@ -121,7 +121,7 @@ pub struct AttributeDelta {
 Each delta is wrapped with metadata for history, identity, and causality. `Rev` is content-addressed: `blake3` truncated to 128 bits of `(parent, author, timestamp, kind)`, so identical content always produces the same `Rev` and concurrent retirements that converge collapse by construction.
 
 ```rs
-pub type Rev = NonZeroU128;
+pub struct Rev(pub NonZeroU128);
 
 pub struct Delta {
     pub id: Rev,
@@ -140,7 +140,7 @@ Because `parent` is itself a `Rev`, an `id` transitively commits to the delta's 
 
 One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`. Slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
-`Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `compute::gesture_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
+`Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `interaction_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
 
 ## History as a tree
 
@@ -178,9 +178,9 @@ Undo/redo operate on the delta history rather than full-interface snapshots. A c
 
 The silent zone is the implemented path (solo editing has no transport yet). The published-zone forward-undo lands with collaboration.
 
-**Silent-zone cursor.** `head: Rev` is a movable pointer into the append-only DAG. Undo/redo move it but never delete deltas (that would make redo impossible and discard branch history). The extra state is a redo stack `Vec<Rev>`, the checkpoints the user has undone past, because the DAG alone cannot say which child a `head` was undone *from*. New state persists in `session.json` alongside `head`, so redo survives reopen. A new edit while the redo stack is non-empty clears it (the undone-forward branch stays physically in the DAG but is no longer reachable via redo).
+**Silent-zone cursor.** `head: Option<Rev>` is a movable pointer into the append-only DAG (`None` on an empty document with no commits yet). Undo/redo move it but never delete deltas (that would make redo impossible and discard branch history). The extra state is a redo stack `Vec<Rev>`, the checkpoints the user has undone past, because the DAG alone cannot say which child a `head` was undone *from*. New state persists in `session.json` alongside `head`, so redo survives reopen. A new edit while the redo stack is non-empty clears it (the undone-forward branch stays physically in the DAG but is no longer reachable via redo).
 
-**Gestures, not deltas.** One user action retires into several deltas (one per `(node, field)` group), so undo steps per *gesture*. The last delta of each gesture is tagged with the `compute::gesture_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is a `gesture_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
+**Interactions, not deltas.** One user action retires into several deltas (one per `(node, field)` group), so undo steps per *interaction*. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
 
 **Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `kind`). These carry the *original* timestamp, which would tie (and so lose) the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
 
@@ -216,8 +216,8 @@ The editor operates on its existing runtime types. Storage is a serialization la
                                    ▼
                 ┌─────────────────────────────────────────┐
                 │ On-disk  (.gdd container)               │
-                │  named payloads: manifest, document,    │
-                │  history, resources/<hash>              │
+                │  named payloads: manifest, registry,    │
+                │  history, session, resources/<hash>     │
                 │  served by a Container backend          │
                 │  (folder, in-memory, OPFS), optionally  │
                 │  encoded through an Archive codec       │
@@ -260,9 +260,11 @@ Arrows mean "depends on". The editor uses `Session` from `graph-storage` at runt
 
 A document contains:
 
-- `manifest.json` is always JSON, the bootstrap file. It carries the magic identifier `"gdd"`, a single `u32` `format_version`, a stable `document_uuid`, the saving session's `PeerId`, editor and stdlib versions, an optional save timestamp, and a record of which payloads this save included (registry, history, embedded resources).
-- `document.{json,bin}` is the serialized `Registry`. The codec is fixed per payload and recorded in the manifest (JSON for inspectable, MessagePack for compact, and binary must be self-describing, as the codec rationale explains). Export reuses the working copy's recorded codecs rather than re-encoding.
-- `history.{jsonl,frames}` is the serialized delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed MessagePack frames, the prefix guarding against a torn final frame from a crash.
+- `manifest.json` is always JSON, the bootstrap file. It carries the magic identifier `"gdd"` (the `format` field), a single `u32` `format_version`, a `document_id`, the editor and stdlib versions, and the per-payload codec table (`codecs`). It deliberately omits per-peer state: the saving peer's `PeerId` and the history cursor live in the session payload, not the manifest, so they travel with the local view rather than the shared document.
+- `registry.{json,bin}` is the serialized `Registry`. The codec is fixed per payload and recorded in the manifest (JSON for inspectable, MessagePack for compact, and binary must be self-describing, as the codec rationale explains). Export reuses the working copy's recorded codecs rather than re-encoding.
+- `history.{jsonl,frames}` is the serialized retired delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed MessagePack frames, the prefix guarding against a torn final frame from a crash.
+- `hot-log.{jsonl,frames}` is the un-retired hot ops, persisted as a sidecar for crash recovery and GC'd at retirement.
+- `session.{json,bin}` is per-peer local state: this peer's `PeerId`, the history cursor (`head_rev`), the redo stack, `last_broadcast_rev`, and view settings. It is local-view state, not part of the shared document.
 - `resources/<hash>` is embedded resource bytes, keyed by `ResourceHash`.
 
 The folder backend stores these as plain files on disk, and an archive codec packs the same named entries into a single file.
@@ -270,8 +272,10 @@ The folder backend stores these as plain files on disk, and an archive codec pac
 ```
             my-doc.gdd/
             ├── manifest.json
-            ├── document.json
+            ├── registry.json
             ├── history.jsonl
+            ├── hot-log.jsonl
+            ├── session.json
             └── resources/
                 ├── 7f3a...
                 └── 2c91...
@@ -318,7 +322,7 @@ Migrations live in a dedicated crate so they are usable both from the editor and
 
 `from_runtime` flattens the recursive `NodeNetwork` into the flat `Registry`:
 
-- Each node's path through the runtime nesting is hashed (blake3 truncated to 64 bits, with the document's `PeerId` mixed in) to produce a stable global `NodeId`. The original local ID is stashed in an attribute (`compute::original_node_id`) so the round-trip can rebuild the runtime's per-network local IDs. Subsequent live edits mint fresh peer-scoped IDs via `Document::next_node_id` (`blake3(peer, counter)`) instead of going through the path-hash bootstrap.
+- Each node's path through the runtime nesting is hashed (blake3 truncated to 64 bits, with the document's `PeerId` mixed in) to produce a stable global `NodeId`. The original local ID is stashed in an attribute (`original_node_id`) so the round-trip can rebuild the runtime's per-network local IDs. Subsequent live edits mint fresh peer-scoped IDs via `Document::next_node_id` (`blake3(peer, counter)`) instead of going through the path-hash bootstrap.
 - Each nested `NodeNetwork`'s `NetworkId` is derived from the owning node's path (blake3 of `(peer, path)` with a `"network"` domain tag), not assigned by a traversal counter. This makes it stable across a `to_runtime` then `from_runtime` round trip. That stability is load-bearing, because node paths (and thus node-ID hashes) include `NetworkId`s, so an unstable network ID would cascade into unstable node IDs and break re-commit after open. Aliasing (multiple nodes referencing the same network) is structurally supported by the storage model, since `Implementation::Network(NetworkId)` is a reference, but the converter does not exploit it yet. Aliasing is fixed at the runtime layer first, and the converter then preserves sharing without an explicit dedup pass.
 - Non-structural `DocumentNode` fields (`call_argument`, `context_features`, `visible`, `skip_deduplication`, and so on) become entries in the node's `attributes`. UI metadata from `DocumentNodeMetadata` (positions, display names, locked, pinned, and so on) flows through the same bucket under `ui::*` keys.
 
@@ -334,7 +338,7 @@ Because inputs are stamped, `NodeInput::Node` references are set directly via `C
 
 ## CmRDT semantics
 
-- **Timestamps.** `TimeStamp = (u64, PeerId)` is a Lamport counter with a peer-ID tiebreak. Comparison is lexicographic. Wall-clock time is not used.
+- **Timestamps.** `TimeStamp { counter: u64, peer: PeerId }` is a Lamport counter with a peer-ID tiebreak. Comparison is lexicographic (counter first, then peer). Wall-clock time is not used.
 - **NodeId identity.** Every new `AddNode` issues a peer-scoped ID, so concurrent creates cannot collide.
 - **Causal delivery.** `apply_delta` requires that every parent of the delta (its `parent` plus any `Merge` extra parents) is already in local history. The storage layer does not buffer, and out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` plus history) before streaming deltas.
 - **Removal.** Physical, with no tombstones. If a later op targets an absent node or network, the receiver replays the most recent `AddNode` or network creation from history before applying. `RemoveNode` and `RemoveNetwork` each carry a `snapshot` of the removed entity so their reverse can rebuild in O(1) without re-walking history. This is required because retirement recomputes an op's reverse *after* the hot op already applied the removal, when the live entity is gone. Removal is therefore non-durable under concurrent edits, since any concurrent reference to a removed node revives it.
@@ -345,13 +349,13 @@ The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetNetworkEx
 
 ## History storage
 
-`HashMap<Rev, Delta>` plus a `head: Rev` (the local cursor, which advances only on local commits) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`, and this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent, and a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
+`History` is a `Vec<Delta>` in topological order (parents before children) with a `HashMap<Rev, usize>` index for lookup. The append order is canonical, which is what lets history serialize byte-identically across peers that absorbed the same delta set. `Document` adds a `head: Option<Rev>` (the local cursor, which advances only on local commits, `None` until the first commit) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`, and this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent, and a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
 
 ## Editor metadata
 
 `DocumentNodePersistentMetadata` and `NodeNetworkPersistentMetadata` from the runtime flow through the storage `Attributes` bucket under `ui::*` keys. That covers display names, locked/pinned flags, navigation/PTZ state, selection undo/redo stacks, and layer/node type metadata. Transient runtime caches (`DocumentNodeTransientMetadata`, click targets, resolved types, `OriginalLocation`) stay runtime-only and are not stored.
 
-Document-scoped editor settings (viewport view, render mode, overlay/ruler visibility, snapping, collapsed layers) ride the document-level `Registry.attributes` under `ui::doc::*` keys, supplied through `NodeMetadataSource::document_attributes`. This is what makes the `.gdd` a lossless replacement for the legacy format's document-handler fields.
+Document-scoped editor settings (viewport view, render mode, overlay/ruler visibility, snapping, collapsed layers) ride the document-level `Registry.attributes` under `ui::*` keys (`ui::ptz`, `ui::render_mode`, and so on). This is what makes the `.gdd` a lossless replacement for the legacy format's document-handler fields.
 
 
 # Drawbacks
@@ -377,7 +381,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **`.gdd` vs. reusing `.graphite`.** A distinct extension makes migration unambiguous and prevents older Graphite versions from trying to open a new-format file.
 
-**One self-describing binary codec (MessagePack).** Every persisted body (deltas, the registry, node-input values, and `ProtoNode` declarations) is a type-erased `serde_json::Value`, so it needs a self-describing codec to deserialize and to keep the serde-alias migration path alive. MessagePack provides that at a few percent size cost. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
+**One self-describing binary codec (MessagePack).** The persisted bodies (the registry, the history of deltas, and the `ProtoNode` declaration resources) serialize as their typed Rust shapes, but each carries type-erased `serde_json::Value` leaves: attribute values, `NodeInput::Value` payloads, and resource source bodies. Those leaves need a self-describing codec to deserialize and to keep the serde-alias migration path alive, which forces the same requirement on the whole payload. MessagePack provides that at a few percent size cost. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
 
 **Source chain as a sorted `Vec` vs. `BTreeMap`.** `SourceKey` is a struct, so a `BTreeMap`-keyed chain cannot serialize to JSON (string keys only). A sorted `Vec` of pairs keeps the same ordering and per-key LWW semantics losslessly across every codec.
 
