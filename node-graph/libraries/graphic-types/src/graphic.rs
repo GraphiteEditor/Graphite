@@ -198,10 +198,8 @@ pub fn fill_to_graphic_list(fill: &Fill) -> Option<List<Graphic>> {
 		Fill::None => None,
 		Fill::Solid(color) => Some(List::new_from_element((*color).into())),
 		Fill::Gradient(gradient) => {
-			let gradient_transform = gradient.transform * gradient.to_transform();
-
 			let gradient_item = Item::new_from_element(gradient.stops.clone())
-				.with_attribute(ATTR_TRANSFORM, gradient_transform)
+				.with_attribute(ATTR_TRANSFORM, gradient.transform * gradient.to_transform())
 				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
 				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method);
 			let gradient_list = List::new_from_item(gradient_item);

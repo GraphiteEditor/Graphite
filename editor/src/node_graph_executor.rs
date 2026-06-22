@@ -356,18 +356,18 @@ impl NodeGraphExecutor {
 						inspect_result,
 					} = execution_response;
 
-					while let Some(&(fid, _)) = self.futures.front() {
-						if fid < execution_id {
+					while let Some(&(queued_execution_id, _)) = self.futures.front() {
+						if queued_execution_id < execution_id {
 							self.futures.pop_front();
 						} else {
 							break;
 						}
 					}
 
-					let Some((fid, execution_context)) = self.futures.pop_front() else {
+					let Some((queued_execution_id, execution_context)) = self.futures.pop_front() else {
 						panic!("InvalidGenerationId")
 					};
-					assert_eq!(fid, execution_id, "Missmatch in execution id");
+					assert_eq!(queued_execution_id, execution_id, "Missmatch in execution id");
 
 					// TODO: Eventually remove this document upgrade code
 					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
@@ -504,14 +504,14 @@ impl NodeGraphExecutor {
 	) {
 		let mut network = document.network_interface.document_network().clone();
 
-		// On this throwaway clone, un-hide just the Fill so it's measured as a real Fill rather than a passthrough;
-		// upstream generators keep their visibility, so a hidden one intentionally contributes no geometry
+		// On this throwaway clone, un-hide just the Fill so it's measured as a real Fill rather than a passthrough.
+		// But upstream generators keep their visibility, so a hidden one intentionally contributes no geometry.
 		if let Some(node) = network.nodes.get_mut(&fill_node_id) {
 			node.visible = true;
 		}
 
 		let Some(export) = network.exports.first_mut() else {
-			// No export to redirect through, so skip this fill rather than leaving the migration stuck
+			// No export to redirect through, so skip this Fill rather than leaving the migration stuck
 			log::warn!("Gradient migration: document network has no export to redirect");
 			self.advance_gradient_migration(document, document_id, responses);
 			return;
@@ -785,13 +785,16 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 	if let Some(list) = introspected_output::<List<Vector>>(data) {
 		let vector = list.element(0)?;
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		return Some((bounding_box_affine(vector.nonzero_bounding_box()), item_transform));
+		let bounds = vector.nonzero_bounding_box();
+		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		return Some((bounding_box_affine, item_transform));
 	}
 	if let Some(list) = introspected_output::<List<Graphic>>(data) {
 		let RenderBoundingBox::Rectangle(bounds) = graphic_list_bounding_box(&list, DAffine2::IDENTITY) else {
 			return None;
 		};
-		return Some((bounding_box_affine(bounds), DAffine2::IDENTITY));
+		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		return Some((bounding_box_affine, DAffine2::IDENTITY));
 	}
 	None
 }
@@ -809,11 +812,6 @@ fn introspected_output<T: Clone + Send + Sync + 'static>(data: &Arc<dyn Any + Se
 		return Some(io.output.clone());
 	}
 	None
-}
-
-// TODO: Eventually remove this document upgrade code
-fn bounding_box_affine(bounds: [DVec2; 2]) -> DAffine2 {
-	DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0])
 }
 
 // Re-export for usage by tests in other modules
