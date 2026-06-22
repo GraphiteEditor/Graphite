@@ -77,6 +77,13 @@ impl linesweeper::topology::WindingNumber for WindingNumber {
 		elems[tag] = if positive { 1 } else { -1 };
 		Self { elems }
 	}
+
+	fn of_tag(&self, (tag, out_of): Self::Tag) -> Self {
+		let mut elems = SmallVec::with_capacity(out_of);
+		elems.resize(out_of, 0);
+		elems[tag] = self.elems[tag];
+		Self { elems }
+	}
 }
 
 impl std::ops::AddAssign for WindingNumber {
@@ -162,11 +169,8 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		}
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-
-	// TODO: Linesweeper emits contours in the opposite winding direction from the rest of Kurbo's and Graphite's vector graphics system (clockwise in screen coordinates).
-	// TODO: Report this upstream to Linesweeper and remove this `.reverse()` workaround once fixed.
 	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
-		row.element_mut().append_subpath(subpath.reverse(), false);
+		row.element_mut().append_subpath(subpath, false);
 	}
 
 	list.push(row);
