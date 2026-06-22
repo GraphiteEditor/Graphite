@@ -319,9 +319,9 @@ impl LayoutMessageHandler {
 							return;
 						}
 
-						// Snapshot for undo via `on_commit`, then apply the new value via `on_update`.
-						number_input.value = Some(evaluated);
+						// Snapshot the pre-change state for undo via `on_commit`, then apply the new value via `on_update`.
 						responses.add((number_input.on_commit.callback)(&()));
+						number_input.value = Some(evaluated);
 						responses.add((number_input.on_update.callback)(number_input));
 					}
 					// The increment arrows send `{ "increment": "Increase" | "Decrease" }` to invoke the backend's directional step callback.

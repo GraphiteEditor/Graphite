@@ -27,6 +27,14 @@ mod tests {
 
 	const EPSILON: f64 = 1e-10_f64;
 
+	#[test]
+	fn malformed_juxtaposed_numbers_fail_to_parse() {
+		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication).
+		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
 	macro_rules! test_end_to_end{
 		($($name:ident: $input:expr_2021 => ($expected_value:expr_2021, $expected_unit:expr_2021)),* $(,)?) => {
 			$(
