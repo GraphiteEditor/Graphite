@@ -168,6 +168,17 @@ const SPIRAL_GIZMOS: &[GizmoInfo] = &[
 	},
 ];
 
+// Only the radius slider: the heart's many shaping parameters (cleavage, lobes, shoulders, point)
+// are fine-tuned via the Properties panel, while the overall size reads naturally as a canvas handle.
+const HEART_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
+	parameter_index: 1,
+	gizmo_type: GizmoType::Slider,
+	name: "Radius",
+	min: Some(0.),
+	max: None,
+	position_hint: PositionHint::ParameterDerived,
+}];
+
 const GRID_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
 		parameter_index: grid::ColumnsInput::INDEX,
@@ -208,6 +219,7 @@ pub fn registered_gizmo_nodes() -> Vec<(ProtoNodeIdentifier, &'static [GizmoInfo
 		(generator_nodes::arc::IDENTIFIER, ARC_GIZMOS),
 		(generator_nodes::spiral::IDENTIFIER, SPIRAL_GIZMOS),
 		(generator_nodes::grid::IDENTIFIER, GRID_GIZMOS),
+		(generator_nodes::heart::IDENTIFIER, HEART_GIZMOS),
 	]
 }
 
@@ -257,8 +269,18 @@ mod tests {
 	}
 
 	#[test]
-	fn all_six_existing_shapes_are_registered() {
-		assert_eq!(registered_gizmo_nodes().len(), 6);
+	fn heart_exposes_only_a_radius_slider() {
+		let infos = get_gizmo_info(&generator_nodes::heart::IDENTIFIER);
+		assert_eq!(infos.len(), 1);
+		assert_eq!(infos[0].parameter_index, 1);
+		assert_eq!(infos[0].gizmo_type, GizmoType::Slider);
+		assert_eq!(infos[0].min, Some(0.));
+		assert_eq!(infos[0].position_hint, PositionHint::ParameterDerived);
+	}
+
+	#[test]
+	fn all_existing_shapes_are_registered() {
+		assert_eq!(registered_gizmo_nodes().len(), 7);
 		for (_, infos) in registered_gizmo_nodes() {
 			assert!(!infos.is_empty(), "every registered node must declare at least one gizmo");
 		}
