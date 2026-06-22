@@ -423,6 +423,10 @@ impl TableItemLayout for Vector {
 							TextLabel::new("Fill Gradient End").narrow(true).widget_instance(),
 							TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_instance(),
 						]);
+						table_rows.push(vec![
+							TextLabel::new("Fill Gradient Transform").narrow(true).widget_instance(),
+							TextLabel::new(format_transform_matrix(gradient.transform)).narrow(true).widget_instance(),
+						]);
 					}
 				}
 

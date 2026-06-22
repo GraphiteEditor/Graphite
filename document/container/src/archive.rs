@@ -3,9 +3,11 @@
 //! Each codec streams entries in both directions: writers wrap an `io::Write` sink, and
 //! `deserialize` reads from any `io::Read + Seek` source and streams entries into any [`Container`].
 
+#[cfg(any(feature = "xz", feature = "zip"))]
+use crate::AsyncContainer;
 #[cfg(any(feature = "zip", feature = "xz"))]
 use crate::ContainerError;
-use crate::{Container, Result};
+use crate::Result;
 use std::io::{Read, Seek, Write};
 
 /// Hard cap on the total decompressed size a codec will materialize from one archive.
@@ -55,12 +57,23 @@ pub trait Archive {
 
 	/// Read entries from `source` and write each into `dest`, streaming so neither the full
 	/// archive nor the full container ever sits in memory at once.
-	fn open<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()>;
+	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()>;
 }
 
-pub trait ArchiveWriter {
+pub trait ArchiveWriter: Sized {
+	type Sink;
+
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<()>;
-	fn finish(self) -> Result<()>;
+
+	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
+	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
+	fn finish_into(self) -> Result<Self::Sink>;
+
+	/// Finish the archive, discarding the sink. For file-backed archives the bytes are already on disk.
+	fn finish(self) -> Result<()> {
+		self.finish_into()?;
+		Ok(())
+	}
 }
 
 /// Archive container formats distinguishable by their leading magic bytes.
@@ -86,12 +99,16 @@ impl ArchiveFormat {
 
 /// Deserialize an archive into `dest`, auto-detecting the format from `bytes`' magic header.
 /// Errors if the bytes are neither a recognized xz nor zip archive.
-#[cfg(all(feature = "xz", feature = "zip"))]
-pub fn open_auto<C: Container>(bytes: &[u8], dest: &mut C) -> Result<()> {
+#[cfg(any(feature = "xz", feature = "zip"))]
+pub fn open_auto<C: AsyncContainer>(bytes: &[u8], dest: &mut C) -> Result<()> {
 	let source = std::io::Cursor::new(bytes);
 	match ArchiveFormat::detect(bytes) {
+		#[cfg(feature = "xz")]
 		Some(ArchiveFormat::Xz) => Xz::open(source, dest),
+		#[cfg(feature = "zip")]
 		Some(ArchiveFormat::Zip) => Zip::open(source, dest),
-		None => Err(ContainerError::Codec("unrecognized archive format (not xz or zip)".into())),
+		#[allow(unreachable_patterns)]
+		Some(format) => Err(ContainerError::Codec(format!("tried to open {format:?}, but the binary was compiled without the feature enabled  "))),
+		None => Err(ContainerError::Codec("unrecognized archive format (not xz or zip) ".into())),
 	}
 }

@@ -1,5 +1,6 @@
 use std::process::ExitCode;
 
+use cargo_run::cmd::prelude::*;
 use cargo_run::*;
 
 fn usage() {
@@ -33,6 +34,8 @@ fn usage() {
 }
 
 fn main() -> ExitCode {
+	prepend_path();
+
 	let args: Vec<String> = std::env::args().collect();
 	let args: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
 
@@ -67,9 +70,9 @@ fn explore_usage() {
 fn run_task(task: &Task) -> Result<(), Error> {
 	if let Action::Explore(tool) = &task.action {
 		match tool.as_deref() {
-			Some("bisect") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/debugging-tips/#build-bisect-tool"),
-			Some("deps") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/#crate-dependency-graph"),
-			Some("editor") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/editor-structure/#editor-outline"),
+			Some("bisect") => return utils::open_url("https://graphite.art/volunteer/guide/codebase-overview/debugging-tips/#build-bisect-tool"),
+			Some("deps") => return utils::open_url("https://graphite.art/volunteer/guide/codebase-overview/#crate-dependency-graph"),
+			Some("editor") => return utils::open_url("https://graphite.art/volunteer/guide/codebase-overview/editor-structure/#editor-outline"),
 			None | Some("--help") => {
 				explore_usage();
 				return Ok(());
@@ -85,11 +88,19 @@ fn run_task(task: &Task) -> Result<(), Error> {
 	requirements::check(task)?;
 
 	match (&task.action, &task.target, &task.profile) {
-		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => npm_run_in_frontend_dir("start")?,
-		(Action::Run, Target::Web, Profile::Release) => npm_run_in_frontend_dir("production")?,
+		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => frontend::watch(false)?,
+		(Action::Run, Target::Web, Profile::Release) => frontend::watch(true)?,
 
-		(Action::Build, Target::Web, Profile::Debug) => npm_run_in_frontend_dir("build-dev")?,
-		(Action::Build, Target::Web, Profile::Release | Profile::Default) => npm_run_in_frontend_dir("build")?,
+		(Action::Build, Target::Web, Profile::Debug) => {
+			frontend::setup()?;
+			frontend::build_wasm(false, false)?;
+			frontend::vite().args(["build", "--mode", "dev"]).run()?;
+		}
+		(Action::Build, Target::Web, Profile::Release | Profile::Default) => {
+			frontend::setup()?;
+			frontend::build_wasm(true, false)?;
+			frontend::vite().args(["build"]).run()?;
+		}
 
 		(action, Target::Desktop, mut profile) => {
 			if matches!(profile, Profile::Default) {
@@ -100,34 +111,41 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				}
 			}
 
-			if matches!(profile, Profile::Release) {
-				npm_run_in_frontend_dir("build-native")?;
-			} else {
-				npm_run_in_frontend_dir("build-native-dev")?;
-			};
+			// Build the editor's Wasm module with the `native` feature, then bundle the frontend with Vite
+			frontend::setup()?;
+			frontend::build_wasm(matches!(profile, Profile::Release), true)?;
+			frontend::vite().args(["build", "--mode", "native"]).run()?;
 
-			run("cargo run -p third-party-licenses --features desktop")?;
+			cmd!("cargo", "run", "-p", "third-party-licenses", "--features", "desktop").run()?;
 
 			let cargo_profile = match profile {
 				Profile::Debug => "dev",
 				Profile::Release => "release",
 				Profile::Default => unreachable!(),
 			};
-			let args = if matches!(action, Action::Run) {
-				format!(" -- open {}", task.args.join(" "))
-			} else {
-				"".to_string()
-			};
-			run(&format!("cargo run --profile {cargo_profile} -p graphite-desktop-bundle{args}"))?;
+			cmd!("cargo", "run", "--profile", cargo_profile, "-p", "graphite-desktop-bundle")
+				.args_if(matches!(action, Action::Run), ["--", "open"].into_iter().chain(task.args.iter().map(String::as_str)))
+				.run()?;
 		}
 
-		(Action::Run, Target::Cli, Profile::Debug | Profile::Default) => run(&format!("cargo run -p graphene-cli -- {}", task.args.join(" ")))?,
-		(Action::Run, Target::Cli, Profile::Release) => run(&format!("cargo run -r -p graphene-cli -- {}", task.args.join(" ")))?,
+		(Action::Run, Target::Cli, Profile::Debug | Profile::Default) => cmd!("cargo", "run", "-p", "graphene-cli", "--").args(&task.args).run()?,
+		(Action::Run, Target::Cli, Profile::Release) => cmd!("cargo", "run", "-r", "-p", "graphene-cli", "--").args(&task.args).run()?,
 
-		(Action::Build, Target::Cli, Profile::Debug) => run("cargo build -p graphene-cli")?,
-		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => run("cargo build -r -p graphene-cli")?,
+		(Action::Build, Target::Cli, Profile::Debug) => cmd!("cargo", "build", "-p", "graphene-cli").run()?,
+		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => cmd!("cargo", "build", "-r", "-p", "graphene-cli").run()?,
 
 		(Action::Explore(_), _, _) => unreachable!(),
 	}
 	Ok(())
+}
+
+fn prepend_path() {
+	let mut paths = vec![bin_dir()];
+	if let Some(path) = std::env::var_os("PATH") {
+		paths.extend(std::env::split_paths(&path));
+	}
+	if let Ok(joined) = std::env::join_paths(paths) {
+		// Safety: this runs before any other threads are spawned
+		unsafe { std::env::set_var("PATH", joined) };
+	}
 }

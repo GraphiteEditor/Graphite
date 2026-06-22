@@ -271,6 +271,14 @@ pub trait AsyncContainer {
 	/// and `Ok` is returned eagerly; a later failure is logged.
 	fn write_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()>;
 
+	/// Synchronous write. Same eager-enqueue semantics on OPFS as [`write_non_blocking`](Self::write_non_blocking);
+	/// queued appends preserve order relative to earlier queued writes/appends.
+	fn write_sized_non_blocking(&self, path: &str, size: usize, fill: &mut dyn FnMut(&mut [u8]) -> Result<()>) -> Result<()> {
+		let mut buf = vec![0u8; size];
+		fill(&mut buf)?;
+		self.write_non_blocking(path, &buf)
+	}
+
 	/// Synchronous append. Same eager-enqueue semantics on OPFS as [`write_non_blocking`](Self::write_non_blocking);
 	/// queued appends preserve order relative to earlier queued writes/appends.
 	fn append_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()>;
@@ -318,6 +326,10 @@ impl<C: Container + ?Sized> AsyncContainer for C {
 
 	fn write_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
 		Container::write(self, path, bytes)
+	}
+
+	fn write_sized_non_blocking(&self, path: &str, size: usize, fill: &mut dyn FnMut(&mut [u8]) -> Result<()>) -> Result<()> {
+		Container::write_sized(self, path, size, fill)
 	}
 
 	fn append_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {

@@ -1282,12 +1282,22 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
-				let mouse_delta = match axis {
-					Axis::X => mouse_delta.project_onto(e0),
-					Axis::Y => mouse_delta.project_onto(e0.perp()),
-					Axis::None => mouse_delta,
+				// Constrain the drag to the selection's local axis (not the world axis) so a rotated object's arrows track the mouse one-to-one
+				let axis_constraint = match axis {
+					Axis::X => e0,
+					Axis::Y => e0.perp(),
+					Axis::None => DVec2::ZERO,
 				};
+
+				let mouse_delta = snap_drag(
+					start,
+					current,
+					tool_data.axis_align,
+					axis_constraint,
+					snap_data,
+					&mut tool_data.snap_manager,
+					&tool_data.snap_candidates,
+				);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer in document.network_interface.shallowest_unique_layers(&[]) {

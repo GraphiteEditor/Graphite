@@ -11,6 +11,7 @@ pub mod shape_utility;
 pub mod spiral_shape;
 pub mod star_shape;
 
+pub use super::resize::{viewport_zoom, window_aligned_transform_set};
 pub use super::shapes::arrow_shape::Arrow;
 pub use super::shapes::ellipse_shape::Ellipse;
 pub use super::shapes::line_shape::{Line, LineEnd};
