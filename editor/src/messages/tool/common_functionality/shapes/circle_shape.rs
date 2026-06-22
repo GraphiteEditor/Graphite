@@ -2,13 +2,8 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-<<<<<<< Updated upstream
 use crate::messages::tool::common_functionality::resize::{viewport_zoom, window_aligned_transform_set};
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
-=======
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeToolModifierKey;
->>>>>>> Stashed changes
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
