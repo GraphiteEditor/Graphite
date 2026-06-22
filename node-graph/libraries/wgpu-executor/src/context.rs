@@ -46,13 +46,20 @@ impl ContextBuilder {
 	pub async fn build(self) -> Option<Context> {
 		let instance = self.build_instance();
 		let mut adapters = enumerate_sorted(&instance, self.backends).await;
-		let index = self.selection.unwrap_or(0);
-		if index >= adapters.len() {
-			return None;
+
+		if let Some(index) = self.selection
+			&& index >= adapters.len()
+		{
+			let selected_adapter = adapters.remove(index);
+			adapters.insert(0, selected_adapter);
 		}
-		let adapter = adapters.remove(index);
-		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context { device, queue, adapter, instance })
+
+		for adapter in adapters {
+			if let Some((device, queue)) = self.request_device(&adapter).await {
+				return Some(Context { device, queue, adapter, instance });
+			}
+		}
+		None
 	}
 	pub async fn available_adapters_fmt(&self) -> impl std::fmt::Display {
 		let instance = self.build_instance();
