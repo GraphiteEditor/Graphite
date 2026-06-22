@@ -1,7 +1,11 @@
 use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
+use core_types::{
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
+	Ctx,
+};
 use glam::{DAffine2, DVec2};
+use graphic_types::vector_types::gradient::{Gradient, GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -125,13 +129,20 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	};
 	let mut row = if let Some(index) = copy_from_index {
 		let mut attributes = vector.clone_item_attributes(index);
+		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
 		let copy_from = vector.element(index).unwrap();
-		let element = Vector {
+		let mut element = Vector {
 			style: copy_from.style.clone(),
 			..Default::default()
 		};
+		// An absolute gradient lives in the geometry's space, so bake the same transform into it to track the baked points
+		if let Fill::Gradient(gradient) = element.style.fill_mut()
+			&& gradient.absolute
+		{
+			gradient.transform = copy_from_transform * gradient.transform;
+		}
 		Item::from_parts(element, attributes)
 	} else {
 		Item::<Vector>::default()
@@ -272,12 +283,34 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					.map(|row| {
 						let (stops, attributes) = row.into_parts();
 						let mut element = Vector::default();
-						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient { stops, ..Default::default() }));
+						// Convert the gradient's transform to absolute endpoints, matching `From<List<GradientStops>> for Fill`
+						let transform = attributes.get::<DAffine2>(ATTR_TRANSFORM).cloned().unwrap_or_default();
+						element.style.set_fill(Fill::Gradient(Gradient {
+							stops,
+							gradient_type: attributes.get::<GradientType>(ATTR_GRADIENT_TYPE).cloned().unwrap_or_default(),
+							spread_method: attributes.get::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).cloned().unwrap_or_default(),
+							start: transform.transform_point2(DVec2::ZERO),
+							end: transform.transform_point2(DVec2::X),
+							absolute: true,
+							transform: DAffine2::IDENTITY,
+						}));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
+				Graphic::Text(text) => {
+					// Shape the glyphs into vectors (each item's own transform is applied), then compose the parent's transform like the other arms
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					text_nodes::shape_text_list(&text, false)
+						.into_iter()
+						.map(|mut sub_vector| {
+							let current_transform: DAffine2 = sub_vector.attribute_cloned_or_default(ATTR_TRANSFORM);
+							*sub_vector.attribute_mut_or_insert_default(ATTR_TRANSFORM) = parent_transform * current_transform;
+							sub_vector
+						})
+						.collect::<Vec<_>>()
+				}
 			}
 		})
 		.collect()

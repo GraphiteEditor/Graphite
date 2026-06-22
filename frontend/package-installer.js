@@ -1,4 +1,4 @@
-// This script automatically installs the npm packages listed in package-lock.json and runs before `npm start`.
+// This script automatically installs the npm packages listed in package-lock.json and runs as part of `npm run setup` (invoked by `cargo run`).
 // It skips the installation if this has already run and neither package.json nor package-lock.json has been modified since.
 
 import { execSync } from "child_process";
@@ -11,7 +11,7 @@ const isInstallNeeded = () => {
 	if (!existsSync(INSTALL_TIMESTAMP_FILE)) return true;
 
 	const timestamp = statSync(INSTALL_TIMESTAMP_FILE).mtime;
-	return ["package.json", "package-lock.json"].some((file) => {
+	return ["package.json", "package-lock.json", "package-installer.js"].some((file) => {
 		return existsSync(file) && statSync(file).mtime > timestamp;
 	});
 };
@@ -22,8 +22,10 @@ if (isInstallNeeded()) {
 		// eslint-disable-next-line no-console
 		console.log("Installing npm packages...");
 
-		// Check if packages are up to date, doing so quickly by using `npm ci`, preferring local cached packages, and skipping the package audit and other checks
-		execSync("npm ci --prefer-offline --no-audit --no-fund", { stdio: "inherit" });
+		// Check if packages are up to date, doing so quickly by using `npm ci`, preferring local cached packages, and skipping the package audit and other checks.
+		// The devDependencies are explicitly included because they hold the build tooling (Vite, etc.), which npm would
+		// otherwise omit in environments that set NODE_ENV=production (like CI does for the sake of the Vite build).
+		execSync("npm ci --include=dev --prefer-offline --no-audit --no-fund", { stdio: "inherit" });
 
 		// Touch the install timestamp file
 		writeFileSync(INSTALL_TIMESTAMP_FILE, "");

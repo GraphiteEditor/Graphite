@@ -190,8 +190,7 @@ where
 		let mut last_b_srgb = 0u8;
 
 		let mut result = vec![0; data.len() * 4];
-		let mut i = 0;
-		for color in data {
+		for (color, out) in data.iter().zip(result.chunks_exact_mut(4)) {
 			let a = color.a().to_f32();
 			// Smaller alpha values than this would map to fully transparent
 			// anyway, avoid expensive encoding.
@@ -215,13 +214,11 @@ where
 					last_b_srgb = float_to_srgb_u8(b);
 				}
 
-				result[i] = last_r_srgb;
-				result[i + 1] = last_g_srgb;
-				result[i + 2] = last_b_srgb;
-				result[i + 3] = (a * 255. + 0.5) as u8;
+				out[0] = last_r_srgb;
+				out[1] = last_g_srgb;
+				out[2] = last_b_srgb;
+				out[3] = (a * 255. + 0.5) as u8;
 			}
-
-			i += 4;
 		}
 
 		(result, *width, *height)

@@ -1,6 +1,5 @@
 use super::*;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -135,7 +134,7 @@ impl Spiral {
 		let snapped_viewport_point = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 		shape_tool_data.data.snap_manager.update_indicator(snapped);
 
-		let dragged_distance = (viewport_drag_start - snapped_viewport_point).length();
+		let dragged_distance = (viewport_drag_start - snapped_viewport_point).length() / viewport_zoom(document);
 
 		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
 			return;
@@ -155,12 +154,7 @@ impl Spiral {
 			SpiralType::Logarithmic => (dragged_distance).max(0.1),
 		};
 
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., viewport_drag_start),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
-		});
+		responses.add(window_aligned_transform_set(document, layer, viewport_drag_start, DVec2::ONE));
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, OuterRadiusInput::INDEX),

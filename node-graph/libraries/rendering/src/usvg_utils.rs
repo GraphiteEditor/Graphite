@@ -166,8 +166,8 @@ pub struct ParsedSvgPath {
 }
 
 pub struct ParsedSvgText {
-	text: String,
-	transform: DAffine2,
+	pub text: String,
+	pub transform: DAffine2,
 }
 
 pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) -> Option<Fill> {
@@ -200,6 +200,9 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite
 				gradient_type,
 				stops,
 				spread_method,
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
+				transform: DAffine2::IDENTITY,
 			}))
 		}
 		usvg::Paint::RadialGradient(radial) => {
@@ -230,6 +233,9 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite
 				gradient_type,
 				stops,
 				spread_method,
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
+				transform: DAffine2::IDENTITY,
 			}))
 		}
 		usvg::Paint::Pattern(_) => {

@@ -458,6 +458,11 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+
+		// TODO: Eventually remove this document upgrade code
+		// Runs after click targets land (this graph run's geometry bounds) so the deferred gradient migration can use them.
+		responses.add(DocumentMessage::MigrateLegacyGradients);
+
 		responses.add(DocumentMessage::UpdateOutlines { outlines });
 		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });

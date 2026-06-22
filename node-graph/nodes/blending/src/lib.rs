@@ -53,6 +53,11 @@ impl MultiplyAlpha for List<GradientStops> {
 		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
+impl MultiplyAlpha for List<String> {
+	fn multiply_alpha(&mut self, factor: f64) {
+		multiply_list_attribute(self, ATTR_OPACITY, factor);
+	}
+}
 
 pub(crate) trait MultiplyFill {
 	fn multiply_fill(&mut self, factor: f64);
@@ -83,6 +88,11 @@ impl MultiplyFill for List<Color> {
 	}
 }
 impl MultiplyFill for List<GradientStops> {
+	fn multiply_fill(&mut self, factor: f64) {
+		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
+	}
+}
+impl MultiplyFill for List<String> {
 	fn multiply_fill(&mut self, factor: f64) {
 		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
@@ -123,6 +133,11 @@ impl SetBlendMode for List<GradientStops> {
 		set_list_blend_mode(self, blend_mode);
 	}
 }
+impl SetBlendMode for List<String> {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		set_list_blend_mode(self, blend_mode);
+	}
+}
 
 trait SetClip {
 	fn set_clip(&mut self, clip: bool);
@@ -159,6 +174,11 @@ impl SetClip for List<GradientStops> {
 		set_list_clip(self, clip);
 	}
 }
+impl SetClip for List<String> {
+	fn set_clip(&mut self, clip: bool) {
+		set_list_clip(self, clip);
+	}
+}
 
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
 #[node_macro::node(category("Blending"))]
@@ -171,6 +191,7 @@ fn blend_mode<T: SetBlendMode>(
 		List<Raster<CPU>>,
 		List<Color>,
 		List<GradientStops>,
+		List<String>,
 	)]
 	mut content: T,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
@@ -194,6 +215,7 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 		List<Raster<CPU>>,
 		List<Color>,
 		List<GradientStops>,
+		List<String>,
 	)]
 	mut content: T,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
@@ -235,6 +257,7 @@ fn clipping_mask<T: SetClip>(
 		List<Raster<CPU>>,
 		List<Color>,
 		List<GradientStops>,
+		List<String>,
 	)]
 	mut content: T,
 	/// Whether the content inherits the alpha of the content beneath it.

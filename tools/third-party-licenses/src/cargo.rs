@@ -86,7 +86,7 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 
 fn run() -> Result<Output, Error> {
 	let output = Command::new("cargo")
-		.args(["about", "generate", "--format", "json", "--frozen"])
+		.args(["about", "generate", "--format", "json", "--locked"])
 		.current_dir(env!("CARGO_WORKSPACE_DIR"))
 		.output()
 		.map_err(|e| Error::Io(e, "Failed to run cargo about generate".into()))?;

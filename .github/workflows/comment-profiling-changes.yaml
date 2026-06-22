@@ -137,6 +137,7 @@ jobs:
             const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution'];
 
             let hasSignificantChanges = false;
+            let hasRegressions = false;
             let regressionDetails = [];
 
             for (let i = 0; i < allOutputs.length; i++) {
@@ -153,19 +154,25 @@ jobs:
 
                   if (isSignificantChange(diffPct, absoluteChange, outputName)) {
                     hasSignificantChanges = true;
-                    regressionDetails.push({
-                      module_path: benchmark.module_path,
-                      id: benchmark.id,
-                      diffPct,
-                      absoluteChange,
-                      sectionTitle
-                    });
+
+                    // Only an increase in instruction count is a regression; improvements must not fail CI.
+                    if (diffPct > 0) {
+                      hasRegressions = true;
+                      regressionDetails.push({
+                        module_path: benchmark.module_path,
+                        id: benchmark.id,
+                        diffPct,
+                        absoluteChange,
+                        sectionTitle
+                      });
+                    }
                   }
                 }
               }
             }
 
             core.setOutput('has-significant-changes', hasSignificantChanges);
+            core.setOutput('has-regressions', hasRegressions);
             core.setOutput('regression-details', JSON.stringify(regressionDetails));
 
       - name: Comment PR
@@ -319,7 +326,7 @@ jobs:
             }
 
       - name: Fail on significant regressions
-        if: steps.analyze.outputs.has-significant-changes == 'true'
+        if: steps.analyze.outputs.has-regressions == 'true'
         uses: actions/github-script@v8
         with:
           script: |
