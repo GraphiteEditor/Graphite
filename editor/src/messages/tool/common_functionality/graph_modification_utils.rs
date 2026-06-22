@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
@@ -320,17 +320,44 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Read the gradient stored directly in a specific "Fill" node's `fill` input value, if it holds a `Fill::Gradient`.
-pub fn gradient_in_fill_node(fill_node_id: NodeId, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
+/// The legacy bounding-box-relative gradient (`absolute == false`) in a "Fill" node's active `fill` input, if any.
+fn legacy_active_gradient_in_fill_node(fill_node_id: NodeId, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let TaggedValue::Fill(Fill::Gradient(gradient)) = node.inputs.get(1)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Gradient(gradient)) = node.inputs.get(graphene_std::vector::fill::FillInput::<Fill>::INDEX)?.as_value()? else {
 		return None;
 	};
-	Some(gradient.clone())
+	(!gradient.absolute).then(|| gradient.clone())
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Find every root-network "Fill" node holding a legacy bounding-box-relative `Fill::Gradient` (`absolute == false`).
+/// The legacy bounding-box-relative gradient (`absolute == false`) stashed in a "Fill" node's `_backup_gradient` input, if any.
+/// The backup is inert until the fill is toggled back to a gradient, at which point it becomes the active fill, so it needs converting too.
+fn legacy_backup_gradient_in_fill_node(fill_node_id: NodeId, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
+	let node = network_interface.document_network().nodes.get(&fill_node_id)?;
+	let TaggedValue::FillGradient(gradient) = node.inputs.get(graphene_std::vector::fill::BackupGradientInput::INDEX)?.as_value()? else {
+		return None;
+	};
+	(!gradient.absolute).then(|| gradient.clone())
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Convert a "Fill" node's legacy gradients (the active `fill` and/or the stashed `_backup_gradient`) to absolute space using
+/// the geometry's measured bounding box, writing each back in place. The active fill is written as a `Fill`, the backup as a bare `FillGradient`.
+pub fn migrate_fill_node_gradients_to_absolute(fill_node_id: NodeId, network_interface: &mut NodeNetworkInterface, bounding_box: DAffine2, layer_transform: DAffine2) {
+	if let Some(gradient) = legacy_active_gradient_in_fill_node(fill_node_id, network_interface) {
+		let absolute = gradient.to_absolute(bounding_box, layer_transform);
+		let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Fill>::INDEX);
+		network_interface.set_input(&input, NodeInput::value(TaggedValue::Fill(Fill::Gradient(absolute)), false), &[]);
+	}
+	if let Some(gradient) = legacy_backup_gradient_in_fill_node(fill_node_id, network_interface) {
+		let absolute = gradient.to_absolute(bounding_box, layer_transform);
+		let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX);
+		network_interface.set_input(&input, NodeInput::value(TaggedValue::FillGradient(absolute), false), &[]);
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Find every root-network "Fill" node holding a legacy bounding-box-relative gradient, either as its active `fill` or as its `_backup_gradient`.
 ///
 /// Scans the document network structurally instead of walking each layer's primary flow, so it also catches fills on
 /// secondary inputs and in hidden, disabled, or orphaned branches. Fills nested inside subgraph node networks are skipped.
@@ -342,7 +369,7 @@ pub fn legacy_gradient_fill_nodes(network_interface: &NodeNetworkInterface) -> V
 		.keys()
 		.copied()
 		.filter(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&fill_identifier))
-		.filter(|node_id| gradient_in_fill_node(*node_id, network_interface).is_some_and(|gradient| !gradient.absolute))
+		.filter(|&node_id| legacy_active_gradient_in_fill_node(node_id, network_interface).is_some() || legacy_backup_gradient_in_fill_node(node_id, network_interface).is_some())
 		.collect()
 }
 

@@ -1,5 +1,4 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2, UVec2};
@@ -16,7 +15,6 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::Fill;
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
@@ -564,7 +562,7 @@ impl NodeGraphExecutor {
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	/// Convert the just-measured fill's gradient to absolute space using its evaluated geometry, then advance the queue.
+	/// Convert the just-measured fill's legacy gradients to absolute space using its evaluated geometry, then advance the queue.
 	fn handle_gradient_measurement(
 		&mut self,
 		document: &mut DocumentMessageHandler,
@@ -576,16 +574,7 @@ impl NodeGraphExecutor {
 		let measured = inspect_result.and_then(|mut result| result.take_data()).and_then(|data| measure_fill_geometry(&data));
 
 		match measured {
-			Some((bounding_box, item_transform)) => {
-				if let Some(gradient) = graph_modification_utils::gradient_in_fill_node(fill_node_id, &document.network_interface)
-					&& !gradient.absolute
-				{
-					let absolute = gradient.to_absolute(bounding_box, item_transform);
-					document
-						.network_interface
-						.set_input(&InputConnector::node(fill_node_id, 1), NodeInput::value(TaggedValue::Fill(Fill::Gradient(absolute)), false), &[]);
-				}
-			}
+			Some((bounding_box, item_transform)) => graph_modification_utils::migrate_fill_node_gradients_to_absolute(fill_node_id, &mut document.network_interface, bounding_box, item_transform),
 			None => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving it in legacy space"),
 		}
 
