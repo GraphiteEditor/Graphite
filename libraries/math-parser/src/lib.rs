@@ -27,6 +27,14 @@ mod tests {
 
 	const EPSILON: f64 = 1e-10_f64;
 
+	#[test]
+	fn malformed_juxtaposed_numbers_fail_to_parse() {
+		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication).
+		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
 	macro_rules! test_end_to_end{
 		($($name:ident: $input:expr_2021 => ($expected_value:expr_2021, $expected_unit:expr_2021)),* $(,)?) => {
 			$(
@@ -138,6 +146,11 @@ mod tests {
 		multiply_phi_constant: "phi * 2" => (1.61803398875 * 2., Unit::BASE_UNIT),
 		exponent_tau: "2^tau" => (2f64.powf(2. * std::f64::consts::PI), Unit::BASE_UNIT),
 		infinity_subtract_large_number: "inf - 1000" => (f64::INFINITY, Unit::BASE_UNIT),
+
+		// Decimals with no leading digit before the point
+		leading_dot_decimal: ".5" => (0.5, Unit::BASE_UNIT),
+		leading_dot_in_expression: "1+.5" => (1.5, Unit::BASE_UNIT),
+		leading_dot_exponent: ".5e3" => (500., Unit::BASE_UNIT),
 
 		// Trigonometric functions
 		trig_sin_pi: "sin(pi)" => (0., Unit::BASE_UNIT),

@@ -215,10 +215,11 @@
 			component: NumberInput,
 			getProps: (props, index) => ({
 				...props,
-				incrementCallbackIncrease: () => widgetValueCommitAndUpdate(index, "Increment", false),
-				incrementCallbackDecrease: () => widgetValueCommitAndUpdate(index, "Decrement", false),
+				incrementCallbackIncrease: () => widgetValueCommitAndUpdate(index, { increment: "Increase" }, false),
+				incrementCallbackDecrease: () => widgetValueCommitAndUpdate(index, { increment: "Decrease" }, false),
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
+					commitText: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
 					commitHistoryTransaction: () => editor.endTransaction(),
 				},

@@ -26,7 +26,7 @@ fn_call       =  { ident ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 ident           =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 lit           =  { unit | ((float | int) ~ unit?) }
 
-float         =  @{ int ~ "." ~ int? ~ exp? | int ~ exp }
+float         =  @{ (int ~ "." ~ int? ~ exp? | "." ~ int ~ exp? | int ~ exp) ~ !("." | ASCII_DIGIT) }
 exp           =  _{ ^"e" ~ ("+" | "-")? ~ int }
 int           =  @{ ASCII_DIGIT+ }
 
