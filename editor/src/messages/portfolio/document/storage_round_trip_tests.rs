@@ -239,7 +239,7 @@ async fn edit_after_open_commits_cleanly() {
 	{
 		let document = editor.active_document_mut();
 		document.network_interface = rebuilt;
-		document.storage = Some(reopened);
+		document.set_storage(Some(reopened));
 		document.finalize_storage_load();
 	}
 
@@ -257,11 +257,13 @@ async fn edit_after_open_commits_cleanly() {
 	// `commit_storage_snapshot` only logs commit failures, so assert on the underlying `commit_from_runtime`
 	// result directly to make the deletion commit a hard test failure rather than a silent log line.
 	let document = editor.active_document_mut();
-	let network = document.network_interface.document_network().clone();
-	let view = StorageMetadataView::new(&document.network_interface);
+	// Clone the interface for the metadata view so it doesn't borrow `document` across the mutable
+	// `storage_mut()` borrow below.
+	let interface = document.network_interface.clone();
+	let network = interface.document_network().clone();
+	let view = StorageMetadataView::new(&interface);
 	document
-		.storage
-		.as_mut()
+		.storage_mut()
 		.expect("storage mounted")
 		.commit_from_runtime(&network, &view, &Default::default(), &byte_store)
 		.expect("commit after deleting a layer post-open must not fail");
@@ -616,7 +618,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	editor.handle_message(DocumentMessage::Undo).await;
 
 	let document = editor.active_document();
-	let storage = document.storage.as_ref().expect("storage mounted");
+	let storage = document.storage().expect("storage mounted");
 	let stored: std::collections::BTreeSet<_> = storage.registry().resources.keys().copied().collect();
 
 	// Every resource the restored network still references must be in the cursor.
@@ -689,7 +691,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	// Back at the loaded base, neither path should be able to undo further: the load is not an undo step.
 	// If the `Gdd` retired the mount base as its own interaction, the cursor can still undo here while legacy
 	// cannot, which is the off-by-one that makes the cursor lag the legacy path by a interaction.
-	let storage = editor.active_document().storage.as_ref().expect("storage mounted");
+	let storage = editor.active_document().storage().expect("storage mounted");
 	assert!(!storage.can_undo(), "cursor must not undo past the loaded base (the load is not an undo step)");
 }
 
@@ -699,7 +701,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 /// redo) while the cursor reverts the interaction's `AddResource`, so the runtime's resource set is allowed
 /// to be a superset of the cursor's, but a resource the current network references must be present.
 fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
-	let storage = document.storage.as_ref().expect("storage mounted");
+	let storage = document.storage().expect("storage mounted");
 	let peer = storage.session().peer();
 
 	let network = document.network_interface.document_network().clone();
@@ -731,7 +733,7 @@ async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourc
 	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into())
 		.await
 		.expect("create_in");
-	editor.active_document_mut().storage = Some(gdd);
+	editor.active_document_mut().set_storage(Some(gdd));
 	HashMapResourceStorage::new()
 }
 
@@ -757,7 +759,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 
 	// First autosave: captures the loaded document. `verify_storage_round_trip` panics on drift.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store);
-	let history_after_open = editor.active_document().storage.as_ref().unwrap().session().history().count();
+	let history_after_open = editor.active_document().storage().unwrap().session().history().count();
 
 	// Snapshot the network, then make a real modification.
 	let before_edit = editor.active_document().network_interface.document_network().clone();
@@ -767,7 +769,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 
 	// Second autosave: again verifies the round-trip, and the edit must produce new retired history.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store);
-	let history_after_edit = editor.active_document().storage.as_ref().unwrap().session().history().count();
+	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
 		history_after_edit > history_after_open,
 		"committing an edit should append retired deltas: {history_after_open} -> {history_after_edit}"

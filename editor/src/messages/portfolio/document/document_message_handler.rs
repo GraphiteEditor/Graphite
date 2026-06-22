@@ -1,3 +1,5 @@
+use super::DocumentHistory;
+use super::document_history::SnapshotInputs;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
@@ -92,13 +94,6 @@ pub struct DocumentMessageHandler {
 	/// Resources embedded in the document.
 	#[serde(default, skip_serializing_if = "ResourceMessageHandler::is_empty")]
 	pub resources: ResourceMessageHandler,
-	/// Per-document `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None`
-	/// until the mount future built by `load_document` resolves (the working-copy container is
-	/// constructed asynchronously). Not serialized. A clone shares the same working-copy container
-	/// (`Gdd` holds an `Arc<AnyContainer>`), so a cloned document still reads the live working copy.
-	#[serde(skip, default)]
-	#[derivative(Debug = "ignore")]
-	pub storage: Option<document_format::GddV1>,
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
@@ -146,12 +141,9 @@ pub struct DocumentMessageHandler {
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
 	selection_network_path: Vec<NodeId>,
-	/// Stack of document network snapshots for previous history states.
+	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
-	document_undo_history: VecDeque<NodeNetworkInterface>,
-	/// Stack of document network snapshots for future history states.
-	#[serde(skip)]
-	document_redo_history: VecDeque<NodeNetworkInterface>,
+	history: DocumentHistory,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -183,7 +175,6 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
-			storage: None,
 			collapsed: CollapsedLayers::default(),
 			properties_panel_collapsed_sections: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
@@ -203,8 +194,7 @@ impl Default for DocumentMessageHandler {
 			pending_gradient_migration: false,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
-			document_undo_history: VecDeque::new(),
-			document_redo_history: VecDeque::new(),
+			history: DocumentHistory::default(),
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -1064,7 +1054,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let legacy_document = document.serialize_document().into_bytes();
 
 					// Export the working copy as a .gdd with the legacy blob embedded; fall back to the bare legacy blob if there is no working copy or the export fails.
-					let content = match &document.storage {
+					let content = match document.history.storage() {
 						Some(storage) => storage
 							.export_to_bytes(
 								document_format::ExportFormat::Xz,
@@ -1340,11 +1330,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.retire_storage_interaction();
 
 				self.network_interface.start_transaction();
-				let network_interface_clone = self.network_interface.clone();
-				self.document_undo_history.push_back(network_interface_clone);
-				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-					self.document_undo_history.pop_front();
-				}
+				self.history.push_undo(self.network_interface.clone());
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -1360,14 +1346,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			},
 			DocumentMessage::CancelTransaction => {
 				self.network_interface.finish_transaction();
-				self.document_undo_history.pop_back();
+				// No storage rollback needed: cancel only fires from the `Started` arm, where nothing was
+				// modified and so nothing was staged into the working copy.
+				self.history.discard_last_undo();
 			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 				self.network_interface.finish_transaction();
-				self.document_redo_history.clear();
+				self.history.clear_redo();
 
 				// Stage this commit into the `Gdd` working copy. Retirement into a durable interaction happens
 				// at the undo-step boundary (`StartTransaction`), so several commits in one user action
@@ -1827,7 +1815,7 @@ impl DocumentMessageHandler {
 			Ok(resource_registry) => document.resources.registry = resource_registry,
 			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
 		}
-		document.storage = Some(storage);
+		document.history.set_storage(Some(storage));
 
 		document
 	}
@@ -2019,42 +2007,36 @@ impl DocumentMessageHandler {
 		&self.selection_network_path
 	}
 
-	/// Retire the pending staged hot ops (the current interaction) into durable Gdd history as one undo
-	/// unit. Called at each undo-step boundary (a new `StartTransaction`) and before undo/redo, so the
-	/// per-`CommitTransaction` staging coalesces into one retired interaction aligned with the legacy step.
+	/// The `Gdd` working copy, or `None` until the mount future resolves.
+	pub fn storage(&self) -> Option<&document_format::GddV1> {
+		self.history.storage()
+	}
+
+	/// Mutable access to the `Gdd` working copy, or `None` until the mount future resolves.
+	pub fn storage_mut(&mut self) -> Option<&mut document_format::GddV1> {
+		self.history.storage_mut()
+	}
+
+	/// Attach (or clear) the `Gdd` working copy once the mount future resolves.
+	pub fn set_storage(&mut self, storage: Option<document_format::GddV1>) {
+		self.history.set_storage(storage);
+	}
+
+	/// Retire the pending staged hot ops (the current interaction) into durable Gdd history as one undo unit.
 	pub(crate) fn retire_storage_interaction(&mut self) {
-		let Some(storage) = self.storage.as_mut() else { return };
-		if let Err(error) = storage.retire_pending_interaction() {
-			log::error!("Storage interaction retirement failed: {error}");
-		}
+		self.history.retire_storage_interaction();
 	}
 
 	/// Stage the runtime network into the document's `Gdd` working copy at each `CommitTransaction`.
 	/// No-op while the working copy is still unmounted (its container is built asynchronously on
-	/// document open); the mount picks up the current runtime state once it attaches. The staged hot ops
-	/// are retired into durable history by [`retire_storage_interaction`](Self::retire_storage_interaction) at
-	/// undo-step boundaries. Proto-node declaration bytes are persisted into `byte_store` (the app-global
-	/// resource cache).
+	/// document open); the mount picks up the current runtime state once it attaches. Gathers the
+	/// document-derived inputs the stage needs, then hands off to [`DocumentHistory::stage_snapshot`].
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView};
 
-		if self.storage.is_none() {
+		if self.history.storage().is_none() {
 			return;
 		}
-
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::collect_network_view_settings;
-
-		let network = self.network_interface.document_network();
-		let view = StorageMetadataView::new(&self.network_interface);
-
-		// Per-network view state (node-graph nav + previewing) is per-peer too, so collect it (keyed by the
-		// stable `NetworkId` the storage layer resolves) for `session.json`. Computed before the mutable
-		// `storage` borrow below.
-		let network_view_settings = self
-			.storage
-			.as_ref()
-			.and_then(|storage| storage.network_ids(network, &view).ok())
-			.map(|network_ids| collect_network_view_settings(&self.network_interface, &network_ids));
 
 		// Per-peer view settings (PTZ, rulers, ...) persist in `session.json`, not the registry, so they
 		// stay out of the CRDT/history (not undoable, not synced, may differ per viewer).
@@ -2072,34 +2054,17 @@ impl DocumentMessageHandler {
 		// blob and the registry snapshot describe one consistent document (no interleaved edit).
 		let legacy_document = self.serialize_document();
 
-		// `view` borrows disjoint `self` fields, so the mutable `storage` borrow is independent.
-		let storage = self.storage.as_mut().expect("checked present above");
-		// Stage into the working copy without retiring: a tool drag fires several `CommitTransaction`s
-		// but is one legacy undo step, so the deltas accumulate as hot ops and coalesce into one retired
-		// interaction at the next undo-step boundary (`retire_pending_interaction`).
-		if let Err(error) = storage.stage_runtime_snapshot(network, &view, &self.resources.registry, byte_store) {
-			log::error!("Storage snapshot staging failed: {error}");
-			return;
-		}
+		let view = StorageMetadataView::new(&self.network_interface);
+		let inputs = SnapshotInputs {
+			network: self.network_interface.document_network(),
+			view: &view,
+			interface: &self.network_interface,
+			registry: &self.resources.registry,
+			view_settings,
+			legacy_document,
+		};
 
-		if let Err(error) = storage.set_view_settings(view_settings) {
-			log::error!("Persisting view settings failed: {error}");
-		}
-
-		if let Some(network_view_settings) = network_view_settings
-			&& let Err(error) = storage.set_network_view_settings(network_view_settings)
-		{
-			log::error!("Persisting per-network view settings failed: {error}");
-		}
-
-		// Dual-write soak: embed the legacy `.graphite` bytes inside the `.gdd` working copy so the new
-		// format can be validated against (and recovered from) the old one on open.
-		if let Err(error) = storage.store_legacy_document(legacy_document.as_bytes()) {
-			log::error!("Embedding legacy document into working copy failed: {error}");
-		}
-
-		#[cfg(debug_assertions)]
-		self.verify_storage_round_trip(network, &view);
+		self.history.stage_snapshot(inputs, byte_store);
 	}
 
 	/// Restore the per-peer view settings persisted in `session.json` (the `ui::doc::*`-keyed
@@ -2133,70 +2098,23 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Debug-only: stored registry should equal a fresh `from_runtime`, and a `to_runtime` of the
-	/// stored registry should equal the original network. Panics on drift so the dual-write soak
-	/// fails loud in dev (and in tests); release builds skip this entirely and autosave never crashes.
-	#[cfg(debug_assertions)]
-	fn verify_storage_round_trip(
-		&self,
-		network: &graph_craft::document::NodeNetwork,
-		view: &crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::StorageMetadataView,
-	) {
-		let Some(storage) = &self.storage else { return };
-		let peer = storage.session().peer();
-
-		let conversion = graph_storage::Registry::convert_from_runtime(network, view, &self.resources.registry, peer).expect("storage round-trip: from_runtime failed");
-		let target = &conversion.registry;
-		let declarations = conversion.declarations().expect("storage round-trip: declaration rebuild failed");
-
-		let stored = storage.registry();
-		assert!(stored.value_equal(target), "storage round-trip: registry value drift after commit\n{}", diff_registries(stored, target));
-		assert!(stored.order_consistent(target), "storage round-trip: timestamp order inconsistent between stored and target");
-
-		let (round_tripped, _entries) = stored.to_runtime_with_metadata(&declarations).expect("storage round-trip: to_runtime failed");
-		assert!(
-			&round_tripped == network,
-			"storage round-trip: network drift after to_runtime\n{}",
-			diff_networks(network, &round_tripped)
-		);
-	}
-
 	/// Move the `Gdd` undo/redo cursor (the authoritative path) and spawn the async future that rebuilds the
 	/// interface from the cursor and swaps it in. Synchronous: flushes the open interaction, moves the cursor
 	/// (persisting `session.json`), then clones the post-move `Gdd` and queues the rebuild. `had_oracle`
 	/// records whether the legacy snapshot already applied, so the completion can compare; it travels with
 	/// the spawned message. Returns whether the cursor moved (so callers know a rebuild is pending).
 	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, resource_storage: &ResourceStorageMessageHandler, had_oracle: bool, undo: bool, responses: &mut VecDeque<Message>) -> bool {
-		// Flush any open interaction into retired history first: undo/redo operate on the retired chain, so
-		// the most recent edit must be a committed interaction before the cursor moves.
-		self.retire_storage_interaction();
-
-		let Some(storage) = self.storage.as_mut() else { return false };
-
-		let moved = if undo {
-			if !storage.can_undo() {
-				return false;
-			}
-			storage.undo().map(|_| ())
-		} else {
-			if !storage.can_redo() {
-				return false;
-			}
-			storage.redo().map(|_| ())
-		};
-		if let Err(error) = moved {
-			log::error!("Storage undo/redo cursor move failed: {error}");
-			return false;
-		}
+		// Move the cursor (flushing any open interaction first) and clone the post-move `Gdd`; `None` means
+		// nothing to move to, unmounted, or a failed move.
+		let Some(gdd) = self.history.move_cursor(undo) else { return false };
 
 		let Some(store_handle) = resource_storage.store_handle() else {
 			log::error!("Storage undo/redo: resource storage not initialized; cannot rebuild interface");
 			return false;
 		};
 
-		// Clone the post-move `Gdd` (a `Session` snapshot at the new cursor; the container is `Arc`-shared)
-		// so the `'static` rebuild future reads the rewound state while the live document keeps its cursor.
-		let gdd = storage.clone();
+		// The cloned post-move `Gdd` reads the rewound state in the `'static` rebuild future while the live
+		// document keeps its cursor.
 		responses.add(crate::messages::portfolio::portfolio_message_handler::rebuild_gdd_cursor_future(
 			gdd,
 			store_handle,
@@ -2229,7 +2147,14 @@ impl DocumentMessageHandler {
 
 		// The live `Gdd` cursor's registry should match a fresh `from_runtime` of the now-swapped interface.
 		#[cfg(debug_assertions)]
-		self.verify_storage_cursor_matches_runtime();
+		{
+			use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::StorageMetadataView;
+
+			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
+			let view = StorageMetadataView::new(&self.network_interface);
+			self.history
+				.verify_cursor_matches_runtime(self.network_interface.document_network(), &view, &self.resources.registry, &current_resources);
+		}
 
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
@@ -2248,42 +2173,6 @@ impl DocumentMessageHandler {
 			log::error!("undo/redo rebuild diverged from the legacy snapshot\n{}", diff_networks(legacy, candidate));
 			#[cfg(test)]
 			panic!()
-		}
-	}
-
-	/// Debug-only: after a `Gdd` cursor move, the cursor's registry should equal a fresh `from_runtime`
-	/// of the current (legacy-restored) interface. Logs drift (see the call site for why it does not
-	/// panic) so cursor bugs surface in dev without crashing the editor.
-	#[cfg(debug_assertions)]
-	fn verify_storage_cursor_matches_runtime(&self) {
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::StorageMetadataView;
-
-		let Some(storage) = &self.storage else { return };
-		let peer = storage.session().peer();
-
-		let network = self.network_interface.document_network();
-		let view = StorageMetadataView::new(&self.network_interface);
-		let Ok(mut conversion) = graph_storage::Registry::convert_from_runtime(network, &view, &self.resources.registry, peer) else {
-			log::error!("undo/redo shadow: from_runtime failed");
-			return;
-		};
-
-		let stored = storage.registry();
-
-		// The runtime keeps resources alive while they're referenced by undo/redo history (so legacy redo
-		// can restore them), but the `Gdd` cursor reverts the interaction's `AddResource`. So a resource the
-		// runtime carries which the cursor dropped is expected, not drift, as long as it's history-only
-		// (not referenced by the current network). Drop those from the conversion before comparing.
-		let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
-		conversion.registry.resources.retain(|id, _| stored.resources.contains_key(id) || current_resources.contains(id));
-
-		if !stored.value_equal(&conversion.registry) {
-			// Logged, not panicked: any remaining drift is a real cursor or conversion bug to triage, but
-			// the shadow must not crash the live editor while we harden it toward a hard panic.
-			log::error!(
-				"undo/redo shadow: cursor registry diverged from the restored interface\n{}",
-				diff_registries(stored, &conversion.registry)
-			);
 		}
 	}
 
@@ -2571,10 +2460,7 @@ impl DocumentMessageHandler {
 		// an across-reopen undo where the legacy stack is empty but the persisted `Gdd` cursor can still
 		// move), the rebuild overwrites with no comparison.
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
-			self.document_redo_history.push_back(previous_network);
-			if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-				self.document_redo_history.pop_front();
-			}
+			self.history.push_redo(previous_network);
 			true
 		} else {
 			false
@@ -2585,7 +2471,7 @@ impl DocumentMessageHandler {
 
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.document_undo_history.pop_back()?;
+		let mut network_interface = self.history.pop_undo()?;
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
@@ -2614,10 +2500,7 @@ impl DocumentMessageHandler {
 		// Mirror `undo_with_history`: apply the legacy snapshot synchronously (oracle), then move the `Gdd`
 		// cursor and spawn the authoritative async rebuild.
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
-			self.document_undo_history.push_back(previous_network);
-			if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-				self.document_undo_history.pop_front();
-			}
+			self.history.push_undo(previous_network);
 			true
 		} else {
 			false
@@ -2628,7 +2511,7 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.document_redo_history.pop_back()?;
+		let mut network_interface = self.history.pop_redo()?;
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
@@ -3963,8 +3846,7 @@ impl DocumentMessageHandler {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
 		if include_history {
-			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
-			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.history.collect_used_resources(&mut resources);
 		}
 		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
 	}
