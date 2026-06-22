@@ -1124,9 +1124,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 	// Legacy `Fill::Gradient`s are converted to absolute by the deferred migration pre-pass that measures each fill's geometry
 	document.pending_gradient_migration = !graph_modification_utils::legacy_gradient_fill_nodes(&document.network_interface).is_empty();
-	if graph_modification_utils::has_nested_legacy_gradient(&document.network_interface) {
-		log::warn!("Legacy bounding-box gradients inside subgraph node networks are not migrated and may render incorrectly");
-	}
 
 	let network = document.network_interface.document_network().clone();
 

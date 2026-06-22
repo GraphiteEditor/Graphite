@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
@@ -344,28 +344,6 @@ pub fn legacy_gradient_fill_nodes(network_interface: &NodeNetworkInterface) -> V
 		.filter(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&fill_identifier))
 		.filter(|node_id| gradient_in_fill_node(*node_id, network_interface).is_some_and(|gradient| !gradient.absolute))
 		.collect()
-}
-
-// TODO: Eventually remove this document upgrade code
-/// Whether any subgraph node network (i.e. not the root) holds a legacy bounding-box-relative gradient that the root-only
-/// migration scan skips. Used only to warn that those rare cases won't be converted.
-pub fn has_nested_legacy_gradient(network_interface: &NodeNetworkInterface) -> bool {
-	fn holds_legacy_gradient(network: &NodeNetwork) -> bool {
-		network.nodes.values().any(|node| {
-			let nested = matches!(&node.implementation, DocumentNodeImplementation::Network(inner) if holds_legacy_gradient(inner));
-			let here = node
-				.inputs
-				.iter()
-				.any(|input| matches!(input.as_value(), Some(TaggedValue::Fill(Fill::Gradient(gradient))) if !gradient.absolute));
-			nested || here
-		})
-	}
-
-	network_interface
-		.document_network()
-		.nodes
-		.values()
-		.any(|node| matches!(&node.implementation, DocumentNodeImplementation::Network(inner) if holds_legacy_gradient(inner)))
 }
 
 /// Get the gradient stops of a layer, if any.
