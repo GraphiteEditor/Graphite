@@ -139,6 +139,11 @@ mod tests {
 		exponent_tau: "2^tau" => (2f64.powf(2. * std::f64::consts::PI), Unit::BASE_UNIT),
 		infinity_subtract_large_number: "inf - 1000" => (f64::INFINITY, Unit::BASE_UNIT),
 
+		// Decimals with no leading digit before the point
+		leading_dot_decimal: ".5" => (0.5, Unit::BASE_UNIT),
+		leading_dot_in_expression: "1+.5" => (1.5, Unit::BASE_UNIT),
+		leading_dot_exponent: ".5e3" => (500., Unit::BASE_UNIT),
+
 		// Trigonometric functions
 		trig_sin_pi: "sin(pi)" => (0., Unit::BASE_UNIT),
 		trig_cos_zero: "cos(0)" => (1., Unit::BASE_UNIT),

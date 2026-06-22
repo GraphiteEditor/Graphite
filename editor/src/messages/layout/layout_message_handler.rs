@@ -310,11 +310,25 @@ impl LayoutMessageHandler {
 						let callback_message = (number_input.on_update.callback)(number_input);
 						responses.add(callback_message);
 					}
-					// TODO: This crashes when the cursor is in a text box, such as in the Text node, and the transform node is clicked (https://github.com/GraphiteEditor/Graphite/issues/1761)
-					Value::String(str) => match str.as_str() {
-						"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
-						"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
-						_ => panic!("Invalid string found when updating `NumberInput`"),
+					// A text-field commit sends the user's raw entry as a math expression to evaluate and validate.
+					Value::String(expression) => {
+						let Some(evaluated) = evaluate_and_validate_number_input(&expression, number_input) else { return };
+
+						// Skip the update (and its history transaction) when the value is unchanged, since the network interface would short-circuit it anyway.
+						if number_input.value == Some(evaluated) {
+							return;
+						}
+
+						// Snapshot for undo via `on_commit`, then apply the new value via `on_update`.
+						number_input.value = Some(evaluated);
+						responses.add((number_input.on_commit.callback)(&()));
+						responses.add((number_input.on_update.callback)(number_input));
+					}
+					// The increment arrows send `{ "increment": "Increase" | "Decrease" }` to invoke the backend's directional step callback.
+					Value::Object(ref command) => match command.get("increment").and_then(Value::as_str) {
+						Some("Increase") => responses.add((number_input.increment_callback_increase.callback)(number_input)),
+						Some("Decrease") => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
+						_ => error!("NumberInput received an unrecognized command: {value:?}"),
 					},
 					_ => {}
 				},
@@ -523,4 +537,33 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 			_ => {}
 		}
 	}
+}
+
+/// Evaluates a math expression committed in a `NumberInput`'s text field, then clamps and rounds it to the widget's constraints.
+/// Returns `None` if the expression fails to parse, fails to evaluate, or yields a non-real number (such as `sqrt(-1)`).
+fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInput) -> Option<f64> {
+	let value = math_parser::evaluate(expression)
+		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
+		.ok()?
+		.0
+		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err}"))
+		.ok()?;
+
+	let real = value.as_real()?;
+	if real.is_nan() {
+		return None;
+	}
+
+	let mut validated = real;
+	if let Some(min) = number_input.min {
+		validated = validated.max(min);
+	}
+	if let Some(max) = number_input.max {
+		validated = validated.min(max);
+	}
+	if number_input.is_integer {
+		validated = validated.round();
+	}
+
+	Some(validated)
 }

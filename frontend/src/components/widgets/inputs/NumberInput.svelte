@@ -4,7 +4,6 @@
 	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import { evaluateMathExpression } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
@@ -12,7 +11,12 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{
+		value: number | undefined;
+		commitText: string;
+		startHistoryTransaction: undefined;
+		commitHistoryTransaction: undefined;
+	}>();
 
 	const editor = getContext<EditorWrapper>("editor");
 
@@ -247,21 +251,11 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
-		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
+		// The backend evaluates the math, validates against this widget's constraints, and (only when changed) applies it within a history transaction before resending the widget.
+		dispatch("commitText", text);
 
-		let newValue = evaluateMathExpression(textWithLeadingZeroes);
-		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
-
-		if (newValue !== undefined) {
-			const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
-			if (newValue !== oldValue) {
-				dispatch("startHistoryTransaction");
-				transactionInProgress = true;
-			}
-		}
-		updateValue(newValue);
-		commitTransactionIfInProgress();
+		// Revert the field to the current value's canonical display; an accepted change resends the widget and re-runs `watchValue` to show the new value.
+		text = displayText(value, unit);
 
 		editing = false;
 		self?.unFocus();
