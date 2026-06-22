@@ -219,7 +219,8 @@ The editor operates on its existing runtime types. Storage is a serialization la
                 ┌─────────────────────────────────────────┐
                 │ On-disk  (.gdd container)               │
                 │  named payloads: manifest, registry,    │
-                │  history, session, resources/<hash>     │
+                │  history, hot-log, session,             │
+                │  resources/<hash>                       │
                 │  served by a Container backend          │
                 │  (folder, in-memory, OPFS), optionally  │
                 │  encoded through an Archive codec       │
