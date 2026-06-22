@@ -125,11 +125,13 @@ impl GenericDialGizmo {
 		}
 	}
 
-	/// Convert the horizontal drag distance into integer steps (drag right to increase, left to
-	/// decrease), clamped to the registry's bounds.
+	/// Convert the drag into integer steps. The magnitude comes from the total drag distance (so the
+	/// dial responds to motion in any direction, not just horizontal), while the horizontal direction
+	/// decides the sign: drag right to increase, left to decrease. Clamped to the registry's bounds.
 	pub fn handle_update(&self, drag_start: DVec2, _document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		let horizontal_delta = input.mouse.position.x - drag_start.x;
-		let steps = (horizontal_delta / DIAL_PIXELS_PER_STEP).round() as i64;
+		let drag = input.mouse.position - drag_start;
+		let direction = (input.mouse.position.x - drag_start.x).signum();
+		let steps = ((drag.length() / DIAL_PIXELS_PER_STEP).round() * direction) as i64;
 
 		let min = self.info.min.map(|m| m as i64).unwrap_or(0);
 		let max = self.info.max.map(|m| m as i64).unwrap_or(i64::MAX);

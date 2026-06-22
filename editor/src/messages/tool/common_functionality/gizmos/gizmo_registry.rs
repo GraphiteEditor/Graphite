@@ -76,24 +76,16 @@ const CIRCLE_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
 	position_hint: PositionHint::ParameterDerived,
 }];
 
-const POLYGON_GIZMOS: &[GizmoInfo] = &[
-	GizmoInfo {
-		parameter_index: 1,
-		gizmo_type: GizmoType::Dial,
-		name: "Sides",
-		min: Some(3.),
-		max: None,
-		position_hint: PositionHint::BoundingBoxCenter,
-	},
-	GizmoInfo {
-		parameter_index: 2,
-		gizmo_type: GizmoType::Slider,
-		name: "Radius",
-		min: Some(0.),
-		max: None,
-		position_hint: PositionHint::ParameterDerived,
-	},
-];
+// Only the sides dial: a polygon's radius is already adjustable via the transform cage, and a
+// `(radius, 0)` slider handle lands off the polygon's geometry, so it adds confusion without value.
+const POLYGON_GIZMOS: &[GizmoInfo] = &[GizmoInfo {
+	parameter_index: 1,
+	gizmo_type: GizmoType::Dial,
+	name: "Sides",
+	min: Some(3.),
+	max: None,
+	position_hint: PositionHint::BoundingBoxCenter,
+}];
 
 const STAR_GIZMOS: &[GizmoInfo] = &[
 	GizmoInfo {
@@ -244,16 +236,17 @@ mod tests {
 	}
 
 	#[test]
-	fn polygon_exposes_a_sides_dial_and_radius_slider() {
+	fn polygon_exposes_only_a_sides_dial() {
 		let infos = get_gizmo_info(&generator_nodes::regular_polygon::IDENTIFIER);
-		assert_eq!(infos.len(), 2);
+		assert_eq!(infos.len(), 1);
 
-		let sides = infos.iter().find(|info| info.gizmo_type == GizmoType::Dial).expect("polygon should have a sides dial");
+		let sides = &infos[0];
+		assert_eq!(sides.gizmo_type, GizmoType::Dial);
 		assert_eq!(sides.parameter_index, 1);
 		assert_eq!(sides.min, Some(3.));
 
-		let radius = infos.iter().find(|info| info.gizmo_type == GizmoType::Slider).expect("polygon should have a radius slider");
-		assert_eq!(radius.parameter_index, 2);
+		// The radius is intentionally not exposed as a gizmo (handled by the transform cage instead).
+		assert!(infos.iter().all(|info| info.gizmo_type != GizmoType::Slider));
 	}
 
 	#[test]
