@@ -398,7 +398,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Document was closed before its working copy finished mounting; drop the `Gdd`.
 					return;
 				};
-				document.storage = gdd;
+				document.set_storage(gdd);
 				// On a fresh mount, capture the current runtime state into the working copy: edits made
 				// during the mount window were skipped by `commit_storage_snapshot` (no-op while unmounted),
 				// so this initial commit brings the working copy up to date. On a reopen the working copy
@@ -449,7 +449,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// declaration bytes), which the runtime resource registry doesn't track but the working copy
 					// and `.gdd` export need in the global cache. History-wide, not just the current registry:
 					// an undo drops an interaction's resources from the working registry, but redo still needs them.
-					if let Some(storage) = &document.storage {
+					if let Some(storage) = document.storage() {
 						used_resources.extend(storage.all_referenced_resource_hashes());
 					}
 				}
