@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, ListDyn};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -12,7 +12,7 @@ use core_types::{
 	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::graphic::{fill_graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
+use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{AnyGraphicListDyn, Vector};
 use graphic_types::{Graphic, IntoGraphicList};
@@ -20,7 +20,7 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use vector_types::gradient::initial_gradient_transform_for_bbox;
+use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bbox};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -1379,6 +1379,8 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 
 	// Create a `List` with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_list = List::new_from_element(Vector::default());
+	let mut primary_source = None;
+
 	let output = output_list.element_mut(0).unwrap();
 
 	// Concatenate every vector element's subpaths into the single output compound path
@@ -1391,24 +1393,36 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 		(index, node_id).hash(&mut hasher);
 		let collision_hash_seed = hasher.finish();
 
-		output.concat(element, flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index), collision_hash_seed);
+		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+		output.concat(element, source_transform, collision_hash_seed);
 
 		// TODO: Make this instead use the first encountered style
 		// Use the last encountered style as the output style
 		output.style = element.style.clone();
+
+		primary_source = Some((index, source_transform));
+	}
+
+	if let Some((primary, source_transform)) = primary_source {
+		let source_attributes = flattened.clone_item_attributes(primary);
+		let mut attributes = ItemAttributeValues::new();
+
+		attributes.insert_cloned_from(&source_attributes, ATTR_FILL);
+		attributes.insert_cloned_from(&source_attributes, ATTR_STROKE);
+		bake_paint_transforms(&mut attributes, source_transform);
+
+		let output = std::mem::take(output_list.element_mut(0).unwrap());
+		output_list = List::new_from_item(Item::from_parts(output, attributes));
+
+		// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
+		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
+		output_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 	}
 
 	// Preserve a reference to the original upstream `List<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
 	output_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
-
-	// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
-	if !flattened.is_empty() {
-		let primary = flattened.len() - 1;
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
-		output_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
-	}
 
 	output_list
 }
@@ -2219,6 +2233,22 @@ async fn morph<I: IntoGraphicList>(
 		}
 	}
 
+	fn lerp_gradient_transform(gradient_list_a: &List<GradientStops>, gradient_list_b: &List<GradientStops>, time: f64) -> DAffine2 {
+		let transform_a = gradient_list_a.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+		let transform_b = gradient_list_b.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+
+		let start_a = transform_a.translation;
+		let end_a = transform_a.translation + transform_a.matrix2.x_axis;
+		let start_b = transform_b.translation;
+		let end_b = transform_b.translation + transform_b.matrix2.x_axis;
+
+		let start = start_a.lerp(start_b, time);
+		let end = end_a.lerp(end_b, time);
+
+		let metadata_source_transform = if time < 0.5 { transform_a } else { transform_b };
+		build_transform_with_y_preservation(metadata_source_transform, start, end)
+	}
+
 	// Lerp between two graphics. Currently supports combinations of a solid color and a gradient.
 	fn lerp_graphic(a: Option<&List<Graphic>>, b: Option<&List<Graphic>>, time: f64) -> Option<List<Graphic>> {
 		let transparent = List::new_from_element(Color::TRANSPARENT).into_graphic_list();
@@ -2263,7 +2293,11 @@ async fn morph<I: IntoGraphicList>(
 			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
 				let stops = stops_a.lerp(stops_b, time);
 				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
-				gradient_with_stops(metadata_source.clone(), stops)
+
+				let mut gradient_list = metadata_source.clone();
+				gradient_list.set_attribute(ATTR_TRANSFORM, 0, lerp_gradient_transform(gradient_list_a, gradient_list_b, time));
+
+				gradient_with_stops(gradient_list, stops)
 			}),
 			_ => None,
 		};

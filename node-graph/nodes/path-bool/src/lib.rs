@@ -1,10 +1,11 @@
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::list::{ATTR_FILL, Item, List};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
 	Ctx,
 };
 use glam::{DAffine2, DVec2};
+use graphic_types::graphic::bake_paint_transforms;
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -13,7 +14,6 @@ use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
-use vector_types::GradientStops;
 use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 pub use vector_types::vector::misc::BooleanOperation;
 use vector_types::vector::style::Fill;
@@ -145,13 +145,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
 
-		for paint_key in [ATTR_FILL, ATTR_STROKE] {
-			if let Some(gradient_stops) = attributes.get_mut::<List<GradientStops>>(paint_key) {
-				for transform in gradient_stops.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-					*transform = copy_from_transform * *transform;
-				}
-			}
-		}
+		bake_paint_transforms(&mut attributes, copy_from_transform);
 
 		let copy_from = vector.element(index).unwrap();
 		let mut element = Vector {
