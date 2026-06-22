@@ -29,7 +29,7 @@ pub fn setup() -> Result<(), Error> {
 	eprintln!("Installing npm packages...");
 	let install = || utils::npm(["ci", "--include=dev", "--prefer-offline", "--no-audit", "--no-fund"]).dir(&frontend).run();
 	if install().is_err() {
-		eprintln!("`npm install` failed; wiping `frontend/node_modules` and retrying...");
+		eprintln!("Failed to install npm packages. Wiping `frontend/node_modules` and retrying...");
 		let _ = std::fs::remove_dir_all(&node_modules);
 		install()?;
 	}
