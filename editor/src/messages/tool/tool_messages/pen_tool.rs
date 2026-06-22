@@ -1595,6 +1595,9 @@ impl Fsm for PenToolFsmState {
 				let vector = document.network_interface.compute_modified_vector(layer);
 				let Some(vector) = vector else { return PenToolFsmState::GRSHandle };
 
+				// Keep the preview segment's endpoint tracking the cursor while the outgoing handle is transformed by the GRS operation
+				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+
 				if let Some(latest_pt) = tool_data.latest_point_mut() {
 					let layer_space_to_viewport = document.metadata().transform_to_viewport(layer);
 					let final_pos = layer_space_to_viewport.inverse().transform_point2(final_position);
