@@ -439,6 +439,41 @@ impl IntoGraphicList for DAffine2 {
 /// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
 pub struct AnyGraphicListDyn(pub Box<dyn AnyAttributeValue>);
 
+impl AnyGraphicListDyn {
+	/// Converts the type-erased paint list into the canonical `List<Graphic>` paint representation.
+	/// Use this with `set_attribute` when writing `fill`/`stroke` attributes, because
+	/// `set_attribute_value_dyn` falls back to the existing attribute type's default when the incoming
+	/// paint value has a different concrete type, such as after Morph.
+	pub fn into_graphic_list(self) -> List<Graphic> {
+		let value = self.0.into_any();
+
+		let value = match value.downcast::<List<Graphic>>() {
+			Ok(value) => return *value,
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<Color>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<GradientStops>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<Vector>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<Raster<CPU>>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		match value.downcast::<List<Raster<GPU>>>() {
+			Ok(value) => (*value).into_graphic_list(),
+			Err(_) => List::new(),
+		}
+	}
+}
+
 impl<T: IntoGraphicList> From<T> for AnyGraphicListDyn {
 	fn from(value: T) -> Self {
 		Self(Box::new(value))

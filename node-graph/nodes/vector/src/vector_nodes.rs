@@ -138,13 +138,13 @@ where
 			};
 
 			let color = gradient.evaluate(factor);
-			let paint = AnyGraphicListDyn::from(List::new_from_element(color));
+			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
-				vector_list.set_attribute_value_dyn(ATTR_FILL, index, paint.clone().into());
+				vector_list.set_attribute(ATTR_FILL, index, paint.clone());
 			}
 			if stroke && vector_list.element(index).and_then(|vector| vector.style.stroke()).is_some() {
-				vector_list.set_attribute_value_dyn(ATTR_STROKE, index, paint.into());
+				vector_list.set_attribute(ATTR_STROKE, index, paint.clone());
 			}
 
 			i += 1;
@@ -204,9 +204,10 @@ async fn fill<V: VectorListIterMut + 'n + Send>(
 		}
 	}
 
+	let fill = fill.into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
-			vector_list.set_attribute_value_dyn(ATTR_FILL, index, fill.clone().into());
+			vector_list.set_attribute(ATTR_FILL, index, fill.clone());
 		}
 	});
 	content
@@ -289,9 +290,10 @@ where
 		vector.style.set_stroke(stroke);
 	});
 
+	let paint = paint.into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
-			vector_list.set_attribute_value_dyn(ATTR_STROKE, index, paint.clone().into());
+			vector_list.set_attribute(ATTR_STROKE, index, paint.clone());
 		}
 	});
 	content
@@ -2231,33 +2233,38 @@ async fn morph<I: IntoGraphicList>(
 			(Some(a), Some(b)) => (a, b),
 		};
 
+		// This keeps the gradient metadata attributes
+		let gradient_with_stops = |mut gradient_list: List<GradientStops>, stops: GradientStops| -> Graphic {
+			if let Some(target) = gradient_list.element_mut(0) {
+				*target = stops;
+			} else {
+				gradient_list.push(Item::new_from_element(stops));
+			}
+			Graphic::Gradient(gradient_list)
+		};
+
 		let graphic = match (a.element(0), b.element(0)) {
-			// Solid × Solid
 			(Some(Graphic::Color(color_list_a)), Some(Graphic::Color(color_list_b))) => color_list_a
 				.element(0)
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
-
-			// Solid × Gradient
 			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
 				let mut solid_to_gradient = stops_b.clone();
 				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
-				Graphic::from(solid_to_gradient.lerp(stops_b, time))
+				let stops = solid_to_gradient.lerp(stops_b, time);
+				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
-
-			// Gradient × Solid
 			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
 				let mut gradient_to_solid = stops_a.clone();
 				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
-				Graphic::from(stops_a.lerp(&gradient_to_solid, time))
+				let stops = stops_a.lerp(&gradient_to_solid, time);
+				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),
-
-			// Gradient × Gradient
-			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a
-				.element(0)
-				.zip(gradient_list_b.element(0))
-				.map(|(stops_a, stops_b)| Graphic::from(stops_a.lerp(stops_b, time))),
-
+			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Gradient(gradient_list_b))) => gradient_list_a.element(0).zip(gradient_list_b.element(0)).map(|(stops_a, stops_b)| {
+				let stops = stops_a.lerp(stops_b, time);
+				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
+				gradient_with_stops(metadata_source.clone(), stops)
+			}),
 			_ => None,
 		};
 
