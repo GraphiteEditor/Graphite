@@ -87,6 +87,7 @@ struct ExecutionContext {
 /// gradients, measured one at a time by redirecting the document export to each so even hidden/orphaned branches evaluate.
 #[derive(Debug, Clone)]
 struct GradientMigration {
+	document_id: DocumentId,
 	remaining: VecDeque<NodeId>,
 	resolution: UVec2,
 	scale: f64,
@@ -342,7 +343,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.runtime_io.receive().collect::<Vec<_>>();
 		for response in results {
 			match response {
@@ -369,9 +370,12 @@ impl NodeGraphExecutor {
 					assert_eq!(fid, execution_id, "Missmatch in execution id");
 
 					// TODO: Eventually remove this document upgrade code
-					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork
+					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
+					// Apply only to the active document's in-progress migration, dropping responses left over from a document switch.
 					if let Some(fill_node_id) = execution_context.measure_fill {
-						self.handle_gradient_measurement(document, execution_context.document_id, fill_node_id, result.ok().and(inspect_result), responses);
+						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
+							self.handle_gradient_measurement(document, document_id, fill_node_id, result.ok().and(inspect_result), responses);
+						}
 						continue;
 					}
 
@@ -462,8 +466,12 @@ impl NodeGraphExecutor {
 	// TODO: Eventually remove this document upgrade code
 	/// Kick off the one-time pre-pass converting legacy bounding-box gradients to absolute space, or no-op if already running.
 	pub(crate) fn drive_gradient_migration(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, resolution: UVec2, scale: f64, responses: &mut VecDeque<Message>) {
-		if self.gradient_migration.is_some() {
-			return;
+		match &self.gradient_migration {
+			// Already running for this document
+			Some(migration) if migration.document_id == document_id => return,
+			// A different document's migration is in progress; cancel it so this one can run (the other restarts when revisited)
+			Some(_) => self.gradient_migration = None,
+			None => {}
 		}
 
 		let remaining: VecDeque<NodeId> = graph_modification_utils::legacy_gradient_fill_nodes(&document.network_interface).into_iter().collect();
@@ -473,14 +481,27 @@ impl NodeGraphExecutor {
 			return;
 		};
 
-		self.gradient_migration = Some(GradientMigration { remaining, resolution, scale });
-		self.dispatch_gradient_measurement(document, document_id, first_fill, resolution, scale);
+		self.gradient_migration = Some(GradientMigration {
+			document_id,
+			remaining,
+			resolution,
+			scale,
+		});
+		self.dispatch_gradient_measurement(document, document_id, first_fill, resolution, scale, responses);
 	}
 
 	// TODO: Eventually remove this document upgrade code
 	/// Run the graph with its export redirected to `fill_node_id` (so its branch evaluates even when hidden or orphaned) and
 	/// that node inspected, so its evaluated geometry returns in the execution response without touching the visible artwork.
-	fn dispatch_gradient_measurement(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, fill_node_id: NodeId, resolution: UVec2, scale: f64) {
+	fn dispatch_gradient_measurement(
+		&mut self,
+		document: &mut DocumentMessageHandler,
+		document_id: DocumentId,
+		fill_node_id: NodeId,
+		resolution: UVec2,
+		scale: f64,
+		responses: &mut VecDeque<Message>,
+	) {
 		let mut network = document.network_interface.document_network().clone();
 
 		// On this throwaway clone, un-hide just the Fill so it's measured as a real Fill rather than a passthrough;
@@ -490,7 +511,9 @@ impl NodeGraphExecutor {
 		}
 
 		let Some(export) = network.exports.first_mut() else {
+			// No export to redirect through, so skip this fill rather than leaving the migration stuck
 			log::warn!("Gradient migration: document network has no export to redirect");
+			self.advance_gradient_migration(document, document_id, responses);
 			return;
 		};
 		*export = NodeInput::node(fill_node_id, 0);
@@ -506,6 +529,7 @@ impl NodeGraphExecutor {
 			.is_err()
 		{
 			log::error!("Gradient migration: failed to send measurement graph update");
+			self.advance_gradient_migration(document, document_id, responses);
 			return;
 		}
 
@@ -578,7 +602,7 @@ impl NodeGraphExecutor {
 
 		if let Some(next_fill) = next_fill {
 			let (resolution, scale) = self.gradient_migration.as_ref().map(|migration| (migration.resolution, migration.scale)).unwrap_or((UVec2::ONE, 1.));
-			self.dispatch_gradient_measurement(document, document_id, next_fill, resolution, scale);
+			self.dispatch_gradient_measurement(document, document_id, next_fill, resolution, scale, responses);
 		} else {
 			self.gradient_migration = None;
 			self.previous_node_to_inspect = Vec::new();

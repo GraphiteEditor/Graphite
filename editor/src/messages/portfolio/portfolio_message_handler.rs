@@ -2006,7 +2006,7 @@ impl PortfolioMessageHandler {
 			return Err("No active document".to_string());
 		};
 
-		let result = self.executor.poll_node_graph_evaluation(active_document, responses);
+		let result = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
 		if result.is_err() {
 			let error = r#"
 				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
