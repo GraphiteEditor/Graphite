@@ -1621,6 +1621,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
+				// TODO: Eventually remove this document upgrade code
+				// A freshly-opened document with legacy gradients runs a one-time measurement pre-pass instead of rendering, until every gradient is converted to absolute space
+				if document.pending_gradient_migration {
+					self.executor.drive_gradient_migration(document, document_id, physical_resolution, scale, responses);
+					return;
+				}
+
 				// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
 				// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
 				#[cfg(not(target_family = "wasm"))]
@@ -1999,7 +2006,7 @@ impl PortfolioMessageHandler {
 			return Err("No active document".to_string());
 		};
 
-		let result = self.executor.poll_node_graph_evaluation(active_document, responses);
+		let result = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
 		if result.is_err() {
 			let error = r#"
 				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
