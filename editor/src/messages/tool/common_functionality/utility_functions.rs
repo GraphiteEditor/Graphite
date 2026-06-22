@@ -13,10 +13,9 @@ use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::list::List;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::table::Table;
-use graphene_std::text::FontCache;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
@@ -63,22 +62,19 @@ where
 }
 
 /// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
-pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
-	let Some((text, font, typesetting, per_glyph_instances)) = get_text(layer, &document.network_interface) else {
+pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Quad {
+	// Use the `editor:text_frame` attribute if available (handles multi-item glyphs and the 'Index Elements' node)
+	if let Some(&frame) = document.metadata().text_frames.get(&layer) {
+		return frame * Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+	}
+
+	// Fallback: recompute from text content (e.g. layer hasn't rendered yet)
+	let Some((text, font, typesetting)) = get_text(layer, &document.network_interface, fonts, &document.resources) else {
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
-
-	let far = graphene_std::text::bounding_box(text, font, font_cache, typesetting, false);
-
-	// TODO: Once the instance tables refactor is complete and per_glyph_instances can be removed (since it'll be the default),
-	// TODO: remove this because the top of the dashed bounding overlay should no longer be based on the first line's baseline.
-	let vertical_offset = if per_glyph_instances {
-		DVec2::NEG_Y * typesetting.font_size * (1. + (typesetting.line_height_ratio - 1.) / 2.)
-	} else {
-		DVec2::ZERO
-	};
-
-	Quad::from_box([DVec2::ZERO + vertical_offset, far + vertical_offset])
+	let font = fonts.get_resource_or_queue_load(&font, responses);
+	let far = graphene_std::text::bounding_box(text, &font, typesetting, false);
+	Quad::from_box([DVec2::ZERO, far])
 }
 
 pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vector, prefer_handle_direction: bool) -> Option<f64> {
@@ -572,11 +568,11 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 	for _ in selected_layers {}
 
-	// Must be a layer of type Table<Vector>
+	// Must be a layer of type List<Vector>
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
 	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
+	if output_type.compiled_nested_type() != Some(&concrete!(List<Vector>)) {
 		return None;
 	}
 
@@ -589,4 +585,58 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 
 	Some(first_layer)
+}
+
+/// Smallest extent, in document units, a nudge-resized box may have per axis (avoids a zero divisor and prevents collapse/inversion).
+const NUDGE_RESIZE_MIN_EXTENT: f64 = 1.;
+
+/// The resized box corners and the document-space scale transform produced by [`nudge_resize_bounds`].
+pub struct NudgeResize {
+	pub min: DVec2,
+	pub max: DVec2,
+	pub transform: DAffine2,
+}
+
+/// Resizes the axis-aligned document-space box `[min, max]` by an arrow-key nudge `delta` (screen space).
+///
+/// `tilt` (document rotation) is snapped to a quarter turn so the arrow maps onto a box axis. The top-left corner is anchored by default,
+/// or the bottom-right corner when `resize_opposite` (Control) is held; the other corner moves. The box stays at least one unit per axis.
+pub fn nudge_resize_bounds(min: DVec2, max: DVec2, delta: DVec2, tilt: f64, resize_opposite: bool) -> NudgeResize {
+	// Snap rotation to a quarter turn so the screen arrow lands on a document-space box axis
+	let doc_delta = match ((tilt / std::f64::consts::FRAC_PI_2).round() as i32).rem_euclid(4) {
+		1 => DVec2::new(delta.y, -delta.x),
+		2 => -delta,
+		3 => DVec2::new(-delta.y, delta.x),
+		_ => delta,
+	};
+
+	// Move one corner by the arrow, keeping the other (the anchor) at least the minimum extent away
+	let mut new_min = min;
+	let mut new_max = max;
+	if resize_opposite {
+		new_min += doc_delta;
+		new_min = new_min.min(new_max - DVec2::splat(NUDGE_RESIZE_MIN_EXTENT));
+	} else {
+		new_max += doc_delta;
+		new_max = new_max.max(new_min + DVec2::splat(NUDGE_RESIZE_MIN_EXTENT));
+	}
+
+	// Ratio of new to old extent, treating a degenerate (sub-unit) original extent as unscaled
+	let old_extent = max - min;
+	let new_extent = new_max - new_min;
+	let scale = DVec2::new(
+		if old_extent.x.abs() < NUDGE_RESIZE_MIN_EXTENT { 1. } else { new_extent.x / old_extent.x },
+		if old_extent.y.abs() < NUDGE_RESIZE_MIN_EXTENT { 1. } else { new_extent.y / old_extent.y },
+	);
+
+	// Scale about the anchored corner, guarding non-finite components to zero
+	let anchor = if resize_opposite { max } else { min };
+	let scale_center = DVec2::new(if anchor.x.is_finite() { anchor.x } else { 0. }, if anchor.y.is_finite() { anchor.y } else { 0. });
+	let transform = DAffine2::from_scale_angle_translation(scale, 0., scale_center - scale * scale_center);
+
+	NudgeResize {
+		min: new_min,
+		max: new_max,
+		transform,
+	}
 }

@@ -1,10 +1,9 @@
 #[cfg(target_os = "macos")]
 use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use graphite_editor::messages::prelude::FrontendMessage;
-use std::path::PathBuf;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
@@ -15,6 +14,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
 				filters: vec![],
+				multiple: true,
 				context: OpenFileDialogContext::Open,
 			});
 		}
@@ -22,10 +22,17 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Import File".to_string(),
 				filters: vec![],
+				multiple: false,
 				context: OpenFileDialogContext::Import,
 			});
 		}
-		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
+		FrontendMessage::TriggerSaveDocument {
+			document_id,
+			name,
+			path,
+			folder,
+			content,
+		} => {
 			let content = content.into_vec();
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
@@ -33,7 +40,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
-					default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
+					default_folder: folder,
 					filters: vec![FileFilter {
 						name: "Graphite".to_string(),
 						extensions: vec!["graphite".to_string()],
@@ -42,12 +49,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				});
 			}
 		}
-		FrontendMessage::TriggerSaveFile { name, content } => {
+		FrontendMessage::TriggerSaveFile { name, folder, content } => {
 			let content = content.into_vec();
 			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 				title: "Save File".to_string(),
 				default_filename: name,
-				default_folder: None,
+				default_folder: folder,
 				filters: Vec::new(),
 				context: SaveFileDialogContext::File { content },
 			});
@@ -62,39 +69,23 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::UpdateUIScale { scale });
 			return Some(FrontendMessage::UpdateUIScale { scale });
 		}
-		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document, details } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
-				id: document_id,
-				document: Document {
-					name: details.name,
-					path: details.path,
-					content: document,
-					is_saved: details.is_saved,
-				},
-			});
+		FrontendMessage::TriggerPersistenceReadState => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceReadState);
 		}
-		FrontendMessage::TriggerPersistenceRemoveDocument { document_id } => {
+		FrontendMessage::TriggerPersistenceWriteState { state } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteState { state });
+		}
+		FrontendMessage::TriggerPersistenceReadDocument { document_id } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceReadDocument { id: document_id });
+		}
+		FrontendMessage::TriggerPersistenceDeleteDocument { document_id } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceDeleteDocument { id: document_id });
 		}
-		FrontendMessage::UpdateActiveDocument { document_id } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id: document_id });
-
-			// Forward this to update the UI
-			return Some(FrontendMessage::UpdateActiveDocument { document_id });
-		}
-		FrontendMessage::UpdateOpenDocumentsList { open_documents } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateDocumentsList {
-				ids: open_documents.iter().map(|document| document.id).collect(),
+		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
+				id: document_id,
+				document_serialized_content: document,
 			});
-
-			// Forward this to update the UI
-			return Some(FrontendMessage::UpdateOpenDocumentsList { open_documents });
-		}
-		FrontendMessage::TriggerLoadFirstAutoSaveDocument => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadCurrentDocument);
-		}
-		FrontendMessage::TriggerLoadRestAutoSaveDocuments => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
 		}
 		FrontendMessage::TriggerOpenLaunchDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::OpenLaunchDocuments);
@@ -147,6 +138,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::WindowDrag => {
 			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
+		}
+		FrontendMessage::WindowFocus => {
+			dispatcher.respond(DesktopFrontendMessage::WindowFocus);
 		}
 		FrontendMessage::WindowHide => {
 			dispatcher.respond(DesktopFrontendMessage::WindowHide);

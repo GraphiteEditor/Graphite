@@ -1,22 +1,24 @@
-use core_types::{Ctx, table::Table};
-use graph_craft::wasm_application_io::WasmEditorApi;
+use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
+use core_types::list::List;
+use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
+use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
 
-/// Draws a text string as vector geometry with a choice of font and styling.
+/// Produces a styled `String[]` carrying all typographic attributes.
+///
+/// Use the **Text to Vector** node to convert this into vector geometry if desired.
 #[node_macro::node(category("Text"))]
-fn text<'i: 'n>(
+fn text(
 	_: impl Ctx,
-	/// The Graphite editor's source for global font resources.
-	#[scope("editor-api")]
-	editor_resources: &'i WasmEditorApi,
+	_primary: (),
 	/// The text content to be drawn.
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	#[default("Lorem ipsum")]
 	text: String,
-	/// The typeface used to draw the text.
+	/// The loaded font file used to draw the text. The editor resolves the chosen typeface to these bytes via the resource system.
 	#[widget(ParsedWidgetOverride::Custom = "text_font")]
-	font: Font,
+	font: Resource,
 	/// The font size used to draw the text.
 	#[unit(" px")]
 	#[default(24.)]
@@ -33,8 +35,13 @@ fn text<'i: 'n>(
 	/// Additional spacing, in pixels, added between each character.
 	#[unit(" px")]
 	#[step(0.1)]
-	character_spacing: f64,
-	/// Whether the *Max Width* property is enabled so that lines can wrap to fit its specified block width.
+	letter_spacing: f64,
+	/// The angle of faux italic slant applied to each glyph.
+	#[unit("°")]
+	#[hard_min(-85.)]
+	#[hard_max(85.)]
+	letter_tilt: f64,
+	/// Enables the maximum width constraint so lines can wrap.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_max_width: bool,
 	/// The maximum width that the text block can occupy before wrapping to a new line. Otherwise, lines do not wrap.
@@ -50,27 +57,49 @@ fn text<'i: 'n>(
 	#[hard_min(1.)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	max_height: f64,
-	/// The angle of faux italic slant applied to each glyph.
-	#[unit("°")]
-	#[hard_min(-85.)]
-	#[hard_max(85.)]
-	tilt: f64,
-	/// The horizontal alignment of each line of text within its surrounding box.
-	/// To have an effect on a single line of text, *Max Width* must be set.
+	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
-	/// Whether to split every letterform into its own vector path element. Otherwise, a single compound path is produced.
-	separate_glyph_elements: bool,
-) -> Table<Vector> {
-	let typesetting = TypesettingConfig {
-		font_size: size,
-		line_height_ratio: line_height,
-		character_spacing,
-		max_width: has_max_width.then_some(max_width),
-		max_height: has_max_height.then_some(max_height),
-		tilt,
-		align,
-	};
+) -> List<String> {
+	let mut list = List::new_from_element(text);
 
-	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyph_elements)
+	if font != Resource::default() {
+		list.set_attribute(ATTR_FONT, 0, font);
+	}
+	if (size - DEFAULT_FONT_SIZE).abs() > f64::EPSILON {
+		list.set_attribute(ATTR_FONT_SIZE, 0, size);
+	}
+	if (line_height - DEFAULT_LINE_HEIGHT).abs() > f64::EPSILON {
+		list.set_attribute(ATTR_LINE_HEIGHT, 0, line_height);
+	}
+	if letter_spacing != 0. {
+		list.set_attribute(ATTR_LETTER_SPACING, 0, letter_spacing);
+	}
+	if letter_tilt != 0. {
+		list.set_attribute(ATTR_LETTER_TILT, 0, letter_tilt);
+	}
+	if has_max_width {
+		list.set_attribute(ATTR_MAX_WIDTH, 0, Some(max_width));
+	}
+	if has_max_height {
+		list.set_attribute(ATTR_MAX_HEIGHT, 0, Some(max_height));
+	}
+	if align != TextAlign::default() {
+		list.set_attribute(ATTR_TEXT_ALIGN, 0, align);
+	}
+
+	list
+}
+
+/// Converts a styled `String[]` into vector geometry.
+#[node_macro::node(category("Text"), name("Text to Vector"))]
+fn text_to_vector(
+	_: impl Ctx,
+	/// A styled list of text strings produced by the **Text** node (or any other `String[]` source).
+	#[implementations(List<String>)]
+	strings: List<String>,
+	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
+	separate_glyphs: bool,
+) -> List<Vector> {
+	shape_text_list(&strings, separate_glyphs)
 }

@@ -9,6 +9,7 @@ pub(crate) enum AppEvent {
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	Exit,
+	OpenFiles(Vec<std::path::PathBuf>),
 	#[cfg(target_os = "macos")]
 	MenuEvent {
 		id: String,

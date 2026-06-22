@@ -4,15 +4,14 @@ use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graph_craft::document::value::RenderOutput;
-use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_application_io::{ApplicationIo, ImageTexture};
+use graph_craft::application_io::PlatformEditorApi;
+use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphene_application_io::ImageTexture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
-
-use crate::render_node::RenderOutputType;
+use wgpu_executor::WgpuExecutor;
 
 pub const TILE_SIZE: u32 = 256;
 pub const MAX_CACHE_MEMORY_BYTES: usize = 512 * 1024 * 1024;
@@ -26,7 +25,7 @@ pub struct TileCoord {
 
 #[derive(Debug, Clone)]
 pub struct CachedRegion {
-	pub texture: wgpu::Texture,
+	pub texture: ImageTexture,
 	pub texture_size: UVec2,
 	pub tiles: Vec<TileCoord>,
 	pub metadata: rendering::RenderMetadata,
@@ -41,7 +40,6 @@ pub struct CacheKey {
 	pub device_scale: u64,
 	pub zoom: u64,
 	pub rotation: u64,
-	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_mask: bool,
 	pub thumbnail: bool,
@@ -60,7 +58,6 @@ impl CacheKey {
 		device_scale: f64,
 		zoom: f64,
 		rotation: f64,
-		hide_artboards: bool,
 		for_export: bool,
 		for_mask: bool,
 		thumbnail: bool,
@@ -87,16 +84,28 @@ impl CacheKey {
 			device_scale: device_scale.to_bits(),
 			zoom: zoom.to_bits(),
 			rotation: quantized_rotation.to_bits(),
-			hide_artboards,
 			for_export,
 			for_mask,
 			thumbnail,
 			aligned_strokes,
 			override_paint_order,
-			animation_time_ms: (animation_time * 1000.0).round() as i64,
-			real_time_ms: (real_time * 1000.0).round() as i64,
+			animation_time_ms: (animation_time * 1000.).round() as i64,
+			real_time_ms: (real_time * 1000.).round() as i64,
 			pointer: pointer_bytes,
 		}
+	}
+}
+
+#[derive(Clone, Default, dyn_any::DynAny, Debug)]
+pub struct TileCache(Arc<Mutex<TileCacheImpl>>);
+
+impl TileCache {
+	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
+		self.0.lock().unwrap().query(viewport_bounds, cache_key, max_region_area)
+	}
+
+	pub fn store_regions(&self, regions: Vec<CachedRegion>) {
+		self.0.lock().unwrap().store_regions(regions);
 	}
 }
 
@@ -107,9 +116,6 @@ struct TileCacheImpl {
 	total_memory: usize,
 	cache_key: CacheKey,
 }
-
-#[derive(Clone, Default, dyn_any::DynAny, Debug)]
-pub struct TileCache(Arc<Mutex<TileCacheImpl>>);
 
 #[derive(Debug, Clone)]
 pub struct RenderRegion {
@@ -199,7 +205,6 @@ impl TileCacheImpl {
 		while self.total_memory > MAX_CACHE_MEMORY_BYTES && !self.regions.is_empty() {
 			if let Some((oldest_idx, _)) = self.regions.iter().enumerate().min_by_key(|(_, r)| r.last_access) {
 				let removed = self.regions.remove(oldest_idx);
-				removed.texture.destroy();
 				self.total_memory = self.total_memory.saturating_sub(removed.memory_size);
 			} else {
 				break;
@@ -208,21 +213,8 @@ impl TileCacheImpl {
 	}
 
 	fn invalidate_all(&mut self) {
-		for region in &self.regions {
-			region.texture.destroy();
-		}
 		self.regions.clear();
 		self.total_memory = 0;
-	}
-}
-
-impl TileCache {
-	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
-		self.0.lock().unwrap().query(viewport_bounds, cache_key, max_region_area)
-	}
-
-	pub fn store_regions(&self, regions: Vec<CachedRegion>) {
-		self.0.lock().unwrap().store_regions(regions);
 	}
 }
 
@@ -334,26 +326,27 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	editor_api: &'a WasmEditorApi,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
-		let context = OwnedContextImpl::empty().with_footprint(*footprint);
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint);
 		return data.eval(context.into_context()).await;
 	};
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
 	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
-		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(context.into_context()).await;
 	}
 
 	let device_scale = render_params.scale;
-	let zoom = footprint.decompose_scale().x;
+	let zoom = footprint.scale_magnitudes().x;
 	let rotation = footprint.decompose_rotation();
 
 	let viewport_origin_offset = footprint.transform.translation;
@@ -371,14 +364,13 @@ pub async fn render_output_cache<'a: 'n>(
 		device_scale,
 		zoom,
 		rotation,
-		render_params.hide_artboards,
 		render_params.for_export,
 		render_params.for_mask,
 		render_params.thumbnail,
 		render_params.aligned_strokes,
 		render_params.override_paint_order,
-		ctx.try_animation_time().unwrap_or(0.0),
-		ctx.try_real_time().unwrap_or(0.0),
+		ctx.try_animation_time().unwrap_or(0.),
+		ctx.try_real_time().unwrap_or(0.),
 		ctx.try_pointer_position(),
 	);
 
@@ -404,19 +396,20 @@ pub async fn render_output_cache<'a: 'n>(
 
 	tile_cache.store_regions(new_regions.clone());
 
-	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions.into_iter()).collect();
+	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions).collect();
 
 	// If no regions, fall back to direct render
 	if all_regions.is_empty() {
-		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(context.into_context()).await;
 	}
 
-	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, &device_origin_offset, &footprint.transform, exec);
+	let executor = executor.expect("GPU executor not available");
+	let output_texture = executor.request_texture(physical_resolution).await;
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
 
 	RenderOutput {
-		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
+		data: RenderOutputType::Texture(output_texture.into()),
 		metadata: combined_metadata,
 	}
 }
@@ -452,7 +445,7 @@ where
 	let region_ctx = OwnedContextImpl::from(ctx).with_footprint(region_footprint).with_vararg(Box::new(region_params)).into_context();
 	let mut result = render_fn(region_ctx).await;
 
-	let RenderOutputType::Texture(rendered_texture) = result.data else {
+	let RenderOutputType::Texture(texture) = result.data else {
 		unreachable!("render_missing_region: expected texture output from Vello render");
 	};
 
@@ -462,7 +455,7 @@ where
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
 
 	CachedRegion {
-		texture: rendered_texture.texture,
+		texture,
 		texture_size: region_pixel_size,
 		tiles: region.tiles.clone(),
 		metadata: result.metadata,
@@ -473,29 +466,14 @@ where
 
 fn composite_cached_regions(
 	regions: &[CachedRegion],
-	output_resolution: UVec2,
+	output_texture: &wgpu::Texture,
 	device_origin_offset: &DVec2,
 	viewport_transform: &DAffine2,
 	exec: &wgpu_executor::WgpuExecutor,
-) -> (wgpu::Texture, rendering::RenderMetadata) {
-	let device = &exec.context.device;
-	let queue = &exec.context.queue;
-
-	// TODO: Use texture pool to reuse existing unused textures instead of allocating fresh ones every time
-	let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-		label: Some("viewport_output"),
-		size: wgpu::Extent3d {
-			width: output_resolution.x,
-			height: output_resolution.y,
-			depth_or_array_layers: 1,
-		},
-		mip_level_count: 1,
-		sample_count: 1,
-		dimension: wgpu::TextureDimension::D2,
-		format: wgpu::TextureFormat::Rgba8Unorm,
-		usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
-		view_formats: &[],
-	});
+) -> rendering::RenderMetadata {
+	let device = &exec.context().device;
+	let queue = &exec.context().queue;
+	let output_resolution = UVec2::new(output_texture.width(), output_texture.height());
 
 	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("composite") });
 	let mut combined_metadata = rendering::RenderMetadata::default();
@@ -523,13 +501,13 @@ fn composite_cached_regions(
 		if width > 0 && height > 0 {
 			encoder.copy_texture_to_texture(
 				wgpu::TexelCopyTextureInfo {
-					texture: &region.texture,
+					texture: region.texture.as_ref(),
 					mip_level: 0,
 					origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
 					aspect: wgpu::TextureAspect::All,
 				},
 				wgpu::TexelCopyTextureInfo {
-					texture: &output_texture,
+					texture: output_texture,
 					mip_level: 0,
 					origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
 					aspect: wgpu::TextureAspect::All,
@@ -548,5 +526,5 @@ fn composite_cached_regions(
 	}
 
 	queue.submit([encoder.finish()]);
-	(output_texture, combined_metadata)
+	combined_metadata
 }

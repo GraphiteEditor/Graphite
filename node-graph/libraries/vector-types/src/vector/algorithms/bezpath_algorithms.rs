@@ -5,8 +5,7 @@ use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
-use kurbo::common::{solve_cubic, solve_quadratic};
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
+use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
@@ -85,17 +84,18 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: O
 	}
 }
 
-pub fn sample_polyline_on_bezpath(
-	bezpath: BezPath,
+/// Computes sample locations along a bezpath, returning parametric `(segment_index, t)` pairs and whether the path was closed.
+/// The `bezpath` is used for euclidean-to-parametric conversion, and `segments_length` provides pre-calculated world-space segment lengths.
+/// Callers can evaluate these locations on any bezpath with the same topology (e.g., an untransformed version).
+pub fn compute_sample_locations(
+	bezpath: &BezPath,
 	point_spacing_type: PointSpacingType,
 	amount: f64,
 	start_offset: f64,
 	stop_offset: f64,
 	adaptive_spacing: bool,
 	segments_length: &[f64],
-) -> Option<BezPath> {
-	let mut sample_bezpath = BezPath::new();
-
+) -> Option<(Vec<(usize, f64)>, bool)> {
 	let was_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
 
 	// Calculate the total length of the collected segments.
@@ -142,7 +142,8 @@ pub fn sample_polyline_on_bezpath(
 	let sample_count_usize = sample_count as usize;
 	let max_i = if was_closed { sample_count_usize } else { sample_count_usize + 1 };
 
-	// Generate points along the path based on calculated intervals.
+	// Generate sample locations along the path based on calculated intervals.
+	let mut locations = Vec::with_capacity(max_i);
 	let mut length_up_to_previous_segment = 0.;
 	let mut next_segment_index = 0;
 
@@ -167,20 +168,11 @@ pub fn sample_polyline_on_bezpath(
 
 		let segment = bezpath.get_seg(next_segment_index + 1).unwrap();
 		let t = eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY);
-		let point = segment.eval(t);
 
-		if sample_bezpath.elements().is_empty() {
-			sample_bezpath.move_to(point)
-		} else {
-			sample_bezpath.line_to(point)
-		}
+		locations.push((next_segment_index, t));
 	}
 
-	if was_closed {
-		sample_bezpath.close_path();
-	}
-
-	Some(sample_bezpath)
+	Some((locations, was_closed))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -206,39 +198,6 @@ pub fn pathseg_compute_lookup_table(segment: PathSeg, steps: Option<usize>, eucl
 		let t = eval_pathseg(segment, tvalue);
 		point_to_dvec2(segment.eval(t))
 	})
-}
-
-/// Returns an `Iterator` containing all possible parametric `t`-values at the given `x`-coordinate.
-pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Item = f64> + use<> {
-	match segment {
-		PathSeg::Line(Line { p0, p1 }) => {
-			// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
-			let a = p1.x - p0.x;
-			let b = p0.x - x;
-
-			// Find the roots of the linear equation `ax + b`.
-			// There exist roots when `a` is not 0
-			if a.abs() > MAX_ABSOLUTE_DIFFERENCE { [Some(-b / a), None, None] } else { [None; 3] }
-		}
-		PathSeg::Quad(QuadBez { p0, p1, p2 }) => {
-			let a = p2.x - 2.0 * p1.x + p0.x;
-			let b = 2.0 * (p1.x - p0.x);
-			let c = p0.x - x;
-			let r = solve_quadratic(c, b, a);
-			[r.first().copied(), r.get(1).copied(), None]
-		}
-		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => {
-			let a = p3.x - 3.0 * p2.x + 3.0 * p1.x - p0.x;
-			let b = 3.0 * (p2.x - 2.0 * p1.x + p0.x);
-			let c = 3.0 * (p1.x - p0.x);
-			let d = p0.x - x;
-			let r = solve_cubic(d, c, b, a);
-			[r.first().copied(), r.get(1).copied(), r.get(2).copied()]
-		}
-	}
-	.into_iter()
-	.flatten()
-	.filter(|&t| (0.0..1.).contains(&t))
 }
 
 /// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
@@ -342,34 +301,10 @@ pub(crate) fn pathseg_length_centroid_and_length(segment: PathSeg, accuracy: Opt
 	}
 }
 
-/// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
-/// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
+/// Finds the parametric `t` value on the given path segment corresponding to a fractional arc-length `distance` (0–1).
+/// Delegates to kurbo's `inv_arclen` which uses the ITP method with incremental arc-length computation.
 pub fn eval_pathseg_euclidean(segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
-	let mut low_t = 0.;
-	let mut mid_t = 0.5;
-	let mut high_t = 1.;
-
-	let total_length = segment.perimeter(accuracy);
-
-	if !total_length.is_finite() || total_length <= f64::EPSILON {
-		return 0.;
-	}
-
-	let distance = distance.clamp(0., 1.);
-
-	while high_t - low_t > accuracy {
-		let current_length = segment.subsegment(0.0..mid_t).perimeter(accuracy);
-		let current_distance = current_length / total_length;
-
-		if current_distance > distance {
-			high_t = mid_t;
-		} else {
-			low_t = mid_t;
-		}
-		mid_t = (high_t + low_t) / 2.;
-	}
-
-	mid_t
+	segment.inv_arclen(distance.clamp(0., 1.) * segment.arclen(accuracy), accuracy)
 }
 
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.

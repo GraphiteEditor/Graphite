@@ -1,8 +1,12 @@
 {
   pkgs,
+  deps,
   self,
   system,
   ...
+}:
+{
+  graphite ? self.packages.${system}.graphite,
 }:
 let
   bundle =
@@ -13,7 +17,6 @@ let
     }:
     (
       let
-        graphite = self.packages.${system}.graphite;
         tar = if compression == null then archive else true;
         nameArchiveSuffix = if tar then ".tar" else "";
         nameCompressionSuffix = if compression == null then "" else "." + compression;
@@ -31,7 +34,7 @@ let
           cp -r ${graphite}/share out/share
           mkdir -p out/lib/cef
           mkdir -p ./cef
-          tar -xvf ${pkgs.cef-binary.src} -C ./cef --strip-components=1
+          tar -xvf ${self.packages.${system}.graphite-cef.src} -C ./cef --strip-components=1
           cp -r ./cef/Release/* out/lib/cef/
           cp -r ./cef/Resources/* out/lib/cef/
           find "out/lib/cef/locales" -type f ! -name 'en-US*' -delete

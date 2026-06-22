@@ -1,0 +1,27 @@
+[package]
+name = "graph-storage"
+description = "Provides a delta based graph representation used in the Graphite file format"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+conversion = ["dep:graph-craft", "dep:core-types"]
+default = ["conversion"]
+
+[dependencies]
+graph-craft = { workspace = true, optional = true }
+core-types = { workspace = true, optional = true }
+graphene-resource = { workspace = true }
+
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = { workspace = true }
+rustc-hash = { workspace = true }
+rmp-serde = { workspace = true }
+
+[dev-dependencies]
+graph-craft = { workspace = true, features = ["loading"] }
+core-types = { workspace = true }

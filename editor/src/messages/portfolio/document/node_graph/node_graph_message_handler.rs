@@ -189,7 +189,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
 				network_interface.load_structure();
-				collapsed.0.retain(|&layer| network_interface.document_metadata().layer_exists(layer));
+				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();
@@ -214,7 +214,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let mid_point = (network_interface.get_output_center(&output_connector, breadcrumb_network_path).unwrap()
 						+ network_interface.get_input_center(&input_connector, breadcrumb_network_path).unwrap())
 						/ 2.;
-					let node_template = Box::new(resolve_proto_node_type(graphene_core::ops::identity::IDENTIFIER).unwrap().default_node_template());
+					let Some(passthrough_definition) = resolve_proto_node_type(graphene_core::ops::passthrough::IDENTIFIER) else {
+						log::error!("Could not resolve passthrough node when wiring an export to an import");
+						return;
+					};
+					let node_template = Box::new(passthrough_definition.default_node_template());
 
 					let node_id = NodeId::new();
 					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
@@ -288,8 +292,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let node_template = document_node_type.default_node_template();
+				let mut node_template = document_node_type.default_node_template();
 				self.context_menu = None;
+
+				// A freshly added Text node carries no font, so give it the default font (registered like the Text tool does)
+				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) {
+					let font_resource_id = graph_craft::application_io::resource::ResourceId::new();
+					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
+						*font_input = NodeInput::value(TaggedValue::Resource(font_resource_id), false);
+					}
+					responses.add(DocumentMessage::Resource(ResourceMessage::AddFont {
+						resource_id: font_resource_id,
+						font: graphene_std::text::Font::default(),
+					}));
+				}
 
 				if add_transaction {
 					responses.add(DocumentMessage::AddTransaction);
@@ -351,7 +367,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
+				// Detect stroke/fill proto nodes among the doomed nodes before they're gone so the tool control bars can re-sync
+				let stroke = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+				let fill = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+				let any_fill_or_stroke_deleted = node_ids.iter().any(|node_id| {
+					network_interface
+						.reference(node_id, selection_network_path)
+						.is_some_and(|reference| reference == stroke || reference == fill)
+				});
 				network_interface.delete_nodes(node_ids, delete_children, selection_network_path);
+				if any_fill_or_stroke_deleted {
+					responses.add(PenToolMessage::SelectionChanged);
+					responses.add(FreehandToolMessage::SelectionChanged);
+					responses.add(SplineToolMessage::SelectionChanged);
+					responses.add(ShapeToolMessage::SelectionChanged);
+					responses.add(TextToolMessage::SelectionChanged);
+				}
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
@@ -405,9 +436,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				{
 					return;
 				};
+				// Double-clicking the layer's name area triggers inline rename instead of drilling into the subgraph.
+				if let Some(layer_id) = network_interface.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Name, selection_network_path) {
+					responses.add(NodeGraphMessage::BeginEditLayerName { node_id: layer_id });
+					return;
+				}
 				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
+			}
+			NodeGraphMessage::BeginEditLayerName { node_id } => {
+				responses.add(FrontendMessage::TriggerEditLayerNameInGraph { node_id });
 			}
 			NodeGraphMessage::ExposeInput {
 				input_connector,
@@ -645,7 +684,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = resolve_network_node_type("Default Network").expect("Default Network node should exist").default_node_template();
+				let mut default_node_template = resolve_network_node_type("Custom Node").expect("Custom Node should exist").default_node_template();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
 					log::error!("Could not get center of selected_nodes");
 					return;
@@ -659,6 +698,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: encapsulating_node_id,
+					network_path: selection_network_path.to_vec(),
 					alias: "Untitled Node".to_string(),
 				});
 
@@ -717,7 +757,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.move_layer_to_stack(layer, parent, insert_index, selection_network_path);
 			}
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
-				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path);
+				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
 			NodeGraphMessage::SetChainPosition { node_id } => {
 				network_interface.set_chain_position(&node_id, selection_network_path);
@@ -810,11 +850,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
 						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
 
+						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
+						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
+
+						// Right-clicking an unselected node selects just it, so selection-based actions like Merge Selected Nodes target it
+						if !is_clicked_selected {
+							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+						}
+
 						// Determine which layers the Lock/Unlock action would affect:
 						// - If the right-clicked node is in the selection, it affects all selected layers
 						// - If the right-clicked node is not in the selection, it affects just the right-clicked node
-						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
-						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
 						let affected_layer_ids = if is_clicked_selected {
 							selected_nodes.map(|selected| selected.selected_nodes().copied().filter(|id| network_interface.is_layer(id, selection_network_path)).collect())
 						} else {
@@ -848,6 +894,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					self.context_menu = Some(ContextMenuInformation {
 						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2().into(),
+						node_creation_coordinates: node_graph_point.as_ivec2().into(),
 						context_menu_data,
 					});
 
@@ -909,13 +956,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Toggle visibility of clicked node and return
 				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					responses.add(NodeGraphMessage::ToggleVisibility {
+						node_id: clicked_visibility,
+						network_path: selection_network_path.to_vec(),
+					});
 					return;
 				}
 
 				// Toggle lock of clicked node and return
 				if let Some(clicked_lock) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Lock, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleLocked { node_id: clicked_lock });
+					responses.add(NodeGraphMessage::ToggleLocked {
+						node_id: clicked_lock,
+						network_path: selection_network_path.to_vec(),
+					});
 					return;
 				}
 
@@ -1281,6 +1334,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: (point + node_graph_shift).as_ivec2().into(),
+							node_creation_coordinates: point.as_ivec2().into(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -1521,10 +1575,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
 						let input_connector = InputConnector::node(*selected_node, input_index);
 						// Only disconnect inputs to non selected nodes
-						if !network_interface
+						if network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
-							.and_then(|connector| connector.node_id())
-							.is_some_and(|node_id| all_selected_nodes.contains(&node_id))
+							.is_some_and(|connector| connector.node_id().is_none_or(|node_id| !all_selected_nodes.contains(&node_id)))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}
@@ -1709,7 +1762,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
+				use graphene_std::vector::generator_nodes::*;
+
 				let is_fill = matches!(value, TaggedValue::Fill(_));
+				let reference = network_interface.reference(&node_id, selection_network_path);
+				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
+				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
+				let is_fill_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER));
+				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
+					[regular_polygon::IDENTIFIER, star::IDENTIFIER, arc::IDENTIFIER, spiral::IDENTIFIER, grid::IDENTIFIER, arrow::IDENTIFIER]
+						.into_iter()
+						.any(|id| *r == DefinitionIdentifier::ProtoNode(id))
+				});
+
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
@@ -1718,6 +1783,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(PropertiesPanelMessage::Refresh);
 				if is_fill {
 					responses.add(OverlaysMessage::Draw);
+				}
+				if is_stroke_node || is_fill_node || is_shape_generator_node || is_text_node {
+					responses.add(PenToolMessage::SelectionChanged);
+					responses.add(FreehandToolMessage::SelectionChanged);
+					responses.add(SplineToolMessage::SelectionChanged);
+					responses.add(ShapeToolMessage::SelectionChanged);
+					responses.add(TextToolMessage::SelectionChanged);
 				}
 				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1817,13 +1889,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetDisplayName {
 				node_id,
+				network_path,
 				alias,
 				skip_adding_history_step,
 			} => {
 				if !skip_adding_history_step {
 					responses.add(DocumentMessage::StartTransaction);
 				}
-				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
+				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, network_path, alias });
 				if !skip_adding_history_step {
 					// Does not add a history step if the name was not changed
 					responses.add(DocumentMessage::EndTransaction);
@@ -1832,9 +1905,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(OverlaysMessage::Draw); // Redraw overlays to update artboard names
+				responses.add(DataPanelMessage::Refresh);
 			}
-			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
-				network_interface.set_display_name(&node_id, alias, selection_network_path);
+			NodeGraphMessage::SetDisplayNameImpl { node_id, network_path, alias } => {
+				network_interface.set_display_name(&node_id, alias, &network_path);
 			}
 			NodeGraphMessage::SetImportExportName { name, index } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1873,25 +1947,34 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 
 				for node_id in &node_ids {
-					responses.add(NodeGraphMessage::SetLocked { node_id: *node_id, locked });
+					responses.add(NodeGraphMessage::SetLocked {
+						node_id: *node_id,
+						network_path: selection_network_path.to_vec(),
+						locked,
+					});
 				}
 
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				})
 			}
-			NodeGraphMessage::ToggleLocked { node_id } => {
-				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&node_id) else {
-					log::error!("Cannot get node {node_id:?} in NodeGraphMessage::ToggleLocked");
-					return;
-				};
-
-				let locked = !node_metadata.persistent_metadata.locked;
+			NodeGraphMessage::ToggleLocked { node_id, network_path } => {
+				let locked = !network_interface.is_locked(&node_id, &network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::SetLocked { node_id, locked });
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] })
+				responses.add(NodeGraphMessage::SetLocked {
+					node_id,
+					network_path: network_path.clone(),
+					locked,
+				});
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path,
+				});
 			}
-			NodeGraphMessage::SetLocked { node_id, locked } => {
-				network_interface.set_locked(&node_id, selection_network_path, locked);
+			NodeGraphMessage::SetLocked { node_id, network_path, locked } => {
+				network_interface.set_locked(&node_id, &network_path, locked);
 			}
 			NodeGraphMessage::ToggleSelectedIsPinned => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1907,7 +1990,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetPinned { node_id: *node_id, pinned });
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				});
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1921,43 +2007,49 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
-					responses.add(NodeGraphMessage::SetVisibility { node_id: *node_id, visible });
+					responses.add(NodeGraphMessage::SetVisibility {
+						node_id: *node_id,
+						network_path: selection_network_path.to_vec(),
+						visible,
+					});
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				});
 			}
-			NodeGraphMessage::ToggleVisibility { node_id } => {
-				let visible = !network_interface.is_visible(&node_id, selection_network_path);
+			NodeGraphMessage::ToggleVisibility { node_id, network_path } => {
+				let visible = !network_interface.is_visible(&node_id, &network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
+				responses.add(NodeGraphMessage::SetVisibility {
+					node_id,
+					network_path: network_path.clone(),
+					visible,
+				});
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path,
+				});
 			}
 			NodeGraphMessage::SetPinned { node_id, pinned } => {
 				network_interface.set_pinned(&node_id, selection_network_path, pinned);
 			}
-			NodeGraphMessage::SetVisibility { node_id, visible } => {
-				network_interface.set_visibility(&node_id, selection_network_path, visible);
+			NodeGraphMessage::SetVisibility { node_id, network_path, visible } => {
+				network_interface.set_visibility(&node_id, &network_path, visible);
 			}
-			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids } => {
-				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, selection_network_path)) {
+			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids, network_path } => {
+				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, &network_path)) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::SendGraph);
 
 				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(DataPanelMessage::Refresh);
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
 				if let Some((box_selection_start, _)) = self.box_selection_start {
-					// The mouse button was released but we missed the pointer up event
-					// if ((e.buttons & 1) === 0) {
-					// 	completeBoxSelection();
-					// 	boxSelection = undefined;
-					// } else if ((e.buttons & 2) !== 0) {
-					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
-					// 	boxSelection = undefined;
-					// }
-
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 						log::error!("Could not get network metadata in UpdateBoxSelection");
 						return;
@@ -2057,7 +2149,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, collapsed, layers_panel_open, responses);
+				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, responses);
 			}
 			NodeGraphMessage::UpdateEdges => {
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
@@ -2368,7 +2460,7 @@ impl NodeGraphMessageHandler {
 		self.widgets[1] = LayoutGroup::row(widgets);
 	}
 
-	/// Collate the properties panel sections for a node graph
+	/// Collate the Properties panel sections for a node graph
 	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(selected_nodes) = context.network_interface.selected_nodes_in_nested_network(context.selection_network_path) else {
@@ -2407,6 +2499,7 @@ impl NodeGraphMessageHandler {
 					let mut properties = Vec::new();
 
 					if let [node_id] = *nodes.as_slice() {
+						let network_path = context.selection_network_path.to_vec();
 						properties.push(LayoutGroup::row(vec![
 							Separator::new(SeparatorStyle::Related).widget_instance(),
 							IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
@@ -2416,6 +2509,7 @@ impl NodeGraphMessageHandler {
 								.on_update(move |text_input| {
 									NodeGraphMessage::SetDisplayName {
 										node_id,
+										network_path: network_path.clone(),
 										alias: text_input.value.clone(),
 										skip_adding_history_step: false,
 									}
@@ -2432,14 +2526,14 @@ impl NodeGraphMessageHandler {
 				}
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
-				// This may require store a separate path for the properties panel
+				// This may require store a separate path for the Properties panel
 				let mut properties = vec![LayoutGroup::row(vec![
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					TextInput::new(context.document_name)
 						.tooltip_description("Name of the current document.")
-						.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
+						.on_update(|text_input| PortfolioMessage::RenameDocument { new_name: text_input.value.clone() }.into())
 						.widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 				])];
@@ -2478,6 +2572,7 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
+				let layer_network_path = context.selection_network_path.to_vec();
 				let mut layer_properties = vec![LayoutGroup::row(vec![
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
@@ -2487,6 +2582,7 @@ impl NodeGraphMessageHandler {
 						.on_update(move |text_input| {
 							NodeGraphMessage::SetDisplayName {
 								node_id: layer,
+								network_path: layer_network_path.clone(),
 								alias: text_input.value.clone(),
 								skip_adding_history_step: false,
 							}
@@ -2694,7 +2790,7 @@ impl NodeGraphMessageHandler {
 		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, responses: &mut VecDeque<Message>) {
 		if !layers_panel_open {
 			return;
 		}
@@ -2705,14 +2801,8 @@ impl NodeGraphMessageHandler {
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
 
-		let mut ancestors_of_selected = HashSet::new();
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
-			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
-				if ancestor != LayerNodeIdentifier::ROOT_PARENT && ancestor.to_node() != *selected_layer {
-					ancestors_of_selected.insert(ancestor.to_node());
-				}
-			}
 			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface).descendants(network_interface.document_metadata()) {
 				descendants_of_selected.insert(descendant.to_node());
 			}
@@ -2737,22 +2827,6 @@ impl NodeGraphMessageHandler {
 								}))
 						);
 
-				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network_interface.document_node(&layer.to_node(), &[]).map(|node| node.visible).unwrap_or_default()
-					} else {
-						true
-					}
-				});
-
-				let parents_unlocked: bool = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						!network_interface.is_locked(&layer.to_node(), &[])
-					} else {
-						true
-					}
-				});
-
 				let clippable = layer.can_be_clipped(network_interface.document_metadata());
 
 				let data = LayerPanelEntry {
@@ -2762,18 +2836,9 @@ impl NodeGraphMessageHandler {
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
-					children_present: layer.has_children(network_interface.document_metadata()),
-					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
-					depth: layer.ancestors(network_interface.document_metadata()).count() as u32 - 1,
 					visible: network_interface.is_visible(&node_id, &[]),
-					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
-					parents_unlocked,
-					parent_id: layer
-						.parent(network_interface.document_metadata())
-						.and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
 					selected: selected_layers.contains(&node_id),
-					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
 					descendant_of_selected: descendants_of_selected.contains(&node_id),
 					clipped: get_clip_mode(layer, network_interface).unwrap_or(false) && clippable,
 					clippable,

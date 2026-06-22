@@ -1,9 +1,9 @@
 name: "Audit Security Advisories"
 
 on:
-  # Run once each day
+  # Run once each week
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * 0"
 
 jobs:
   cargo-deny:
@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
 
       - name: 🔒 Check crate security advisories for root workspace
         uses: EmbarkStudios/cargo-deny-action@v2

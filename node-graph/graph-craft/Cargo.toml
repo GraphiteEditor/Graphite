@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 authors.workspace = true
 
 [features]
-default = ["dealloc_nodes", "wgpu"]
+default = ["dealloc_nodes", "wgpu", "loading"]
 dealloc_nodes = ["core-types/dealloc_nodes"]
 wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
@@ -22,16 +22,16 @@ wasm = [
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
-core-types = { workspace = true }
-path-bool-nodes = { workspace = true }
-brush-nodes = { workspace = true }
-graphene-core = { workspace = true }
-graphene-application-io = { workspace = true }
-rendering = { workspace = true }
-raster-nodes = { workspace = true }
-vector-nodes = { workspace = true }
-graphic-types = { workspace = true }
-text-nodes = { workspace = true }
+graphene-hash = { workspace = true }
+core-types = { workspace = true, features = ["serde"] }
+brush-nodes = { workspace = true, features = ["serde"] }
+graphene-core = { workspace = true, features = ["serde"] }
+graphene-application-io = { workspace = true, features = ["serde"] }
+rendering = { workspace = true, features = ["serde"] }
+raster-nodes = { workspace = true, features = ["serde"] }
+vector-nodes = { workspace = true, features = ["serde"] }
+graphic-types = { workspace = true, features = ["serde"] }
+text-nodes = { workspace = true, features = ["serde"] }
 
 # Workspace dependencies
 log = { workspace = true }
@@ -50,19 +50,33 @@ wasm-bindgen = { workspace = true, optional = true }
 
 # Workspace dependencies
 [target.'cfg(target_family = "wasm")'.dependencies]
-web-sys = { workspace = true, features = ["Navigator", "Gpu"] }
+web-sys = { workspace = true, features = [
+	"Navigator",
+	"DomException",
+	"Window",
+	"StorageManager",
+	"FileSystemDirectoryHandle",
+	"FileSystemFileHandle",
+	"FileSystemGetFileOptions",
+	"FileSystemGetDirectoryOptions",
+	"FileSystemWritableFileStream",
+	"WritableStream",
+	"Blob",
+] }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 winit = { workspace = true }
+mmap-io = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
-iai-callgrind = { workspace = true }
+gungraun = { workspace = true }
 
 # Benchmarks
 [[bench]]
@@ -70,5 +84,5 @@ name = "compile_demo_art_criterion"
 harness = false
 
 [[bench]]
-name = "compile_demo_art_iai"
+name = "compile_demo_art_gungraun"
 harness = false

@@ -1,25 +1,16 @@
 {
 	"compilerOptions": {
 		"target": "ESNext",
-		"module": "ESNext",
-		"moduleResolution": "node",
+		"module": "Node16",
+		"moduleResolution": "node16",
 		"strict": true,
 		"allowJs": true,
 		"checkJs": true,
 		"noEmit": true,
-		"importHelpers": true,
-		"experimentalDecorators": true,
 		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
 		"verbatimModuleSyntax": true,
-		"sourceMap": true,
 		"types": ["node"],
-		"baseUrl": ".",
-		"paths": {
-			"/*": ["./*"]
-		},
-		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
+		"lib": ["ESNext", "DOM", "DOM.Iterable"]
 	},
 	"include": [
 		// TypeScript and JSDoc-typed JavaScript files
@@ -35,11 +26,5 @@
 		"public",
 		// Ignore vendored code
 		"static/*.js"
-	],
-	"ts-node": {
-		"compilerOptions": {
-			"useDefineForClassFields": false,
-			"noImplicitOverride": true
-		}
-	}
+	]
 }

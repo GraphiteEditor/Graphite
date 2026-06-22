@@ -1,6 +1,5 @@
 use graph_craft::document::NodeNetwork;
 use std::cell::Cell;
-use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct MemoNetwork {
@@ -26,9 +25,9 @@ impl serde::Serialize for MemoNetwork {
 	}
 }
 
-impl Hash for MemoNetwork {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.current_hash().hash(state);
+impl graphene_hash::CacheHash for MemoNetwork {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		self.current_hash().cache_hash(state);
 	}
 }
 

@@ -472,11 +472,18 @@ impl SnapManager {
 		if let Some(ind) = &self.indicator {
 			for layer in &ind.outline_layers {
 				let &Some(layer) = layer else { continue };
-				overlay_context.outline(
-					snap_data.document.metadata().layer_with_free_points_outline(layer),
-					snap_data.document.metadata().transform_to_viewport(layer),
-					None,
-				);
+				// Mirror the Path tool's view (e.g. pre-solidified centerline) when an upstream Path node exists,
+				// otherwise fall back to the layer's recorded outline geometry
+				if let Some(targets) = snap_data.document.network_interface.path_aware_outline_targets(layer) {
+					let transform = snap_data.document.metadata().transform_to_viewport_if_feeds(layer, &snap_data.document.network_interface);
+					overlay_context.outline(targets.iter(), transform, None);
+				} else {
+					overlay_context.outline(
+						snap_data.document.metadata().layer_with_free_points_outline(layer),
+						snap_data.document.metadata().transform_to_viewport(layer),
+						None,
+					);
+				}
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad, None, None);

@@ -3,7 +3,7 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
-use graphene_std::path_bool::BooleanOperation;
+use graphene_std::vector::misc::BooleanOperation;
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
@@ -495,6 +495,18 @@ impl LayoutHolder for MenuBarMessageHandler {
 									})
 									.disabled(no_active_document || !has_selected_layers),
 							]]),
+						MenuListEntry::new("Blend")
+							.label("Blend")
+							.icon("InterpolationBlend")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::BlendSelectedLayers))
+							.on_commit(|_| DocumentMessage::BlendSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Morph")
+							.label("Morph")
+							.icon("InterpolationMorph")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::MorphSelectedLayers))
+							.on_commit(|_| DocumentMessage::MorphSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
 						MenuListEntry::new("Make Path Editable")
@@ -502,6 +514,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("NodeShape")
 							.on_commit(|_| NodeGraphMessage::AddPathNode.into())
 							.disabled(!make_path_editable_is_allowed),
+						MenuListEntry::new("Expand Fill/Stroke")
+							.label("Expand Fill/Stroke")
+							.icon("ExpandFillStroke")
+							.on_commit(|_| DocumentMessage::ExpandFillStrokeOnSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 				])
 				.widget_instance(),
@@ -634,6 +651,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.focus_document { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleFocusDocument))
 							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
+					],
+					vec![
+						MenuListEntry::new("Reset Workspace")
+							.label("Reset Workspace")
+							.icon("Reset")
+							.on_commit(|_| PortfolioMessage::ResetWorkspaceLayout.into()),
 					],
 					vec![
 						MenuListEntry::new("Properties")

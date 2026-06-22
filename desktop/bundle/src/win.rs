@@ -55,6 +55,7 @@ fn remove_unnecessary_cef_files(app_dir: &Path) -> Result<(), Box<dyn Error>> {
 	fs::remove_file(app_dir.join("bootstrapc.exe"))?;
 	fs::remove_file(app_dir.join("bootstrap.exe"))?;
 	fs::remove_file(app_dir.join("libcef.lib"))?;
+	fs::remove_file(app_dir.join("CREDITS.html"))?;
 
 	Ok(())
 }

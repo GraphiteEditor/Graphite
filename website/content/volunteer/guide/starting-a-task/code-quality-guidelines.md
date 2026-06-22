@@ -13,7 +13,7 @@ Please ensure Clippy is enabled. This should be set up automatically in VS Code.
 
 ## Naming
 
-Please use descriptive variable/function/symbol names and keep abbreviations to a minimum. Prefer spelling out full words most of the time, so `gen_doc_fmt` should be written out as `generate_document_format` instead.
+Please use descriptive variable/function/symbol names and keep abbreviations to a minimum. Prefer spelling out full words most of the time, such as `generate_document_format` instead of `gen_doc_fmt`.
 
 This avoids the mental burden of expanding abbreviations into semantic meaning. Monitors are wide enough to display long variable/function names, so descriptive is better than cryptic.
 

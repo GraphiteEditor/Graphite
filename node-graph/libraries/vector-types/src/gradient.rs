@@ -1,9 +1,12 @@
-use core_types::{Color, render_complexity::RenderComplexity};
+use core_types::Color;
+use core_types::color::SRGBA8;
+use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum GradientType {
 	#[default]
@@ -12,10 +15,11 @@ pub enum GradientType {
 }
 
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
-// TODO: Use linear not gamma colors
-/// A list of colors associated with positions (in the range 0 to 1) along a gradient.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny)]
+/// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
+///
+/// Not exposed via Tsify; use [`GradientStopsUI`] at the JS boundary.
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GradientStops {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
@@ -23,6 +27,59 @@ pub struct GradientStops {
 	pub midpoint: Vec<f64>,
 	/// The color at this stop.
 	pub color: Vec<Color>,
+}
+
+/// JS-boundary version of [`GradientStops`] where stop colors are [`SRGBA8`] byte triples instead of linear-light [`Color`].
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[derive(Debug, Clone, PartialEq, Default, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GradientStopsUI {
+	pub position: Vec<f64>,
+	pub midpoint: Vec<f64>,
+	pub color: Vec<SRGBA8>,
+}
+
+impl From<&GradientStops> for GradientStopsUI {
+	fn from(s: &GradientStops) -> Self {
+		Self {
+			position: s.position.clone(),
+			midpoint: s.midpoint.clone(),
+			color: s.color.iter().map(|c| SRGBA8::from(*c)).collect(),
+		}
+	}
+}
+
+impl From<&GradientStopsUI> for GradientStops {
+	fn from(s: &GradientStopsUI) -> Self {
+		Self {
+			position: s.position.clone(),
+			midpoint: s.midpoint.clone(),
+			color: s.color.iter().map(|c| Color::from(*c)).collect(),
+		}
+	}
+}
+
+impl GradientStopsUI {
+	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
+	pub fn to_css_linear_gradient(&self) -> String {
+		if self.position.len() <= 1 {
+			let hex = self.color.first().map(|c| c.to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
+			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
+		}
+		// Sample via the midpoint-aware subdivision used for SVG/Vello stops so browser interpolation matches
+		let stops: GradientStops = self.into();
+		let pieces = stops
+			.interpolated_samples()
+			.into_iter()
+			.map(|(position, color, _)| {
+				let percent = ((position * 100.) * 1e2).round() / 1e2;
+				let hex = SRGBA8::from(color).to_rgba_hex();
+				format!("#{hex} {percent}%")
+			})
+			.collect::<Vec<_>>()
+			.join(", ");
+		format!("linear-gradient(to right, {pieces})")
+	}
 }
 
 // TODO: Eventually remove this migration document upgrade code
@@ -36,7 +93,7 @@ impl<'de> serde::Deserialize<'de> for GradientStops {
 		}
 
 		#[derive(serde::Deserialize)]
-		#[serde(untagged)]
+		#[cfg_attr(feature = "serde", serde(untagged))]
 		enum GradientStopsFormat {
 			New(NewFormat),
 			Old(Vec<(f64, Color)>),
@@ -57,17 +114,6 @@ impl<'de> serde::Deserialize<'de> for GradientStops {
 				}
 			}
 		})
-	}
-}
-
-impl std::hash::Hash for GradientStops {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.position.len().hash(state);
-		for i in 0..self.position.len() {
-			self.position[i].to_bits().hash(state);
-			self.midpoint[i].to_bits().hash(state);
-			self.color[i].hash(state);
-		}
 	}
 }
 
@@ -206,6 +252,47 @@ impl GradientStops {
 		self.color.pop()
 	}
 
+	/// Move the stop at `index` to a new position, re-sorting the stops by position. Returns the new index of the moved stop.
+	pub fn move_stop(&mut self, index: usize, position: f64) -> usize {
+		if index >= self.position.len() {
+			return index;
+		}
+		self.position[index] = position;
+		self.sort_returning_new_index(index)
+	}
+
+	/// Insert a new stop at the given position, sampling the gradient at that position to determine the new stop's color.
+	/// The new stop's midpoint is inherited from the interval it splits (or `0.5` if inserting at the very start).
+	/// Returns the index where the new stop was inserted.
+	pub fn insert_stop(&mut self, position: f64) -> usize {
+		let color = self.evaluate(position);
+		let index = self.position.iter().position(|p| *p > position).unwrap_or(self.position.len());
+		let midpoint = index.checked_sub(1).and_then(|i| self.midpoint.get(i).copied()).unwrap_or(0.5);
+		self.position.insert(index, position);
+		self.midpoint.insert(index, midpoint);
+		self.color.insert(index, color);
+		index
+	}
+
+	/// Reset the midpoint for the interval starting at `index` to its default `0.5`.
+	pub fn reset_midpoint(&mut self, index: usize) {
+		if let Some(midpoint) = self.midpoint.get_mut(index) {
+			*midpoint = 0.5;
+		}
+	}
+
+	/// Sort the stops in place by position; returns the new index of the stop that was at `previous_index` before sorting.
+	fn sort_returning_new_index(&mut self, previous_index: usize) -> usize {
+		let len = self.position.len();
+		let mut indices: Vec<usize> = (0..len).collect();
+		indices.sort_by(|&a, &b| self.position[a].total_cmp(&self.position[b]));
+		let new_index = indices.iter().position(|&i| i == previous_index).unwrap_or(previous_index);
+		self.position = indices.iter().map(|&i| self.position[i]).collect();
+		self.midpoint = indices.iter().map(|&i| self.midpoint[i]).collect();
+		self.color = indices.iter().map(|&i| self.color[i]).collect();
+		new_index
+	}
+
 	pub fn evaluate(&self, t: f64) -> Color {
 		if self.position.is_empty() {
 			return Color::BLACK;
@@ -259,17 +346,39 @@ impl GradientStops {
 		}
 	}
 
+	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves so the rendered gradient matches Graphite's interpolation rather than browser defaults.
+	pub fn to_css_linear_gradient(&self) -> String {
+		if self.position.len() <= 1 {
+			let hex = self.color.first().map(|c| SRGBA8::from(*c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
+			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
+		}
+		let pieces = self
+			.interpolated_samples()
+			.into_iter()
+			.map(|(position, color, _)| {
+				let percent = ((position * 100.) * 1e2).round() / 1e2;
+				format!("#{} {percent}%", SRGBA8::from(color).to_rgba_hex())
+			})
+			.collect::<Vec<_>>()
+			.join(", ");
+		format!("linear-gradient(to right, {pieces})")
+	}
+
 	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves.
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
 	/// midpoint for actual gradient stops, and `None` for interpolated samples added to approximate midpoint curves.
+	///
+	/// Interpolation is performed in sRGB gamma space (then lifted back to linear-light for output) because the downstream SVG/CSS
+	/// renderer interpolates between adjacent `<stop>` colors in gamma space; doing the subdivision math in the same space ensures
+	/// the chosen samples actually match the curve the browser will draw.
 	pub fn interpolated_samples(&self) -> Vec<(f64, Color, Option<f64>)> {
 		/// Controls accuracy vs. number of samples tradeoff.
 		/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve with this midpoint bias.
 		const THRESHOLD: f64 = 2. / 255.;
 
 		#[allow(clippy::too_many_arguments)]
-		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a: Color, color_b: Color, result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
+		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a_gamma: [f32; 4], color_b_gamma: [f32; 4], result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
 			const MAX_DEPTH: u32 = 20;
 			if depth >= MAX_DEPTH {
 				return;
@@ -283,13 +392,18 @@ impl GradientStops {
 			let y_linear = (y_left + y_right) / 2.;
 
 			if (y_actual - y_linear).abs() > THRESHOLD {
-				subdivide(left, mid, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
+				subdivide(left, mid, midpoint, pos_a, pos_b, color_a_gamma, color_b_gamma, result, depth + 1);
 
 				let global_pos = pos_a + mid * (pos_b - pos_a);
-				let color = color_a.lerp(&color_b, y_actual as f32);
+				let t = y_actual as f32;
+				let r = color_a_gamma[0] + (color_b_gamma[0] - color_a_gamma[0]) * t;
+				let g = color_a_gamma[1] + (color_b_gamma[1] - color_a_gamma[1]) * t;
+				let b = color_a_gamma[2] + (color_b_gamma[2] - color_a_gamma[2]) * t;
+				let a = color_a_gamma[3] + (color_b_gamma[3] - color_a_gamma[3]) * t;
+				let color = Color::from_gamma_srgb_channels(r, g, b, a);
 				result.push((global_pos, color, None));
 
-				subdivide(mid, right, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
+				subdivide(mid, right, midpoint, pos_a, pos_b, color_a_gamma, color_b_gamma, result, depth + 1);
 			}
 		}
 
@@ -318,7 +432,7 @@ impl GradientStops {
 
 			// Only subdivide if midpoint deviates from linear (0.5)
 			if (midpoint - 0.5).abs() >= 1e-6 {
-				subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, &mut result, 0);
+				subdivide(0., 1., midpoint, pos_a, pos_b, color_a.to_gamma_srgb_channels(), color_b.to_gamma_srgb_channels(), &mut result, 0);
 			}
 
 			// Add the end stop
@@ -334,17 +448,54 @@ impl GradientStops {
 	}
 }
 
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum GradientSpreadMethod {
+	#[default]
+	Pad,
+	Reflect,
+	Repeat,
+}
+
+impl GradientSpreadMethod {
+	pub fn svg_name(&self) -> &'static str {
+		match self {
+			GradientSpreadMethod::Pad => "pad",
+			GradientSpreadMethod::Reflect => "reflect",
+			GradientSpreadMethod::Repeat => "repeat",
+		}
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Gradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
 	pub start: DVec2,
 	pub end: DVec2,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub spread_method: GradientSpreadMethod,
+	// TODO: Eventually remove this document upgrade code
+	/// Whether `start`/`end` are absolute (layer-space) rather than in the legacy [0,1] bounding-box space.
+	/// Documents predating the gradient migration deserialize this as `false`; the deferred migration converts
+	/// them and sets it `true`. Once all documents are migrated, the legacy rendering path can be removed.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub absolute: bool,
+	// TODO: Eventually remove this document upgrade code
+	/// An extra frame adjustment composed onto the `start`/`end` frame (`transform * to_transform()`), letting the gradient
+	/// describe shapes the endpoint pair cannot, such as an elliptical radial. It defaults to identity, so existing documents
+	/// (which only have `start`/`end`) are unaffected; the migration stores a non-identity value only where it's needed.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub transform: DAffine2,
 }
 
 impl Default for Gradient {
@@ -354,21 +505,11 @@ impl Default for Gradient {
 			gradient_type: GradientType::Linear,
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
+			spread_method: GradientSpreadMethod::Pad,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			transform: DAffine2::IDENTITY,
 		}
-	}
-}
-
-impl std::hash::Hash for Gradient {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.stops.len().hash(state);
-		[].iter()
-			.chain(self.start.to_array().iter())
-			.chain(self.end.to_array().iter())
-			.chain(self.stops.position.iter())
-			.chain(self.stops.midpoint.iter())
-			.for_each(|x| x.to_bits().hash(state));
-		self.stops.color.iter().for_each(|color| color.hash(state));
-		self.gradient_type.hash(state);
 	}
 }
 
@@ -378,7 +519,7 @@ impl std::fmt::Display for Gradient {
 		let stops = self
 			.stops
 			.iter()
-			.map(|stop| format!("[{}%: #{}]", round(stop.position * 100.), stop.color.to_rgba_hex_srgb()))
+			.map(|stop| format!("[{}%: #{}]", round(stop.position * 100.), SRGBA8::from(stop.color).to_rgba_hex()))
 			.collect::<Vec<_>>()
 			.join(", ");
 		write!(f, "{} Gradient: {stops}", self.gradient_type)
@@ -386,22 +527,66 @@ impl std::fmt::Display for Gradient {
 }
 
 impl Gradient {
+	// TODO: Eventually remove this document upgrade code
+	/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one in the geometry's local space.
+	/// `bounding_box` maps [0,1] onto the geometry's bounding box; `layer_transform` is the layer's own transform,
+	/// used to bake the elliptical adjustment that reproduces the legacy isotropic radial through a non-uniform layer.
+	pub fn to_absolute(&self, bounding_box: DAffine2, layer_transform: DAffine2) -> Gradient {
+		let start = bounding_box.transform_point2(self.start);
+		let end = bounding_box.transform_point2(self.end);
+		let direction = end - start;
+
+		// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
+		// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
+		let radial_invertible =
+			self.gradient_type == GradientType::Radial && layer_transform.is_finite() && layer_transform.matrix2.determinant().recip().is_finite() && direction.length_squared() > 1e-20;
+		let transform = if radial_invertible {
+			let radius = (layer_transform.matrix2 * direction).length();
+			let circle = DAffine2 {
+				matrix2: DMat2::from_diagonal(DVec2::splat(radius)),
+				translation: layer_transform.transform_point2(start),
+			};
+			let base = DAffine2::from_cols(direction, direction.perp(), start);
+			(layer_transform.inverse() * circle) * base.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		Gradient {
+			start,
+			end,
+			transform,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			..self.clone()
+		}
+	}
+
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType, spread_method: GradientSpreadMethod) -> Self {
 		let stops = GradientStops::new([
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
-				color: start_color.to_gamma_srgb(),
+				color: start_color,
 			},
 			GradientStop {
 				position: 1.,
 				midpoint: 0.5,
-				color: end_color.to_gamma_srgb(),
+				color: end_color,
 			},
 		]);
 
-		Self { start, end, stops, gradient_type }
+		Self {
+			start,
+			end,
+			stops,
+			gradient_type,
+			spread_method,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			transform: DAffine2::IDENTITY,
+		}
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
@@ -414,8 +599,18 @@ impl Gradient {
 		});
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
+		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
 
-		Self { start, end, stops, gradient_type }
+		Self {
+			start,
+			end,
+			stops,
+			gradient_type,
+			spread_method,
+			// TODO: Eventually remove this document upgrade code
+			absolute: self.absolute,
+			transform: if time < 0.5 { self.transform } else { other.transform },
+		}
 	}
 
 	/// Insert a stop into the gradient, the index if successful
@@ -448,28 +643,71 @@ impl Gradient {
 
 		Some(index)
 	}
+
+	/// Builds the affine that places the gradient endpoints at `start` and `end` when applied to canonical gradient space (0, 0) -> (1, 0).
+	pub fn to_transform(&self) -> DAffine2 {
+		let direction = self.end - self.start;
+		DAffine2::from_cols(direction, direction.perp(), self.start)
+	}
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<core_types::table::Table<GradientStops>, D::Error> {
-	use core_types::table::Table;
+pub fn migrate_to_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientStops, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(serde::Deserialize)]
-	#[serde(untagged)]
+	struct LegacyTable {
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<GradientStops>,
+	}
+
+	#[derive(serde::Deserialize)]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GradientStopsFormat {
-		GradientStops(GradientStops),
-		GradientTable(Table<GradientStops>),
+		Stops(GradientStops),
+		List(LegacyTable),
 	}
 
 	Ok(match GradientStopsFormat::deserialize(deserializer)? {
-		GradientStopsFormat::GradientStops(stops) => Table::new_from_element(stops),
-		GradientStopsFormat::GradientTable(table) => table,
+		GradientStopsFormat::Stops(stops) => stops,
+		GradientStopsFormat::List(list) => list.element.into_iter().next().unwrap_or_default(),
 	})
 }
 
 impl core_types::bounds::BoundingBox for GradientStops {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		core_types::bounds::RenderBoundingBox::Infinite
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		// AABB of the gradient line itself, leaving aspect padding and sub-pixel fallbacks to the runtime so this stays
+		// a clean per-item geometric bound that combines naturally with siblings
+		let start = transform.transform_point2(DVec2::ZERO);
+		let end = transform.transform_point2(DVec2::X);
+		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use glam::DVec2;
+
+	fn linear_gradient(start: DVec2, end: DVec2) -> Gradient {
+		Gradient { start, end, ..Default::default() }
+	}
+
+	#[test]
+	fn to_transform_roundtrip() {
+		let cases = [(DVec2::ZERO, DVec2::X), (DVec2::new(10., 20.), DVec2::new(50., 30.)), (DVec2::new(-5., -5.), DVec2::new(5., 3.))];
+
+		for (start, end) in cases {
+			let transform = linear_gradient(start, end).to_transform();
+			let recovered_start = transform.transform_point2(DVec2::ZERO);
+			let recovered_end = transform.transform_point2(DVec2::X);
+
+			assert!((recovered_start - start).length() < 1e-10);
+			assert!((recovered_end - end).length() < 1e-10);
+		}
 	}
 }

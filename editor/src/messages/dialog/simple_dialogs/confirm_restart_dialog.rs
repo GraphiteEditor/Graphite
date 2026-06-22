@@ -3,7 +3,7 @@ use crate::messages::prelude::*;
 
 /// A dialog for confirming the restart of the application when changing a preference that requires a restart to take effect.
 pub struct ConfirmRestartDialog {
-	pub changed_settings: Vec<String>,
+	pub preferences_requiring_restart: Vec<String>,
 }
 
 impl DialogLayoutHolder for ConfirmRestartDialog {
@@ -30,7 +30,7 @@ impl DialogLayoutHolder for ConfirmRestartDialog {
 
 impl LayoutHolder for ConfirmRestartDialog {
 	fn layout(&self) -> Layout {
-		let changed_settings = "• ".to_string() + &self.changed_settings.join("\n• ");
+		let changed_settings = "• ".to_string() + &self.preferences_requiring_restart.join("\n• ");
 
 		Layout(vec![
 			LayoutGroup::row(vec![TextLabel::new("Restart to apply changes?").bold(true).multiline(true).widget_instance()]),

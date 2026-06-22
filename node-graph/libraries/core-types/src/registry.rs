@@ -16,6 +16,8 @@ pub struct NodeMetadata {
 	pub description: &'static str,
 	pub properties: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
+	pub memoize: bool,
+	pub inject_scope: bool,
 }
 
 // Translation struct between macro and definition

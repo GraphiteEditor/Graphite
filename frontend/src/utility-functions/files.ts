@@ -1,5 +1,5 @@
-import type { Editor } from "@graphite/editor";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
+import { extractPixelData } from "/src/utility-functions/rasterization";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
@@ -32,29 +32,44 @@ export function downloadFile(filename: string, content: Uint8Array) {
 export async function upload(accept: string, textOrData: "text"): Promise<UploadResult<string>>;
 export async function upload(accept: string, textOrData: "data"): Promise<UploadResult<Uint8Array>>;
 export async function upload(accept: string, textOrData: "both"): Promise<UploadResult<{ text: string; data: Uint8Array }>>;
-export async function upload(accept: string, textOrData: "text" | "data" | "both"): Promise<UploadResult<string | Uint8Array | { text: string; data: Uint8Array }>> {
+export async function upload(accept: string, textOrData: "data", multiple: true): Promise<UploadResult<Uint8Array>[]>;
+export async function upload(
+	accept: string,
+	textOrData: "text" | "data" | "both",
+	multiple = false,
+): Promise<UploadResult<string | Uint8Array | { text: string; data: Uint8Array }> | UploadResult<Uint8Array>[]> {
 	return new Promise((resolve) => {
 		const element = document.createElement("input");
 		element.type = "file";
 		element.accept = accept;
+		element.multiple = multiple;
 
 		element.addEventListener(
 			"change",
 			async () => {
-				if (element.files?.length) {
-					const file = element.files[0];
+				if (!element.files?.length) return;
 
-					const filename = file.name;
-					const type = file.type;
-					const content =
-						textOrData === "text"
-							? await file.text()
-							: textOrData === "data"
-								? new Uint8Array(await file.arrayBuffer())
-								: { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) };
-
-					resolve({ filename, type, content });
+				// The `multiple: true` overload constrains `textOrData` to "data", so we know each file produces a Uint8Array
+				if (multiple) {
+					const results = await Promise.all(
+						Array.from(element.files).map(async (file) => ({
+							filename: file.name,
+							type: file.type,
+							content: new Uint8Array(await file.arrayBuffer()),
+						})),
+					);
+					resolve(results);
+					return;
 				}
+
+				const file = element.files[0];
+				const content =
+					textOrData === "text"
+						? await file.text()
+						: textOrData === "data"
+							? new Uint8Array(await file.arrayBuffer())
+							: { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) };
+				resolve({ filename: file.name, type: file.type, content });
 			},
 			{ capture: false, once: true },
 		);
@@ -66,18 +81,18 @@ export async function upload(accept: string, textOrData: "text" | "data" | "both
 }
 export type UploadResult<T> = { filename: string; type: string; content: T };
 
-export async function pasteFile(item: DataTransferItem, editor: Editor, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
+export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
 	const file = item.getAsFile();
 	if (!file) return;
 
 	if (file.type.startsWith("image/svg")) {
 		const svg = await file.text();
-		editor.handle.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+		editor.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
 	} else if (file.type.startsWith("image/")) {
 		const imageData = await extractPixelData(file);
-		editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
-	} else if (file.name.endsWith("." + editor.handle.fileExtension())) {
+		editor.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+	} else if (file.name.endsWith("." + editor.fileExtension())) {
 		// TODO: When we eventually have sub-documents, this should be changed to import the document as a node instead of opening it in a separate tab
-		editor.handle.openFile(file.name, await file.bytes());
+		editor.openFile(file.name, await file.bytes());
 	}
 }

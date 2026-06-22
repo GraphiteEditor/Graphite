@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "@graphite/io-managers/input";
+	import { createEventDispatcher, onDestroy } from "svelte";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "/src/managers/input";
 
 	const ARROW_CLICK_DISTANCE = 0.05;
 	const ARROW_REPEAT_DISTANCE = 0.01;
@@ -187,6 +186,10 @@
 		if (e.key === "Escape") abortInteraction();
 	}
 
+	onDestroy(() => {
+		removeEvents();
+	});
+
 	function addEvents() {
 		window.addEventListener("pointerup", onPointerUp);
 		window.addEventListener("pointermove", onPointerMove);
@@ -211,7 +214,7 @@
 	<button class="arrow increase" on:pointerdown={() => pressArrow(1)} tabindex="-1" data-scrollbar-arrow></button>
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.scrollbar-input {
 		display: flex;
 		flex: 1 1 100%;

@@ -10,7 +10,9 @@ mod context_menu_handler;
 mod display_handler;
 mod life_span_handler;
 mod load_handler;
+mod request_handler;
 mod resource_handler;
+mod resource_request_handler;
 mod scheme_handler_factory;
 
 pub(super) mod render_handler;

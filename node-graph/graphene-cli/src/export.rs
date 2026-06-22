@@ -69,9 +69,11 @@ pub async fn export_document(
 			}
 			RenderOutputType::Texture(image_texture) => {
 				// Convert GPU texture to CPU buffer
-				let gpu_raster = Raster::<GPU>::new_gpu(image_texture.texture);
+				let gpu_raster = Raster::<GPU>::new_gpu(image_texture.as_ref().clone());
 				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
+				// Explicitly drop texture to make sure it lives long enough
+				std::mem::drop(image_texture);
 
 				// Encode and write raster image
 				write_raster_image(output_path, file_type, data, width, height, transparent)?;
@@ -80,6 +82,7 @@ pub async fn export_document(
 				// Encode and write raster image when buffer is already provided
 				write_raster_image(output_path, file_type, data, width, height, transparent)?;
 			}
+			#[cfg(target_family = "wasm")]
 			other => {
 				return Err(format!("Unexpected render output type: {:?}. Expected Texture, Buffer for raster export or Svg for SVG export.", other).into());
 			}
@@ -143,7 +146,7 @@ impl AnimationParams {
 
 	/// Get the frame delay in centiseconds (GIF uses 10ms units)
 	pub fn frame_delay_centiseconds(&self) -> u16 {
-		((100.0 / self.fps).round() as u16).max(1)
+		((100. / self.fps).round() as u16).max(1)
 	}
 }
 
@@ -200,8 +203,10 @@ pub async fn export_gif(
 		let (data, img_width, img_height) = match result {
 			TaggedValue::RenderOutput(output) => match output.data {
 				RenderOutputType::Texture(image_texture) => {
-					let gpu_raster = Raster::<GPU>::new_gpu(image_texture.texture);
+					let gpu_raster = Raster::<GPU>::new_gpu(image_texture.as_ref().clone());
 					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+					// Explicitly drop texture to make sure it lives long enough
+					std::mem::drop(image_texture);
 					cpu_raster.to_flat_u8()
 				}
 				RenderOutputType::Buffer { data, width, height } => (data, width, height),

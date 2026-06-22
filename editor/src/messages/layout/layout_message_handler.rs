@@ -1,7 +1,8 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::FillChoiceUI;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -33,6 +34,20 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 				// Resend that diff
 				self.send_diff(vec![diff], layout_target, responses, action_input_mapping);
 			}
+			LayoutMessage::ResendAllLayouts => {
+				// Collect non-empty layouts and their indices, then clear the stored copies so diffs compute as full re-sends
+				let layouts_to_resend: Vec<_> = self
+					.layouts
+					.iter_mut()
+					.enumerate()
+					.filter(|(_, layout)| !layout.0.is_empty())
+					.map(|(i, layout)| (LayoutTarget::from(i as u8), std::mem::take(layout)))
+					.collect();
+
+				for (layout_target, layout) in layouts_to_resend {
+					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+				}
+			}
 			LayoutMessage::SendLayout { layout, layout_target } => {
 				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
 			}
@@ -46,6 +61,19 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			}
 			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
+			}
+			LayoutMessage::WidgetValueDragDrop { layout_target, widget_id } => {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+					warn!("WidgetValueDragDrop referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+					warn!("WidgetValueDragDrop referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				if let Widget::IconButton(icon_button) = &mut *widget_instance.widget {
+					responses.add((icon_button.on_drag_drop.callback)(icon_button));
+				}
 			}
 		}
 	}
@@ -88,22 +116,22 @@ impl LayoutMessageHandler {
 				}
 				LayoutGroup::Table(WidgetTable { rows, .. }) => {
 					for (row_index, row) in rows.iter().enumerate() {
-						for (cell_index, cell) in row.iter().enumerate() {
+						for (value_index, value) in row.iter().enumerate() {
 							// Return if this is the correct ID
-							if cell.widget_id == widget_id {
+							if value.widget_id == widget_id {
 								widget_path.push(row_index);
-								widget_path.push(cell_index);
-								return Some((cell, widget_path));
+								widget_path.push(value_index);
+								return Some((value, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &*cell.widget {
+							if let Widget::PopoverButton(popover) = &*value.widget {
 								stack.extend(
 									popover
 										.popover_layout
 										.0
 										.iter()
 										.enumerate()
-										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, child]].concat(), val)),
+										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, value_index, child]].concat(), val)),
 								);
 							}
 						}
@@ -153,31 +181,38 @@ impl LayoutMessageHandler {
 				};
 				responses.add(callback_message);
 			}
+			Widget::ColorComparisonInput(color_comparison_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_comparison_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => (color_comparison_input.on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ColorInput(color_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let Ok(fill_choice) = serde_json::from_value::<FillChoice>(value) else {
-							warn!("ColorInput update was not able to be parsed as FillChoice: {color_button:?}");
+						let Ok(fill_choice_ui) = serde_json::from_value::<FillChoiceUI>(value) else {
+							warn!("ColorInput update was not able to be parsed as FillChoiceUI: {color_button:?}");
 							return;
 						};
-						color_button.value = fill_choice;
+						color_button.value = fill_choice_ui;
 						(color_button.on_update.callback)(color_button)
 					}
 				};
 
 				responses.add(callback_message);
 			}
-			Widget::CurveInput(curve_input) => {
+			Widget::ColorPresetsInput(color_presets_input) => {
 				let callback_message = match action {
-					WidgetValueAction::Commit => (curve_input.on_commit.callback)(&()),
+					WidgetValueAction::Commit => (color_presets_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let Some(curve) = serde_json::from_value(value).ok() else {
-							error!("CurveInput event data could not be deserialized");
+						let Ok(update) = serde_json::from_value::<ColorPresetsInputUpdate>(value) else {
+							warn!("ColorPresetsInput update was not able to be parsed as ColorPresetsInputUpdate");
 							return;
 						};
-						curve_input.value = curve;
-						(curve_input.on_update.callback)(curve_input)
+						(color_presets_input.on_update.callback)(&update)
 					}
 				};
 
@@ -207,6 +242,25 @@ impl LayoutMessageHandler {
 							return;
 						};
 						(entry.on_update.callback)(&())
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (spectrum_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<SpectrumInputUpdate>(value) else {
+							warn!("SpectrumInput update was not able to be parsed as SpectrumInputUpdate");
+							return;
+						};
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state. Otherwise the frontend's stored layout
+						// keeps stale values for `activeMarkerIndex`, etc., and any other widget's diff (e.g. the position
+						// NumberInput) will trigger Svelte to re-spread those stale props onto SpectrumInput, clobbering
+						// its local `activeMarkerIndex` and making subsequent drags target the wrong stop.
+						(spectrum_input.on_update.callback)(&update)
 					}
 				};
 
@@ -369,6 +423,23 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::TextLabel(_) => {}
+			Widget::VisualColorPickersInput(visual_color_pickers_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (visual_color_pickers_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<VisualColorPickersInputUpdate>(value) else {
+							warn!("VisualColorPickersInput update was not able to be parsed as VisualColorPickersInputUpdate");
+							return;
+						};
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state, so the visual indicators (selection circle,
+						// hue/alpha needles, saturation-val ue gradient background) actually re-render after a drag.
+						(visual_color_pickers_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::WorkingColorsInput(_) => {}
 		};
 	}
@@ -381,14 +452,17 @@ impl LayoutMessageHandler {
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
-		// Step 1: Collect CheckboxId mappings from new layout
+		// Collect CheckboxId mappings from new layout
 		let mut checkbox_map = HashMap::new();
 		new_layout.collect_checkbox_ids(layout_target, &mut Vec::new(), &mut checkbox_map);
 
-		// Step 2: Replace all IDs in new layout with deterministic ones
+		// Replace all IDs in new layout with deterministic ones
 		new_layout.replace_widget_ids(layout_target, &mut Vec::new(), &checkbox_map);
 
-		// Step 3: Diff with deterministic IDs
+		// Populate computed display fields on widgets that need derived values
+		populate_computed_display_fields(&mut new_layout);
+
+		// Diff with deterministic IDs
 		let mut widget_diffs = Vec::new();
 
 		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
@@ -425,4 +499,28 @@ impl LayoutMessageHandler {
 enum WidgetValueAction {
 	Commit,
 	Update,
+}
+
+/// Walk all widgets in the layout and populate computed display fields (e.g., precomputed CSS gradient strings) so the frontend can render them without making Wasm round-trip calls. Mutates fields in place.
+fn populate_computed_display_fields(layout: &mut Layout) {
+	for instance in layout.iter_mut() {
+		match &mut *instance.widget {
+			Widget::ColorInput(color_input) => {
+				color_input.chosen_gradient = color_input.value.to_css_background_image();
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient();
+				spectrum_input.track_start_css = spectrum_input.track.color.first().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_end_css = spectrum_input.track.color.last().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
+			}
+			Widget::ColorComparisonInput(comparison) => {
+				let contrasting = |color: Option<SRGBA8>| color.map_or(SRGBA8::BLACK, |color| color.contrasting_text_color()).to_css_hex();
+				comparison.new_color_css = comparison.new_color.map(|color| color.to_css_hex()).unwrap_or_default();
+				comparison.new_color_contrasting = contrasting(comparison.new_color);
+				comparison.old_color_css = comparison.old_color.map(|color| color.to_css_hex()).unwrap_or_default();
+				comparison.old_color_contrasting = contrasting(comparison.old_color);
+			}
+			_ => {}
+		}
+	}
 }

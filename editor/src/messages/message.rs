@@ -14,6 +14,8 @@ pub enum Message {
 	#[child]
 	Clipboard(ClipboardMessage),
 	#[child]
+	ColorPicker(ColorPickerMessage),
+	#[child]
 	Debug(DebugMessage),
 	#[child]
 	Defer(DeferMessage),
@@ -21,6 +23,8 @@ pub enum Message {
 	Dialog(DialogMessage),
 	#[child]
 	Frontend(FrontendMessage),
+	#[child]
+	Future(FutureMessage),
 	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
@@ -30,9 +34,13 @@ pub enum Message {
 	#[child]
 	MenuBar(MenuBarMessage),
 	#[child]
+	Network(NetworkMessage),
+	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
 	Preferences(PreferencesMessage),
+	#[child]
+	ResourceStorage(ResourceStorageMessage),
 	#[child]
 	Tool(ToolMessage),
 	#[child]

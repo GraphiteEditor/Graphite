@@ -6,8 +6,5 @@ description = "graphene raster nodes shaders entrypoint"
 authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
-[lib]
-crate-type = ["rlib", "dylib"]
-
 [dependencies]
 raster-nodes = { path = "../..", default-features = false }

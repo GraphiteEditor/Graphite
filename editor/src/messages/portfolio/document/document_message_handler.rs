@@ -4,11 +4,14 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	VIEWPORT_ROTATE_SNAP_INTERVAL,
+};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -17,29 +20,31 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
+use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::wgpu_available;
+use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
-use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
+use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Raster;
-use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::style::RenderMode;
-use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
+use graphene_std::vector::misc::dvec2_to_point;
+use graphene_std::vector::style::{Fill, RenderMode};
+use kurbo::{Affine, BezPath, Line, PathSeg};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,7 +53,6 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -56,6 +60,8 @@ pub struct DocumentMessageContext<'a> {
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
+	pub fonts: &'a FontsMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -82,8 +88,11 @@ pub struct DocumentMessageHandler {
 	//
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
-	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
-	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
+	/// Resources embedded in the document.
+	#[serde(default, skip_serializing_if = "ResourceMessageHandler::is_empty")]
+	pub resources: ResourceMessageHandler,
+	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
+	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
@@ -115,6 +124,11 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
+	// TODO: Eventually remove this document upgrade code
+	/// Set when a freshly-opened document still has legacy bounding-box-relative gradients; the deferred gradient
+	/// migration converts them to absolute after the first graph run (when geometry bounds are available) and clears this.
+	#[serde(skip)]
+	pub(crate) pending_gradient_migration: bool,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -157,6 +171,7 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network_interface: default_document_network_interface(),
+			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -171,6 +186,8 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
+			// TODO: Eventually remove this document upgrade code
+			pending_gradient_migration: false,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
@@ -189,7 +206,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			persistent_data,
 			executor,
 			viewport,
 			current_tool,
@@ -197,6 +213,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
+			resource_storage,
+			fonts,
 		} = context;
 
 		match message {
@@ -223,11 +241,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {
+					executor,
 					network_interface: &mut self.network_interface,
+					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					executor,
-					persistent_data,
+					fonts,
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
@@ -270,6 +289,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::Resource(message) => {
+				let context = ResourceMessageContext { document_id, fonts };
+				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				let axis = match axis {
@@ -315,7 +338,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				if layers_panel_open {
-					let layer_structure = Self::default().build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
+					let layer_structure = Self::default().build_layer_structure();
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { layer_structure });
 				}
 
@@ -378,7 +401,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
-					let layer_structure = self.build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
+					let layer_structure = self.build_layer_structure();
 
 					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
 					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
@@ -434,34 +457,85 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
 				});
 
-				for layer in layers.into_iter().rev() {
-					let Some(parent) = layer.parent(self.metadata()) else { continue };
+				for original_layer in layers.into_iter().rev() {
+					let Some(parent) = original_layer.parent(self.metadata()) else { continue };
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![original_layer.to_node()]), parent);
 
-					// Copy the layer
-					let mut copy_ids = HashMap::new();
-					let node_id = layer.to_node();
-					copy_ids.insert(node_id, NodeId(0));
-
-					self.network_interface
-						.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
-						.enumerate()
-						.for_each(|(index, node_id)| {
-							copy_ids.insert(node_id, NodeId((index + 1) as u64));
-						});
-
-					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
-
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
-
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-
-					let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
-					let layer = LayerNodeIdentifier::new_unchecked(layer_id);
-					new_dragging.push(layer);
-					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
-					responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+					let Some(new_layer) = self.duplicate_layer(original_layer, responses) else { continue };
+					new_dragging.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index,
+					});
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
+				if !self.selection_network_path.is_empty() {
+					log::error!("Duplicating selected layers is only supported for the document network");
+					return;
+				}
+
+				// Mirror the placement constraints enforced when moving layers so a copy can't land somewhere a move couldn't
+				let any_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
+					return;
+				}
+
+				let selected_any_non_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
+					return;
+				}
+
+				let layers_to_duplicate = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				if layers_to_duplicate.is_empty() {
+					return;
+				}
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				let mut new_layers = Vec::new();
+				for layer in layers_to_duplicate {
+					let Some(new_layer) = self.duplicate_layer(layer, responses) else { continue };
+
+					// Insert each copy one slot below the previous so the duplicates keep their original top-to-bottom order
+					let placement_index = insert_index + new_layers.len();
+					new_layers.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index: placement_index,
+					});
+
+					// Compensate the local transform so a copy dropped into a differently-transformed parent stays put in world space
+					if layer.parent(self.metadata()) != Some(parent) {
+						let layer_world_transform = self.network_interface.document_metadata().transform_to_viewport(layer);
+						let undo_parent_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: new_layer,
+							transform: undo_parent_transform * layer_world_transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					}
+				}
+
+				let nodes = new_layers.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -507,7 +581,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.context_menu = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 				}
-				// Exit one level up if inside a nested network
+				// Go back up one level in the breadcrumb path if we're in a subgraph
 				else if !self.breadcrumb_network_path.is_empty() {
 					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
 				}
@@ -622,11 +696,35 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
+			DocumentMessage::BlendSelectedLayers => {
+				self.group_selected_layers(GroupFolderType::Blend, responses);
+			}
+			DocumentMessage::MorphSelectedLayers => {
+				self.group_selected_layers(GroupFolderType::Morph, responses);
+			}
+			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
+				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
+				// queued after AddTransaction (which prepends StartTransaction/CommitTransaction to the queue).
+				// All mutations currently target the root document network, so guard against being invoked from inside a nested network.
+				if !self.selection_network_path.is_empty() {
+					log::error!("Expanding fill/stroke is only supported for the document network");
+					return;
+				}
+				if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_none() {
+					return;
+				}
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction);
+			}
+			DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction => {
+				// Mutates the network directly, so it must be queued to run after `AddTransaction` has snapshotted the document
+				self.handle_expand_fill_stroke_on_selected_layers(responses);
+			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
-				self.handle_group_selected_layers(group_folder_type, responses);
+				self.group_selected_layers(group_folder_type, responses);
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
-				self.handle_move_selected_layers_to(parent, insert_index, responses);
+				self.move_selected_layers_to(parent, insert_index, responses);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -649,42 +747,51 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				delta_x,
 				delta_y,
 				resize,
-				resize_opposite_corner,
+				resize_opposite,
 			} => {
-				self.handle_nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
+				let resize = ipp.keyboard.key(resize);
+				let resize_opposite = ipp.keyboard.key(resize_opposite);
+				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
 				image,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
+				let layer_parent = self.new_layer_parent(true);
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				// Align the layer with the mouse or center of viewport
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
-				let center_in_viewport_layerspace = center_in_viewport;
-
-				// Make layer the size of the image
-				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
-
-				let transform = center_in_viewport_layerspace * fit_image_size;
+				let mut transform = if place_at_origin {
+					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
+					DAffine2::from_scale(image_size)
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					let cursor_in_parent = parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport);
+					cursor_in_parent * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
+				};
+				transform.translation = transform.translation.round();
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(image, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
+						network_path: Vec::new(),
 						alias: name,
 						skip_adding_history_step: false,
 					});
@@ -715,21 +822,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				svg,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
+				let layer_parent = self.new_layer_parent(true);
+				let transform = if place_at_origin {
+					// File-open flow: place at document origin so `WrapContentInArtboard` can wrap it without extra Transform nodes
+					DAffine2::IDENTITY
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport)
+				};
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
+						network_path: Vec::new(),
 						alias: name,
 						skip_adding_history_step: false,
 					});
@@ -756,7 +876,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
-				self.name = new_name.clone();
+				let new_name = new_name.trim().to_string();
+
+				// No-op when the resolved name is unchangedL committing the rename field without edits (or with
+				// only whitespace edits) shouldn't dissociate the document from its file on disk or mark it unsaved.
+				if new_name == self.name {
+					return;
+				}
+
+				self.name = new_name;
 
 				self.path = None;
 				self.set_save_state(false);
@@ -802,11 +930,31 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				let ruler_spacing = ruler_interval * ruler_scale;
 
+				// Compute the selection bounding box as 4 viewport-space corners preserving orientation
+				let selection_quad = if !self.graph_view_overlay_open {
+					self.network_interface
+						.selected_nodes()
+						.0
+						.iter()
+						.filter(|node| self.network_interface.is_layer(node, &[]))
+						.filter_map(|layer| self.metadata().bounding_box_document(LayerNodeIdentifier::new(*layer, &self.network_interface)))
+						.reduce(Quad::combine_bounds)
+						.map(|[min, max]| {
+							let corners = [DVec2::new(min.x, min.y), DVec2::new(max.x, min.y), DVec2::new(max.x, max.y), DVec2::new(min.x, max.y)];
+							corners.map(|c| document_to_viewport.transform_point2(c).into())
+						})
+				} else {
+					None
+				};
+
 				responses.add(FrontendMessage::UpdateDocumentRulers {
 					origin: ruler_origin.into(),
 					spacing: ruler_spacing,
 					interval: ruler_interval,
 					visible: self.rulers_visible,
+					tilt: if self.graph_view_overlay_open { 0. } else { current_ptz.tilt() },
+					flip: !self.graph_view_overlay_open && current_ptz.flip,
+					selection_quad,
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
@@ -835,26 +983,38 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
-				if let DocumentMessage::SaveDocumentAs = message {
-					self.path = None;
-				}
-
-				self.set_save_state(true);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
-				// Update the save status of the just saved document
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-				responses.add(FrontendMessage::TriggerSaveDocument {
-					document_id,
-					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path: self.path.clone(),
-					content: self.serialize_document().into_bytes().into(),
-				})
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
+				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
+				if path.is_some() {
+					responses.add(DocumentMessage::MarkAsSaved);
+				}
+				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
+
+				let mut document = self.clone();
+				let resources_load_handle = resource_storage.resources();
+
+				responses.add(async move {
+					document.resources.collect_garbage(document.used_resources(false).as_ref());
+					document.resources.embed_resources(resources_load_handle).await;
+
+					let content = document.serialize_document().into_bytes().into();
+
+					Message::Frontend(FrontendMessage::TriggerSaveDocument {
+						document_id,
+						name,
+						path,
+						folder,
+						content,
+					})
+				});
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
 
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+				responses.add(DocumentMessage::MarkAsSaved);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
@@ -991,8 +1151,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 			}
-			DocumentMessage::SetActivePanel { active_panel: panel } => {
-				match panel {
+			DocumentMessage::SetActivePanel { active_panel } => {
+				match active_panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
 							self.selection_network_path.clone_from(&self.breadcrumb_network_path);
@@ -1145,25 +1305,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
-				let metadata = self.metadata();
-
-				let is_collapsed = self.collapsed.0.contains(&layer);
+			DocumentMessage::ToggleLayerExpansion { tree_path, recursive } => {
+				let is_collapsed = self.collapsed.0.contains(&tree_path);
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.descendants(metadata).collect();
-						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
+						// Remove this path and all descendant paths (paths that start with this one)
+						self.collapsed.0.retain(|path| !path.starts_with(&tree_path));
 					} else {
-						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
+						self.collapsed.0.retain(|path| *path != tree_path);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
-						self.collapsed.0.extend(children_to_add);
+						// Collapse all expanded descendant occurrences by collecting their tree paths from the structure tree
+						let descendant_paths = self.collect_descendant_tree_paths(&tree_path);
+						for path in descendant_paths {
+							if !self.collapsed.0.contains(&path) {
+								self.collapsed.0.push(path);
+							}
+						}
 					}
-					self.collapsed.0.push(layer);
+					self.collapsed.0.push(tree_path);
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1210,6 +1372,63 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
 			}
+			// TODO: Eventually remove this document upgrade code
+			DocumentMessage::MigrateLegacyGradients => {
+				if self.pending_gradient_migration {
+					self.pending_gradient_migration = false;
+
+					// Read each layer's legacy gradient and compute its absolute form from the now-available local bounds
+					let layers: Vec<_> = self.metadata().all_layers().collect();
+					let conversions: Vec<(NodeId, Fill)> = layers
+						.into_iter()
+						.filter_map(|layer| {
+							let gradient = graph_modification_utils::get_gradient(layer, &self.network_interface)?;
+							if gradient.absolute {
+								return None;
+							}
+							let fill_node_id = graph_modification_utils::get_fill_node_id(layer, &self.network_interface)?;
+							let bounds = self.metadata().nonzero_bounding_box(layer);
+							let bounding_box = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+							let layer_transform = self.metadata().upstream_transform(layer.to_node());
+							Some((fill_node_id, Fill::Gradient(gradient.to_absolute(bounding_box, layer_transform))))
+						})
+						.collect();
+
+					let converted_any = !conversions.is_empty();
+					for (fill_node_id, fill) in conversions {
+						self.network_interface
+							.set_input(&InputConnector::node(fill_node_id, 1), NodeInput::value(TaggedValue::Fill(fill), false), &[]);
+					}
+					if converted_any {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
+			}
+			DocumentMessage::UpdateOutlines { outlines } => {
+				let layer_outlines = outlines
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, outlines)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, outlines)
+						})
+					})
+					.collect();
+				self.network_interface.update_outlines(layer_outlines);
+			}
+			DocumentMessage::UpdateTextFrames { text_frames } => {
+				let layer_text_frames = text_frames
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter(|&(node_id, _)| self.network_interface.is_layer(&node_id, &[]))
+					.map(|(node_id, frame)| {
+						let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+						(layer, frame)
+					})
+					.collect();
+				self.network_interface.update_text_frames(layer_text_frames);
+			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}
@@ -1226,6 +1445,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					})
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
+			}
+			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_fill_attributes = fill_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_fill_attributes(layer_fill_attributes);
+			}
+			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_stroke_attributes = stroke_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1345,11 +1592,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.selection_step_forward(&self.selection_network_path);
 				responses.add(EventMessage::SelectionChanged);
 			}
-			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
-				// Get bounding box of all layers
+			DocumentMessage::WrapContentInArtboard {
+				place_artboard_at_origin,
+				artboard_canvas,
+			} => {
+				// Get bounding box of all layers (always needed to confirm there is content)
 				let bounds = self.network_interface.document_bounds_document_space(false);
 				let Some(bounds) = bounds else { return };
-				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
+
+				// When artboard_canvas is provided (SVG file-open flow), use the declared canvas origin and dimensions;
+				// no content-shift Transform node needed since the SVG was already placed at its natural coordinates.
+				let (artboard_location, artboard_dimensions, content_shift) = if let Some((origin, dimensions)) = artboard_canvas {
+					(origin.as_dvec2(), dimensions.as_dvec2(), DVec2::ZERO)
+				} else {
+					// No declared canvas (image or clipboard paste): derive location and dimensions from the content bounding box.
+					let location = if place_artboard_at_origin { DVec2::ZERO } else { bounds[0].round() };
+					(location, (bounds[1] - bounds[0]).round(), -bounds[0].round())
+				};
 
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
@@ -1361,11 +1620,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_id,
 					node_template: Box::new(new_artboard_node),
 				});
-				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: 15, y: -3 });
+				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
+				// With a content Transform node: shift by the layer indent plus the node width. Without: use just the layer indent.
+				responses.add(NodeGraphMessage::ShiftNodePosition {
+					node_id,
+					x: if needs_content_transform { LAYER_INDENT_OFFSET + NODE_CHAIN_WIDTH } else { LAYER_INDENT_OFFSET },
+					y: -3,
+				});
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: LayerNodeIdentifier::new_unchecked(node_id),
-					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
-					dimensions: bounds_rounded_dimensions.as_ivec2(),
+					location: artboard_location,
+					dimensions: artboard_dimensions,
 				});
 
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
@@ -1375,10 +1640,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					insert_node_input_index: 1,
 				});
 
-				// Shift the content by half its width and height so it gets centered in the artboard
+				// Shift the content to align its top-left to the artboard's origin (no-op when content is already at origin)
 				responses.add(GraphOperationMessage::TransformChange {
 					layer: node_layer_id,
-					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
+					transform: DAffine2::from_translation(content_shift),
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
@@ -1441,6 +1706,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
+				BlendSelectedLayers,
+				MorphSelectedLayers,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
@@ -1472,6 +1739,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
+	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
+		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_pos - viewport.offset().into_dvec2()))
+	}
+
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
@@ -1536,6 +1810,11 @@ impl DocumentMessageHandler {
 					subpath.apply_transform(layer_transform);
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
+				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
+					let mut subpath = subpath.clone();
+					subpath.apply_transform(layer_transform);
+					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
@@ -1629,6 +1908,12 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	/// Path to the subnetwork that the user's selection is currently scoped to.
+	/// Empty when the selection lives in the root document network.
+	pub fn selection_network_path(&self) -> &[NodeId] {
+		&self.selection_network_path
+	}
+
 	pub fn serialize_document(&self) -> String {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
@@ -1692,22 +1977,218 @@ impl DocumentMessageHandler {
 		Ok(document_message_handler)
 	}
 
-	/// Recursively builds the layer structure tree for a folder.
-	fn build_layer_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructureEntry> {
-		folder
-			.children(self.metadata())
-			.map(|layer_node| {
-				let children = if layer_node.has_children(self.metadata()) && !self.collapsed.0.contains(&layer_node) {
-					self.build_layer_structure(layer_node)
-				} else {
-					Vec::new()
-				};
-				LayerStructureEntry {
-					layer_id: layer_node.to_node(),
-					children,
+	/// Builds the layer structure tree by traversing the node graph directly.
+	/// Unlike the canonical `structure` field of [`DocumentMetadata`] (which stores single-parent relationships), this allows
+	/// the same layer to appear under multiple parents when the graph feeds the same child content into separate parent layers.
+	fn build_layer_structure(&self) -> Vec<LayerStructureEntry> {
+		let network = &self.network_interface;
+
+		let Some(root_node) = network.root_node(&[]) else { return Vec::new() };
+		let Some(first_root_layer_id) = network
+			.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow)
+			.find(|node_id| network.is_layer(node_id, &[]))
+		else {
+			return Vec::new();
+		};
+
+		let selected_layers: HashSet<NodeId> = network.selected_nodes().selected_layers(self.metadata()).map(LayerNodeIdentifier::to_node).collect();
+
+		let ancestors = HashSet::new();
+		let tree_path = Vec::new();
+		let mut root_entries = Vec::new();
+
+		// The first root layer is the topmost entry
+		root_entries.push(self.build_layer_entry(first_root_layer_id, &ancestors, &selected_layers, &tree_path));
+
+		// Layers in the primary flow (input[0] chain) from the first root layer are root-level siblings
+		let mut root_ancestors = HashSet::new();
+		root_ancestors.insert(first_root_layer_id);
+
+		for sibling_id in network.upstream_flow_back_from_nodes(vec![first_root_layer_id], &[], FlowType::PrimaryFlow).skip(1) {
+			if network.is_layer(&sibling_id, &[]) && !root_ancestors.contains(&sibling_id) {
+				root_entries.push(self.build_layer_entry(sibling_id, &root_ancestors, &selected_layers, &tree_path));
+			}
+		}
+
+		root_entries
+	}
+
+	/// Builds a single `LayerStructureEntry` for the given layer, including its `children_present` flag,
+	/// `descendant_selected` flag, and (if expanded) its children collected from the graph.
+	fn build_layer_entry(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, parent_tree_path: &[NodeId]) -> LayerStructureEntry {
+		let mut tree_path = parent_tree_path.to_vec();
+		tree_path.push(layer_id);
+
+		let mut child_ancestors = ancestors.clone();
+		child_ancestors.insert(layer_id);
+
+		let children_present = self.has_layer_children_in_graph(layer_id, &child_ancestors);
+
+		let collapsed = self.collapsed.0.contains(&tree_path);
+
+		let children = if children_present && !collapsed {
+			self.collect_layer_children(layer_id, &child_ancestors, selected_layers, &tree_path)
+		} else {
+			Vec::new()
+		};
+
+		// Compute whether any descendant is selected (checking expanded children and, if collapsed, via graph traversal)
+		let descendant_selected = if !children.is_empty() {
+			children.iter().any(|child| child.descendant_selected || selected_layers.contains(&child.layer_id))
+		} else if children_present {
+			// Layer is collapsed but has children, so check via graph traversal
+			self.has_selected_descendant_in_graph(layer_id, &child_ancestors, selected_layers)
+		} else {
+			false
+		};
+
+		LayerStructureEntry {
+			layer_id,
+			children,
+			children_present,
+			descendant_selected,
+		}
+	}
+
+	/// Checks whether a layer has any child layers reachable via horizontal flow in the graph.
+	fn has_layer_children_in_graph(&self, layer_id: NodeId, child_ancestors: &HashSet<NodeId>) -> bool {
+		let network = &self.network_interface;
+
+		network
+			.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.any(|id| network.is_layer(&id, &[]) && !child_ancestors.contains(&id))
+	}
+
+	/// Checks whether any descendant layer in the graph (via horizontal + primary flow) is selected.
+	/// Used when a layer is collapsed to determine if the ancestor-of-selected indicator should show.
+	fn has_selected_descendant_in_graph(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>) -> bool {
+		let network = &self.network_interface;
+
+		// Find child layers via horizontal flow
+		let mut stack: Vec<NodeId> = network
+			.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.filter(|node_id| network.is_layer(node_id, &[]) && !ancestors.contains(node_id))
+			.collect();
+
+		let mut visited = ancestors.clone();
+
+		// Iteratively explore all descendant layers via a depth-first traversal
+		while let Some(current_id) = stack.pop() {
+			// Skip already-visited layers to avoid infinite loops from graph cycles
+			if !visited.insert(current_id) {
+				continue;
+			}
+
+			// Found a selected descendant, the ancestor indicator should be shown
+			if selected_layers.contains(&current_id) {
+				return true;
+			}
+
+			// Check this layer's children via horizontal flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::HorizontalFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) && !visited.contains(&node_id) {
+					stack.push(node_id);
 				}
-			})
-			.collect()
+			}
+
+			// Check stacked siblings via primary flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::PrimaryFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) && !visited.contains(&node_id) {
+					stack.push(node_id);
+				}
+			}
+		}
+
+		false
+	}
+
+	/// Collects the child entries for a given layer by traversing its horizontal and primary flows.
+	/// The horizontal flow (a layer's secondary input chain) finds nested content layers, and the
+	/// primary flow from those (their stack's top output) finds stacked siblings at the same depth.
+	/// `ancestors` contains layer IDs in the current path from root, used for cycle prevention.
+	fn collect_layer_children(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, tree_path: &[NodeId]) -> Vec<LayerStructureEntry> {
+		let network = &self.network_interface;
+
+		// Find the first nested layer via horizontal flow (content inside this layer)
+		let Some(nested_id) = network
+			.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.find(|id| network.is_layer(id, &[]))
+		else {
+			return Vec::new();
+		};
+
+		// Cycle detected, this layer is already an ancestor in the current branch
+		if ancestors.contains(&nested_id) {
+			return Vec::new();
+		}
+
+		// The nested layer is the first child at this depth level
+		let mut children = vec![self.build_layer_entry(nested_id, ancestors, selected_layers, tree_path)];
+
+		// Primary flow from the nested layer finds stacked siblings (more children of this layer)
+		for sibling_id in network.upstream_flow_back_from_nodes(vec![nested_id], &[], FlowType::PrimaryFlow).skip(1) {
+			if network.is_layer(&sibling_id, &[]) && !ancestors.contains(&sibling_id) {
+				children.push(self.build_layer_entry(sibling_id, ancestors, selected_layers, tree_path));
+			}
+		}
+
+		children
+	}
+
+	/// Collects tree paths for all descendant layers of the given tree path by traversing the graph.
+	/// Used for recursive collapse to find all expandable descendants.
+	fn collect_descendant_tree_paths(&self, tree_path: &[NodeId]) -> Vec<Vec<NodeId>> {
+		let Some(&layer_id) = tree_path.last() else { return Vec::new() };
+		let network = &self.network_interface;
+
+		let mut paths = Vec::new();
+		let mut stack: Vec<(NodeId, Vec<NodeId>)> = Vec::new();
+
+		// Seed with child layers via horizontal flow
+		for node_id in network.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow).skip(1) {
+			if network.is_layer(&node_id, &[]) {
+				let mut child_path = tree_path.to_vec();
+				child_path.push(node_id);
+				stack.push((node_id, child_path));
+			}
+		}
+
+		let mut visited = HashSet::new();
+
+		// Depth-first traversal collecting all unique descendant tree paths
+		while let Some((current_id, current_path)) = stack.pop() {
+			// Skip paths we've already visited to prevent cycles
+			if !visited.insert(current_path.clone()) {
+				continue;
+			}
+
+			// Record this descendant's tree path for collapsing
+			paths.push(current_path.clone());
+
+			// Add nested content layers found via horizontal flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::HorizontalFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) {
+					let mut child_path = current_path.clone();
+					child_path.push(node_id);
+					stack.push((node_id, child_path));
+				}
+			}
+
+			// Add stacked sibling layers found via primary flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::PrimaryFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) {
+					// Siblings share the same parent path (everything up to the last element of current_path)
+					let mut sibling_path = current_path[..current_path.len() - 1].to_vec();
+					sibling_path.push(node_id);
+					stack.push((node_id, sibling_path));
+				}
+			}
+		}
+
+		paths
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1858,6 +2339,30 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
+	/// Copies `layer` together with its full upstream node chain, queueing the new nodes with freshly minted IDs.
+	/// Returns the new layer's identifier; the caller places it into the stack with a `MoveLayerToStack` response.
+	fn duplicate_layer(&mut self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
+		let mut copy_ids = HashMap::new();
+		copy_ids.insert(layer.to_node(), NodeId(0));
+		self.network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+			.enumerate()
+			.for_each(|(index, node_id)| {
+				copy_ids.insert(node_id, NodeId((index + 1) as u64));
+			});
+
+		let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+		let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+		let Some(&new_layer_id) = new_ids.get(&NodeId(0)) else {
+			log::error!("Could not duplicate layer because its root node copy is missing");
+			return None;
+		};
+		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+
+		Some(LayerNodeIdentifier::new_unchecked(new_layer_id))
+	}
+
 	pub fn group_layers(
 		responses: &mut VecDeque<Message>,
 		insert_index: usize,
@@ -1891,7 +2396,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".into()))
+							.is_some_and(|reference| reference == DefinitionIdentifier::ProtoNode(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER))
 					})
 				});
 
@@ -1913,6 +2418,57 @@ impl DocumentMessageHandler {
 					});
 				}
 			}
+			GroupFolderType::Blend | GroupFolderType::Morph => {
+				let control_path_id = NodeId(generate_uuid());
+				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
+				let blend_count = matches!(group_folder_type, GroupFolderType::Blend).then(|| all_layers_to_group.len() * BLEND_COUNT_PER_LAYER);
+
+				responses.add(GraphOperationMessage::NewInterpolationLayer {
+					id: folder_id,
+					control_path_id,
+					parent,
+					insert_index,
+					blend_count,
+				});
+
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
+
+				// Move selected layers into the group as children
+				for layer_to_group in all_layers_to_group.into_iter().rev() {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_to_group,
+						parent: new_group_folder,
+						insert_index: 0,
+					});
+				}
+
+				// Connect the child stack to the control path layer as a co-parent
+				responses.add(GraphOperationMessage::ConnectInterpolationControlPathToChildren {
+					interpolation_layer_id: folder_id,
+					control_path_id,
+				});
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				// The control path layer (Blend Path / Morph Path) should start collapsed.
+				let tree_path = {
+					// Build tree path from root down to the control path layer, which is a sibling of the main layer under `parent`.
+					let mut tree_path: Vec<NodeId> = parent
+						.ancestors(network_interface.document_metadata())
+						.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+						.map(LayerNodeIdentifier::to_node)
+						.collect();
+					tree_path.reverse();
+					tree_path.push(control_path_id);
+					tree_path
+				};
+				responses.add(DocumentMessage::ToggleLayerExpansion { tree_path, recursive: false });
+
+				return folder_id;
+			}
 		}
 
 		let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
@@ -1927,9 +2483,7 @@ impl DocumentMessageHandler {
 		folder_id
 	}
 
-	/// Helper method for GroupSelectedLayers message.
-	/// Handles grouping layers in both artboard and non-artboard workflows.
-	fn handle_group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
+	fn group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::AddTransaction);
 
 		let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
@@ -1978,9 +2532,100 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Helper method for MoveSelectedLayersTo message.
-	/// Handles moving selected layers to a new parent with proper transform preservation.
-	fn handle_move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
+	/// For each selected layer, splits its fill and stroke into two stacked layers connected
+	/// to a shared `Solidify Stroke` node via two `Index Elements` nodes (indices 0 and 1).
+	/// Layers with only a stroke get just a `Solidify Stroke` added.
+	/// Layers with only a fill, or neither, are left untouched.
+	fn handle_expand_fill_stroke_on_selected_layers(&mut self, responses: &mut VecDeque<Message>) {
+		let selected_layers: Vec<LayerNodeIdentifier> = self.network_interface.selected_nodes().selected_layers(self.metadata()).collect();
+		if selected_layers.is_empty() {
+			return;
+		}
+
+		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
+		let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
+
+		let mut resulting_layers: Vec<NodeId> = Vec::new();
+
+		for layer in selected_layers {
+			let style = self.network_interface.document_metadata().layer_vector_data.get(&layer).map(|arc| arc.style.clone());
+			let Some(style) = style else {
+				resulting_layers.push(layer.to_node());
+				continue;
+			};
+
+			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
+			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+
+			let has_fill = if let Some(list) = fill_graphic_list {
+				list.element(0).is_some()
+			} else {
+				!matches!(style.fill, Fill::None)
+			};
+			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
+			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
+			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no attribute is present.
+			let stroke_visible = if let Some(list) = stroke_graphic_list {
+				list.element(0).is_some_and(|g| !g.is_fully_transparent())
+			} else {
+				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
+			};
+			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+
+			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
+			if !has_stroke {
+				resulting_layers.push(layer.to_node());
+				continue;
+			}
+
+			let solidify_id = NodeId::new();
+			self.network_interface.insert_node(solidify_id, solidify_stroke_definition.default_node_template(), &[]);
+			self.network_interface.move_node_to_chain_start(&solidify_id, layer, &[], false);
+
+			if has_fill && has_stroke {
+				let (existing_index, new_index) = (0_f64, 1_f64);
+
+				let existing_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_id = NodeId::new();
+				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
+				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
+
+				let parent = layer.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+				let insert_index = parent.children(self.metadata()).position(|c| c == layer).unwrap_or(0);
+
+				let new_layer_id = NodeId::new();
+				let new_layer = ModifyInputsContext::new(&mut self.network_interface, responses).create_layer(new_layer_id);
+				self.network_interface.move_layer_to_stack(new_layer, parent, insert_index, &[]);
+
+				// Copy the original layer's stored name so the new layer shares it
+				let original_name = self
+					.network_interface
+					.node_metadata(&layer.to_node(), &[])
+					.map(|m| m.persistent_metadata.display_name.clone())
+					.unwrap_or_default();
+				if !original_name.is_empty() {
+					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
+				}
+
+				let new_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_id = NodeId::new();
+				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
+				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
+
+				self.network_interface.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node(new_index_id, 0), &[]);
+
+				resulting_layers.push(layer.to_node());
+				resulting_layers.push(new_layer.to_node());
+			} else {
+				resulting_layers.push(layer.to_node());
+			}
+		}
+
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: resulting_layers });
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
 		if !self.selection_network_path.is_empty() {
 			log::error!("Moving selected layers is only supported for the Document Network");
 			return;
@@ -2055,7 +2700,7 @@ impl DocumentMessageHandler {
 			});
 
 			if layer_to_move.parent(self.metadata()) != Some(parent) {
-				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
+				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty `List<Vector>` item.
 				// TODO: See #2688 for this issue.
 				let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 				let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
@@ -2074,38 +2719,37 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 	}
 
-	/// Helper method for NudgeSelectedLayers message.
-	/// Handles keyboard nudging of selected layers with optional resize mode.
-	fn handle_nudge_selected_layers(
-		&mut self,
-		delta_x: f64,
-		delta_y: f64,
-		resize: Key,
-		resize_opposite_corner: Key,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		responses: &mut VecDeque<Message>,
-	) {
-		responses.add(DocumentMessage::AddTransaction);
-
-		let resize = ipp.keyboard.key(resize);
-		let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-
+	fn nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, resize: bool, resize_opposite: bool, responses: &mut VecDeque<Message>) {
 		let can_move = |layer| {
 			let selected = self.network_interface.selected_nodes();
 			selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
 		};
 
-		// Nudge translation without resizing
-		if !resize {
-			let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
-			responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
+		if resize {
+			let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
+			// Combine only finite bounds (a non-finite box would poison the scale), bailing before opening a transaction if none remain
+			let Some([min, max]) = layers
+				.iter()
+				.filter_map(|&layer| self.metadata().bounding_box_document(layer))
+				.filter(|[min, max]| min.is_finite() && max.is_finite())
+				.reduce(Quad::combine_bounds)
+			else {
+				return;
+			};
 
-			for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+			let resized = nudge_resize_bounds(min, max, DVec2::new(delta_x, delta_y), self.document_ptz.tilt(), resize_opposite);
+
+			// Express the document-space scale in viewport space so it composes with each layer like the rest of the transform pipeline
+			let document_to_viewport = self.metadata().document_to_viewport;
+			let transform = document_to_viewport * resized.transform * document_to_viewport.inverse();
+
+			responses.add(DocumentMessage::AddTransaction);
+
+			for layer in layers {
 				responses.add(GraphOperationMessage::TransformChange {
 					layer,
 					transform,
-					transform_in: TransformIn::Local,
+					transform_in: TransformIn::Viewport,
 					skip_rerender: false,
 				});
 			}
@@ -2113,72 +2757,18 @@ impl DocumentMessageHandler {
 			return;
 		}
 
-		let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
-		let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
+		responses.add(DocumentMessage::AddTransaction);
 
-		// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
-		let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
-		let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
-			0 => (delta_x, delta_y, false, false),
-			1 => (delta_y, -delta_x, false, true),
-			2 => (-delta_x, -delta_y, true, true),
-			3 => (-delta_y, delta_x, true, false),
-			_ => unreachable!(),
-		};
-
-		let size = existing_bottom_right - existing_top_left;
-		// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
-		// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
-		let size = size.max(DVec2::ONE);
-		let enlargement = DVec2::new(
-			if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
-			if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
-		);
-		let enlargement_factor = (enlargement + size) / size;
-
-		let position = DVec2::new(
-			existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
-			existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
-		);
-		let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
-		if !pivot.x.is_finite() {
-			pivot.x = 0.;
-		}
-		if !pivot.y.is_finite() {
-			pivot.y = 0.;
-		}
-		let scale = DAffine2::from_scale(enlargement_factor);
-		let pivot = DAffine2::from_translation(pivot);
-		let transformation = pivot * scale * pivot.inverse();
-		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-			let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-			let original_transform = self.metadata().upstream_transform(layer.to_node());
-			let new = to.inverse() * transformation * to * original_transform;
-			responses.add(GraphOperationMessage::TransformSet {
+			responses.add(GraphOperationMessage::TransformChange {
 				layer,
-				transform: new,
+				transform,
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
-		}
-	}
-
-	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
-		let mut fonts_to_load = HashSet::new();
-
-		for (_, node, _) in self.document_network().recursive_nodes() {
-			for input in &node.inputs {
-				if let Some(TaggedValue::Font(font)) = input.as_value() {
-					fonts_to_load.insert(font.clone());
-				}
-			}
-		}
-
-		for font in fonts_to_load {
-			responses.add(PortfolioMessage::LoadFontData { font });
 		}
 	}
 
@@ -2519,11 +3109,12 @@ impl DocumentMessageHandler {
 						.icon("RenderModeOutline")
 						.tooltip_label("Render Mode: Outline")
 						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
-					// TODO: See issue #320
-					// RadioEntryData::new("PixelPreview")
-					// 	.icon("RenderModePixels")
-					// 	.tooltip_label("Render Mode: Pixel Preview")
-					// 	.on_update(|_| todo!()),
+					RadioEntryData::new("PixelPreview").icon("RenderModePixels").tooltip_label("Render Mode: Pixel Preview").on_update(|_| {
+						DocumentMessage::SetRenderMode {
+							render_mode: RenderMode::PixelPreview,
+						}
+						.into()
+					}),
 					RadioEntryData::new("SvgPreview")
 						.icon("RenderModeSvg")
 						.tooltip_label("Render Mode: SVG Preview")
@@ -2534,7 +3125,7 @@ impl DocumentMessageHandler {
 				if disabled {
 					for entry in &mut entries {
 						entry.tooltip_description = "
-							*Normal* and *Outline* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
+							*Normal*, *Outline*, and *Pixel Preview* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
 							\n\
 							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
 							"
@@ -2817,17 +3408,23 @@ impl DocumentMessageHandler {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
+				.on_drag_drop(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
 				.disabled(!has_selection)
 				.widget_instance(),
 			IconButton::new("NewLayer", 24)
 				.tooltip_label("New Layer")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.on_drag_drop(|_| DocumentMessage::DuplicateSelectedLayers.into())
 				.widget_instance(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.on_drag_drop(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
@@ -2967,12 +3564,27 @@ impl DocumentMessageHandler {
 	pub fn graph_view_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
 	}
+
+	pub fn garbage_collect_resources(&mut self) {
+		let used_resources = self.used_resources(true);
+		self.resources.collect_garbage(&used_resources);
+	}
+
+	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
+		let mut resources = HashSet::new();
+		self.network_interface.collect_used_resources(&mut resources);
+		if include_history {
+			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+		}
+		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
+	}
 }
 
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::TypeDefault(descriptor!(graphene_std::list::List<graphene_std::Artboard>)), -1, "", &[]);
 	network_interface
 }
 
@@ -2981,7 +3593,7 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
-	Path(Vec<path_bool_lib::PathSegment>),
+	Path(BezPath),
 	Polygon(Subpath<PointId>),
 }
 
@@ -2999,17 +3611,12 @@ pub struct ClickXRayIter<'a> {
 	parent_targets: Vec<(LayerNodeIdentifier, XRayTarget)>,
 }
 
-fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
-	quad.all_edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+fn quad_to_kurbo(quad: Quad) -> BezPath {
+	BezPath::from_path_segments(quad.all_edges().into_iter().map(|[start, end]| PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end)))))
 }
 
-fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bezier: PathSeg| match bezier {
-		PathSeg::Line(line) => path_bool_lib::PathSegment::Line(point_to_dvec2(line.p0), point_to_dvec2(line.p1)),
-		PathSeg::Quad(quad_bez) => path_bool_lib::PathSegment::Quadratic(point_to_dvec2(quad_bez.p0), point_to_dvec2(quad_bez.p1), point_to_dvec2(quad_bez.p2)),
-		PathSeg::Cubic(cubic_bez) => path_bool_lib::PathSegment::Cubic(point_to_dvec2(cubic_bez.p0), point_to_dvec2(cubic_bez.p1), point_to_dvec2(cubic_bez.p2), point_to_dvec2(cubic_bez.p3)),
-	};
-	click_targets
+fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
+	let segments = click_targets
 		.filter_map(|target| {
 			if let ClickTargetType::Subpath(subpath) = target.target_type() {
 				Some(subpath.iter())
@@ -3018,8 +3625,8 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 			}
 		})
 		.flatten()
-		.map(|bezier| segment(Affine::new(transform.to_cols_array()) * bezier))
-		.collect()
+		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
+	BezPath::from_path_segments(segments)
 }
 
 impl<'a> ClickXRayIter<'a> {
@@ -3040,22 +3647,8 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(
-		&mut self,
-		click_targets: Option<&[Arc<ClickTarget>]>,
-		clip: bool,
-		layer: LayerNodeIdentifier,
-		path: Vec<path_bool_lib::PathSegment>,
-		transform: DAffine2,
-	) -> XRayResult {
-		// Convert back to Kurbo types for intersections
-		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
-			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
-			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(h2), dvec2_to_point(end))),
-			path_bool_lib::PathSegment::Quadratic(start, h1, end) => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(end))),
-			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
-		};
-		let get_clip = || path.iter().map(segment);
+	fn check_layer_area_target(&mut self, click_targets: Option<&[Arc<ClickTarget>]>, clip: bool, layer: LayerNodeIdentifier, path: BezPath, transform: DAffine2) -> XRayResult {
+		let get_clip = || path.segments();
 
 		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
 		let clicked = intersects;
@@ -3064,8 +3657,9 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
-			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
+			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
+			let intersection = boolean_intersect(&path, &clip_path);
+			let subtracted = BezPath::from_path_segments(intersection.iter().flat_map(|p| p.segments()));
 			if subtracted.is_empty() {
 				use_children = false;
 			} else {
@@ -3098,13 +3692,10 @@ impl<'a> ClickXRayIter<'a> {
 					use_children: !clip || intersects,
 				}
 			}
-			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
+			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 			XRayTarget::Polygon(polygon) => {
-				let polygon = polygon
-					.iter_closed()
-					.map(|line| path_bool_lib::PathSegment::Line(point_to_dvec2(line.start()), point_to_dvec2(line.end())))
-					.collect();
+				let polygon = BezPath::from_path_segments(polygon.iter_closed());
 				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
 			}
 		}
@@ -3191,6 +3782,16 @@ impl Iterator for ClickXRayIter<'_> {
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
 	}
+}
+
+/// Deserializes `CollapsedLayers` with backwards compatibility for the old format
+/// (flat list of layer node IDs) by consuming the entire value first, then attempting
+/// to interpret it as the new format. Falls back to an empty default for old documents.
+fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<CollapsedLayers, D::Error> {
+	use serde::Deserialize;
+	// Buffer the entire value to avoid leaving the deserializer in a bad state on type mismatch
+	let value = serde_json::Value::deserialize(deserializer)?;
+	Ok(serde_json::from_value(value).unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -3346,6 +3947,37 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
 		assert!(true, "Application didn't crash after folder move operation");
 	}
+
+	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.
+	// Inspecting it via the Data panel (which splices in a monitor node) must not leave a dangling reference that crashes compilation.
+	#[tokio::test]
+	async fn merge_selected_nodes_while_inspecting_does_not_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let node_a = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		let node_b = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_a, node_b] }).await;
+		editor.handle_message(NodeGraphMessage::MergeSelectedNodes).await;
+
+		let merged = editor.active_document().network_interface.selected_nodes_in_nested_network(&[]).unwrap().0.clone();
+		assert_eq!(merged.len(), 1, "merge should leave one encapsulating node selected");
+
+		// Simulate the Data panel inspecting the merged node, which compiles the graph with a monitor node spliced in
+		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO)
+			.unwrap();
+		editor.runtime.run().await;
+
+		let mut messages = VecDeque::new();
+		editor.editor.poll_node_graph_evaluation(&mut messages).unwrap();
+	}
+
 	#[tokio::test]
 	async fn test_moving_folder_with_children() {
 		let mut editor = EditorTestUtils::create();

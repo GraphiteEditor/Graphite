@@ -1,7 +1,7 @@
 //! Not immediately shader compatible due to needing [`GradientStops`] as a param, which needs [`Vec`]
 
 use crate::adjust::Adjust;
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::{Color, Ctx};
 use raster_types::{CPU, Raster};
 use vector_types::GradientStops;
@@ -13,20 +13,20 @@ use vector_types::GradientStops;
 async fn gradient_map<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	mut image: T,
-	gradient: Table<GradientStops>,
+	gradient: List<GradientStops>,
 	reverse: bool,
 ) -> T {
-	let Some(row) = gradient.get(0) else { return image };
+	let Some(gradient) = gradient.element(0) else { return image };
 
 	image.adjust(|color| {
-		let intensity = color.luminance_srgb();
+		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		row.element.evaluate(intensity as f64).to_linear_srgb()
+		gradient.evaluate(intensity as f64)
 	});
 
 	image

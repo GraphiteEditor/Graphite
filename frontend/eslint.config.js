@@ -6,6 +6,17 @@ import pluginSvelte from "eslint-plugin-svelte";
 import globals from "globals";
 import ts from "typescript-eslint";
 
+const importOrder = {
+	alphabetize: { order: "asc", caseInsensitive: true },
+	"newlines-between": "never",
+	warnOnUnassignedImports: true,
+	pathGroups: [
+		{ pattern: "/**", group: "internal" },
+		{ pattern: "/../**", group: "internal" },
+	],
+	pathGroupsExcludedImportTypes: [],
+};
+
 export default defineConfig([
 	js.configs.recommended,
 	ts.configs.recommended,
@@ -52,7 +63,15 @@ export default defineConfig([
 			"no-bitwise": "off",
 			"no-shadow": "off",
 			"no-use-before-define": "off",
-			"no-restricted-imports": ["error", { patterns: [".*", "!@graphite/*"] }],
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{ group: ["./**", "../**"], message: "\nImports must be absolute (e.g. '/src/<subpath>') not relative (e.g. './<subpath>')." },
+						{ group: ["src/**", "assets/**", "wrapper/**"], message: "\nLocal imports must start with '/' (e.g. '/src/<subpath>' not 'src/<subpath>')." },
+					],
+				},
+			],
 
 			// TypeScript plugin config (for TS-specific linting)
 			"@typescript-eslint/indent": "off",
@@ -70,6 +89,7 @@ export default defineConfig([
 					ignoreRestSiblings: true,
 				},
 			],
+			"@typescript-eslint/no-non-null-assertion": "error",
 			"@typescript-eslint/consistent-type-imports": "error",
 			"@typescript-eslint/consistent-type-definitions": ["error", "type"],
 			"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
@@ -94,16 +114,12 @@ export default defineConfig([
 			"import/prefer-default-export": "off",
 			"import/no-relative-packages": "error",
 			"import/no-named-as-default-member": "off",
-			"import/order": [
-				"error",
-				{
-					alphabetize: { order: "asc", caseInsensitive: true },
-					pathGroups: [{ pattern: "**/*.svelte", group: "unknown", position: "after" }],
-					"newlines-between": "always-and-inside-groups",
-					warnOnUnassignedImports: true,
-				},
-			],
+			"import/order": ["error", importOrder],
 		},
+	},
+	{
+		files: ["**/icons.ts"],
+		rules: { "import/order": ["error", { ...importOrder, "newlines-between": "ignore" }] },
 	},
 	{
 		files: ["**/*.svelte"],

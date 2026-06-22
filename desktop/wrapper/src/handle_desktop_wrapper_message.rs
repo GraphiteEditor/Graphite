@@ -9,6 +9,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		DesktopWrapperMessage::FromWeb(message) => {
 			dispatcher.queue_editor_message(*message);
 		}
+		DesktopWrapperMessage::Wake => {
+			dispatcher.queue_editor_message(EditorMessage::Future(FutureMessage::Wake));
+		}
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}
@@ -49,26 +52,12 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = FrontendMessage::UpdateFullscreen { fullscreen };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::LoadDocument {
-			id,
-			document,
-			to_front,
-			select_after_open,
-		} => {
-			let message = PortfolioMessage::OpenDocumentFileWithId {
-				document_id: id,
-				document_name: Some(document.name),
-				document_path: document.path,
-				document_serialized_content: document.content,
-				document_is_auto_saved: true,
-				document_is_saved: document.is_saved,
-				to_front,
-				select_after_open,
-			};
+		DesktopWrapperMessage::LoadDocumentContent { id, document } => {
+			let message = PersistentStateMessage::LoadDocument { document_id: id, document };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::SelectDocument { id } => {
-			let message = PortfolioMessage::SelectDocument { document_id: id };
+		DesktopWrapperMessage::LoadPersistedState { state } => {
+			let message = PersistentStateMessage::LoadState { state };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::LoadPreferences { preferences } => {

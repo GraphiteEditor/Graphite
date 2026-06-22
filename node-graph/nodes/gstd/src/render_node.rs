@@ -1,49 +1,38 @@
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
-use graph_craft::document::value::RenderOutput;
-pub use graph_craft::document::value::RenderOutputType;
-pub use graph_craft::wasm_application_io::*;
-use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig};
-use graphic_types::raster_types::Image;
+use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
-use rendering::{RenderMetadata, SvgSegment};
-use std::collections::HashMap;
+use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use vector_types::GradientStops;
-use wgpu_executor::RenderContext;
-
-// Re-export render_output_cache from render_cache module
-pub use crate::render_cache::render_output_cache;
-
-/// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
-type ImageData = HashMap<Image<Color>, u64>;
+use wgpu_executor::{RenderContext, WgpuExecutor};
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
 	Vello(Arc<(vello::Scene, RenderContext)>),
-	Svg(Arc<(String, ImageData, String)>),
+	Svg(Arc<SvgRenderOutput>),
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
 	pub(crate) ty: RenderIntermediateType,
 	pub(crate) metadata: RenderMetadata,
-	pub(crate) contains_artboard: bool,
 }
 
 #[node_macro::node(category(""))]
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
-		Context -> Table<Artboard>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
+		Context -> List<Artboard>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
+		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 ) -> RenderIntermediate {
@@ -59,8 +48,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
-	let contains_artboard = data.contains_artboard();
-
 	match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
@@ -71,7 +58,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
 				metadata,
-				contains_artboard,
 			}
 		}
 		RenderOutputTypeRequest::Svg => {
@@ -80,12 +66,84 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			data.render_svg(&mut render, render_params);
 
 			RenderIntermediate {
-				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
+				ty: RenderIntermediateType::Svg(Arc::new(render.into())),
 				metadata,
-				contains_artboard,
 			}
 		}
 	}
+}
+
+#[node_macro::node(category(""))]
+async fn render<'a: 'n>(
+	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	data: RenderIntermediate,
+) -> RenderOutput {
+	let footprint = ctx.footprint();
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
+	let mut render_params = render_params.clone();
+	render_params.footprint = *footprint;
+
+	let RenderIntermediate { ty, mut metadata } = data;
+	metadata.apply_transform(footprint.transform);
+
+	let data = match (render_params.render_output_type, ty) {
+		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
+			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
+
+			let mut render = SvgRender::from(data.as_ref());
+			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+
+			let output = SvgRenderOutput::from(render);
+			assert!(output.svg_defs.is_empty());
+
+			RenderOutputType::Svg {
+				svg: output.svg,
+				image_data: output.image_data.into_iter().map(|(image, id)| (id, image.0)).collect(),
+			}
+		}
+		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
+			let (scene, context) = data.as_ref();
+			let scale = render_params.scale;
+			let physical_resolution = render_params.footprint.resolution;
+
+			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
+			let footprint_transform = scale_transform * render_params.footprint.transform;
+			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
+
+			let mut transformed_scene = vello::Scene::new();
+			transformed_scene.append(scene, Some(footprint_transform_vello));
+
+			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport.
+			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail.
+			//
+			// `!is_finite()` rather than `== f32::INFINITY`: `scene.append` composes the child's `Affine::scale(INFINITY)` with
+			// the viewport rotation, leaving `matrix[0] = cos(θ) * INFINITY`. In the (90°, 270°) tilt range cos is negative so
+			// the result is `-INFINITY`, which the old equality check missed; Vello then rasterized a unit rect with non-finite
+			// vertices, dropping the gradient and tanking performance. `!is_finite()` also covers NaN as a guard against future
+			// code paths where `matrix[0]` could land on `0 * INFINITY`.
+			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
+			for transform in transformed_scene.encoding_mut().transforms.iter_mut() {
+				if !transform.matrix[0].is_finite() {
+					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
+				}
+			}
+
+			let texture = executor
+				.expect("GPU executor not available")
+				.render_vello_scene(&transformed_scene, physical_resolution, context, None)
+				.await
+				.expect("Failed to render Vello scene");
+			RenderOutputType::Texture(texture.into())
+		}
+		_ => unreachable!("Render node did not receive its requested data type"),
+	};
+
+	RenderOutput { data, metadata }
 }
 
 #[node_macro::node(category(""))]
@@ -103,12 +161,10 @@ async fn create_context<'a: 'n>(
 
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
-		hide_artboards: render_config.hide_artboards,
 		for_export: render_config.for_export,
 		render_output_type,
-		footprint: Footprint::default(),
 		scale: render_config.scale,
-		viewport_zoom: footprint.decompose_scale().x,
+		viewport_zoom: footprint.scale_magnitudes().x,
 		..Default::default()
 	};
 
@@ -121,90 +177,4 @@ async fn create_context<'a: 'n>(
 		.into_context();
 
 	data.eval(ctx).await
-}
-
-#[node_macro::node(category(""))]
-async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a WasmEditorApi, data: RenderIntermediate) -> RenderOutput {
-	let footprint = ctx.footprint();
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
-	let mut render_params = render_params.clone();
-	render_params.footprint = *footprint;
-	let render_params = &render_params;
-
-	let scale = render_params.scale;
-	let physical_resolution = render_params.footprint.resolution;
-	let logical_resolution = render_params.footprint.resolution.as_dvec2() / scale;
-
-	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
-	metadata.apply_transform(footprint.transform);
-
-	let data = match (render_params.render_output_type, &ty) {
-		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
-			let mut rendering = SvgRender::new();
-			if !contains_artboard && !render_params.hide_artboards {
-				rendering.leaf_tag("rect", |attributes| {
-					attributes.push("x", "0");
-					attributes.push("y", "0");
-					attributes.push("width", logical_resolution.x.to_string());
-					attributes.push("height", logical_resolution.y.to_string());
-					let matrix = format_transform_matrix(footprint.transform.inverse());
-					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
-					}
-					attributes.push("fill", "white");
-				});
-			}
-			rendering.svg.push(SvgSegment::from(svg_data.0.clone()));
-			rendering.image_data = svg_data.1.clone();
-			rendering.svg_defs = svg_data.2.clone();
-
-			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
-			RenderOutputType::Svg {
-				svg: rendering.svg.to_svg_string(),
-				image_data: rendering.image_data.into_iter().map(|(image, id)| (id, image)).collect(),
-			}
-		}
-		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {
-			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
-				unreachable!("Attempted to render with Vello when no GPU executor is available");
-			};
-			let (child, context) = Arc::as_ref(vello_data);
-
-			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
-			let footprint_transform = scale_transform * footprint.transform;
-			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
-
-			let mut scene = vello::Scene::new();
-			scene.append(child, Some(footprint_transform_vello));
-
-			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
-			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
-			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
-			let encoding = scene.encoding_mut();
-			for transform in encoding.transforms.iter_mut() {
-				if transform.matrix[0] == f32::INFINITY {
-					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
-				}
-			}
-
-			let background = if !render_params.for_export && !contains_artboard && !render_params.hide_artboards {
-				Some(Color::WHITE)
-			} else {
-				None
-			};
-
-			let texture = exec
-				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
-				.await
-				.expect("Failed to render Vello scene");
-
-			RenderOutputType::Texture(ImageTexture { texture })
-		}
-		_ => unreachable!("Render node did not receive its requested data type"),
-	};
-	RenderOutput { data, metadata }
 }

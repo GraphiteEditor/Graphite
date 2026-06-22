@@ -86,7 +86,7 @@ impl Window {
 		self.winit_window.request_redraw();
 	}
 
-	pub(crate) fn create_surface(&self, instance: Arc<wgpu::Instance>) -> wgpu::Surface<'static> {
+	pub(crate) fn create_surface(&self, instance: &wgpu::Instance) -> wgpu::Surface<'static> {
 		instance.create_surface(self.winit_window.clone()).unwrap()
 	}
 
@@ -138,6 +138,11 @@ impl Window {
 			return;
 		}
 		let _ = self.winit_window.drag_window();
+	}
+
+	pub(crate) fn focus(&self) {
+		self.winit_window.set_minimized(false);
+		self.winit_window.focus_window();
 	}
 
 	pub(crate) fn hide(&self) {

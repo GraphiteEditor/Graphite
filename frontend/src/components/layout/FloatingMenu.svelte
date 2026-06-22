@@ -17,12 +17,10 @@
 </script>
 
 <script lang="ts">
-	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
-
-	import type { MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { browserVersion } from "@graphite/utility-functions/platform";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { browserVersion } from "/src/utility-functions/platform";
+	import type { MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
@@ -54,16 +52,16 @@
 	// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
 	// This is the opposite concern of the natural width measurement system, which gets the natural width of the floating menu content in order for the
 	// spawner widget to optionally set its min-size to the floating menu's natural width.
-	let containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
+	const containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
 		resizeObserverCallback(entries);
 	});
+
+	let dialogResizeObserver: ResizeObserver | undefined;
 	let wasOpen = open;
 	let measuringOngoing = false;
 	let measuringOngoingGuard = false;
 	let minWidthParentWidth = 0;
 	let pointerStillDown = false;
-	let floatingMenuBounds = new DOMRect();
-	let floatingMenuContentBounds = new DOMRect();
 
 	$: watchOpenChange(open);
 
@@ -79,16 +77,7 @@
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
-		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
-		// The bug is possibly related to <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
-		if (browserVersion().toLowerCase().includes("safari")) {
-			const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
-			if (scrollable instanceof HTMLElement) {
-				// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
-				// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
-				scrollable.style.overflow = isOpen ? "hidden" : "";
-			}
-		}
+		setSafariScrollableOverflow(isOpen);
 
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
@@ -129,12 +118,22 @@
 		wasOpen = isOpen;
 	}
 
+	// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container. The bug is possibly related to
+	// <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
+	// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
+	// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
+	function setSafariScrollableOverflow(hidden: boolean) {
+		if (!browserVersion().toLowerCase().includes("safari")) return;
+		const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
+		if (scrollable instanceof HTMLElement) scrollable.style.overflow = hidden ? "hidden" : "";
+	}
+
 	onMount(() => {
 		// Measure the content and round up its width and height to the nearest even integer.
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
-			const resizeObserver = new ResizeObserver((entries) => {
+			dialogResizeObserver = new ResizeObserver((entries) => {
 				entries.forEach((entry) => {
 					const existingWidth = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-x"));
 					const existingHeight = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-y"));
@@ -153,8 +152,21 @@
 					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-y", `${targetHeight - height}`);
 				});
 			});
-			resizeObserver.observe(floatingMenuContentDiv);
+			dialogResizeObserver.observe(floatingMenuContentDiv);
 		}
+	});
+
+	onDestroy(() => {
+		containerResizeObserver.disconnect();
+		dialogResizeObserver?.disconnect();
+		window.removeEventListener("pointermove", pointerMoveHandler);
+		window.removeEventListener("keydown", keyDownHandler);
+		window.removeEventListener("pointerdown", pointerDownHandler);
+		window.removeEventListener("pointerup", pointerUpHandler);
+		window.removeEventListener("click", clickHandlerCapture, true);
+
+		// Revert Safari overflow workaround if the menu was open when destroyed
+		if (open) setSafariScrollableOverflow(false);
 	});
 
 	afterUpdate(() => {
@@ -175,9 +187,9 @@
 		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
 		const windowBounds = document.documentElement.getBoundingClientRect();
-		floatingMenuBounds = self.getBoundingClientRect();
+		const floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
-		floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
+		const floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
 		const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
 		const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
@@ -196,22 +208,32 @@
 			else if (direction === "Right" && overflowingRight) direction = "Left";
 		}
 
+		// These are set imperatively, not through reactive Svelte style bindings, because that would cause `afterUpdate()` to call this function recursively forever.
+		// CSS custom properties on the container are used instead of direct `.style` on the content because Svelte's `set_style` can replace the content's entire
+		// inline style when its managed `style` attribute updates, which would wipe out any manually-set properties like `top` and `left`.
+		// We set each property to `initial` rather than removing it, because CSS custom properties inherit, so a submenu nested inside a parent floating menu would
+		// otherwise pick up the parent's positioning values. Setting to `initial` makes `var()` fall back to its default on this element regardless of inheritance.
+		floatingMenuContainer.style.setProperty("--content-top", "initial");
+		floatingMenuContainer.style.setProperty("--content-bottom", "initial");
+		floatingMenuContainer.style.setProperty("--content-left", "initial");
+		floatingMenuContainer.style.setProperty("--content-right", "initial");
+		floatingMenuContainer.style.setProperty("--content-border-top-left-radius", "initial");
+		floatingMenuContainer.style.setProperty("--content-border-top-right-radius", "initial");
+		floatingMenuContainer.style.setProperty("--content-border-bottom-left-radius", "initial");
+		floatingMenuContainer.style.setProperty("--content-border-bottom-right-radius", "initial");
+
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 		const noPosition = Boolean(floatingMenuContainer.closest("[data-floating-menu-no-position]"));
 		if (!inParentFloatingMenu && !noPosition) {
-			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			let tailOffset = 0;
 			if (type === "Popover") tailOffset = 10;
 			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
 
-			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
-			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
-			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
-			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
+			if (direction === "Bottom") floatingMenuContainer.style.setProperty("--content-top", `${tailOffset + floatingMenuBounds.y}px`);
+			if (direction === "Top") floatingMenuContainer.style.setProperty("--content-bottom", `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`);
+			if (direction === "Right") floatingMenuContainer.style.setProperty("--content-left", `${tailOffset + floatingMenuBounds.x}px`);
+			if (direction === "Left") floatingMenuContainer.style.setProperty("--content-right", `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`);
 
-			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
 			if (tail && direction === "Top") tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
 			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
@@ -225,45 +247,42 @@
 		if (direction === "Top" || direction === "Bottom") {
 			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
 
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (overflowingLeft) {
-				floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-left", `${windowEdgeMargin}px`);
 				if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
 			if (overflowingRight) {
-				floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-right", `${windowEdgeMargin}px`);
 				if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
 		if (direction === "Left" || direction === "Right") {
 			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (overflowingTop) {
-				floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-top", `${windowEdgeMargin}px`);
 				if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
 			if (overflowingBottom) {
-				floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-bottom", `${windowEdgeMargin}px`);
 				if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
 
 		// Remove the rounded corner from the content where the tail perfectly meets the corner
 		if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
-					floatingMenuContentDiv.style.borderTopLeftRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-top-left-radius", "0");
 					break;
 				case "TopRight":
-					floatingMenuContentDiv.style.borderTopRightRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-top-right-radius", "0");
 					break;
 				case "BottomLeft":
-					floatingMenuContentDiv.style.borderBottomLeftRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-bottom-left-radius", "0");
 					break;
 				case "BottomRight":
-					floatingMenuContentDiv.style.borderBottomRightRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-bottom-right-radius", "0");
 					break;
 				default:
 					break;
@@ -317,11 +336,11 @@
 
 		// HOVER TRANSFER
 		// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
-		hoverTransfer(self, ownSpawner, targetSpawner);
+		if (strayCloses) hoverTransfer(self, ownSpawner, targetSpawner);
 
 		// POINTER STRAY
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
-		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner || (ownSpawner === undefined && targetSpawner === undefined);
+		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
@@ -478,7 +497,7 @@
 		<div class="tail" bind:this={tail}></div>
 	{/if}
 	{#if displayContainer}
-		<div class="floating-menu-container" bind:this={floatingMenuContainer}>
+		<div class="floating-menu-container" bind:this={floatingMenuContainer} on:wheel|stopPropagation>
 			<LayoutCol class="floating-menu-content" styles={{ "min-width": minWidthStyleValue }} {scrollableY} bind:this={floatingMenuContent} data-floating-menu-content>
 				<slot />
 			</LayoutCol>
@@ -486,7 +505,7 @@
 	{/if}
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.floating-menu {
 		position: absolute;
 		width: 0;
@@ -523,12 +542,20 @@
 				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
 				border: 1px solid var(--color-3-darkgray);
 				border-radius: 4px;
+				border-top-left-radius: var(--content-border-top-left-radius, 4px);
+				border-top-right-radius: var(--content-border-top-right-radius, 4px);
+				border-bottom-left-radius: var(--content-border-bottom-left-radius, 4px);
+				border-bottom-right-radius: var(--content-border-bottom-right-radius, 4px);
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
 				padding: 8px;
 				z-index: 0;
 				// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 				position: fixed;
+				top: var(--content-top, auto);
+				bottom: var(--content-bottom, auto);
+				left: var(--content-left, auto);
+				right: var(--content-right, auto);
 				// Counteract the rightward shift caused by the border
 				margin-left: -1px;
 			}

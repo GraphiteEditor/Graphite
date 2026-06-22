@@ -6,6 +6,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Graphic;
+use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath;
 use graphene_std::transform::Footprint;
@@ -28,11 +30,23 @@ pub struct DocumentMetadata {
 	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
+	/// nodes with an `editor:click_target` override still outline the precise geometry.
+	pub outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Per-layer text frame from item 0's `editor:text_frame` attribute (`DAffine2` mapping the (0, 0)-(1, 1) unit square onto the frame).
+	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
+	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
+	/// Per-layer `ATTR_FILL` attribute, exposed so message handlers can read paint
+	/// information that lives on the list.
+	pub layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
+	/// Per-layer `ATTR_STROKE` attribute, exposed so message handlers can read
+	/// stroke paint information that lives on the list.
+	pub layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -104,7 +118,7 @@ impl DocumentMetadata {
 				.any(|upstream| Some(upstream) == source)
 		{
 			use_local = false;
-			info!("Local transform is invalid — using the identity for the local transform instead")
+			info!("Local transform is invalid. Using the identity for the local transform instead.");
 		}
 		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 
@@ -120,7 +134,7 @@ impl DocumentMetadata {
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied();
 
 		let transform = local_transform.unwrap_or_else(|| {
-			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface);
+			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface);
 			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
 			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
 		});
@@ -154,9 +168,21 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
+	/// Outline targets if present, otherwise click targets. Used for bounding boxes and outline
+	/// drawing so layers with an `editor:click_target` override report precise geometry bounds.
+	fn visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+		self.outlines.get(&layer).or_else(|| self.click_targets.get(&layer)).map(|v| v.as_slice())
+	}
+
+	/// Whether to treat this layer as a text layer for tool UI. Checks the surfaced `editor:text_frame`
+	/// metadata rather than upstream topology, so layers that strip the attribute downstream correctly drop out.
+	pub fn is_text_layer(&self, layer: LayerNodeIdentifier) -> bool {
+		self.text_frames.contains_key(&layer)
+	}
+
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets(layer)?
+		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
@@ -164,10 +190,14 @@ impl DocumentMetadata {
 
 	/// Get the loose bounding box of the click target of the specified layer in the specified transform space
 	pub fn loose_bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets(layer)?
+		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
 				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
+				ClickTargetType::CompoundPath(subpaths) => subpaths
+					.iter()
+					.filter_map(|subpath| subpath.loose_bounding_box_with_transform(transform))
+					.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]),
 				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)
@@ -199,6 +229,18 @@ impl DocumentMetadata {
 		self.bounding_box_with_transform(layer, self.transform_to_document(layer))
 	}
 
+	/// Get the bounding box of the specified layer in document space, expanded to include the actual rendered
+	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
+	/// bounds for non-vector layers (groups, raster, text, color, gradient).
+	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
+		if let Some(vector) = self.layer_vector_data.get(&layer)
+			&& let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer))
+		{
+			return Some(bounds);
+		}
+		self.bounding_box_document(layer)
+	}
+
 	/// Get the bounding box of the click target of the specified layer in viewport space
 	pub fn bounding_box_viewport(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform(layer, self.transform_to_viewport(layer))
@@ -210,18 +252,15 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
-		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().filter_map(|target| match target.target_type() {
-			ClickTargetType::Subpath(subpath) => Some(subpath),
-			_ => None,
+		self.visual_targets(layer).unwrap_or(&[]).iter().flat_map(|target| match target.target_type() {
+			ClickTargetType::Subpath(subpath) => std::slice::from_ref(subpath),
+			ClickTargetType::CompoundPath(subpaths) => subpaths.as_slice(),
+			ClickTargetType::FreePoint(_) => &[],
 		})
 	}
 
 	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
-		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
-		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().map(|target| target.target_type())
+		self.visual_targets(layer).unwrap_or(&[]).iter().map(|target| target.target_type())
 	}
 
 	pub fn is_clip(&self, node: NodeId) -> bool {

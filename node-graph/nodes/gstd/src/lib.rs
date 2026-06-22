@@ -1,9 +1,10 @@
 pub mod any;
+pub mod platform_application_io;
+pub mod render_background;
 pub mod render_cache;
 pub mod render_node;
+pub mod render_pixel_preview;
 pub mod text;
-#[cfg(feature = "wasm")]
-pub mod wasm_application_io;
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;
@@ -13,7 +14,7 @@ pub use graphene_core::debug;
 pub use graphic_nodes;
 pub use graphic_types::{Artboard, Graphic, Vector};
 pub use math_nodes;
-pub use path_bool_nodes as path_bool;
+pub use path_bool_nodes;
 pub use raster_nodes;
 pub use repeat_nodes;
 pub use text_nodes;
@@ -32,7 +33,7 @@ pub mod vector {
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
 	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
-	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap};
+	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder
 	pub use vector_types::vector::HandleExt;
@@ -44,7 +45,6 @@ pub mod vector {
 
 pub mod graphic {
 	pub use graphic_nodes::graphic::*;
-	pub use graphic_types::Artboard;
 	pub use graphic_types::graphic::*;
 }
 
@@ -76,10 +76,6 @@ pub mod math {
 	pub mod math_ext {
 		pub use vector_types::{QuadExt, RectExt};
 	}
-}
-
-pub mod logic {
-	pub use graphene_core::logic::*;
 }
 
 pub mod context {

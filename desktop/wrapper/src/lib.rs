@@ -1,11 +1,13 @@
-use graph_craft::wasm_application_io::WasmApplicationIo;
+use graph_craft::application_io::PlatformApplicationIo;
+use graph_craft::application_io::resource::ResourceStorage;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
-use graphite_editor::messages::prelude::{FrontendMessage, Message};
+use graphite_editor::messages::prelude::{FrontendMessage, Message, Wake};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
+use std::sync::Arc;
 
-pub use graphite_editor::consts::FILE_EXTENSION;
-pub use wgpu_executor::TargetTexture;
+pub use graph_craft::application_io::resource::MmapResourceStorage;
+pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
 pub use wgpu_executor::WgpuExecutor;
@@ -23,7 +25,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -31,15 +33,11 @@ impl DesktopWrapper {
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
 		let env = Environment { platform: Platform::Desktop, host };
+		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 
 		Self {
-			editor: Editor::new(env, uuid_random_seed),
+			editor: Editor::new(env, uuid_random_seed, resource_storage, application_io, schedule_wake),
 		}
-	}
-
-	pub fn init(&self, wgpu_context: WgpuContext) {
-		let application_io = WasmApplicationIo::new_with_context(wgpu_context);
-		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
@@ -51,14 +49,14 @@ impl DesktopWrapper {
 	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
 		let result = graphite_editor::node_graph_executor::run_node_graph().await;
 		match result {
-			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),
+			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(Into::into)),
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
 	}
 }
 
 pub enum NodeGraphExecutionResult {
-	HasRun(Option<wgpu::Texture>),
+	HasRun(Option<std::sync::Arc<wgpu::Texture>>),
 	NotRun,
 }
 

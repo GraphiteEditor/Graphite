@@ -124,16 +124,20 @@
 		</div>
 	</nav>
 	<svg class="ripple" xmlns="http://www.w3.org/2000/svg">
-		<path d="M 0,15 l 10000,0" />
+		<path class="ripple-mask" d="M 0,15 l 10000,0" />
+		<path class="ripple-line" d="M 0,15 l 10000,0" />
+		<polygon class="ripple-taper-left" />
+		<polygon class="ripple-taper-right" />
 	</svg>
-	<hr />
 </header>
 <main>
 {# This is a comment. It exists to prevent the {%- -%} on the lines below from removing the line break between `<main>` and the `content` block #}
 {%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
 {%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}
 {%- filter replace(from = "<!-- replacements::hierarchical_message_system_tree() -->", to = replacements::hierarchical_message_system_tree()) -%}
+{%- filter replace(from = "<!-- replacements::crate_hierarchy() -->", to = replacements::crate_hierarchy()) -%}
 {%- block content -%}{%- endblock -%}
+{%- endfilter -%}
 {%- endfilter -%}
 {%- endfilter -%}
 {%- endfilter -%}

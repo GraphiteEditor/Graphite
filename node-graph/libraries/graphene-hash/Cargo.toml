@@ -1,0 +1,17 @@
+[package]
+name = "graphene-hash"
+version = "0.0.0"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.art>"]
+description = "CacheHash trait and derive macro for cache invalidation hashing in Graphite"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[features]
+default = ["std"]
+std = []
+derive = ["graphene-hash-derive"]
+
+[dependencies]
+graphene-hash-derive = { path = "derive", optional = true }
+glam = { workspace = true }

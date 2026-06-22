@@ -1,128 +1,61 @@
 use crate::graphic::Graphic;
-use core_types::Color;
-use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::math::quad::Quad;
+use core_types::graphene_hash::CacheHash;
+use core_types::list::List;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, TableRow};
-use core_types::transform::Transform;
-use core_types::uuid::NodeId;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2, IVec2};
-use std::hash::Hash;
+use glam::DAffine2;
 
-/// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct Artboard {
-	pub content: Table<Graphic>,
-	pub label: String,
-	pub location: IVec2,
-	pub dimensions: IVec2,
-	pub background: Color,
-	pub clip: bool,
-}
+/// Nominal wrapper around `List<Graphic>` representing a single artboard's content.
+///
+/// Per-artboard metadata (location, dimensions, background, clip) lives as attributes on the
+/// enclosing `List<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
+/// that prevents arbitrary `List<List<...<Graphic>>>` nesting.
+#[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
+pub struct Artboard(List<Graphic>);
 
-impl Default for Artboard {
-	fn default() -> Self {
-		Self::new(IVec2::ZERO, IVec2::new(1920, 1080))
+impl Artboard {
+	pub fn new(content: List<Graphic>) -> Self {
+		Self(content)
+	}
+
+	pub fn as_graphic_list(&self) -> &List<Graphic> {
+		&self.0
+	}
+
+	pub fn as_graphic_list_mut(&mut self) -> &mut List<Graphic> {
+		&mut self.0
+	}
+
+	pub fn into_graphic_list(self) -> List<Graphic> {
+		self.0
 	}
 }
 
-impl Artboard {
-	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
-		Self {
-			content: Table::new(),
-			label: "Artboard".to_string(),
-			location: location.min(location + dimensions),
-			dimensions: dimensions.abs(),
-			background: Color::WHITE,
-			clip: false,
-		}
+impl From<List<Graphic>> for Artboard {
+	fn from(content: List<Graphic>) -> Self {
+		Self(content)
+	}
+}
+
+impl From<Artboard> for List<Graphic> {
+	fn from(artboard: Artboard) -> Self {
+		artboard.0
 	}
 }
 
 impl BoundingBox for Artboard {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
-		let artboard_bounds = || (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+		self.0.bounding_box(transform, include_stroke)
+	}
 
-		if self.clip {
-			return RenderBoundingBox::Rectangle(artboard_bounds());
-		}
-
-		match self.content.bounding_box(transform, include_stroke) {
-			RenderBoundingBox::Rectangle(content_bounds) => RenderBoundingBox::Rectangle(Quad::combine_bounds(content_bounds, artboard_bounds())),
-			other => other,
-		}
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		self.0.thumbnail_bounding_box(transform, include_stroke)
 	}
 }
 
 impl RenderComplexity for Artboard {
 	fn render_complexity(&self) -> usize {
-		self.content.render_complexity()
+		self.0.render_complexity()
 	}
 }
-
-// Implementations for Artboard
-impl Transform for Artboard {
-	fn transform(&self) -> DAffine2 {
-		DAffine2::from_translation(self.location.as_dvec2())
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		self.location.as_dvec2() + self.dimensions.as_dvec2() * pivot
-	}
-}
-
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Artboard>, D::Error> {
-	use serde::Deserialize;
-
-	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
-	pub struct ArtboardGroup {
-		pub artboards: Vec<(Artboard, Option<NodeId>)>,
-	}
-
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
-	enum ArtboardFormat {
-		ArtboardGroup(ArtboardGroup),
-		OldArtboardTable(OldTable<Artboard>),
-		ArtboardTable(Table<Artboard>),
-	}
-
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-	pub struct OldTable<T> {
-		#[serde(alias = "instances", alias = "instance")]
-		element: Vec<T>,
-		transform: Vec<DAffine2>,
-		alpha_blending: Vec<AlphaBlending>,
-	}
-
-	Ok(match ArtboardFormat::deserialize(deserializer)? {
-		ArtboardFormat::ArtboardGroup(artboard_group) => {
-			let mut table = Table::new();
-			for (artboard, source_node_id) in artboard_group.artboards {
-				table.push(TableRow {
-					element: artboard,
-					transform: DAffine2::IDENTITY,
-					alpha_blending: AlphaBlending::default(),
-					source_node_id,
-				});
-			}
-			table
-		}
-		ArtboardFormat::OldArtboardTable(old_table) => old_table
-			.element
-			.into_iter()
-			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-			.map(|(element, (transform, alpha_blending))| TableRow {
-				element,
-				transform,
-				alpha_blending,
-				source_node_id: None,
-			})
-			.collect(),
-		ArtboardFormat::ArtboardTable(artboard_table) => artboard_table,
-	})
-}
-
-// Node definitions moved to graphic-nodes crate

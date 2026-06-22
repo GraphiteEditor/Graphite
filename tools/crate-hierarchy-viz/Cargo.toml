@@ -8,6 +8,6 @@ authors.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
 toml = "0.8"
 anyhow = { workspace = true }
+glob = "0.3"

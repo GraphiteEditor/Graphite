@@ -13,7 +13,7 @@ use std::ops::{Index, IndexMut};
 pub use structs::*;
 
 /// Structure used to represent a path composed of [Bezier] curves.
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Subpath<PointId: Identifier> {
 	manipulator_groups: Vec<ManipulatorGroup<PointId>>,

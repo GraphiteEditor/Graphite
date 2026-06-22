@@ -29,6 +29,12 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				use crate::messages::viewport::{Position, ToPhysical};
 				use wasm_bindgen::JsCast;
 
+				// Discard detached canvas after a panel reorganization remounts the DOM
+				if self.canvas.as_ref().is_some_and(|canvas| !canvas.is_connected()) {
+					self.canvas = None;
+					self.context = None;
+				}
+
 				let canvas = match &self.canvas {
 					Some(canvas) => canvas,
 					None => {

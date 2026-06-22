@@ -1,4 +1,4 @@
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
@@ -7,7 +7,7 @@ use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Table<Graphic> {
+fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -15,7 +15,7 @@ fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Table<Graphic> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
+fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> List<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -23,7 +23,7 @@ fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Table<Raster<CPU>> {
+fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> List<Raster<CPU>> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -31,7 +31,7 @@ fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Table<Raster<CPU>> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Table<Color> {
+fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -39,7 +39,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Table<Color> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Table<GradientStops> {
+fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<GradientStops> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -60,7 +60,7 @@ async fn read_position(
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-/// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Instance Repeat*.
+/// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Repeat*.
 ///
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
 #[node_macro::node(category("Context"), path(core_types::vector))]

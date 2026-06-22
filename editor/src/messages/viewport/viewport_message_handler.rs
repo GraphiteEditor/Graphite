@@ -17,7 +17,7 @@ impl Default for ViewportMessageHandler {
 				offset: Point { x: 0., y: 0. },
 				size: Point { x: 0., y: 0. },
 			},
-			scale: 1.0,
+			scale: 1.,
 		}
 	}
 }
@@ -400,14 +400,14 @@ impl FromWithScale<Bounds> for PhysicalBounds {
 impl Mul<f64> for Point {
 	type Output = Point;
 	fn mul(self, rhs: f64) -> Self::Output {
-		assert_ne!(rhs, 0.0, "Cannot multiply point by zero");
+		assert_ne!(rhs, 0., "Cannot multiply point by zero");
 		Point { x: self.x * rhs, y: self.y * rhs }
 	}
 }
 impl Div<f64> for Point {
 	type Output = Point;
 	fn div(self, rhs: f64) -> Self::Output {
-		assert_ne!(rhs, 0.0, "Cannot divide point by zero");
+		assert_ne!(rhs, 0., "Cannot divide point by zero");
 		Point { x: self.x / rhs, y: self.y / rhs }
 	}
 }
@@ -426,16 +426,16 @@ impl Sub<f64> for Point {
 impl Mul<Point> for Point {
 	type Output = Point;
 	fn mul(self, rhs: Point) -> Self::Output {
-		assert_ne!(rhs.x, 0.0, "Cannot multiply point by zero");
-		assert_ne!(rhs.y, 0.0, "Cannot multiply point by zero");
+		assert_ne!(rhs.x, 0., "Cannot multiply point by zero");
+		assert_ne!(rhs.y, 0., "Cannot multiply point by zero");
 		Point { x: self.x * rhs.x, y: self.y * rhs.y }
 	}
 }
 impl Div<Point> for Point {
 	type Output = Point;
 	fn div(self, rhs: Point) -> Self::Output {
-		assert_ne!(rhs.x, 0.0, "Cannot multiply point by zero");
-		assert_ne!(rhs.y, 0.0, "Cannot multiply point by zero");
+		assert_ne!(rhs.x, 0., "Cannot multiply point by zero");
+		assert_ne!(rhs.y, 0., "Cannot multiply point by zero");
 		Point { x: self.x / rhs.x, y: self.y / rhs.y }
 	}
 }
@@ -455,7 +455,7 @@ impl Sub<Point> for Point {
 impl Mul<f64> for Bounds {
 	type Output = Bounds;
 	fn mul(self, rhs: f64) -> Self::Output {
-		assert_ne!(rhs, 0.0, "Cannot multiply bounds by zero");
+		assert_ne!(rhs, 0., "Cannot multiply bounds by zero");
 		Bounds {
 			offset: self.offset * rhs,
 			size: self.size * rhs,
@@ -465,7 +465,7 @@ impl Mul<f64> for Bounds {
 impl Div<f64> for Bounds {
 	type Output = Bounds;
 	fn div(self, rhs: f64) -> Self::Output {
-		assert_ne!(rhs, 0.0, "Cannot divide bounds by zero");
+		assert_ne!(rhs, 0., "Cannot divide bounds by zero");
 		Bounds {
 			offset: self.offset / rhs,
 			size: self.size / rhs,

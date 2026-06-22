@@ -17,7 +17,12 @@ The dispatcher lives at the root of the editor hierarchy and acts as the owner o
 
 ## Editor outline
 
-Click to explore the outline of the editor subsystem hierarchy which forms the structure of the editor's subsystems, state, and interactions. Bookmark this page to reference it later.
+```sh
+# Access this quickly in the future:
+cargo run explore editor
+```
+
+Click to explore the outline of the editor subsystem hierarchy which forms the structure of the editor's subsystems, state, and interactions. Also available as a searchable <a href="/volunteer/guide/codebase-overview/hierarchical-message-system-tree.txt">plain text file</a>.
 
 <div class="structure-outline">
 <!-- replacements::hierarchical_message_system_tree() -->

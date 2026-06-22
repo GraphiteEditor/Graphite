@@ -66,7 +66,7 @@ impl ShaderCodegen for PerPixelAdjust {
 			}
 		}
 
-		let entry_point_mod = format_ident!("{}_gpu_entry_point", fn_name);
+		let entry_point_mod = format_ident!("{}_gpu", fn_name);
 		let entry_point_name_ident = format_ident!("ENTRY_POINT_NAME");
 		let entry_point_name = quote!(#entry_point_mod::#entry_point_name_ident);
 		let uniform_struct_ident = format_ident!("Uniform");
@@ -186,7 +186,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let wgpu_executor = self.crate_ident.wgpu_executor()?;
 
 		// adapt fields for gpu node
-		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#raster_types::Raster<#raster_types::GPU>>);
+		let raster_gpu: Type = parse_quote!(#gcore::list::List<#raster_types::Raster<#raster_types::GPU>>);
 		let mut fields = self
 			.parsed
 			.fields
@@ -233,7 +233,7 @@ impl PerPixelAdjustCodegen<'_> {
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(&'a WgpuExecutor),
 				exposed: true,
-				value_source: ParsedValueSource::Scope(LitStr::new("wgpu-executor", Span::call_site())),
+				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode")),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,
@@ -283,7 +283,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let entry_point_name = &self.entry_point_name;
 		let body = quote! {
 			{
-				#executor.shader_runtime.run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
+				#executor.shader_runtime().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,

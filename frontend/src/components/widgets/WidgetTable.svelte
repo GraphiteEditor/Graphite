@@ -1,7 +1,6 @@
 <script lang="ts">
-	import type { LayoutTarget, WidgetTable } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
+	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
+	import type { LayoutTarget, WidgetTable } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let widgetData: WidgetTable;
 	export let layoutTarget: LayoutTarget;
@@ -13,9 +12,9 @@
 	<tbody>
 		{#each widgetData.tableWidgets as row}
 			<tr>
-				{#each row as cell}
+				{#each row as widget}
 					<td colspan={row.length < columns ? columns - row.length + 1 : undefined}>
-						<WidgetSpan direction="row" widgets={[cell]} {layoutTarget} narrow={true} />
+						<WidgetSpan direction="row" widgets={[widget]} {layoutTarget} narrow={true} />
 					</td>
 				{/each}
 			</tr>
@@ -23,7 +22,7 @@
 	</tbody>
 </table>
 
-<style lang="scss" global>
+<style lang="scss">
 	table:not(.unstyled) {
 		background: var(--color-3-darkgray);
 		border: none;

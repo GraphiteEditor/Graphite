@@ -2,18 +2,16 @@ use super::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
-use glam::{DAffine2, IVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_std::Artboard;
+use graphene_std::Color;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::PointId;
-use graphene_std::vector::VectorModificationType;
-use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::{GradientStops, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -25,6 +23,23 @@ pub enum GraphOperationMessage {
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
 		fill: f64,
+	},
+	GradientStopsSet {
+		layer: LayerNodeIdentifier,
+		stops: GradientStops,
+	},
+	GradientLineSet {
+		layer: LayerNodeIdentifier,
+		start: DVec2,
+		end: DVec2,
+	},
+	GradientTypeSet {
+		layer: LayerNodeIdentifier,
+		gradient_type: GradientType,
+	},
+	GradientSpreadMethodSet {
+		layer: LayerNodeIdentifier,
+		spread_method: GradientSpreadMethod,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -66,23 +81,43 @@ pub enum GraphOperationMessage {
 	},
 	NewArtboard {
 		id: NodeId,
-		artboard: Artboard,
+		location: DVec2,
+		dimensions: DVec2,
+		background: Color,
+		clip: bool,
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image_frame: Table<Raster<CPU>>,
+		image: Image<Color>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	NewInterpolationLayer {
+		id: NodeId,
+		control_path_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		blend_count: Option<usize>,
+	},
+	ConnectInterpolationControlPathToChildren {
+		interpolation_layer_id: NodeId,
+		control_path_id: NodeId,
+	},
 	NewBooleanOperationLayer {
 		id: NodeId,
-		operation: graphene_std::path_bool::BooleanOperation,
+		operation: graphene_std::vector::misc::BooleanOperation,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
 	NewCustomLayer {
 		id: NodeId,
 		nodes: Vec<(NodeId, NodeTemplate)>,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
+	NewColorFillLayer {
+		node_id: NodeId,
+		color: Color,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
@@ -102,8 +137,8 @@ pub enum GraphOperationMessage {
 	},
 	ResizeArtboard {
 		layer: LayerNodeIdentifier,
-		location: IVec2,
-		dimensions: IVec2,
+		location: DVec2,
+		dimensions: DVec2,
 	},
 	RemoveArtboards,
 	NewSvg {
@@ -112,5 +147,7 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+		/// When true, centers the SVG at the transform origin (clipboard paste / drag-drop). When false, keeps natural SVG coordinates (file-open flow).
+		center: bool,
 	},
 }

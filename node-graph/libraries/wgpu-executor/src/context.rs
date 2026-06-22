@@ -1,12 +1,11 @@
-use std::sync::Arc;
 use wgpu::{Adapter, Backends, Device, Features, Instance, Queue};
 
 #[derive(Debug, Clone)]
 pub struct Context {
-	pub device: Arc<Device>,
-	pub queue: Arc<Queue>,
-	pub instance: Arc<Instance>,
-	pub adapter: Arc<Adapter>,
+	pub device: Device,
+	pub queue: Queue,
+	pub instance: Instance,
+	pub adapter: Adapter,
 }
 
 impl Context {
@@ -49,7 +48,7 @@ impl ContextBuilder {
 	}
 	pub async fn available_adapters_fmt(&self) -> impl std::fmt::Display {
 		let instance = self.build_instance();
-		fmt::AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends))
+		fmt::AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends).await)
 	}
 }
 #[cfg(target_family = "wasm")]
@@ -58,19 +57,14 @@ impl ContextBuilder {
 		let instance = self.build_instance();
 		let adapter = self.request_adapter(&instance).await?;
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context {
-			device: Arc::new(device),
-			queue: Arc::new(queue),
-			adapter: Arc::new(adapter),
-			instance: Arc::new(instance),
-		})
+		Some(Context { device, queue, adapter, instance })
 	}
 }
 impl ContextBuilder {
 	fn build_instance(&self) -> Instance {
-		Instance::new(&wgpu::InstanceDescriptor {
+		Instance::new(wgpu::InstanceDescriptor {
 			backends: self.backends,
-			..Default::default()
+			..wgpu::InstanceDescriptor::new_without_display_handle()
 		})
 	}
 	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {
@@ -102,9 +96,10 @@ impl ContextBuilder {
 		let instance = self.build_instance();
 
 		let selected_adapter = if let Some(select) = select {
-			self.select_adapter(&instance, select)
+			self.select_adapter(&instance, select).await
 		} else if cfg!(target_os = "windows") {
 			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12))
+				.await
 		} else {
 			None
 		};
@@ -112,18 +107,13 @@ impl ContextBuilder {
 		let adapter = if let Some(adapter) = selected_adapter { adapter } else { self.request_adapter(&instance).await? };
 
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context {
-			device: Arc::new(device),
-			queue: Arc::new(queue),
-			adapter: Arc::new(adapter),
-			instance: Arc::new(instance),
-		})
+		Some(Context { device, queue, adapter, instance })
 	}
-	fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
+	async fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
 	where
 		S: Fn(&[Adapter]) -> Option<usize>,
 	{
-		let mut adapters = instance.enumerate_adapters(self.backends);
+		let mut adapters = instance.enumerate_adapters(self.backends).await;
 		let selected_index = select(&adapters)?;
 		if selected_index >= adapters.len() {
 			return None;

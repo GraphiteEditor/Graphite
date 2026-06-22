@@ -1,4 +1,3 @@
-use crate::transform::Footprint;
 use std::any::TypeId;
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -6,22 +5,32 @@ use std::fmt::{Display, Formatter};
 #[macro_export]
 macro_rules! concrete {
 	($type:ty) => {
-		$crate::Type::Concrete($crate::TypeDescriptor {
+		$crate::Type::Concrete($crate::descriptor!($type))
+	};
+	($type:ty, $name:ty) => {
+		$crate::Type::Concrete($crate::descriptor!($type, $name))
+	};
+}
+
+#[macro_export]
+macro_rules! descriptor {
+	($type:ty) => {
+		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
-		})
+		}
 	};
 	($type:ty, $name:ty) => {
-		$crate::Type::Concrete($crate::TypeDescriptor {
+		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
-		})
+		}
 	};
 }
 
@@ -77,7 +86,8 @@ macro_rules! fn_type_fut {
 }
 
 // TODO: Rename to NodeSignatureMonomorphization
-#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -126,7 +136,8 @@ impl std::fmt::Debug for NodeIOTypes {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProtoNodeIdentifier {
 	name: Cow<'static, str>,
 }
@@ -143,6 +154,19 @@ impl ProtoNodeIdentifier {
 	pub fn as_str(&self) -> &str {
 		self.name.as_ref()
 	}
+
+	pub const fn as_static_str(&self) -> &'static str {
+		match self.name {
+			Cow::Borrowed(name) => name,
+			Cow::Owned(_) => panic!("`as_static_str` called on a `ProtoNodeIdentifier` backed by an owned string"),
+		}
+	}
+}
+
+impl From<ProtoNodeIdentifier> for Cow<'static, str> {
+	fn from(val: ProtoNodeIdentifier) -> Self {
+		val.name
+	}
 }
 
 impl Display for ProtoNodeIdentifier {
@@ -151,52 +175,30 @@ impl Display for ProtoNodeIdentifier {
 	}
 }
 
-fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
-	use serde::Deserialize;
-
-	let name = String::deserialize(deserializer)?;
-	let name = match name.as_str() {
-		"f32" => "f64".to_string(),
-		"grahpene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<grahpene_core::context::OwnedContextImpl>>".to_string(),
-		"grahpene_core::graphic_element::GraphicGroup" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
-		"grahpene_core::raster::image::ImageFrame<Color>"
-		| "grahpene_core::raster::image::ImageFrame<grahpene_core::raster::color::Color>"
-		| "grahpene_core::instances::Instances<grahpene_core::raster::image::ImageFrame<Color>>"
-		| "grahpene_core::instances::Instances<grahpene_core::raster::image::ImageFrame<grahpene_core::raster::color::Color>>"
-		| "grahpene_core::instances::Instances<grahpene_core::raster::image::Image<grahpene_core::raster::color::Color>>" => {
-			"grahpene_core::table::Table<grahpene_core::raster::image::Image<grahpene_core::raster::color::Color>>".to_string()
-		}
-		"grahpene_core::vector::vector_data::VectorData"
-		| "grahpene_core::instances::Instances<grahpene_core::vector::vector_data::VectorData>"
-		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::VectorData>"
-		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::Vector>" => "grahpene_core::table::Table<grahpene_core::vector::vector_types::Vector>".to_string(),
-		"grahpene_core::instances::Instances<grahpene_core::graphic_element::Artboard>" => "grahpene_core::table::Table<grahpene_core::artboard::Artboard>".to_string(),
-		"grahpene_core::vector::vector_data::modification::VectorModification" => "grahpene_core::vector::vector_modification::VectorModification".to_string(),
-		"grahpene_core::table::Table<grahpene_core::graphic_element::Graphic>" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
-		_ => name,
-	};
-
-	Ok(Cow::Owned(name))
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeDescriptor {
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub id: Option<TypeId>,
-	#[serde(deserialize_with = "migrate_type_descriptor_names")]
 	pub name: Cow<'static, str>,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
 	pub alias: Option<Cow<'static, str>>,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub size: usize,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub align: usize,
 }
 
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);
+	}
+}
+
+impl graphene_hash::CacheHash for TypeDescriptor {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		graphene_hash::CacheHash::cache_hash(&self.name, state);
 	}
 }
 
@@ -222,7 +224,8 @@ impl PartialEq for TypeDescriptor {
 
 /// Graph runtime type information used for type inference.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),
@@ -355,11 +358,73 @@ pub fn simplify_identifier_name(ty: &str) -> String {
 		.join("<")
 }
 
+/// Converts a Rust-internal type name to its user-facing form.
 pub fn make_type_user_readable(ty: &str) -> String {
-	ty.replace("Option<Arc<OwnedContextImpl>>", "Context")
-		.replace("Vector<Option<Table<Graphic>>>", "Vector")
+	let ty = ty
+		.replace("Option<Arc<OwnedContextImpl>>", "Context")
 		.replace("Raster<CPU>", "Raster")
 		.replace("Raster<GPU>", "Raster")
+		.replace("DAffine2", "Transform")
+		.replace("Affine2", "Transform")
+		.replace("DVec2", "Vec2")
+		.replace("IVec2", "Vec2")
+		.replace("UVec2", "Vec2")
+		.replace("&str", "String");
+
+	rewrite_list_as_array_brackets(&ty)
+}
+
+/// Rewrites `List<T>` as `T[]`. Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
+/// Respects word boundaries so unrelated identifiers that happen to end in `List` are not affected.
+fn rewrite_list_as_array_brackets(input: &str) -> String {
+	let bytes = input.as_bytes();
+	let mut result = String::with_capacity(input.len());
+	let mut i = 0;
+
+	while i < bytes.len() {
+		let at_word_boundary = i == 0 || !is_identifier_byte(bytes[i - 1]);
+		if at_word_boundary && bytes[i..].starts_with(b"List<") {
+			let inner_start = i + b"List<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_list_as_array_brackets(inner));
+				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if bytes[i].is_ascii() {
+			result.push(bytes[i] as char);
+			i += 1;
+		} else {
+			let ch = input[i..].chars().next().unwrap();
+			result.push(ch);
+			i += ch.len_utf8();
+		}
+	}
+
+	result
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+	byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn find_matching_angle_bracket(bytes: &[u8], start: usize) -> Option<usize> {
+	let mut depth = 1_usize;
+	for (offset, &byte) in bytes[start..].iter().enumerate() {
+		match byte {
+			b'<' => depth += 1,
+			b'>' => {
+				depth -= 1;
+				if depth == 0 {
+					return Some(start + offset);
+				}
+			}
+			_ => {}
+		}
+	}
+	None
 }
 
 impl std::fmt::Debug for Type {
@@ -371,18 +436,10 @@ impl std::fmt::Debug for Type {
 // Display
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		use glam::*;
-
 		match self {
 			Type::Generic(name) => write!(f, "{}", make_type_user_readable(name)),
-			Type::Concrete(ty) => match () {
-				() if self == &concrete!(DVec2) || self == &concrete!(Vec2) || self == &concrete!(IVec2) || self == &concrete!(UVec2) => write!(f, "Vec2"),
-				() if self == &concrete!(glam::DAffine2) => write!(f, "Transform"),
-				() if self == &concrete!(Footprint) => write!(f, "Footprint"),
-				() if self == &concrete!(&str) || self == &concrete!(String) => write!(f, "String"),
-				_ => write!(f, "{}", make_type_user_readable(&simplify_identifier_name(&ty.name))),
-			},
-			Type::Fn(call_arg, return_value) => write!(f, "{return_value} called with {call_arg}"),
+			Type::Concrete(ty) => write!(f, "{ty}"),
+			Type::Fn(_, return_value) => write!(f, "{return_value}"),
 			Type::Future(ty) => write!(f, "{ty}"),
 		}
 	}
