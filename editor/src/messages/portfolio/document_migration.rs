@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::descriptor;
@@ -1121,8 +1122,11 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 
-	// Legacy `Fill::Gradient`s are converted to absolute by the deferred migration pass once the first graph run yields geometry bounds
-	document.pending_gradient_migration = true;
+	// Legacy `Fill::Gradient`s are converted to absolute by the deferred migration pre-pass that measures each fill's geometry
+	document.pending_gradient_migration = !graph_modification_utils::legacy_gradient_fill_nodes(&document.network_interface).is_empty();
+	if graph_modification_utils::has_nested_legacy_gradient(&document.network_interface) {
+		log::warn!("Legacy bounding-box gradients inside subgraph node networks are not migrated and may render incorrectly");
+	}
 
 	let network = document.network_interface.document_network().clone();
 

@@ -58,10 +58,6 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
-// TODO: Eventually remove this document upgrade code
-/// `bool` runtime marker (never serialized) flagging a gradient that came from the legacy bounding-box-relative `Fill::Gradient`,
-/// so the renderer reproduces the pre-#4241 positioning instead of the new absolute path.
-pub const ATTR_GRADIENT_LEGACY: &str = "gradient_legacy";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.

@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
@@ -317,6 +317,55 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 		return None;
 	};
 	Some(gradient.clone())
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Read the gradient stored directly in a specific "Fill" node's `fill` input value, if it holds a `Fill::Gradient`.
+pub fn gradient_in_fill_node(fill_node_id: NodeId, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
+	let node = network_interface.document_network().nodes.get(&fill_node_id)?;
+	let TaggedValue::Fill(Fill::Gradient(gradient)) = node.inputs.get(1)?.as_value()? else {
+		return None;
+	};
+	Some(gradient.clone())
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Find every root-network "Fill" node holding a legacy bounding-box-relative `Fill::Gradient` (`absolute == false`).
+///
+/// Scans the document network structurally instead of walking each layer's primary flow, so it also catches fills on
+/// secondary inputs and in hidden, disabled, or orphaned branches. Fills nested inside subgraph node networks are skipped.
+pub fn legacy_gradient_fill_nodes(network_interface: &NodeNetworkInterface) -> Vec<NodeId> {
+	let fill_identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+	network_interface
+		.document_network()
+		.nodes
+		.keys()
+		.copied()
+		.filter(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&fill_identifier))
+		.filter(|node_id| gradient_in_fill_node(*node_id, network_interface).is_some_and(|gradient| !gradient.absolute))
+		.collect()
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Whether any subgraph node network (i.e. not the root) holds a legacy bounding-box-relative gradient that the root-only
+/// migration scan skips. Used only to warn that those rare cases won't be converted.
+pub fn has_nested_legacy_gradient(network_interface: &NodeNetworkInterface) -> bool {
+	fn holds_legacy_gradient(network: &NodeNetwork) -> bool {
+		network.nodes.values().any(|node| {
+			let nested = matches!(&node.implementation, DocumentNodeImplementation::Network(inner) if holds_legacy_gradient(inner));
+			let here = node
+				.inputs
+				.iter()
+				.any(|input| matches!(input.as_value(), Some(TaggedValue::Fill(Fill::Gradient(gradient))) if !gradient.absolute));
+			nested || here
+		})
+	}
+
+	network_interface
+		.document_network()
+		.nodes
+		.values()
+		.any(|node| matches!(&node.implementation, DocumentNodeImplementation::Network(inner) if holds_legacy_gradient(inner)))
 }
 
 /// Get the gradient stops of a layer, if any.
