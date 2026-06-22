@@ -173,9 +173,11 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	apply_entries_into_tree(&network, &mut network_metadata, node_entries)?;
 	apply_network_entries_into_tree(&mut network_metadata, network_entries);
 
-	let mut interface = NodeNetworkInterface::default();
-	interface.network = MemoNetwork::new(network);
-	interface.network_metadata = network_metadata;
+	let interface = NodeNetworkInterface {
+		network: MemoNetwork::new(network),
+		network_metadata,
+		..Default::default()
+	};
 	Ok(interface)
 }
 
@@ -215,7 +217,7 @@ pub fn collect_network_view_settings(
 
 		// Skip the inert `Previewing::No` default so a network that has never been previewed stays empty.
 		if !matches!(network_metadata.persistent_metadata.previewing, Previewing::No)
-			&& let Ok(value) = serde_json::to_value(&network_metadata.persistent_metadata.previewing)
+			&& let Ok(value) = serde_json::to_value(network_metadata.persistent_metadata.previewing)
 		{
 			settings.insert(session::network::PREVIEWING.to_string(), value);
 		}

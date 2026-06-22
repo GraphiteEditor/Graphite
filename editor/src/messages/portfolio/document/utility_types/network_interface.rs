@@ -3418,22 +3418,39 @@ impl NodeNetworkInterface {
 
 // Public mutable methods
 impl NodeNetworkInterface {
-	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+	/// Walk every network at every nesting level, invoking `visit` with each network's path and a mutable
+	/// reference to its metadata. Only nodes that contain a nested network are recursed into.
+	fn for_each_network_metadata_mut(&mut self, mut visit: impl FnMut(&[NodeId], &mut NodeNetworkMetadata)) {
 		let mut stack = vec![vec![]];
 		while let Some(path) = stack.pop() {
 			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
 				continue;
 			};
-			if let Some(other_network_metadata) = other_interface.network_metadata(&path) {
+
+			visit(&path, self_network_metadata);
+
+			// Only nodes that contain a nested network have metadata to recurse into, so skip leaf nodes.
+			stack.extend(
+				self_network_metadata
+					.persistent_metadata
+					.node_metadata
+					.iter()
+					.filter(|(_, node_metadata)| node_metadata.persistent_metadata.network_metadata.is_some())
+					.map(|(node_id, _)| {
+						let mut current_path: Vec<NodeId> = path.clone();
+						current_path.push(*node_id);
+						current_path
+					}),
+			);
+		}
+	}
+
+	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
 				self_network_metadata.persistent_metadata.navigation_metadata = other_network_metadata.persistent_metadata.navigation_metadata.clone();
 			}
-
-			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
-				let mut current_path: Vec<NodeId> = path.clone();
-				current_path.push(*node_id);
-				current_path
-			}));
-		}
+		});
 	}
 
 	/// Copy every piece of transient view and selection state from `other_interface` onto `self`, for each
@@ -3442,13 +3459,8 @@ impl NodeNetworkInterface {
 	/// cursor) and must keep the user's current view and selection rather than reset them, since the registry
 	/// models document content only. `resolved_types` is a separate runtime cache the caller handles.
 	pub fn copy_all_transient_view_state(&mut self, other_interface: &NodeNetworkInterface) {
-		let mut stack = vec![vec![]];
-		while let Some(path) = stack.pop() {
-			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
-				continue;
-			};
-
-			if let Some(other_network_metadata) = other_interface.network_metadata(&path) {
+		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
 				let self_persistent = &mut self_network_metadata.persistent_metadata;
 				let other_persistent = &other_network_metadata.persistent_metadata;
 				self_persistent.navigation_metadata = other_persistent.navigation_metadata.clone();
@@ -3456,13 +3468,7 @@ impl NodeNetworkInterface {
 				self_persistent.selection_undo_history = other_persistent.selection_undo_history.clone();
 				self_persistent.selection_redo_history = other_persistent.selection_redo_history.clone();
 			}
-
-			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
-				let mut current_path: Vec<NodeId> = path.clone();
-				current_path.push(*node_id);
-				current_path
-			}));
-		}
+		});
 
 		self.document_metadata.document_to_viewport = other_interface.document_metadata.document_to_viewport;
 	}

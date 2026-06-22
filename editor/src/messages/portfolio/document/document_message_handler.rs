@@ -1775,7 +1775,7 @@ impl DocumentMessageHandler {
 			..Default::default()
 		};
 
-		document.apply_stored_document_settings(&storage.view_settings().clone());
+		document.apply_stored_document_settings(storage.view_settings());
 		match storage.registry().to_resource_registry() {
 			Ok(resource_registry) => document.resources.registry = resource_registry,
 			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
@@ -1997,7 +1997,7 @@ impl DocumentMessageHandler {
 
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::collect_network_view_settings;
 
-		let network = self.network_interface.document_network().clone();
+		let network = self.network_interface.document_network();
 		let view = StorageMetadataView::new(&self.network_interface);
 
 		// Per-network view state (node-graph nav + previewing) is per-peer too, so collect it (keyed by the
@@ -2006,7 +2006,7 @@ impl DocumentMessageHandler {
 		let network_view_settings = self
 			.storage
 			.as_ref()
-			.and_then(|storage| storage.network_ids(&network, &view).ok())
+			.and_then(|storage| storage.network_ids(network, &view).ok())
 			.map(|network_ids| collect_network_view_settings(&self.network_interface, &network_ids));
 
 		// Per-peer view settings (PTZ, rulers, ...) persist in `session.json`, not the registry, so they
@@ -2030,7 +2030,7 @@ impl DocumentMessageHandler {
 		// Stage into the working copy without retiring: a tool drag fires several `CommitTransaction`s
 		// but is one legacy undo step, so the deltas accumulate as hot ops and coalesce into one retired
 		// interaction at the next undo-step boundary (`retire_pending_interaction`).
-		if let Err(error) = storage.stage_runtime_snapshot(&network, &view, &self.resources.registry, byte_store) {
+		if let Err(error) = storage.stage_runtime_snapshot(network, &view, &self.resources.registry, byte_store) {
 			log::error!("Storage snapshot staging failed: {error}");
 			return;
 		}
@@ -2052,7 +2052,7 @@ impl DocumentMessageHandler {
 		}
 
 		#[cfg(debug_assertions)]
-		self.verify_storage_round_trip(&network, &view);
+		self.verify_storage_round_trip(network, &view);
 	}
 
 	/// Restore the per-peer view settings persisted in `session.json` (the `ui::doc::*`-keyed
@@ -2214,9 +2214,9 @@ impl DocumentMessageHandler {
 		let Some(storage) = &self.storage else { return };
 		let peer = storage.session().peer();
 
-		let network = self.network_interface.document_network().clone();
+		let network = self.network_interface.document_network();
 		let view = StorageMetadataView::new(&self.network_interface);
-		let Ok(mut conversion) = graph_storage::Registry::convert_from_runtime(&network, &view, &self.resources.registry, peer) else {
+		let Ok(mut conversion) = graph_storage::Registry::convert_from_runtime(network, &view, &self.resources.registry, peer) else {
 			log::error!("undo/redo shadow: from_runtime failed");
 			return;
 		};
