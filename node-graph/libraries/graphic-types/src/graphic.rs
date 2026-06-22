@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, AnyAttributeValue, AttributeValueDyn, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, AnyAttributeValue, AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
@@ -323,6 +323,47 @@ pub fn is_stroke_fully_transparent_at(list: &List<Vector>, index: usize) -> bool
 		return true;
 	};
 	color.a() == 0.
+}
+
+/// Bake the provided transform into the gradient transform if "fill"/"stroke" attributes have List<GradientStops>.
+pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
+	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
+		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			*item_transform = transform * *item_transform;
+		}
+	}
+
+	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
+		for graphic in graphics.iter_element_values_mut() {
+			match graphic {
+				Graphic::Graphic(list) => bake_list_transform(list, transform),
+				Graphic::Vector(list) => bake_list_transform(list, transform),
+				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
+				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
+				Graphic::Gradient(list) => bake_list_transform(list, transform),
+				Graphic::Text(list) => bake_list_transform(list, transform),
+				Graphic::Color(_) => {}
+			}
+		}
+	}
+
+	for paint_key in [ATTR_FILL, ATTR_STROKE] {
+		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
+			bake_graphic_paint_transform(graphics, transform);
+		}
+		if let Some(gradients) = attributes.get_mut::<List<GradientStops>>(paint_key) {
+			bake_list_transform(gradients, transform);
+		}
+		if let Some(vectors) = attributes.get_mut::<List<Vector>>(paint_key) {
+			bake_list_transform(vectors, transform);
+		}
+		if let Some(rasters) = attributes.get_mut::<List<Raster<CPU>>>(paint_key) {
+			bake_list_transform(rasters, transform);
+		}
+		if let Some(rasters) = attributes.get_mut::<List<Raster<GPU>>>(paint_key) {
+			bake_list_transform(rasters, transform);
+		}
+	}
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
