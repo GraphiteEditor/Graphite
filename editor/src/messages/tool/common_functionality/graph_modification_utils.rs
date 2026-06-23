@@ -272,7 +272,7 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 }
 
 /// Get the closest Fill node's ID to the provided layer, if any.
-pub fn get_fill_node_id_with_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+pub fn get_fill_node_id_with_direct_fill_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
 	matches!(fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?, NodeInput::Value { .. }).then_some(fill_node_id)
@@ -312,7 +312,7 @@ pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &No
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
 	// Try to find the gradient stops value that is created by a Fill node first
-	if let Some(fill_node_id) = get_fill_node_id_with_value(layer, network_interface) {
+	if let Some(fill_node_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
 		return network_interface
 			.document_network()
 			.nodes
