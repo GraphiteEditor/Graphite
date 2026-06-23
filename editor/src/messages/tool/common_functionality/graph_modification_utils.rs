@@ -16,7 +16,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bbox};
-use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{GradientAppearance, GradientStops, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -632,18 +632,16 @@ pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	match fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? {
 		&TaggedValue::Color(color) => Some(color.map_or(Fill::None, Fill::Solid)),
 		TaggedValue::Gradient(stops) => {
-			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientType(value)) => value,
-				_ => GradientType::default(),
+			let GradientAppearance {
+				transform,
+				gradient_type,
+				spread_method,
+			} = match fill_node.inputs.get(graphene_std::vector::fill::GradientAppearanceInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientAppearance(appearance)) => appearance,
+				_ => GradientAppearance::default(),
 			};
-			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-				_ => GradientSpreadMethod::default(),
-			};
-			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer))),
-				_ => DAffine2::IDENTITY,
-			};
+			let transform = transform.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer)));
+
 			Some(Fill::Gradient(Gradient {
 				stops: stops.clone(),
 				gradient_type,

@@ -7,7 +7,7 @@ use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::ImageTexture;
 use graphene_std::brush::brush_stroke::BrushStroke;
-use graphene_std::gradient::GradientStops;
+use graphene_std::gradient::{GradientAppearance, GradientStops};
 use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 #[cfg(target_family = "wasm")]
 use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
@@ -135,6 +135,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => DVec2]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => DAffine2]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Option<DAffine2>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GradientAppearance]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => bool]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => f64]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => u32]),

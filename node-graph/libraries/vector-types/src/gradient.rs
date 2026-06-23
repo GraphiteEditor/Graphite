@@ -672,6 +672,15 @@ impl Gradient {
 	}
 }
 
+/// A struct to aggregate the paint-related appearance values for a gradient.
+#[derive(Debug, Default, Copy, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GradientAppearance {
+	pub transform: Option<DAffine2>,
+	pub gradient_type: GradientType,
+	pub spread_method: GradientSpreadMethod,
+}
+
 /// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
 /// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
 /// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
