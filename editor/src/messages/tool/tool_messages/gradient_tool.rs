@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_value, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
@@ -359,7 +359,7 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
 		// Try to read a Fill node's values first
-		if let Some(fill_id) = get_fill_node_id_with_value(layer, network_interface) {
+		if let Some(fill_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
 			let fill_node = network_interface.document_network().nodes.get(&fill_id)?;
 
 			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
@@ -1810,7 +1810,7 @@ fn apply_gradient_update(
 
 			// Only check for the gradient list once we know we'll write back, since this is a graph traversal per layer
 			// TODO: Drop the `Fill::Gradient` branch when all gradients become `List<GradientStops>`
-			if get_gradient_stops(layer, &context.document.network_interface).is_some() {
+			if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
 				dispatch_gradient_writes(layer, &gradient, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -1955,66 +1955,91 @@ mod test_gradient {
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+	use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_node_id_with_direct_fill_input;
+	use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_gradient_value_node_id;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::list::List;
+	use graphene_std::vector::GradientType;
 	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
 	use super::gradient_space_transform;
 
-	// Same node+index as `FillInput`, retyped to the pre-erasure value the instrumentation monitor actually captures.
-	struct FillGradientInput;
-	impl NodeInputDecleration for FillGradientInput {
-		const INDEX: usize = fill::FillInput::INDEX;
-		type Result = List<GradientStops>;
-		fn identifier() -> ProtoNodeIdentifier {
-			fill::FillInput::identifier()
-		}
-	}
-
-	async fn get_gradients(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
-		let instrumented = match editor.eval_graph().await {
-			Ok(instrumented) => instrumented,
-			Err(e) => panic!("Failed to evaluate graph: {e}"),
-		};
-
+	async fn get_gradients_from_fill(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
 		let document = editor.active_document();
-		let layers = document.metadata().all_layers();
-		layers
+
+		document
+			.metadata()
+			.all_layers()
 			.filter_map(|layer| {
-				let gradient_list = instrumented.grab_input_from_layer::<FillGradientInput>(layer, &document.network_interface, &editor.runtime)?;
-				let local_transform = instrumented
-					.grab_input_from_layer::<fill::TransformInput>(layer, &document.network_interface, &editor.runtime)
-					.flatten()
-					.unwrap_or_default();
+				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
+				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
+
+				let stops = match fill_node.inputs.get(fill::FillInput::INDEX)?.as_value()? {
+					TaggedValue::Gradient(stops) => stops.clone(),
+					_ => return None,
+				};
+
+				let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::GradientType(value)) => value,
+					_ => GradientType::default(),
+				};
+
+				let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+					_ => GradientSpreadMethod::default(),
+				};
+
+				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::OptionalDAffine2(Some(value))) => value,
+					_ => DAffine2::IDENTITY,
+				};
+
 				let gradient = Gradient {
-					stops: gradient_list.element(0).cloned().unwrap_or_default(),
-					gradient_type: instrumented
-						.grab_input_from_layer::<fill::GradientTypeInput>(layer, &document.network_interface, &editor.runtime)
-						.unwrap_or_default(),
-					spread_method: instrumented
-						.grab_input_from_layer::<fill::SpreadMethodInput>(layer, &document.network_interface, &editor.runtime)
-						.unwrap_or_default(),
+					stops,
+					gradient_type,
+					spread_method,
 					start: local_transform.transform_point2(DVec2::ZERO),
 					end: local_transform.transform_point2(DVec2::X),
 					absolute: true,
 					transform: DAffine2::IDENTITY,
 				};
+
 				let transform = gradient_space_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
 	}
 
-	async fn get_gradient(editor: &mut EditorTestUtils) -> (Gradient, DAffine2) {
-		let gradients = get_gradients(editor).await;
+	async fn get_gradients_from_chain(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
+		let document = editor.active_document();
+		document
+			.metadata()
+			.all_layers()
+			.filter_map(|layer| {
+				// Only read actual gradient chains, not Fill-owned gradient values
+				get_upstream_gradient_value_node_id(layer, &document.network_interface)?;
+
+				let gradient = super::get_gradient(layer, &document.network_interface)?;
+				let transform = gradient_space_transform(layer, document);
+				Some((gradient, transform))
+			})
+			.collect()
+	}
+
+	async fn get_gradient_from_fill(editor: &mut EditorTestUtils) -> (Gradient, DAffine2) {
+		let gradients = get_gradients_from_fill(editor).await;
 		assert_eq!(gradients.len(), 1, "Expected 1 gradient fill, found {}", gradients.len());
 
+		gradients.into_iter().next().unwrap()
+	}
+
+	async fn get_gradient_from_chain(editor: &mut EditorTestUtils) -> (Gradient, DAffine2) {
+		let gradients = get_gradients_from_chain(editor).await;
+		assert_eq!(gradients.len(), 1, "Expected 1 gradient chain, found {}", gradients.len());
 		gradients.into_iter().next().unwrap()
 	}
 
@@ -2068,13 +2093,51 @@ mod test_gradient {
 		layer
 	}
 
+	async fn create_fill_gradient_chain_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface).expect("Fill node should exist");
+
+		let gradient_node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)).await;
+
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(gradient_node_id, 0),
+				input_connector: InputConnector::node(fill_node_id, fill::FillInput::INDEX),
+			})
+			.await;
+
+		editor
+			.handle_message(NodeGraphMessage::SetInputValue {
+				node_id: gradient_node_id,
+				input_index: 1,
+				value: TaggedValue::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: Color::RED,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::BLUE,
+					},
+				])),
+			})
+			.await;
+
+		layer
+	}
+
 	#[tokio::test]
 	async fn ignore_artboard() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
-		assert!(get_gradients(&mut editor).await.is_empty());
+		assert!(get_gradients_from_fill(&mut editor).await.is_empty());
+		assert!(get_gradients_from_chain(&mut editor).await.is_empty());
 	}
 
 	#[tokio::test]
@@ -2083,7 +2146,8 @@ mod test_gradient {
 		editor.new_document().await;
 		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
 		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
-		assert!(get_gradients(&mut editor).await.is_empty());
+		assert!(get_gradients_from_fill(&mut editor).await.is_empty());
+		assert!(get_gradients_from_chain(&mut editor).await.is_empty());
 	}
 
 	#[tokio::test]
@@ -2095,11 +2159,26 @@ mod test_gradient {
 		editor.select_secondary_color(Color::BLUE).await;
 		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
 
-		let (gradient, transform) = get_gradient(&mut editor).await;
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
 		// Gradient goes from primary color to secondary color
 		let stops = gradient.stops.iter().map(|stop| (stop.position, SRGBA8::from(stop.color))).collect::<Vec<_>>();
 		assert_eq!(stops, vec![(0., SRGBA8::from(Color::GREEN)), (1., SRGBA8::from(Color::BLUE))]);
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+	}
+
+	#[tokio::test]
+	async fn draw_updates_fill_gradient_chain_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_fill_gradient_chain_layer(&mut editor).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_chain(&mut editor).await;
+
+		// Gradient line is updated while existing stops are preserved
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
@@ -2118,7 +2197,7 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
 		editor.drag_tool(ToolType::Gradient, start.x, start.y, end.x, end.y, ModifierKeys::SHIFT).await;
 
-		let (gradient, transform) = get_gradient(&mut editor).await;
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(start, 1e-10));
 
@@ -2161,7 +2240,7 @@ mod test_gradient {
 
 		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
 
-		let (gradient, transform) = get_gradient(&mut editor).await;
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
@@ -2178,7 +2257,7 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
 
 		// Get initial gradient state (should have 2 stops)
-		let (initial_gradient, _) = get_gradient(&mut editor).await;
+		let (initial_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		editor.select_tool(ToolType::Gradient).await;
@@ -2187,7 +2266,7 @@ mod test_gradient {
 		editor.left_mouseup(25., 0., ModifierKeys::empty()).await;
 
 		// Check that a new stop has been added
-		let (updated_gradient, _) = get_gradient(&mut editor).await;
+		let (updated_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 3, "Expected 3 stops, found {}", updated_gradient.stops.len());
 
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|stop| stop.position).collect();
@@ -2223,7 +2302,7 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
 
 		// Get the initial gradient state
-		let (initial_gradient, transform) = get_gradient(&mut editor).await;
+		let (initial_gradient, transform) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		// Verify initial gradient endpoints in viewport space
@@ -2253,7 +2332,7 @@ mod test_gradient {
 			.await;
 
 		// Check the updated gradient
-		let (updated_gradient, transform) = get_gradient(&mut editor).await;
+		let (updated_gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
 		// Verify the start point hasn't changed
 		let updated_start = transform.transform_point2(updated_gradient.start);
@@ -2281,7 +2360,7 @@ mod test_gradient {
 		editor.left_mousedown(25., 0., ModifierKeys::empty()).await;
 		editor.left_mouseup(25., 0., ModifierKeys::empty()).await;
 
-		let (initial_gradient, _) = get_gradient(&mut editor).await;
+		let (initial_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 3, "Expected 3 stops, found {}", initial_gradient.stops.len());
 
 		// Verify initial stop positions and colors
@@ -2320,7 +2399,7 @@ mod test_gradient {
 			)
 			.await;
 
-		let (updated_gradient, _) = get_gradient(&mut editor).await;
+		let (updated_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 3, "Expected 3 stops after dragging, found {}", updated_gradient.stops.len());
 
 		// Verify updated stop positions and colors
@@ -2348,7 +2427,7 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
 
 		// Get initial gradient state (should have 2 stops)
-		let (initial_gradient, _) = get_gradient(&mut editor).await;
+		let (initial_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		editor.select_tool(ToolType::Gradient).await;
@@ -2362,7 +2441,7 @@ mod test_gradient {
 		editor.left_mousedown(75., 0., ModifierKeys::empty()).await;
 		editor.left_mouseup(75., 0., ModifierKeys::empty()).await;
 
-		let (updated_gradient, _) = get_gradient(&mut editor).await;
+		let (updated_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 4, "Expected 4 stops, found {}", updated_gradient.stops.len());
 
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|stop| stop.position).collect();
@@ -2388,7 +2467,7 @@ mod test_gradient {
 		editor.press(Key::Delete, ModifierKeys::empty()).await;
 
 		// Verify we now have 3 stops
-		let (final_gradient, _) = get_gradient(&mut editor).await;
+		let (final_gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(final_gradient.stops.len(), 3, "Expected 3 stops after deletion, found {}", final_gradient.stops.len());
 
 		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|stop| stop.position).collect();
@@ -2438,7 +2517,7 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 10., 10., 90., 90., ModifierKeys::empty()).await;
 
 		// Verify default spread method is Pad
-		let (gradient, _) = get_gradient(&mut editor).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
 
 		// Update spread method to Repeat
@@ -2448,7 +2527,7 @@ mod test_gradient {
 			})
 			.await;
 
-		let (gradient, _) = get_gradient(&mut editor).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
 
 		// Update spread method to Reflect
@@ -2458,12 +2537,45 @@ mod test_gradient {
 			})
 			.await;
 
-		let (gradient, _) = get_gradient(&mut editor).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
 	}
 
 	#[tokio::test]
-	async fn gradient_list_drag_endpoint() {
+	async fn change_spread_method_chain() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_fill_gradient_chain_layer(&mut editor).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+
+		// Verify default spread method is Pad
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+
+		// Update spread method to Repeat
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
+
+		// Update spread method to Reflect
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
+	}
+
+	#[tokio::test]
+	async fn gradient_list_layer_drag_endpoint() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		let layer = create_gradient_list_layer(&mut editor).await;
@@ -2535,7 +2647,7 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	async fn gradient_list_preserves_stops() {
+	async fn gradient_list_layer_preserves_stops() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		let layer = create_gradient_list_layer(&mut editor).await;
