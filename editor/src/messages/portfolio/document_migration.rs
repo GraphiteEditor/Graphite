@@ -1584,6 +1584,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Fill: a literal Fill value is decomposed, and a wired input (`List<GradientStops> / List<Color>`) is kept as-is
 		match old_inputs[1].as_value() {
 			Some(TaggedValue::Fill(old_fill)) => {
+				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
 					Fill::None => TaggedValue::Color(None),
 					Fill::Solid(color) => TaggedValue::Color(Some(*color)),
@@ -1591,7 +1592,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				};
 				document
 					.network_interface
-					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, false), network_path);
+					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
 				// Gradient appearance: applies only to a literal gradient, solids/none keep the template default.
 				if let Fill::Gradient(gradient) = old_fill {
