@@ -81,7 +81,11 @@ impl linesweeper::topology::WindingNumber for WindingNumber {
 	fn of_tag(&self, (tag, out_of): Self::Tag) -> Self {
 		let mut elems = SmallVec::with_capacity(out_of);
 		elems.resize(out_of, 0);
-		elems[tag] = self.elems[tag];
+		if let (Some(slot), Some(&value)) = (elems.get_mut(tag), self.elems.get(tag)) {
+			*slot = value;
+		} else {
+			log::warn!("WindingNumber::of_tag: tag {tag} out of bounds (out_of {out_of}, len {})", self.elems.len());
+		}
 		Self { elems }
 	}
 }
