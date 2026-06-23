@@ -58,6 +58,8 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+/// Gradient's SVG coordinate system (`userSpaceOnUse` or `objectBoundingBox`).
+pub const ATTR_GRADIENT_UNITS: &str = "gradient_units";
 // TODO: Eventually remove this document upgrade code
 /// `bool` runtime marker (never serialized) flagging a gradient that came from the legacy bounding-box-relative `Fill::Gradient`,
 /// so the renderer reproduces the pre-#4241 positioning instead of the new absolute path.

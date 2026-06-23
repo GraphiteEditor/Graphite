@@ -3,10 +3,10 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
-use graphic_types::vector_types::gradient::GradientType;
+use graphic_types::vector_types::gradient::{GradientType, GradientUnits};
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::GradientStops;
@@ -16,6 +16,16 @@ use vector_types::gradient::GradientSpreadMethod;
 pub enum PaintTarget {
 	Fill,
 	Stroke,
+}
+
+fn svg_gradient_transform(transform: DAffine2, bounds: DAffine2, units: GradientUnits) -> (GradientUnits, String) {
+	let (units, transform) = match units {
+		GradientUnits::UserSpaceOnUse => (GradientUnits::UserSpaceOnUse, transform),
+		GradientUnits::ObjectBoundingBox if transform_is_invertible(bounds) => (GradientUnits::ObjectBoundingBox, bounds.inverse() * transform),
+		GradientUnits::ObjectBoundingBox => (GradientUnits::UserSpaceOnUse, transform),
+	};
+
+	(units, format_transform_matrix(transform))
 }
 
 impl PaintTarget {
@@ -94,6 +104,7 @@ impl RenderExt for List<GradientStops> {
 
 		let Some(stops) = self.element(0) else { return 0 };
 		let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
+		let gradient_units: GradientUnits = self.attribute_cloned_or_default(ATTR_GRADIENT_UNITS, 0);
 		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
@@ -122,7 +133,7 @@ impl RenderExt for List<GradientStops> {
 		let document_transform = item_transform * local_gradient_transform;
 
 		let placement = gradient_placement(document_transform, gradient_type);
-		let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
+		let (gradient_units, gradient_transform) = svg_gradient_transform(element_transform_inverse * placement, _bounds, gradient_units);
 		let gradient_transform = if gradient_transform.is_empty() {
 			String::new()
 		} else {
@@ -141,15 +152,19 @@ impl RenderExt for List<GradientStops> {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
-					gradient_id, stop
+					r#"<linearGradient id="{}" gradientUnits="{}" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
+					gradient_id,
+					gradient_units.svg_name(),
+					stop
 				);
 			}
 			GradientType::Radial => {
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
-					gradient_id, stop
+					r#"<radialGradient id="{}" gradientUnits="{}" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
+					gradient_id,
+					gradient_units.svg_name(),
+					stop
 				);
 			}
 		}

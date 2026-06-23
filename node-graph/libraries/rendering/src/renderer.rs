@@ -14,8 +14,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
-	ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH,
+	ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -39,7 +39,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::{GradientSpreadMethod, GradientUnits};
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2078,12 +2078,14 @@ impl Render for List<GradientStops> {
 		for index in 0..self.len() {
 			let Some(gradient) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let mut gradient_units: GradientUnits = self.attribute_cloned_or_default(ATTR_GRADIENT_UNITS, index);
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
 			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
+			const MAX: f64 = 1e7;
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
 					attributes.push("x", min.x.to_string());
@@ -2094,7 +2096,6 @@ impl Render for List<GradientStops> {
 					// Stand-in for an infinite background. Chrome's SVG renderer keeps internal coordinates in f32 and loses
 					// precision past ~2^24 (~16.7 million), causing tile-boundary artifacts that pop in and out during panning.
 					// 1e7 stays under that limit while still being far larger than any practical document extent.
-					const MAX: f64 = 1e7;
 					attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 				}
 
@@ -2111,7 +2112,16 @@ impl Render for List<GradientStops> {
 				}
 
 				// render_thumbnail already added the footprint transform
-				let gradient_transform = if render_params.thumbnail { transform } else { render_params.footprint.transform * transform };
+				let mut gradient_transform = if render_params.thumbnail { transform } else { render_params.footprint.transform * transform };
+				if gradient_units == GradientUnits::ObjectBoundingBox {
+					let (min, size) = thumbnail_rect.unwrap_or((DVec2::splat(-MAX), DVec2::splat(MAX * 2.)));
+					let bounds = DAffine2::from_scale_angle_translation(size, 0., min);
+					if transform_is_invertible(bounds) {
+						gradient_transform = bounds.inverse() * gradient_transform;
+					} else {
+						gradient_units = GradientUnits::UserSpaceOnUse;
+					}
+				}
 				let gradient_transform_matrix = format_transform_matrix(gradient_transform);
 				let gradient_transform_attribute = if gradient_transform_matrix.is_empty() {
 					String::new()
@@ -2131,13 +2141,15 @@ impl Render for List<GradientStops> {
 					GradientType::Linear => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="{}" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#,
+							gradient_units.svg_name()
 						);
 					}
 					GradientType::Radial => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="{}" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#,
+							gradient_units.svg_name()
 						);
 					}
 				}

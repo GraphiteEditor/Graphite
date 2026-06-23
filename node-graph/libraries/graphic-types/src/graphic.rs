@@ -4,7 +4,9 @@ use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{
+	ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color,
+};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
@@ -211,6 +213,7 @@ pub fn fill_to_graphic_list(fill: &Fill, bounding_box_transform: DAffine2) -> Op
 			let gradient_item = Item::new_from_element(gradient.stops.clone())
 				.with_attribute(ATTR_TRANSFORM, transform)
 				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
+				.with_attribute(ATTR_GRADIENT_UNITS, gradient.units)
 				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method)
 				.with_attribute(ATTR_GRADIENT_LEGACY, legacy);
 			let gradient_list = List::new_from_item(gradient_item);

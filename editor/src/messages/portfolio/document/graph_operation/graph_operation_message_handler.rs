@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, GradientUnits, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -452,6 +452,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				placement_transform.translation = placement_transform.translation.round();
 
 				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
+				let svg_gradient_units = extract_svg_gradient_units(&svg);
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
@@ -462,6 +463,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					parent,
 					insert_index,
 					&graphite_gradient_stops,
+					&svg_gradient_units,
 				);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
@@ -551,6 +553,50 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> 
 	result
 }
 
+fn extract_svg_gradient_units(svg: &str) -> HashMap<String, GradientUnits> {
+	let mut result = HashMap::new();
+	let mut gradient_nodes = HashMap::new();
+
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return result,
+	};
+
+	for node in doc.descendants() {
+		if matches!(node.tag_name().name(), "linearGradient" | "radialGradient")
+			&& let Some(gradient_id) = node.attribute("id")
+		{
+			gradient_nodes.insert(gradient_id, node);
+		}
+	}
+
+	fn resolve_units<'a>(node: usvg::roxmltree::Node<'a, 'a>, gradient_nodes: &HashMap<&'a str, usvg::roxmltree::Node<'a, 'a>>, seen: &mut Vec<&'a str>) -> Option<GradientUnits> {
+		match node.attribute("gradientUnits") {
+			Some("userSpaceOnUse") => return Some(GradientUnits::UserSpaceOnUse),
+			Some("objectBoundingBox") => return Some(GradientUnits::ObjectBoundingBox),
+			Some(_) => return None,
+			None => {}
+		}
+
+		let href = node.attribute("href").or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))?;
+		let referenced_id = href.strip_prefix('#')?;
+		if seen.contains(&referenced_id) {
+			return None;
+		}
+		let referenced_node = *gradient_nodes.get(referenced_id)?;
+		seen.push(referenced_id);
+		resolve_units(referenced_node, gradient_nodes, seen)
+	}
+
+	for (&gradient_id, &node) in &gradient_nodes {
+		// Per SVG spec, the default gradientUnits is objectBoundingBox.
+		let units = resolve_units(node, &gradient_nodes, &mut vec![gradient_id]).unwrap_or(GradientUnits::ObjectBoundingBox);
+		result.insert(gradient_id.to_string(), units);
+	}
+
+	result
+}
+
 fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	let hex = hex.strip_prefix('#')?;
 	if hex.len() != 6 {
@@ -575,6 +621,7 @@ fn import_usvg_node(
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	svg_gradient_units: &HashMap<String, GradientUnits>,
 ) {
 	let layer = modify_inputs.create_layer(id);
 
@@ -595,7 +642,7 @@ fn import_usvg_node(
 			modify_inputs.import = true;
 
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, svg_gradient_units, &mut group_extents_map);
 				child_extents_svg_order.push(extent);
 			}
 
@@ -614,7 +661,7 @@ fn import_usvg_node(
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
 		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
+			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops, svg_gradient_units);
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
@@ -639,6 +686,7 @@ fn import_usvg_node_inner(
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	svg_gradient_units: &HashMap<String, GradientUnits>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
 ) -> u32 {
 	let layer = modify_inputs.create_layer(id);
@@ -649,7 +697,7 @@ fn import_usvg_node_inner(
 		usvg::Node::Group(group) => {
 			let mut child_extents: Vec<u32> = Vec::new();
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, svg_gradient_units, group_extents_map);
 				child_extents.push(extent);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -664,7 +712,7 @@ fn import_usvg_node_inner(
 			total_extent
 		}
 		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
+			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops, svg_gradient_units);
 			0
 		}
 		usvg::Node::Image(_image) => {
@@ -681,7 +729,14 @@ fn import_usvg_node_inner(
 }
 
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
-fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, GradientStops>) {
+fn import_usvg_path(
+	modify_inputs: &mut ModifyInputsContext,
+	node: &usvg::Node,
+	path: &usvg::Path,
+	layer: LayerNodeIdentifier,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	svg_gradient_units: &HashMap<String, GradientUnits>,
+) {
 	let subpaths = convert_usvg_path(path);
 
 	// Skip creating a Transform node entirely when the SVG-native transform is identity.
@@ -695,7 +750,7 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 
 	if let Some(fill) = path.fill() {
-		apply_usvg_fill(fill, modify_inputs, graphite_gradient_stops);
+		apply_usvg_fill(fill, modify_inputs, graphite_gradient_stops, svg_gradient_units);
 	}
 	if let Some(stroke) = path.stroke() {
 		apply_usvg_stroke(stroke, modify_inputs, node_transform);
@@ -794,7 +849,15 @@ fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMet
 	}
 }
 
-fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, graphite_gradient_stops: &HashMap<String, GradientStops>) {
+/// Apply the SVG fill of a path to the layer being imported.
+///
+/// `units` is read from the original SVG XML (not from usvg) because usvg auto-converts
+/// `objectBoundingBox` gradients to `userSpaceOnUse`, baking the bbox transform into
+/// `linear.transform()`. The absolute `start`/`end` coordinates stored on the `Gradient`
+/// therefore always live in user-space; `units` is kept solely as an **export hint** so
+/// the SVG renderer can re-emit the correct `gradientUnits` attribute and apply
+/// `bounds.inverse()` to recover the original bbox-relative coordinates on export.
+fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, graphite_gradient_stops: &HashMap<String, GradientStops>, svg_gradient_units: &HashMap<String, GradientUnits>) {
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
 		usvg::Paint::LinearGradient(linear) => {
@@ -803,6 +866,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let (start, end) = (gradient_transform.transform_point2(start), gradient_transform.transform_point2(end));
 
 			let gradient_type = GradientType::Linear;
+			// Look up the original gradientUnits from the XML pass (usvg hides it after conversion).
+			let units = svg_gradient_units.get(linear.id()).copied().unwrap_or_default();
 
 			let stops = match graphite_gradient_stops.get(linear.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
@@ -821,6 +886,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				start,
 				end,
 				gradient_type,
+				units,
 				stops,
 				spread_method,
 				// TODO: Eventually remove this document upgrade code
@@ -835,6 +901,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
 
 			let gradient_type = GradientType::Radial;
+			// Look up the original gradientUnits from the XML pass (usvg hides it after conversion).
+			let units = svg_gradient_units.get(radial.id()).copied().unwrap_or_default();
 
 			let stops = match graphite_gradient_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
@@ -853,6 +921,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				start,
 				end,
 				gradient_type,
+				units,
 				stops,
 				spread_method,
 				// TODO: Eventually remove this document upgrade code

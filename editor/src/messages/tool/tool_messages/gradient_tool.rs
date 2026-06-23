@@ -361,6 +361,7 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 			stops,
 			gradient_type: chain_state.gradient_type,
 			spread_method: chain_state.spread_method,
+			units: Default::default(),
 			start: chain_state.transform.transform_point2(DVec2::ZERO),
 			end: chain_state.transform.transform_point2(DVec2::X),
 			// TODO: Eventually remove this document upgrade code

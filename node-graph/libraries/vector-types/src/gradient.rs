@@ -14,6 +14,24 @@ pub enum GradientType {
 	Radial,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum GradientUnits {
+	#[default]
+	UserSpaceOnUse,
+	ObjectBoundingBox,
+}
+
+impl GradientUnits {
+	pub fn svg_name(&self) -> &'static str {
+		match self {
+			GradientUnits::UserSpaceOnUse => "userSpaceOnUse",
+			GradientUnits::ObjectBoundingBox => "objectBoundingBox",
+		}
+	}
+}
+
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 /// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
 ///
@@ -484,6 +502,8 @@ pub struct Gradient {
 	pub end: DVec2,
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub spread_method: GradientSpreadMethod,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub units: GradientUnits,
 	// TODO: Eventually remove this document upgrade code
 	/// Whether `start`/`end` are absolute (layer-space) rather than in the legacy [0,1] bounding-box space.
 	/// Documents predating the gradient migration deserialize this as `false`; the deferred migration converts
@@ -506,6 +526,7 @@ impl Default for Gradient {
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
 			spread_method: GradientSpreadMethod::Pad,
+			units: GradientUnits::UserSpaceOnUse,
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
 			transform: DAffine2::IDENTITY,
@@ -583,6 +604,7 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			units: GradientUnits::UserSpaceOnUse,
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
 			transform: DAffine2::IDENTITY,
@@ -600,6 +622,7 @@ impl Gradient {
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
 		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
+		let units = if time < 0.5 { self.units } else { other.units };
 
 		Self {
 			start,
@@ -607,6 +630,7 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			units,
 			// TODO: Eventually remove this document upgrade code
 			absolute: self.absolute,
 			transform: if time < 0.5 { self.transform } else { other.transform },

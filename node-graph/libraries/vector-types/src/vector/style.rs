@@ -4,7 +4,7 @@ pub use crate::gradient::*;
 use core_types::color::{Alpha, SRGBA8};
 use core_types::list::List;
 use core_types::transform::Transform;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_OPACITY, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::DAffine2;
 use glam::DVec2;
@@ -145,12 +145,14 @@ impl From<List<GradientStops>> for Fill {
 	fn from(gradient: List<GradientStops>) -> Fill {
 		let gradient_type = gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0);
 		let spread_method = gradient.attribute_cloned_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD, 0);
+		let units = gradient.attribute_cloned_or_default(ATTR_GRADIENT_UNITS, 0);
 		let transform = gradient.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
 
 		Fill::Gradient(Gradient {
 			stops: gradient.element(0).cloned().unwrap_or_default(),
 			gradient_type,
 			spread_method,
+			units,
 			start: transform.transform_point2(DVec2::ZERO),
 			end: transform.transform_point2(DVec2::X),
 			// TODO: Eventually remove this document upgrade code
