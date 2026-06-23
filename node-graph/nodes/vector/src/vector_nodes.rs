@@ -33,7 +33,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::{GradientSpreadMethod, GradientType};
+use vector_types::{GradientAppearance, GradientSpreadMethod, GradientType};
 
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
@@ -166,25 +166,23 @@ async fn fill<V: VectorListIterMut + 'n + Send>(
 	mut fill: AnyGraphicListDyn,
 	_backup_color: List<Color>,
 	_backup_gradient: List<GradientStops>,
-	_gradient_type: GradientType,
-	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
+	_gradient_appearance: GradientAppearance,
 ) -> V {
 	if let Some(gradient) = fill.0.as_any_mut().downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = _gradient_type;
+				*value = _gradient_appearance.gradient_type;
 			}
 		}
 
 		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = _spread_method;
+				*value = _gradient_appearance.spread_method;
 			}
 		}
 
 		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			let transform = _transform.unwrap_or_else(|| {
+			let transform = _gradient_appearance.transform.unwrap_or_else(|| {
 				// Construct a transform that covers the bounding box of the paint target
 				let mut bounds: Option<[DVec2; 2]> = None;
 				content.for_each_vector_mut(|vector, _| {
