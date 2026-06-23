@@ -1,8 +1,8 @@
-[build]
-# Keep `--cfg=web_sys_unstable_apis` here so the wasm wrapper crates build with the same web-sys API signatures (e.g. `put_image_data`/`get_image_data` taking `i32` rather than `f64`) on both native test builds and the wasm target. Cargo applies `[build]` rustflags only when no target-specific rustflags table matches, so the wasm-specific list below must continue to include this cfg.
+# Keep `--cfg=web_sys_unstable_apis` here so the wasm wrapper crates build with the same web-sys API signatures (e.g. `put_image_data`/`get_image_data` taking `i32` rather than `f64`) on both native and the wasm target.
+[target.'cfg(not(target_family = "wasm"))']
 rustflags = ["--cfg=web_sys_unstable_apis"]
 
-[target.wasm32-unknown-unknown]
+[target.'cfg(target_family = "wasm")']
 rustflags = [
 	# Currently disabled because of https://github.com/GraphiteEditor/Graphite/issues/1262
 	# The current simd implementation leads to undefined behavior
