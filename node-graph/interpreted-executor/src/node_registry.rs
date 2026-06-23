@@ -239,6 +239,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeDyn]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AnyGraphicListDyn]),
 		#[cfg(target_family = "wasm")]
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => CanvasHandle]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => f64]),
