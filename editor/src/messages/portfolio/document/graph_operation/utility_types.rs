@@ -16,7 +16,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke, build_transform_with_y_preservation};
-use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
+use graphene_std::vector::{GradientAppearance, GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -487,27 +487,22 @@ impl<'a> ModifyInputsContext<'a> {
 					.document_network()
 					.nodes
 					.get(&fill_node_id)
-					.and_then(|node| node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX))
+					.and_then(|node| node.inputs.get(graphene_std::vector::fill::GradientAppearanceInput::INDEX))
 					.and_then(|input| input.as_value())
-					.and_then(|value| if let TaggedValue::OptionalDAffine2(transform) = value { *transform } else { None })
+					.and_then(|value| if let TaggedValue::GradientAppearance(appearance) = value { appearance.transform } else { None })
 					.unwrap_or(DAffine2::IDENTITY);
 
 				let new_transform = build_transform_with_y_preservation(old_transform, gradient.start, gradient.end);
 				self.set_input_with_refresh(
-					InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-					NodeInput::value(TaggedValue::OptionalDAffine2(Some(new_transform)), false),
-					false,
-				);
-
-				self.set_input_with_refresh(
-					InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
-					NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
-					false,
-				);
-
-				self.set_input_with_refresh(
-					InputConnector::node(fill_node_id, graphene_std::vector::fill::SpreadMethodInput::INDEX),
-					NodeInput::value(TaggedValue::GradientSpreadMethod(gradient.spread_method), false),
+					InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientAppearanceInput::INDEX),
+					NodeInput::value(
+						TaggedValue::GradientAppearance(GradientAppearance {
+							transform: Some(new_transform),
+							gradient_type: gradient.gradient_type,
+							spread_method: gradient.spread_method,
+						}),
+						false,
+					),
 					false,
 				);
 			}
