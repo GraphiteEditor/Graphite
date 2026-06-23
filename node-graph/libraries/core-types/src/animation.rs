@@ -56,7 +56,7 @@ pub struct AnimationCurve {
 }
 
 impl AnimationCurve {
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self { keyframes: Vec::new() }
 	}
 
@@ -65,7 +65,7 @@ impl AnimationCurve {
 			return 0.0;
 		}
 
-		// keyframes should (hopefully) have finite, real coordinates
+		// keyframes have finite, real coordinates
 		let index = self.keyframes.binary_search_by(|kf| kf.knot.x.partial_cmp(&time).unwrap_or(std::cmp::Ordering::Equal));
 
 		// We are on a keyframe, use its knot
@@ -75,8 +75,9 @@ impl AnimationCurve {
 
 		let index = index.unwrap_err();
 
+		// Clamp to the first and last knot y-values when x is outside of all keyframes
 		if index == 0 {
-			return 0.0;
+			return self.keyframes[0].knot.y;
 		} else if index == self.keyframes.len() {
 			// unwrap is safe because of the non-empty guard at the top
 			return self.keyframes.last().unwrap().knot.y;
@@ -87,13 +88,20 @@ impl AnimationCurve {
 
 		match segment_start.interp_behavior {
 			InterpolationBehavior::Bezier { right_handle } => {
-				let to_point = |vec: DVec2| Point::new(vec.x, vec.y);
+				let start = segment_start.knot;
+				let end = segment_end.knot;
+				let left_handle = segment_end.left_handle.unwrap_or(end);
+
+				// Clamp the handle x-coordinates of the handles to inside the segment.
+				// This prevents the curve from folding over itself and having multiple values of t where x(t) == time.
+				let right_x = right_handle.x.clamp(start.x, end.x);
+				let left_x = left_handle.x.clamp(right_x, end.x);
 
 				let curve = CubicBez::new(
-					to_point(segment_start.knot),
-					to_point(right_handle),
-					segment_end.left_handle.map(|end| to_point(end)).unwrap_or_else(|| to_point(segment_end.knot)),
-					to_point(segment_end.knot),
+					Point::new(start.x, start.y),
+					Point::new(right_x, right_handle.y),
+					Point::new(left_x, left_handle.y),
+					Point::new(end.x, end.y),
 				);
 
 				// Find the value of t where curve.x == time to find the value
@@ -117,10 +125,28 @@ impl AnimationCurve {
 		&self.keyframes
 	}
 
-	pub fn push_keyframe(&mut self, keyframe: Keyframe) {
-		self.keyframes.push(keyframe);
-		self.keyframes.sort_by(|lhs, rhs| lhs.knot.x.partial_cmp(&rhs.knot.x).unwrap_or(std::cmp::Ordering::Equal));
+	/// Pushes a new keyframe, overwriting one with the same x-value.
+	/// Returns the index of the keyframe.
+	///
+	/// # Panics
+	///
+	/// This method panics if a keyframe with a non-finite x-coordinate is given.
+	pub fn insert_keyframe(&mut self, keyframe: Keyframe) -> usize {
+		assert!(keyframe.knot.x.is_finite(), "Keyframes must have a finite x-coordinate");
+
+		match self.keyframes.binary_search_by(|kf| kf.knot.x.partial_cmp(&keyframe.knot.x).unwrap_or(std::cmp::Ordering::Equal)) {
+			// Overwrite a keyframe with the same x-value
+			Ok(idx) => {
+				self.keyframes[idx] = keyframe;
+				idx
+			}
+			Err(idx) => {
+				self.keyframes.insert(idx, keyframe);
+				idx
+			}
+		}
 	}
+
 	pub fn remove_keyframe(&mut self, idx: usize) -> Option<Keyframe> {
 		if idx >= self.keyframes.len() {
 			return None;
@@ -138,53 +164,53 @@ mod tests {
 		assert_eq!(empty_curve.evaluate(10.0), 0.0);
 
 		let mut single_kf = AnimationCurve::new();
-		single_kf.push_keyframe(Keyframe {
+		single_kf.insert_keyframe(Keyframe {
 			left_handle: None,
 			knot: DVec2::new(1.0, 10.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
-		assert_eq!(single_kf.evaluate(0.0), 0.0);
+		assert_eq!(single_kf.evaluate(0.0), 10.0);
 		assert_eq!(single_kf.evaluate(2.0), 10.0);
 	}
 
 	#[test]
 	pub fn bezier_segment() {
 		let mut anim_curve = AnimationCurve::new();
-		anim_curve.push_keyframe(Keyframe {
+		anim_curve.insert_keyframe(Keyframe {
 			left_handle: None,
 			knot: DVec2::new(0.0, 0.0),
 			interp_behavior: InterpolationBehavior::Bezier { right_handle: DVec2::new(0.5, 0.0) },
 		});
-		anim_curve.push_keyframe(Keyframe {
+		anim_curve.insert_keyframe(Keyframe {
 			left_handle: Some(DVec2::new(0.5, 1.0)),
 			knot: DVec2::new(1.0, 1.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
 
 		assert_eq!(anim_curve.evaluate(0.5), 0.5);
-		assert!(anim_curve.evaluate(0.25) - 0.104 < 0.01);
-		assert!(anim_curve.evaluate(0.75) - 0.896 < 0.01);
+		assert!((anim_curve.evaluate(0.25) - 0.104).abs() < 0.01);
+		assert!((anim_curve.evaluate(0.75) - 0.896).abs() < 0.01);
 	}
 
 	#[test]
 	pub fn simple_segments() {
 		let mut anim_curve = AnimationCurve::new();
-		anim_curve.push_keyframe(Keyframe {
+		anim_curve.insert_keyframe(Keyframe {
 			left_handle: None,
 			knot: DVec2::new(0.0, 0.0),
 			interp_behavior: InterpolationBehavior::Linear,
 		});
-		anim_curve.push_keyframe(Keyframe {
+		anim_curve.insert_keyframe(Keyframe {
 			left_handle: None,
 			knot: DVec2::new(1.0, 1.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
-		anim_curve.push_keyframe(Keyframe {
+		anim_curve.insert_keyframe(Keyframe {
 			left_handle: None,
 			knot: DVec2::new(2.0, 0.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
-		anim_curve.push_keyframe(Keyframe {
+		anim_curve.insert_keyframe(Keyframe {
 			left_handle: None,
 			knot: DVec2::new(3.0, 1.0),
 			interp_behavior: InterpolationBehavior::Constant,
@@ -198,5 +224,28 @@ mod tests {
 	}
 
 	#[test]
-	pub fn constant_segment() {}
+	pub fn constant_segment() {
+		let mut anim_curve = AnimationCurve::new();
+		anim_curve.insert_keyframe(Keyframe {
+			left_handle: None,
+			knot: DVec2::new(0.0, 0.0),
+			interp_behavior: InterpolationBehavior::Constant,
+		});
+		anim_curve.insert_keyframe(Keyframe {
+			left_handle: None,
+			knot: DVec2::new(1.0, 5.0),
+			interp_behavior: InterpolationBehavior::Constant,
+		});
+		anim_curve.insert_keyframe(Keyframe {
+			left_handle: None,
+			knot: DVec2::new(2.0, -3.0),
+			interp_behavior: InterpolationBehavior::Constant,
+		});
+
+		assert_eq!(anim_curve.evaluate(-1.0), 0.0);
+		assert_eq!(anim_curve.evaluate(0.0), 0.0);
+		assert_eq!(anim_curve.evaluate(0.5), 0.0);
+		assert_eq!(anim_curve.evaluate(1.0), 5.0);
+		assert_eq!(anim_curve.evaluate(2.0), -3.0);
+	}
 }

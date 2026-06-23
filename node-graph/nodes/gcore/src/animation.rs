@@ -38,8 +38,8 @@ fn eval_curve(_: impl Ctx, curve: AnimationCurve, time: f64) -> f64 {
 #[node_macro::node(category("Value"))]
 fn animation_curve_value(_: impl Ctx, _primary: ()) -> AnimationCurve {
 	let mut curve = AnimationCurve::new();
-	curve.push_keyframe(Keyframe::new_linear(DVec2::new(0.0, 0.0), None));
-	curve.push_keyframe(Keyframe::new_constant(DVec2::new(1.0, 360.0), None));
+	curve.insert_keyframe(Keyframe::new_linear(DVec2::new(0.0, 0.0), None));
+	curve.insert_keyframe(Keyframe::new_constant(DVec2::new(1.0, 360.0), None));
 
 	curve
 }
