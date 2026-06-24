@@ -16,7 +16,8 @@ use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 use rendering::usvg_utils::extract_graphite_gradient_stops;
-use rendering::usvg_utils::{ParsedSvgGroup, ParsedSvgNode, extract_usvg_node, extract_usvg_path};
+use rendering::usvg_utils::{ParsedSvgNode, extract_usvg_node, extract_usvg_path};
+use rendering::vtracer_utils::convert_to_svg;
 use std::fmt::Debug;
 use std::hash::Hash;
 use vector_types::vector::PointId;
@@ -230,37 +231,14 @@ pub fn mask(
 		.collect()
 }
 
-#[cfg(not(target_family = "wasm"))]
 #[node_macro::node(category("Raster"), path(core_types::vector))]
 pub fn vectorize(_ctx: impl Ctx, image: List<Raster<CPU>>) -> List<Vector> {
-	use visioncortex::PathSimplifyMode;
-	use vtracer::{ColorImage, ColorMode, Config, Hierarchical, convert};
-
 	image
 		.into_iter()
 		.map(|row| {
 			// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let image_data = row.element();
-			let color_image = ColorImage {
-				width: image_data.width() as usize,
-				height: image_data.height() as usize,
-				pixels: image_data.to_flat_u8().0,
-			};
-			let config: Config = Config {
-				color_mode: ColorMode::Color,
-				hierarchical: Hierarchical::Stacked,
-				filter_speckle: 4,
-				color_precision: 6,
-				layer_difference: 16,
-				mode: PathSimplifyMode::Spline,
-				corner_threshold: 60,
-				length_threshold: 4.,
-				max_iterations: 10,
-				splice_threshold: 45,
-				path_precision: Some(6),
-			};
-
-			let vectorized_image = convert(color_image, config).expect("failed to obtain an SvgFile from vtracer.");
+			let vectorized_image = convert_to_svg(&image_data);
 			let image_svg = vectorized_image.to_string();
 			let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
 				Ok(t) => t,

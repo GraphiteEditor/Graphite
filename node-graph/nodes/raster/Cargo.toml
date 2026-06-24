@@ -73,10 +73,6 @@ kurbo = { workspace = true, optional = true }
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-vtracer = { workspace = true }
-visioncortex = { workspace = true }
-
 
 [dev-dependencies]
 tokio = { workspace = true }

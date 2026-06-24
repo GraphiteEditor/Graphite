@@ -2129,7 +2129,7 @@ name = "graphene-cli"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "clap",
+ "clap 4.5.46",
  "document-container",
  "document-format",
  "fern",
@@ -4773,8 +4773,6 @@ dependencies = [
  "tsify",
  "usvg",
  "vector-types",
- "visioncortex",
- "vtracer",
  "wasm-bindgen",
  "wgpu-executor",
 ]
@@ -4958,6 +4956,8 @@ dependencies = [
  "vector-types",
  "vello",
  "vello_encoding",
+ "visioncortex",
+ "vtracer",
 ]
 
 [[package]]

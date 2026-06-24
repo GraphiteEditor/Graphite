@@ -60,8 +60,9 @@ pub fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSprea
 	}
 }
 
-pub fn usvg_color(c: usvg::Color, a: f32) -> Color {
-	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
+fn usvg_color(c: usvg::Color, a: f32) -> Color {
+	// `usvg::Color` channels are u8 sRGB display values (gamma-encoded); lift to linear-light for the internal `Color`
+	Color::from_gamma_srgb_channels(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
 }
 
 pub fn usvg_transform(c: usvg::Transform) -> DAffine2 {

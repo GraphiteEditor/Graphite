@@ -11,7 +11,6 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
 use graphene_std::list::List;
 use graphene_std::renderer::usvg_utils::extract_graphite_gradient_stops;
-use graphene_std::vector::style::Stroke;
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
