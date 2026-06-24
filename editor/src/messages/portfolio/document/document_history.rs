@@ -118,7 +118,11 @@ impl DocumentHistory {
 	/// staged hot ops are retired into durable history by [`retire_storage_interaction`](Self::retire_storage_interaction)
 	/// at undo-step boundaries. Proto-node declaration bytes are persisted into `byte_store` (the
 	/// app-global resource cache). Caller gathers [`SnapshotInputs`] from the live handler first.
-	pub fn stage_snapshot(&mut self, inputs: SnapshotInputs, byte_store: &dyn ResourceStorage) {
+	///
+	/// When `validate` is set (the `validate_storage_round_trip` preference), the staged snapshot is
+	/// round-tripped through `graph-storage` and compared against the runtime; off by default since the
+	/// round-trip is a per-commit perf cost.
+	pub fn stage_snapshot(&mut self, inputs: SnapshotInputs, byte_store: &dyn ResourceStorage, validate: bool) {
 		if self.storage.is_none() {
 			return;
 		}
@@ -158,8 +162,9 @@ impl DocumentHistory {
 			log::error!("Embedding legacy document into working copy failed: {error}");
 		}
 
-		#[cfg(debug_assertions)]
-		self.verify_round_trip(inputs.network, inputs.view, inputs.registry);
+		if validate {
+			self.verify_round_trip(inputs.network, inputs.view, inputs.registry);
+		}
 	}
 
 	/// Move the `Gdd` undo/redo cursor along the retired interaction chain. Flushes any open interaction
@@ -191,41 +196,67 @@ impl DocumentHistory {
 		Some(storage.clone())
 	}
 
-	// ===== Debug-only soak verification =====
+	// ===== Soak round-trip verification (runtime-gated by `validate_storage_round_trip`) =====
 
-	/// Debug-only: stored registry should equal a fresh `from_runtime`, and a `to_runtime` of the
-	/// stored registry should equal the original network. Panics on drift so the dual-write soak
-	/// fails loud in dev (and in tests); release builds skip this entirely and autosave never crashes.
-	#[cfg(debug_assertions)]
+	/// Soak check: the stored registry should equal a fresh `from_runtime`, and a `to_runtime` of the
+	/// stored registry should equal the original network. Logs drift rather than panicking (the soak can
+	/// run in release via the preference, where a crash would be unacceptable); tests still fail loud via
+	/// the `#[cfg(test)]` panics.
 	pub fn verify_round_trip(&self, network: &NodeNetwork, view: &StorageMetadataView, registry: &ResourceRegistry) {
-		use super::document_message_handler::{diff_networks, diff_registries};
+		use super::diff_networks;
+		use super::document_diff::diff_registries;
 
 		let Some(storage) = &self.storage else { return };
 		let peer = storage.session().peer();
 
-		let conversion = Registry::convert_from_runtime(network, view, registry, peer).expect("storage round-trip: from_runtime failed");
+		let conversion = match Registry::convert_from_runtime(network, view, registry, peer) {
+			Ok(conversion) => conversion,
+			Err(error) => {
+				log::error!("storage round-trip: from_runtime failed: {error}");
+				return;
+			}
+		};
 		let target = &conversion.registry;
-		let declarations = conversion.declarations().expect("storage round-trip: declaration rebuild failed");
+		let declarations = match conversion.declarations() {
+			Ok(declarations) => declarations,
+			Err(error) => {
+				log::error!("storage round-trip: declaration rebuild failed: {error}");
+				return;
+			}
+		};
 
 		let stored = storage.registry();
-		assert!(stored.value_equal(target), "storage round-trip: registry value drift after commit\n{}", diff_registries(stored, target));
-		assert!(stored.order_consistent(target), "storage round-trip: timestamp order inconsistent between stored and target");
+		if !stored.value_equal(target) {
+			log::error!("storage round-trip: registry value drift after commit\n{}", diff_registries(stored, target));
+			#[cfg(test)]
+			panic!("storage round-trip: registry value drift after commit");
+		}
+		if !stored.order_consistent(target) {
+			log::error!("storage round-trip: timestamp order inconsistent between stored and target");
+			#[cfg(test)]
+			panic!("storage round-trip: timestamp order inconsistent between stored and target");
+		}
 
-		let (round_tripped, _entries) = stored.to_runtime_with_metadata(&declarations).expect("storage round-trip: to_runtime failed");
-		assert!(
-			&round_tripped == network,
-			"storage round-trip: network drift after to_runtime\n{}",
-			diff_networks(network, &round_tripped)
-		);
+		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(&declarations) {
+			Ok(result) => result,
+			Err(error) => {
+				log::error!("storage round-trip: to_runtime failed: {error}");
+				return;
+			}
+		};
+		if &round_tripped != network {
+			log::error!("storage round-trip: network drift after to_runtime\n{}", diff_networks(network, &round_tripped));
+			#[cfg(test)]
+			panic!("storage round-trip: network drift after to_runtime");
+		}
 	}
 
-	/// Debug-only: after a `Gdd` cursor move, the cursor's registry should equal a fresh `from_runtime`
-	/// of the current (legacy-restored) interface. Logs drift (does not panic) so cursor bugs surface in
-	/// dev without crashing the editor. `current_resources` are the resources the live network references
+	/// Soak check: after a `Gdd` cursor move, the cursor's registry should equal a fresh `from_runtime`
+	/// of the current (legacy-restored) interface. Logs drift (does not panic) so cursor bugs surface
+	/// without crashing the editor. `current_resources` are the resources the live network references
 	/// (history-only resources the cursor dropped are expected, not drift).
-	#[cfg(debug_assertions)]
 	pub fn verify_cursor_matches_runtime(&self, network: &NodeNetwork, view: &StorageMetadataView, registry: &ResourceRegistry, current_resources: &HashSet<ResourceId>) {
-		use super::document_message_handler::diff_registries;
+		use super::document_diff::diff_registries;
 
 		let Some(storage) = &self.storage else { return };
 		let peer = storage.session().peer();

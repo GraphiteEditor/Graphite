@@ -23,6 +23,14 @@ pub struct PreferencesMessageHandler {
 	pub ui_scale: f64,
 	pub max_render_region_size: u32,
 	pub disable_ui_acceleration: bool,
+	/// Dual-write soak validation: when on, every storage commit/open/undo round-trips the document
+	/// through `graph-storage` and compares it against the legacy path, logging any drift. Off by
+	/// default since the per-commit round-trip is a real perf cost; turn it on to debug the `.gdd`
+	/// format during the soak. See [`save_as_gdd`](Self::save_as_gdd).
+	pub validate_storage_round_trip: bool,
+	/// Save documents in the new `.gdd` container format (with the legacy `.graphite` embedded as a
+	/// recovery fallback) instead of a plain `.graphite` file. Off by default while `.gdd` is in soak.
+	pub save_as_gdd: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
 }
@@ -66,6 +74,8 @@ impl Default for PreferencesMessageHandler {
 			ui_scale: UI_SCALE_DEFAULT,
 			max_render_region_size: EditorPreferences::default().max_render_region_size,
 			disable_ui_acceleration: cfg!(target_os = "linux"), // TODO: Set this back to false once we have ui acceleration working more reliably on linux
+			validate_storage_round_trip: false,
+			save_as_gdd: false,
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
@@ -131,6 +141,12 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
 				self.disable_ui_acceleration = disable_ui_acceleration;
+			}
+			PreferencesMessage::ValidateStorageRoundTrip { enabled } => {
+				self.validate_storage_round_trip = enabled;
+			}
+			PreferencesMessage::SaveAsGdd { enabled } => {
+				self.save_as_gdd = enabled;
 			}
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {

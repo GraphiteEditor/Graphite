@@ -36,6 +36,12 @@ pub enum PreferencesMessage {
 	DisableUIAcceleration {
 		disable_ui_acceleration: bool,
 	},
+	ValidateStorageRoundTrip {
+		enabled: bool,
+	},
+	SaveAsGdd {
+		enabled: bool,
+	},
 	#[cfg(target_os = "macos")]
 	VSync {
 		vsync: bool,
