@@ -230,10 +230,12 @@ impl OverlayContext {
 		}
 
 		self.render_context.begin_path();
-		self.render_context.move_to(polygon.last().unwrap().x.round() - 0.5, polygon.last().unwrap().y.round() - 0.5);
+		let last = self.snap_to_physical_pixel_center(*polygon.last().unwrap());
+		self.render_context.move_to(last.x, last.y);
 
 		for point in polygon {
-			self.render_context.line_to(point.x.round() - 0.5, point.y.round() - 0.5);
+			let p = self.snap_to_physical_pixel_center(*point);
+			self.render_context.line_to(p.x, p.y);
 		}
 
 		if let Some(color_fill) = color_fill {
@@ -286,8 +288,8 @@ impl OverlayContext {
 				.ok();
 		}
 
-		let start = start.round() - DVec2::splat(0.5);
-		let end = end.round() - DVec2::splat(0.5);
+		let start = self.snap_to_physical_pixel_center(start);
+		let end = self.snap_to_physical_pixel_center(end);
 
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
@@ -328,7 +330,7 @@ impl OverlayContext {
 		dash_offset: Option<f64>,
 	) {
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let center = center.round();
+		let center = self.snap_to_physical_pixel(center);
 
 		self.start_dpi_aware_transform();
 
@@ -397,7 +399,7 @@ impl OverlayContext {
 		transform: Option<DAffine2>,
 	) {
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let position = position.round();
+		let position = self.snap_to_physical_pixel(position);
 
 		self.start_dpi_aware_transform();
 
@@ -455,7 +457,7 @@ impl OverlayContext {
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.start_dpi_aware_transform();
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 
 		self.render_context.begin_path();
 		self.render_context
@@ -553,7 +555,7 @@ impl OverlayContext {
 	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
 		self.start_dpi_aware_transform();
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 
 		self.render_context.begin_path();
 		self.render_context
@@ -622,7 +624,7 @@ impl OverlayContext {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 		let corner = position - DVec2::splat(size) / 2.;
 
 		self.start_dpi_aware_transform();
@@ -642,7 +644,7 @@ impl OverlayContext {
 		let size = 1.;
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 		let corner = position - DVec2::splat(size) / 2.;
 
 		self.start_dpi_aware_transform();
@@ -727,7 +729,7 @@ impl OverlayContext {
 
 		self.start_dpi_aware_transform();
 
-		let center = compass_center.round() - DVec2::splat(0.5);
+		let center = self.snap_to_physical_pixel_center(compass_center);
 
 		// Save the old line width to restore it later
 		let old_line_width = self.render_context.line_width();
@@ -781,7 +783,7 @@ impl OverlayContext {
 
 	pub fn pivot(&mut self, position: DVec2, angle: f64) {
 		let uv = DVec2::from_angle(angle);
-		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let (x, y) = self.snap_to_physical_pixel_center(position).into();
 
 		self.start_dpi_aware_transform();
 
@@ -816,7 +818,7 @@ impl OverlayContext {
 	}
 
 	pub fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
-		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let (x, y) = self.snap_to_physical_pixel_center(position).into();
 		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW_DULL);
 
 		self.start_dpi_aware_transform();
@@ -941,29 +943,30 @@ impl OverlayContext {
 			};
 
 			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
+			let start_point = self.snap_to_physical_pixel(start_point);
 			self.render_context.move_to(start_point.x, start_point.y);
 
 			for curve in curves {
 				match curve {
 					PathSeg::Line(line) => {
 						let a = transform.transform_point2(point_to_dvec2(line.p1));
-						let a = a.round() - DVec2::splat(0.5);
+						let a = self.snap_to_physical_pixel_center(a);
 						self.render_context.line_to(a.x, a.y);
 					}
 					PathSeg::Quad(quad_bez) => {
 						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
 						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
+						let a = self.snap_to_physical_pixel_center(a);
+						let b = self.snap_to_physical_pixel_center(b);
 						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
 					}
 					PathSeg::Cubic(cubic_bez) => {
 						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
 						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
 						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
-						let c = c.round() - DVec2::splat(0.5);
+						let a = self.snap_to_physical_pixel_center(a);
+						let b = self.snap_to_physical_pixel_center(b);
+						let c = self.snap_to_physical_pixel_center(c);
 						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y);
 					}
 				}
@@ -1109,6 +1112,22 @@ impl OverlayContext {
 			self.line(quad.top_right(), quad.bottom_right(), None, None);
 			self.line(quad.bottom_left(), quad.bottom_right(), None, None);
 		}
+	}
+
+	fn snap_to_physical_pixel(&self, p: DVec2) -> DVec2 {
+		let s = self.viewport.scale();
+		if !s.is_finite() || s <= 0.0 {
+			return p.round();
+		}
+		(p * s).round() / s
+	}
+
+	fn snap_to_physical_pixel_center(&self, p: DVec2) -> DVec2 {
+		let s = self.viewport.scale();
+		if !s.is_finite() || s <= 0.0 {
+			return p.round() - DVec2::splat(0.5);
+		}
+		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)
 	}
 }
 
