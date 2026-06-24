@@ -9,6 +9,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
+use std::sync::Arc;
 use vector_types::GradientStops;
 pub use vector_types::Vector;
 use vector_types::vector::style::Fill;
@@ -223,8 +224,9 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 
 /// Look up the paint graphics stored under attribute for a vector item, normalizing any graphic list type to `List<Graphic>`.
 pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
-	list.attribute::<List<Graphic>>(attribute, index)
-		.map(Cow::Borrowed)
+	list.attribute::<Arc<List<Graphic>>>(attribute, index)
+		.map(|graphics| Cow::Borrowed(graphics.as_ref()))
+		.or_else(|| list.attribute::<List<Graphic>>(attribute, index).map(Cow::Borrowed))
 		.or_else(|| list.attribute::<List<Color>>(attribute, index).map(|c| Cow::Owned(c.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<GradientStops>>(attribute, index).map(|g| Cow::Owned(g.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Vector>>(attribute, index).map(|v| Cow::Owned(v.clone().into_graphic_list())))
@@ -234,10 +236,20 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.filter(|graphic_list| is_paint_present(graphic_list))
 }
 
+/// Look up the paint graphics as shared ownership, avoiding a deep clone when the attribute is already stored as `Arc<List<Graphic>>`.
+pub fn graphic_list_arc_at(list: &List<Vector>, index: usize, attribute: &str) -> Option<Arc<List<Graphic>>> {
+	if let Some(graphics) = list.attribute::<Arc<List<Graphic>>>(attribute, index).filter(|graphics| is_paint_present(graphics)) {
+		return Some(graphics.clone());
+	}
+
+	graphic_list_at(list, index, attribute).map(|graphics| Arc::new(graphics.into_owned()))
+}
+
 /// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
 /// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
+	list.attribute::<Arc<List<Graphic>>>(attribute, index).is_some_and(|paint_list| is_paint_present(paint_list))
+		|| list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
 		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
@@ -348,6 +360,9 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 	}
 
 	for paint_key in [ATTR_FILL, ATTR_STROKE] {
+		if let Some(graphics) = attributes.get_mut::<Arc<List<Graphic>>>(paint_key) {
+			bake_graphic_paint_transform(Arc::make_mut(graphics), transform);
+		}
 		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
 			bake_graphic_paint_transform(graphics, transform);
 		}

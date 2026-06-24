@@ -308,6 +308,21 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 	}
 }
 
+impl<T: TableItemLayout> TableItemLayout for Arc<T> {
+	fn type_name() -> &'static str {
+		T::type_name()
+	}
+	fn identifier(&self) -> String {
+		self.as_ref().identifier()
+	}
+	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
+		self.as_ref().value_widget(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.as_ref().value_page(data)
+	}
+}
+
 impl TableItemLayout for Artboard {
 	fn type_name() -> &'static str {
 		"Artboard"
@@ -955,6 +970,7 @@ macro_rules! known_item_types {
 		$apply!(
 			List<Artboard>,
 			List<Graphic>,
+			Arc<List<Graphic>>,
 			List<Vector>,
 			List<Raster<CPU>>,
 			List<Raster<GPU>>,

@@ -20,6 +20,7 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::sync::Arc;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bbox};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
@@ -138,7 +139,7 @@ where
 			};
 
 			let color = gradient.evaluate(factor);
-			let paint = List::new_from_element(color).into_graphic_list();
+			let paint = Arc::new(List::new_from_element(color).into_graphic_list());
 
 			if fill {
 				vector_list.set_attribute(ATTR_FILL, index, paint.clone());
@@ -204,7 +205,7 @@ async fn fill<V: VectorListIterMut + 'n + Send>(
 		}
 	}
 
-	let fill = fill.into_graphic_list();
+	let fill = Arc::new(fill.into_graphic_list());
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
 			vector_list.set_attribute(ATTR_FILL, index, fill.clone());
@@ -290,7 +291,7 @@ where
 		vector.style.set_stroke(stroke);
 	});
 
-	let paint = paint.into_graphic_list();
+	let paint = Arc::new(paint.into_graphic_list());
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
 			vector_list.set_attribute(ATTR_STROKE, index, paint.clone());
@@ -1266,12 +1267,14 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 				vector.style.clear_stroke();
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
+				fill_attributes.remove::<Arc<List<Graphic>>>(ATTR_STROKE);
 				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
 				Item::from_parts(vector, fill_attributes)
 			});
 
 			let mut stroke_attributes = attributes;
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
+			stroke_attributes.remove::<Arc<List<Graphic>>>(ATTR_FILL);
 			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
 			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
 
@@ -2749,10 +2752,10 @@ async fn morph<I: IntoGraphicList>(
 		.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
 
 	if let Some(fill) = fill_paint {
-		item.set_attribute(ATTR_FILL, fill);
+		item.set_attribute(ATTR_FILL, Arc::new(fill));
 	}
 	if let Some(stroke) = stroke_paint {
-		item.set_attribute(ATTR_STROKE, stroke);
+		item.set_attribute(ATTR_STROKE, Arc::new(stroke));
 	}
 
 	List::new_from_item(item)
