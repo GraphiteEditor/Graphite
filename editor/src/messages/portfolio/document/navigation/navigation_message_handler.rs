@@ -93,6 +93,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				if graph_view_overlay_open {
 					responses.add(NavigationMessage::BeginCanvasPan);
 				} else {
+					responses.add(EventMessage::ToolAbort);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 					HintData(vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
