@@ -1,6 +1,6 @@
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
+use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs, InjectFootprint};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
@@ -24,7 +24,7 @@ pub struct RenderIntermediate {
 
 #[node_macro::node(category(""))]
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
+	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs + InjectFootprint,
 	#[implementations(
 		Context -> List<Artboard>,
 		Context -> List<Graphic>,
@@ -42,7 +42,12 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
+	let logical_footprint = *ctx.footprint();
+	let physical_footprint = Footprint {
+		transform: glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * logical_footprint.transform,
+		..logical_footprint
+	};
+	let ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(physical_footprint).into_context();
 	let data = data.eval(ctx).await;
 
 	let footprint = Footprint::default();
