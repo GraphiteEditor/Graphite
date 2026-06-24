@@ -8,61 +8,15 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_craft::document::{DocumentNodeImplementation, NodeId};
 use graph_storage::{NodeMetadataSource, PeerId};
 
+use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
+use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
 use crate::test_utils::test_prelude::*;
 use graphene_std::vector::style::RenderMode;
-
-/// Result of round-tripping a document through a `Gdd`: the runtime interface rebuilt from the
-/// reopened storage, the reopened registry, and the reopened per-peer view settings (`ui::doc::*`).
-struct RoundTrip {
-	rebuilt: NodeNetworkInterface,
-	registry: graph_storage::Registry,
-	view_settings: std::collections::BTreeMap<String, serde_json::Value>,
-}
-
-/// Push `document`'s current runtime state through a fresh in-memory `Gdd` and reopen it. The commit
-/// goes through `commit_from_runtime` (the real autosave path: stage hot ops → retire → persist);
-/// the reopen reads the working copy back from the same container bytes, so the whole codec / file
-/// / replay pipeline is exercised, not just the in-memory conversion.
-async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundTrip {
-	let byte_store = HashMapResourceStorage::new();
-
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
-
-	let network = document.network_interface.document_network().clone();
-	let view = StorageMetadataView::new(&document.network_interface);
-	gdd.commit_from_runtime(&network, &view, &document.resources.registry, &byte_store).expect("commit_from_runtime");
-
-	// Per-peer view settings persist in session.json, separate from the registry commit.
-	let view_settings = DocumentSettings {
-		document_ptz: &document.document_ptz,
-		render_mode: &document.render_mode,
-		overlays_visibility: &document.overlays_visibility_settings,
-		rulers_visible: document.rulers_visible,
-		snapping_state: &document.snapping_state,
-		collapsed: &document.collapsed,
-	}
-	.to_view_map();
-	gdd.set_view_settings(view_settings).expect("set_view_settings");
-
-	let (working, layout) = gdd.into_storage();
-	let reopened = GddV1::open_in(working, layout).await.expect("open_in");
-	let declarations = reopened.declarations(&byte_store).await;
-	let registry = reopened.registry().clone();
-	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata");
-	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage");
-	let view_settings = reopened.view_settings().clone();
-
-	RoundTrip { rebuilt, registry, view_settings }
-}
 
 /// Every node addressable in `original` resolves identically through the round-tripped interface:
 /// the compute graph itself, then per-node positions, layer flags, names, locked/pinned.
@@ -88,24 +42,6 @@ fn assert_documents_match(original: &NodeNetworkInterface, round_trip: &RoundTri
 		assert_eq!(rebuilt_view.locked(&network_path, local_id), original_view.locked(&network_path, local_id), "locked: {at}");
 		assert_eq!(rebuilt_view.pinned(&network_path, local_id), original_view.pinned(&network_path, local_id), "pinned: {at}");
 	}
-}
-
-/// Walk every node in every nested network, collecting `(network_path, local_id)` pairs.
-fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)> {
-	fn walk(interface: &NodeNetworkInterface, path: Vec<NodeId>, out: &mut Vec<(Vec<NodeId>, NodeId)>) {
-		let Some(network) = interface.nested_network(&path) else { return };
-		for (&local_id, node) in &network.nodes {
-			out.push((path.clone(), local_id));
-			if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
-				let mut child = path.clone();
-				child.push(local_id);
-				walk(interface, child, out);
-			}
-		}
-	}
-	let mut out = Vec::new();
-	walk(interface, Vec::new(), &mut out);
-	out
 }
 
 #[tokio::test]
@@ -195,7 +131,7 @@ async fn recommit_after_open_is_stable() {
 	assert!(
 		round_trip.registry.value_equal(&reconverted.registry),
 		"re-converting the reopened runtime drifted from the reopened registry (network/node IDs not stable across to_runtime -> from_runtime)\n{}",
-		crate::messages::portfolio::document::document_message_handler::diff_registries(&round_trip.registry, &reconverted.registry)
+		crate::messages::portfolio::document::document_diff::diff_registries(&round_trip.registry, &reconverted.registry)
 	);
 }
 
@@ -248,7 +184,7 @@ async fn edit_after_open_commits_cleanly() {
 	// debug — panicking on any drift). Initial commit after open, then a deletion, then commit again.
 	// Deletion (not addition) is the trigger: it emits a `RemoveNode` whose retire/reverse is where
 	// "Target node does not exist" surfaced live.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	let layer = editor.active_document().metadata().all_layers().next().expect("at least one layer");
 	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
@@ -401,7 +337,7 @@ async fn live_undo_shadows_storage_cursor() {
 
 	let byte_store = mount_in_memory_storage(&mut editor).await;
 	// Capture the loaded state as the base interaction, then make a real edit (fires CommitTransaction).
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let before_edit = editor.active_document().network_interface.document_network().clone();
 	editor.draw_ellipse(50., 50., 150., 150.).await;
 	assert_ne!(&before_edit, editor.active_document().network_interface.document_network(), "edit should change the network");
@@ -458,7 +394,7 @@ async fn gdd_archive_round_trips_view_settings() {
 	let mut ptz = crate::messages::portfolio::document::utility_types::misc::PTZ::default();
 	ptz.pan = glam::DVec2::new(-960., -540.);
 	ptz.set_zoom(0.459);
-	let view_settings = std::collections::BTreeMap::from([(doc::PTZ.to_string(), serde_json::to_value(&ptz).unwrap())]);
+	let view_settings = std::collections::BTreeMap::from([(doc::PTZ.to_string(), serde_json::to_value(ptz).unwrap())]);
 	gdd.set_view_settings(view_settings).expect("set_view_settings");
 
 	// Export to an in-memory archive, then reopen it from bytes into a fresh container.
@@ -473,7 +409,7 @@ async fn gdd_archive_round_trips_view_settings() {
 
 	assert_eq!(
 		reopened.view_settings().get(doc::PTZ),
-		Some(&serde_json::to_value(&ptz).unwrap()),
+		Some(&serde_json::to_value(ptz).unwrap()),
 		"the document PTZ must survive a .gdd archive export/open (session.json travels in the archive)"
 	);
 }
@@ -515,7 +451,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 
 	// The registry must NOT carry the node-graph nav (it's per-peer, not document content).
 	let root_network = gdd.registry().networks.get(&graph_storage::ROOT_NETWORK).expect("root network in registry");
-	assert!(root_network.attributes.get(network::NAV_PTZ).is_none(), "node-graph nav must not be stored in the registry attributes");
+	assert!(!root_network.attributes.contains_key(network::NAV_PTZ), "node-graph nav must not be stored in the registry attributes");
 
 	// Reopen, rebuild the interface, and apply the persisted per-network view state.
 	let (working, layout) = gdd.into_storage();
@@ -544,7 +480,7 @@ async fn live_undo_new_document_draw_rect() {
 
 	let byte_store = mount_in_memory_storage(&mut editor).await;
 	// Mount-time snapshot: capture the new-document graph as the base interaction.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	let before_rect = editor.active_document().network_interface.document_network().clone();
 	editor.draw_rect(0., 0., 100., 100.).await;
@@ -603,7 +539,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor).await;
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	let image = Image::new(2, 2, Color::WHITE);
 	editor
@@ -646,7 +582,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	editor.new_document().await;
 
 	let byte_store = mount_in_memory_storage(&mut editor).await;
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let base = editor.active_document().network_interface.document_network().clone();
 
 	editor.draw_rect(0., 0., 100., 100.).await;
@@ -676,7 +612,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	// naive snapshot would re-detect it as a new `AddResource` and retire it as a phantom interaction, which
 	// would knock the cursor out of lockstep on the next undo. Scoping the snapshot to network-referenced
 	// resources must keep this a no-op.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	// Second undo: removes the rectangle, back to the loaded base. The cursor must step a second interaction
 	// and land on the base, not one interaction short (paste resource resurfaced as a phantom interaction).
@@ -758,7 +694,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let byte_store = mount_in_memory_storage(&mut editor).await;
 
 	// First autosave: captures the loaded document. `verify_storage_round_trip` panics on drift.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let history_after_open = editor.active_document().storage().unwrap().session().history().count();
 
 	// Snapshot the network, then make a real modification.
@@ -768,7 +704,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
 	// Second autosave: again verifies the round-trip, and the edit must produce new retired history.
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
 		history_after_edit > history_after_open,
@@ -781,5 +717,5 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	assert_eq!(after_undo, before_edit, "undo should restore the pre-edit network");
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
-	editor.active_document_mut().commit_storage_snapshot(&byte_store);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 }

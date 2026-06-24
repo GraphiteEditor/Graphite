@@ -303,6 +303,61 @@ impl PreferencesDialogMessageHandler {
 			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool]);
 		}
 
+		// =========
+		// DOCUMENTS
+		// =========
+		{
+			let header = vec![TextLabel::new("Documents").italic(true).widget_instance()];
+
+			let save_as_gdd_description = "
+				Save documents in the new .gdd container format (with the legacy .graphite file embedded as a recovery fallback) instead of a plain .graphite file. The .gdd format is still being validated, so this is opt-in for now.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let save_as_gdd_checkbox_id = CheckboxId::new();
+			let save_as_gdd = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.save_as_gdd)
+					.tooltip_label("Save as .gdd")
+					.tooltip_description(save_as_gdd_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::SaveAsGdd { enabled: checkbox_input.checked }.into())
+					.for_label(save_as_gdd_checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Save as .gdd")
+					.tooltip_label("Save as .gdd")
+					.tooltip_description(save_as_gdd_description)
+					.for_checkbox(save_as_gdd_checkbox_id)
+					.widget_instance(),
+			];
+
+			let validate_description = "
+				Validate every document save, open, and undo by round-tripping it through the .gdd storage format and comparing against the legacy path, logging any mismatch. Useful for debugging the .gdd format during its soak, but the per-edit round-trip has a performance cost.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let validate_checkbox_id = CheckboxId::new();
+			let validate_storage_round_trip = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.validate_storage_round_trip)
+					.tooltip_label("Validate Storage Round-Trip")
+					.tooltip_description(validate_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::ValidateStorageRoundTrip { enabled: checkbox_input.checked }.into())
+					.for_label(validate_checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Validate Storage Round-Trip")
+					.tooltip_label("Validate Storage Round-Trip")
+					.tooltip_description(validate_description)
+					.for_checkbox(validate_checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, save_as_gdd, validate_storage_round_trip]);
+		}
+
 		// =============
 		// COMPATIBILITY
 		// =============

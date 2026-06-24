@@ -1,47 +1,19 @@
-//! Conversion-level round-trip tests for the [`storage_metadata`](super::utility_types::network_interface::storage_metadata)
+//! Conversion-level round-trip tests for the [`storage_metadata`](crate::messages::portfolio::document::utility_types::network_interface::storage_metadata)
 //! bridge: drive a demo `.graphite` document through `Registry` (and back through
 //! `build_interface_from_storage`) without an actual save/reopen, asserting the editor's `ui::*`
 //! metadata survives the conversion. The end-to-end save/reopen pipeline is covered separately in
-//! [`storage_round_trip_tests`](super::storage_round_trip_tests).
+//! [`round_trip_tests`](super::round_trip_tests).
 
 use std::collections::HashMap;
 
 use graph_storage::{NodeMetadataSource, PeerId, Registry};
 
+use super::test_support::{load_demo, node_paths};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use graph_craft::document::NodeId;
 use graphene_std::vector::style::RenderMode;
-
-/// Load a demo `.graphite` straight into a `DocumentMessageHandler` for inspection.
-fn load_demo(file_name: &str) -> DocumentMessageHandler {
-	let path = format!("../demo-artwork/{file_name}");
-	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
-	DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"))
-}
-
-/// Walk every node in every nested network and collect `(network_path, local_id)` pairs so the
-/// test can iterate every node addressable from the metadata side.
-fn collect_all_node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)> {
-	fn walk(interface: &NodeNetworkInterface, path: Vec<NodeId>, out: &mut Vec<(Vec<NodeId>, NodeId)>) {
-		let Some(network) = interface.nested_network(&path) else { return };
-		for (&local_id, node) in &network.nodes {
-			out.push((path.clone(), local_id));
-
-			if matches!(&node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)) {
-				let mut child = path.clone();
-				child.push(local_id);
-				walk(interface, child, out);
-			}
-		}
-	}
-
-	let mut out = Vec::new();
-	walk(interface, Vec::new(), &mut out);
-	out
-}
 
 /// Loads a demo artwork, round-trips its `NodeNetwork + NodeNetworkInterface metadata` through
 /// `Registry`, and asserts every node's `ui::*` attributes survive unchanged.
@@ -68,7 +40,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let mut checked_any_layer = false;
 	let mut checked_any_input_metadata = false;
 
-	for (network_path, local_id) in collect_all_node_paths(interface) {
+	for (network_path, local_id) in node_paths(interface) {
 		let expected_position = source.position(&network_path, local_id);
 		let expected_is_layer = source.is_layer(&network_path, local_id);
 		let expected_display = source.display_name(&network_path, local_id).map(str::to_owned);
@@ -195,7 +167,7 @@ fn editor_interface_rebuild_round_trip() {
 	// Every node the original carried must also resolve identically through the rebuilt view.
 	// Iterating over the *rebuilt* interface verifies that the rebuild covered every node, not
 	// just the ones the entries vec mentioned.
-	for (network_path, local_id) in collect_all_node_paths(&rebuilt) {
+	for (network_path, local_id) in node_paths(&rebuilt) {
 		assert_eq!(
 			rebuilt_view.position(&network_path, local_id),
 			original_view.position(&network_path, local_id),
@@ -264,7 +236,7 @@ fn editor_interface_rebuild_round_trip() {
 	}
 
 	// Symmetric: every node in the original must also exist in the rebuilt interface.
-	for (network_path, local_id) in collect_all_node_paths(original) {
+	for (network_path, local_id) in node_paths(original) {
 		assert!(
 			rebuilt.nested_network(&network_path).and_then(|n| n.nodes.get(&local_id)).is_some(),
 			"original node {local_id:?} in network {network_path:?} missing after rebuild"
@@ -275,7 +247,7 @@ fn editor_interface_rebuild_round_trip() {
 	// `reference` in the rebuilt interface. Node-graph nav + previewing are per-peer view state that
 	// lives in `session.json`, not the registry, so they're not round-tripped here.
 	let mut network_paths_to_check: Vec<Vec<NodeId>> = vec![Vec::new()];
-	for (network_path, local_id) in collect_all_node_paths(original) {
+	for (network_path, local_id) in node_paths(original) {
 		let mut child = network_path.clone();
 		child.push(local_id);
 		if original.nested_network(&child).is_some() {
