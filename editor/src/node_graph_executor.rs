@@ -15,8 +15,8 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Gradient, GradientAppearance};
-use graphene_std::{ATTR_TRANSFORM, Context, Graphic, NodeInputDecleration};
+use graphene_std::vector::style::Gradient;
+use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -582,19 +582,10 @@ impl NodeGraphExecutor {
 			(Some((bounding_box, item_transform)), Some(gradient)) => {
 				let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 				let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-				let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientAppearanceInput::INDEX);
-				document.network_interface.set_input(
-					&input,
-					NodeInput::value(
-						TaggedValue::GradientAppearance(GradientAppearance {
-							transform: Some(gradient_transform),
-							gradient_type: gradient.gradient_type,
-							spread_method: gradient.spread_method,
-						}),
-						false,
-					),
-					&[],
-				);
+				let input = InputConnector::node(fill_node_id, 6);
+				document
+					.network_interface
+					.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &[]);
 			}
 			_ => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving its transform unbaked"),
 		}
