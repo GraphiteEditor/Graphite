@@ -21,7 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_arc_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1606,11 +1606,11 @@ impl Render for List<Vector> {
 				if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 					e.insert(Arc::new(source.clone()));
 
-					if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
-						metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.into_owned()));
+					if let Some(fill_graphic) = graphic_list_arc_at(self, index, ATTR_FILL) {
+						metadata.fill_attributes.insert(element_id, fill_graphic);
 					}
-					if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
-						metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.into_owned()));
+					if let Some(stroke_graphic) = graphic_list_arc_at(self, index, ATTR_STROKE) {
+						metadata.stroke_attributes.insert(element_id, stroke_graphic);
 					}
 				}
 
