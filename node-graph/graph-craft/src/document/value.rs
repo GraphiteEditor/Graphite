@@ -404,7 +404,6 @@ tagged_value! {
 	DAffine2(DAffine2),
 	OptionalDAffine2(Option<DAffine2>),
 	FillGradient(Gradient),
-	GradientAppearance(vector::style::GradientAppearance),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),

@@ -16,9 +16,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{
-	Fill, FillChoice, FillChoiceUI, Gradient, GradientAppearance, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, initial_gradient_transform_for_bbox,
-};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, initial_gradient_transform_for_bbox};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -364,15 +362,18 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		if let Some(fill_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
 			let fill_node = network_interface.document_network().nodes.get(&fill_id)?;
 
-			let GradientAppearance {
-				transform,
-				gradient_type,
-				spread_method,
-			} = match fill_node.inputs.get(graphene_std::vector::fill::GradientAppearanceInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientAppearance(appearance)) => appearance,
-				_ => GradientAppearance::default(),
+			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientType(value)) => value,
+				_ => GradientType::default(),
 			};
-			let transform = transform.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer)));
+			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+				_ => GradientSpreadMethod::default(),
+			};
+			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer))),
+				_ => DAffine2::IDENTITY,
+			};
 
 			return Some(Gradient {
 				stops,
@@ -388,13 +389,12 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 
 		// Then, try to construct a gradient out of a chain, which is directly connected to a Fill node or a layer
 		let chain_state = read_gradient_chain_state(layer, network_interface);
-		let transform = chain_state.transform.unwrap_or(DAffine2::IDENTITY);
 		Some(Gradient {
 			stops,
 			gradient_type: chain_state.gradient_type,
 			spread_method: chain_state.spread_method,
-			start: transform.transform_point2(DVec2::ZERO),
-			end: transform.transform_point2(DVec2::X),
+			start: chain_state.transform.transform_point2(DVec2::ZERO),
+			end: chain_state.transform.transform_point2(DVec2::X),
 			// TODO: Eventually remove this document upgrade code
 			absolute: true,
 			transform: DAffine2::IDENTITY,
@@ -404,9 +404,16 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	}
 }
 
+#[derive(Clone, Copy, Debug)]
+struct GradientChainState {
+	transform: DAffine2,
+	gradient_type: GradientType,
+	spread_method: GradientSpreadMethod,
+}
+
 /// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
 /// 'Transform' nodes. Type and spread method come from the closest-to-layer node of each kind, or the type default.
-fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientAppearance {
+fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientChainState {
 	let target_input = gradient_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
@@ -446,8 +453,8 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	// Iteration order [T_n, ..., T_1] is the matrix-product order, so the fold yields T_n * ... * T_1
 	let composed_transform = transforms_downstream_to_upstream.into_iter().fold(DAffine2::IDENTITY, |acc, matrix| acc * matrix);
 
-	GradientAppearance {
-		transform: Some(composed_transform),
+	GradientChainState {
+		transform: composed_transform,
 		gradient_type: gradient_type.unwrap_or_default(),
 		spread_method: spread_method.unwrap_or_default(),
 	}
@@ -1955,8 +1962,9 @@ mod test_gradient {
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
+	use graphene_std::vector::GradientType;
 	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
-	use graphene_std::vector::{GradientAppearance, GradientStop, GradientStops, fill};
+	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
 	use super::gradient_space_transform;
 
@@ -1975,15 +1983,20 @@ mod test_gradient {
 					_ => return None,
 				};
 
-				let GradientAppearance {
-					transform,
-					gradient_type,
-					spread_method,
-				} = match fill_node.inputs.get(fill::GradientAppearanceInput::INDEX).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::GradientAppearance(appearance)) => appearance,
-					_ => GradientAppearance::default(),
+				let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::GradientType(value)) => value,
+					_ => GradientType::default(),
 				};
-				let local_transform = transform.unwrap_or(DAffine2::IDENTITY);
+
+				let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+					_ => GradientSpreadMethod::default(),
+				};
+
+				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::OptionalDAffine2(Some(value))) => value,
+					_ => DAffine2::IDENTITY,
+				};
 
 				let gradient = Gradient {
 					stops,
