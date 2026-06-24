@@ -333,6 +333,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::RemoveArtboards => {
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::RemoveArtboards);
 			}
 			DocumentMessage::ClearLayersPanel => {
