@@ -36,7 +36,7 @@ use graphene_std::vector::style::{
 	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 	initial_gradient_transform_for_bbox,
 };
-use graphene_std::vector::{GradientAppearance, QRCodeErrorCorrectionLevel, VectorModification};
+use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -2437,7 +2437,6 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient_type: GradientType,
 			spread_method: GradientSpreadMethod,
 			transform: DAffine2,
-			stored_transform: Option<DAffine2>,
 		},
 		Other,
 	}
@@ -2477,23 +2476,25 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Some(ty) if ty == &concrete!(List<GradientStops>) => {
 			let gradient = get_gradient_stops(layer, context.network_interface).unwrap_or_default();
 			if let Ok(document_node) = get_document_node(node_id, context) {
-				let GradientAppearance {
-					transform: stored_transform,
-					gradient_type,
-					spread_method,
-				} = match document_node.inputs[GradientAppearanceInput::INDEX].as_value() {
-					Some(&TaggedValue::GradientAppearance(appearance)) => appearance,
-					_ => GradientAppearance::default(),
+				let gradient_type = match document_node.inputs[GradientTypeInput::INDEX].as_value() {
+					Some(&TaggedValue::GradientType(value)) => value,
+					_ => GradientType::default(),
 				};
-
-				let transform = stored_transform.unwrap_or_else(|| initial_gradient_transform_for_bbox(context.network_interface.document_metadata().nonzero_bounding_box(layer)));
-
+				let spread_method = match document_node.inputs[SpreadMethodInput::INDEX].as_value() {
+					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+					_ => GradientSpreadMethod::default(),
+				};
+				let transform = match document_node.inputs[TransformInput::INDEX].as_value() {
+					Some(&TaggedValue::OptionalDAffine2(value)) => {
+						value.unwrap_or_else(|| initial_gradient_transform_for_bbox(context.network_interface.document_metadata().nonzero_bounding_box(layer)))
+					}
+					_ => DAffine2::IDENTITY,
+				};
 				ResolvedFill::Gradient {
 					gradient,
 					gradient_type,
 					spread_method,
 					transform,
-					stored_transform,
 				}
 			} else {
 				ResolvedFill::Other
@@ -2629,30 +2630,19 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		gradient_type,
 		spread_method,
 		transform,
-		stored_transform,
 		..
 	} = fill.clone()
 	{
-		let current_appearance = GradientAppearance {
-			gradient_type,
-			spread_method,
-			transform: stored_transform,
-		};
-
 		// Linear/Radial radio: blank assist (the "Reverse Direction" button has been moved down to the spread method row)
 		let mut row = vec![TextLabel::new("").widget_instance()];
 		add_blank_assist(&mut row);
 
 		let entries = [GradientType::Linear, GradientType::Radial]
 			.iter()
-			.map(|&gradient_type| {
-				RadioEntryData::new(format!("{:?}", gradient_type))
-					.label(format!("{:?}", gradient_type))
-					.on_update(update_value(
-						move |_| TaggedValue::GradientAppearance(GradientAppearance { gradient_type, ..current_appearance }),
-						node_id,
-						GradientAppearanceInput::INDEX,
-					))
+			.map(|&grad_type| {
+				RadioEntryData::new(format!("{:?}", grad_type))
+					.label(format!("{:?}", grad_type))
+					.on_update(update_value(move |_| TaggedValue::GradientType(grad_type), node_id, GradientTypeInput::INDEX))
 					.on_commit(commit_value)
 			})
 			.collect();
@@ -2680,16 +2670,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			} else {
 				"Swap the start and end points of the gradient line."
 			})
-			.on_update(update_value(
-				move |_| {
-					TaggedValue::GradientAppearance(GradientAppearance {
-						transform: Some(new_transform),
-						..current_appearance
-					})
-				},
-				node_id,
-				GradientAppearanceInput::INDEX,
-			))
+			.on_update(update_value(move |_| TaggedValue::OptionalDAffine2(Some(new_transform)), node_id, TransformInput::INDEX))
 			.widget_instance();
 		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		spread_methods_row.push(reverse_direction_button);
@@ -2699,11 +2680,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.map(|&spread_method| {
 				RadioEntryData::new(format!("{:?}", spread_method))
 					.label(format!("{:?}", spread_method))
-					.on_update(update_value(
-						move |_| TaggedValue::GradientAppearance(GradientAppearance { spread_method, ..current_appearance }),
-						node_id,
-						GradientAppearanceInput::INDEX,
-					))
+					.on_update(update_value(move |_| TaggedValue::GradientSpreadMethod(spread_method), node_id, SpreadMethodInput::INDEX))
 					.on_commit(commit_value)
 			})
 			.collect();
