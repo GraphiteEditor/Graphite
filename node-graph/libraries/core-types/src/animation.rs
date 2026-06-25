@@ -5,6 +5,7 @@ use dyn_any::DynAny;
 use glam::DVec2;
 use graphene_hash::CacheHash;
 use kurbo::{CubicBez, ParamCurve, Point};
+use serde::Deserialize;
 
 // Every keyframe defines a left handle point for any bezier easings to the left,
 // and info defining the behavior to the right hand side of the keyframe
@@ -51,6 +52,7 @@ pub enum InterpolationBehavior {
 #[derive(Default, Debug, Clone, PartialEq, DynAny, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AnimationCurve {
+	#[serde(deserialize_with = "deserialize_keyframes")]
 	keyframes: Vec<Keyframe>, // not public to maintain sorted order
 }
 
@@ -104,8 +106,7 @@ impl AnimationCurve {
 				);
 
 				// Find the value of t where curve.x == time to find the value
-				//TODO: find proper values for epsilon and k1. The docs suggest 0.2 for k1 but epsilon should be tested with several values
-				let t = kurbo::common::solve_itp(|t| curve.eval(t).x - time, 0.0, 1.0, 0.00001, 1, 0.2, segment_start.knot.x - time, segment_end.knot.x - time);
+				let t = kurbo::common::solve_itp(|t| curve.eval(t).x - time, 0.0, 1.0, 1e-7, 1, 0.2, segment_start.knot.x - time, segment_end.knot.x - time);
 
 				curve.eval(t).y
 			}
@@ -152,6 +153,22 @@ impl AnimationCurve {
 		}
 		Some(self.keyframes.remove(idx))
 	}
+}
+
+/// Deserialize a list of keyframes, ensuring they meet all evaluate preconditions
+fn deserialize_keyframes<'de, D>(deserializer: D) -> Result<Vec<Keyframe>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let raw_keyframes = <Vec<Keyframe>>::deserialize(deserializer)?;
+	let mut temp_curve = AnimationCurve::new();
+	// use the existing logic for pushing keyframes to ensure the curve is valid
+	for kf in raw_keyframes {
+		if kf.knot.x.is_finite() {
+			temp_curve.insert_keyframe(kf);
+		}
+	}
+	Ok(temp_curve.keyframes)
 }
 
 #[cfg(test)]
