@@ -80,9 +80,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
-			GraphOperationMessage::StrokeSet { layer, stroke } => {
+			GraphOperationMessage::StrokeSet { layer, color, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.stroke_set(stroke);
+					modify_inputs.stroke_set(color, stroke);
 				}
 			}
 			GraphOperationMessage::TransformChange {
@@ -762,27 +762,29 @@ fn set_import_child_positions(
 
 fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
 	if let usvg::Paint::Color(color) = &stroke.paint() {
-		modify_inputs.stroke_set(Stroke {
-			color: Some(usvg_color(*color, stroke.opacity().get())),
-			weight: stroke.width().get() as f64,
-			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
-			dash_offset: stroke.dashoffset() as f64,
-			cap: match stroke.linecap() {
-				usvg::LineCap::Butt => StrokeCap::Butt,
-				usvg::LineCap::Round => StrokeCap::Round,
-				usvg::LineCap::Square => StrokeCap::Square,
+		modify_inputs.stroke_set(
+			Some(usvg_color(*color, stroke.opacity().get())),
+			Stroke {
+				weight: stroke.width().get() as f64,
+				dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
+				dash_offset: stroke.dashoffset() as f64,
+				cap: match stroke.linecap() {
+					usvg::LineCap::Butt => StrokeCap::Butt,
+					usvg::LineCap::Round => StrokeCap::Round,
+					usvg::LineCap::Square => StrokeCap::Square,
+				},
+				join: match stroke.linejoin() {
+					usvg::LineJoin::Miter => StrokeJoin::Miter,
+					usvg::LineJoin::MiterClip => StrokeJoin::Miter,
+					usvg::LineJoin::Round => StrokeJoin::Round,
+					usvg::LineJoin::Bevel => StrokeJoin::Bevel,
+				},
+				join_miter_limit: stroke.miterlimit().get() as f64,
+				align: StrokeAlign::Center,
+				paint_order: PaintOrder::StrokeAbove,
+				transform,
 			},
-			join: match stroke.linejoin() {
-				usvg::LineJoin::Miter => StrokeJoin::Miter,
-				usvg::LineJoin::MiterClip => StrokeJoin::Miter,
-				usvg::LineJoin::Round => StrokeJoin::Round,
-				usvg::LineJoin::Bevel => StrokeJoin::Bevel,
-			},
-			join_miter_limit: stroke.miterlimit().get() as f64,
-			align: StrokeAlign::Center,
-			paint_order: PaintOrder::StrokeAbove,
-			transform,
-		})
+		)
 	}
 }
 

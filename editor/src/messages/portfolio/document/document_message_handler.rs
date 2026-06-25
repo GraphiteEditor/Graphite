@@ -2533,7 +2533,7 @@ impl DocumentMessageHandler {
 			let stroke_visible = if let Some(list) = stroke_graphic_list {
 				list.element(0).is_some_and(|g| !g.is_fully_transparent())
 			} else {
-				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
+				false
 			};
 			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
 

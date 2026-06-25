@@ -273,7 +273,6 @@ where
 
 	let stroke = Stroke {
 		// Not using Stroke struct's color any more, the field will be cleaned up soon after the full migration to `ATTR_STROKE`.
-		color: None,
 		weight,
 		dash_lengths,
 		dash_offset,

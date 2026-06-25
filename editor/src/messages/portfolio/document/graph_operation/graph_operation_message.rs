@@ -54,6 +54,7 @@ pub enum GraphOperationMessage {
 	},
 	StrokeSet {
 		layer: LayerNodeIdentifier,
+		color: Option<Color>,
 		stroke: Stroke,
 	},
 	TransformChange {

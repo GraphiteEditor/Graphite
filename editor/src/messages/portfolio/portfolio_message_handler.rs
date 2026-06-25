@@ -1132,8 +1132,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
 						responses.add(GraphOperationMessage::FillSet { layer, fill });
 
-						let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
-						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+						let color = Some(Color::BLACK);
+						let stroke = graphene_std::vector::style::Stroke::new(DEFAULT_STROKE_WIDTH);
+						responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 
 						// Create new point ids and add those into the existing Vector path
 						let mut points_map = HashMap::new();

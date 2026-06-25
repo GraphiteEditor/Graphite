@@ -446,15 +446,6 @@ impl TableItemLayout for Vector {
 				}
 
 				if let Some(stroke) = self.style.stroke.clone() {
-					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
-					table_rows.push(vec![
-						TextLabel::new("Stroke").narrow(true).widget_instance(),
-						ColorInput::new(FillChoiceUI::from(&color))
-							.disabled(true)
-							.menu_direction(Some(MenuDirection::Top))
-							.narrow(true)
-							.widget_instance(),
-					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
 						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),
