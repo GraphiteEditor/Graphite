@@ -28,7 +28,7 @@ pub enum AnimationTimeMode {
 	FrameNumber,
 }
 
-/// Evaluate the value of an animation curve with the given time
+/// Evaluate the value of an animation curve
 #[node_macro::node(category("Animation"))]
 fn eval_curve(_: impl Ctx, curve: AnimationCurve, time: f64) -> f64 {
 	curve.evaluate(time)
