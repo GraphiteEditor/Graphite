@@ -118,7 +118,7 @@ impl Fsm for NavigateToolFsmState {
 			}
 			NavigateToolMessage::PointerMove { snap } => {
 				if self == NavigateToolFsmState::ZoomOrClickZooming {
-					responses.add_front(NavigationMessage::BeginCanvasZoom);
+					responses.add_front(NavigationMessage::BeginCanvasZoom { document_ptz_override: false });
 					NavigateToolFsmState::Zooming
 				} else {
 					responses.add_front(NavigationMessage::PointerMove { snap });
