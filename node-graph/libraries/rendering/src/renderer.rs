@@ -14,8 +14,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
-	ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -396,14 +396,12 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
-	// TODO: Eventually remove this document upgrade code
-	let legacy_bounding_box: bool = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_LEGACY, 0);
 
 	let mut peniko_stops = peniko::ColorStops::new();
 	for (position, color, _) in stops.interpolated_samples() {
@@ -413,20 +411,8 @@ fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_tran
 		});
 	}
 
-	// TODO: Eventually remove this document upgrade code
-	// Legacy bounding-box gradients reproduce the pre-#4241 renderer: literal endpoints in the layer's own space, with the
-	// parent transform applied as the brush so its shear bends the bands. New gradients use the unit gradient placed by the desheared frame.
-	let (start, end, gradient_to_device) = if legacy_bounding_box {
-		let inverse_parent_transform = if transform_is_invertible(*parent_transform) {
-			parent_transform.inverse()
-		} else {
-			Default::default()
-		};
-		let mod_points = inverse_parent_transform * *multiplied_transform * gradient_transform;
-		(mod_points.transform_point2(DVec2::ZERO), mod_points.transform_point2(DVec2::X), *parent_transform)
-	} else {
-		(DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type))
-	};
+	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
+	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
@@ -1375,7 +1361,7 @@ impl Render for List<Vector> {
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
 						Graphic::Gradient(list) => {
-							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &parent_transform, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
 
@@ -1457,7 +1443,7 @@ impl Render for List<Vector> {
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 						}
 						Graphic::Gradient(list) => {
-							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &parent_transform, &multiplied_transform) else {
+							let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(list, &multiplied_transform) else {
 								continue;
 							};
 							let inverse_element_transform = if transform_is_invertible(element_transform) {

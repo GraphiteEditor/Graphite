@@ -29,7 +29,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "rustc",
 			args: &["--print", "target-libdir", "--target", "wasm32-unknown-unknown"],
 			check: Check::Matches(&|out| std::path::Path::new(out.trim()).is_dir()),
-			name: "Rust (Wasm Target)",
+			name: "Rust - Wasm Target",
 			install: "rustup target add wasm32-unknown-unknown".into(),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()

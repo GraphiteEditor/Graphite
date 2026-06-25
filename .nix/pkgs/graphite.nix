@@ -109,7 +109,7 @@ deps.crane.lib.buildPackage (
     '';
 
     preBuild = ''
-      # Prevent `package-installer.js` from trying to update npm dependencies
+      # Prevent `cargo-run`'s frontend setup from trying to update npm dependencies
       touch -r frontend/package-lock.json -d '+1 year' frontend/node_modules/.install-timestamp
 
       export HOME="$TMPDIR"
