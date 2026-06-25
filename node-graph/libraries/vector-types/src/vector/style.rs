@@ -365,9 +365,6 @@ fn daffine2_identity() -> DAffine2 {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
-	/// Deprecated, use `ATTR_STROKE` instead.
-	/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
-	pub color: Option<Color>,
 	/// Line thickness
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
@@ -387,9 +384,8 @@ pub struct Stroke {
 }
 
 impl Stroke {
-	pub const fn new(color: Option<Color>, weight: f64) -> Self {
+	pub const fn new(weight: f64) -> Self {
 		Self {
-			color,
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -404,7 +400,6 @@ impl Stroke {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
-			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
@@ -438,11 +433,6 @@ impl Stroke {
 			},
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
-	}
-
-	/// Get the current stroke color.
-	pub fn color(&self) -> Option<Color> {
-		self.color
 	}
 
 	/// Get the current stroke weight.
@@ -510,12 +500,6 @@ impl Stroke {
 		self.join_miter_limit as f32
 	}
 
-	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {
-		self.color = *color;
-
-		Some(self)
-	}
-
 	pub fn with_weight(mut self, weight: f64) -> Self {
 		self.weight = weight;
 		self
@@ -569,7 +553,6 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			weight: 0.,
-			color: Some(Color::BLACK),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			cap: StrokeCap::Butt,
@@ -596,7 +579,7 @@ impl std::fmt::Display for PathStyle {
 		let fill = &self.fill;
 
 		let stroke = match &self.stroke {
-			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| SRGBA8::from(c).to_rgba_hex()), stroke.weight),
+			Some(stroke) => format!("#(Weight: {} px)", stroke.weight),
 			None => "None".to_string(),
 		};
 
@@ -633,8 +616,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, Stroke, PathStyle};
-	/// # use core_types::Color;
-	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
+	/// let stroke = Stroke::new(42.);
 	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
 	///
 	/// assert_eq!(style.stroke(), Some(stroke));
@@ -654,12 +636,11 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Stroke, PathStyle};
-	/// # use core_types::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(style.stroke(), None);
 	///
-	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
+	/// let stroke = Stroke::new(42.);
 	/// style.set_stroke(stroke.clone());
 	///
 	/// assert_eq!(style.stroke(), Some(stroke));
@@ -691,8 +672,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, Stroke, PathStyle};
-	/// # use core_types::Color;
-	/// let mut style = PathStyle::new(Some(Stroke::new(Some(Color::GREEN), 42.)), Fill::None);
+	/// let mut style = PathStyle::new(Some(Stroke::new(42.)), Fill::None);
 	///
 	/// assert!(style.stroke().is_some());
 	///

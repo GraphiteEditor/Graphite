@@ -70,8 +70,9 @@ impl ToolColorOptions {
 			return;
 		}
 		if let Some(FillChoice::Solid(color)) = &self.fill_choice {
-			let stroke = graphene_std::vector::style::Stroke::new(Some(*color), weight);
-			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+			let color = Some(*color);
+			let stroke = graphene_std::vector::style::Stroke::new(weight);
+			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 		}
 	}
 
@@ -175,8 +176,8 @@ impl DrawingToolState {
 			return;
 		}
 		let Some(FillChoice::Solid(color)) = &self.stroke.fill_choice else { return };
+		let color = Some(*color);
 		let stroke = graphene_std::vector::style::Stroke {
-			color: Some(*color),
 			weight: self.effective_line_weight(),
 			align: self.stroke_align.unwrap_or_default(),
 			cap: self.stroke_cap.unwrap_or_default(),
@@ -187,7 +188,7 @@ impl DrawingToolState {
 			dash_offset: self.dash_offset.unwrap_or(0.),
 			transform: glam::DAffine2::IDENTITY,
 		};
-		responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+		responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 	}
 }
 

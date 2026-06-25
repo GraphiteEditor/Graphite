@@ -617,8 +617,9 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 			let value = TaggedValue::F64(weight);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else if weight > 0. {
+			let color = Some(Color::BLACK);
 			let stroke = graphene_std::vector::style::Stroke::default().with_weight(weight);
-			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 		}
 	}
 }
@@ -815,8 +816,8 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 			let value = TaggedValue::Color(color);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else {
-			let stroke = graphene_std::vector::style::Stroke::new(color, weight);
-			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+			let stroke = graphene_std::vector::style::Stroke::new(weight);
+			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 		}
 	}
 }

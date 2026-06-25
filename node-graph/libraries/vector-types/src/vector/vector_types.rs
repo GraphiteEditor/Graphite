@@ -6,7 +6,6 @@ use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
 use crate::vector::vector_modification::VectorExt;
 use core::borrow::Borrow;
-use core_types::Color;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Transform;
@@ -36,7 +35,7 @@ unsafe impl StaticType for Vector {
 impl Default for Vector {
 	fn default() -> Self {
 		Self {
-			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
+			style: PathStyle::new(Some(Stroke::new(0.)), super::style::Fill::None),
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
