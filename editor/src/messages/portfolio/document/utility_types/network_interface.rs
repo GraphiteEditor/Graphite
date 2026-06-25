@@ -4239,6 +4239,10 @@ impl NodeNetworkInterface {
 					}
 					NodeTypePersistentMetadata::Node(_) => {}
 				}
+				// Altering an export may move the connectors meaning the ports must be refreshed.
+				if matches!(input_connector, InputConnector::Export(_)) {
+					self.unload_import_export_ports(network_path)
+				}
 				self.unload_upstream_node_click_targets(vec![*upstream_node_id], network_path);
 				self.unload_stack_dependents(network_path);
 				self.try_set_upstream_to_chain(input_connector, network_path);
