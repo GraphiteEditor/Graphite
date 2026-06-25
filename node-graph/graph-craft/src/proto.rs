@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-#[derive(Debug, Default, PartialEq, Clone, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, PartialEq, Clone, Eq, serde::Serialize, serde::Deserialize)]
 /// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
 	// TODO: remove this since it seems to be unused?
@@ -90,7 +90,7 @@ impl PartialEq for ConstructionArgs {
 				use std::hash::Hasher;
 				let hash = |input: &Self| {
 					let mut hasher = rustc_hash::FxHasher::default();
-					input.hash(&mut hasher);
+					input.cache_hash(&mut hasher);
 					hasher.finish()
 				};
 				hash(self) == hash(other)
@@ -99,8 +99,8 @@ impl PartialEq for ConstructionArgs {
 	}
 }
 
-impl Hash for ConstructionArgs {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl CacheHash for ConstructionArgs {
+	fn cache_hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		core::mem::discriminant(self).hash(state);
 		match self {
 			Self::Nodes(nodes) => {
@@ -108,7 +108,7 @@ impl Hash for ConstructionArgs {
 					node.hash(state);
 				}
 			}
-			Self::Value(value) => value.hash(state),
+			Self::Value(value) => value.cache_hash(state),
 			Self::Inline(inline) => inline.hash(state),
 		}
 	}
@@ -124,7 +124,7 @@ impl ConstructionArgs {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
 /// At different stages in the compilation process, this struct will be transformed into a reduced (more restricted) form acting as a subset of its original form, but that restricted form is still valid in the earlier stage in the compilation process before it was transformed.
 pub struct ProtoNode {
@@ -157,7 +157,7 @@ impl ProtoNode {
 		let mut hasher = rustc_hash::FxHasher::default();
 
 		self.identifier.as_str().hash(&mut hasher);
-		self.construction_args.hash(&mut hasher);
+		self.construction_args.cache_hash(&mut hasher);
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}

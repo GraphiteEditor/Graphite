@@ -50,12 +50,26 @@ wasm-bindgen = { workspace = true, optional = true }
 
 # Workspace dependencies
 [target.'cfg(target_family = "wasm")'.dependencies]
-web-sys = { workspace = true, features = ["Navigator", "Gpu"] }
+web-sys = { workspace = true, features = [
+	"Navigator",
+	"DomException",
+	"Window",
+	"StorageManager",
+	"FileSystemDirectoryHandle",
+	"FileSystemFileHandle",
+	"FileSystemGetFileOptions",
+	"FileSystemGetDirectoryOptions",
+	"FileSystemWritableFileStream",
+	"WritableStream",
+	"Blob",
+] }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 winit = { workspace = true }
+mmap-io = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies

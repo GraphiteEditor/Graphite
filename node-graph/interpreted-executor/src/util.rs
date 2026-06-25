@@ -1,4 +1,3 @@
-use graph_craft::ProtoNodeIdentifier;
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
@@ -8,11 +7,8 @@ use graphene_std::Context;
 use graphene_std::ContextFeatures;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
-use wgpu_executor::WgpuExecutor;
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>) -> NodeNetwork {
-	network.generate_node_paths(&[]);
-
+pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>) -> NodeNetwork {
 	let inner_network = DocumentNode {
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: vec![],
@@ -42,7 +38,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), 0)],
+					inputs: vec![NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER), NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -52,7 +48,11 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(1), 0)],
+					inputs: vec![
+						NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER),
+						NodeInput::scope(graphene_std::platform_application_io::editor_api::IDENTIFIER),
+						NodeInput::node(NodeId(1), 0),
+					],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -62,8 +62,8 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::pixel_preview::pixel_preview::IDENTIFIER),
+					inputs: vec![NodeInput::scope(graphene_std::render_pixel_preview::pixel_preview_pipeline::IDENTIFIER), NodeInput::node(NodeId(2), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_pixel_preview::render_pixel_preview::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -72,8 +72,11 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(3), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_background::IDENTIFIER),
+					inputs: vec![
+						NodeInput::scope(graphene_std::render_background::composite_background_pipeline::IDENTIFIER),
+						NodeInput::node(NodeId(3), 0),
+					],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_background::render_background::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::empty(),
@@ -102,7 +105,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 	};
 
 	// wrap the inner network in a scope
-	let mut nodes = vec![
+	let nodes = vec![
 		inner_network,
 		render_node,
 		DocumentNode {
@@ -111,22 +114,12 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 			..Default::default()
 		},
 	];
-	let mut scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&PlatformEditorApi)))];
-
-	if cfg!(feature = "gpu") {
-		nodes.push(DocumentNode {
-			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
-			inputs: vec![NodeInput::node(NodeId(2), 0)],
-			..Default::default()
-		});
-		scope_injections.push(("wgpu-executor".to_string(), (NodeId(3), concrete!(&WgpuExecutor))));
-	}
+	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&PlatformEditorApi)))];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: scope_injections.into_iter().collect(),
-		// TODO(TrueDoctor): check if it makes sense to set `generated` to `true`
-		generated: false,
+		generated: true,
 	}
 }

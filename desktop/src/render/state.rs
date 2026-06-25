@@ -29,7 +29,7 @@ pub(crate) struct RenderState {
 impl RenderState {
 	pub(crate) fn new(window: &Window, context: WgpuContext, present_mode: Option<PresentMode>) -> Self {
 		let size = window.surface_size();
-		let surface = window.create_surface(context.instance.clone());
+		let surface = window.create_surface(&context.instance);
 
 		let surface_caps = surface.get_capabilities(&context.adapter);
 		let surface_format = surface_caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(surface_caps.formats[0]);
@@ -174,8 +174,8 @@ impl RenderState {
 			sampler,
 			desired_width: size.width,
 			desired_height: size.height,
-			viewport_scale: [1.0, 1.0],
-			viewport_offset: [0.0, 0.0],
+			viewport_scale: [1., 1.],
+			viewport_offset: [0., 0.],
 			viewport_texture: None,
 			overlays_texture: None,
 			ui_texture: None,

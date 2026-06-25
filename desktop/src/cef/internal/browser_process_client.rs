@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{ContextMenuHandler, DisplayHandler, ImplClient, LifeSpanHandler, LoadHandler, RenderHandler, WrapClient};
+use cef::{ContextMenuHandler, DisplayHandler, ImplClient, LifeSpanHandler, LoadHandler, RenderHandler, RequestHandler, WrapClient};
 
 use crate::cef::CefEventHandler;
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
@@ -10,6 +10,7 @@ use super::display_handler::DisplayHandlerImpl;
 use super::life_span_handler::LifeSpanHandlerImpl;
 use super::load_handler::LoadHandlerImpl;
 use super::render_handler::RenderHandlerImpl;
+use super::request_handler::RequestHandlerImpl;
 
 pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_client_t, Self>,
@@ -17,6 +18,7 @@ pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
 	load_handler: LoadHandler,
 	render_handler: RenderHandler,
 	display_handler: DisplayHandler,
+	request_handler: RequestHandler,
 }
 impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
 	pub(crate) fn new(event_handler: &H) -> Self {
@@ -26,6 +28,7 @@ impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
 			load_handler: LoadHandler::new(LoadHandlerImpl::new(event_handler.duplicate())),
 			render_handler: RenderHandler::new(RenderHandlerImpl::new(event_handler.duplicate())),
 			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(event_handler.duplicate())),
+			request_handler: RequestHandler::new(RequestHandlerImpl::new()),
 		}
 	}
 }
@@ -73,6 +76,10 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 		Some(self.display_handler.clone())
 	}
 
+	fn request_handler(&self) -> Option<cef::RequestHandler> {
+		Some(self.request_handler.clone())
+	}
+
 	fn context_menu_handler(&self) -> Option<cef::ContextMenuHandler> {
 		Some(ContextMenuHandler::new(ContextMenuHandlerImpl::new()))
 	}
@@ -94,6 +101,7 @@ impl<H: CefEventHandler> Clone for BrowserProcessClientImpl<H> {
 			load_handler: self.load_handler.clone(),
 			render_handler: self.render_handler.clone(),
 			display_handler: self.display_handler.clone(),
+			request_handler: self.request_handler.clone(),
 		}
 	}
 }

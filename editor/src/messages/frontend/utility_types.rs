@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use graph_craft::application_io::resource::ResourceHash;
+
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
@@ -9,6 +11,9 @@ use crate::messages::prelude::*;
 pub struct DocumentInfo {
 	pub id: DocumentId,
 	pub name: String,
+	#[serde(default)]
+	#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+	pub resources: Option<Box<[ResourceHash]>>,
 	#[serde(default)]
 	pub path: Option<PathBuf>,
 	pub is_saved: bool,

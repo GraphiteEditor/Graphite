@@ -20,7 +20,6 @@ wgpu-executor = { workspace = true }
 
 wgpu = { workspace = true }
 thiserror = { workspace = true }
-futures = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
 ron = { workspace = true}

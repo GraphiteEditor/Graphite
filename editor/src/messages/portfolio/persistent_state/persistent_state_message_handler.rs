@@ -52,3 +52,9 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 
 	advertise_actions!(PersistentStateMessageDiscriminant;);
 }
+
+impl PersistentStateMessageHandler {
+	pub fn loaded(&self) -> bool {
+		self.loaded
+	}
+}

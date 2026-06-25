@@ -1,4 +1,5 @@
-mod font_cache;
+pub mod fallback;
+mod font;
 pub mod json;
 mod path_builder;
 pub mod regex;
@@ -16,8 +17,9 @@ use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
 pub use core_types as gcore;
-pub use font_cache::*;
-pub use text_context::TextContext;
+pub use fallback::FALLBACK_FONT_RESOURCE;
+pub use font::*;
+pub use text_context::{TextContext, for_each_styled_glyph_run};
 pub use to_path::*;
 pub use vector_types;
 
@@ -92,10 +94,10 @@ impl TextAlign {
 pub struct TypesettingConfig {
 	pub font_size: f64,
 	pub line_height_ratio: f64,
-	pub character_spacing: f64,
+	pub letter_spacing: f64,
+	pub letter_tilt: f64,
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
-	pub tilt: f64,
 	pub align: TextAlign,
 }
 
@@ -104,10 +106,10 @@ impl Default for TypesettingConfig {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			character_spacing: 0.,
+			letter_spacing: 0.,
+			letter_tilt: 0.,
 			max_width: None,
 			max_height: None,
-			tilt: 0.,
 			align: TextAlign::default(),
 		}
 	}
@@ -188,7 +190,7 @@ fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
 
 /// Type-asserts a value to be a string.
 #[node_macro::node(category("Debug"))]
-fn to_string(_: impl Ctx, value: String) -> String {
+fn as_string(_: impl Ctx, value: String) -> String {
 	value
 }
 

@@ -6,12 +6,13 @@ pub struct Compiler {}
 
 impl Compiler {
 	pub fn compile(&self, mut network: NodeNetwork) -> impl Iterator<Item = Result<ProtoNetwork, String>> {
+		network.resolve_scope_inputs();
+		network.generate_node_paths(&[]);
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		network.populate_dependants();
 		for id in node_ids {
 			network.flatten(id);
 		}
-		network.resolve_scope_inputs();
 		network.remove_redundant_passthrough_nodes();
 		// network.remove_dead_nodes(0);
 		let proto_networks = network.into_proto_networks();

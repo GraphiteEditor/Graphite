@@ -1,5 +1,6 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
+use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
@@ -10,6 +11,7 @@ use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDe
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
@@ -36,6 +38,7 @@ macro_rules! for_each_type_default {
 		$action!(List<Vector>);
 		$action!(List<String>);
 		$action!(DocumentNode);
+		$action!(Resource);
 	};
 }
 
@@ -90,6 +93,9 @@ macro_rules! tagged_value {
 			ContextFeatures(ContextFeatures),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
+			/// Only used by the `resource` node, should never be serialized
+			#[serde(skip)]
+			ResourceHash(ResourceHash),
 		}
 
 		impl CacheHash for TaggedValue {
@@ -117,6 +123,7 @@ macro_rules! tagged_value {
 					Self::ContextFeatures(features) => features.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
+					Self::ResourceHash(x) => x.cache_hash(state),
 				}
 			}
 		}
@@ -170,6 +177,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => Box::new(node),
 					Self::ContextFeatures(features) => Box::new(features),
 					Self::EditorApi(x) => Box::new(x),
+					Self::ResourceHash(x) => Box::new(x),
 				}
 			}
 
@@ -219,6 +227,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextFeatures(features) => Arc::new(features),
 					Self::EditorApi(x) => Arc::new(x),
+					Self::ResourceHash(x) => Arc::new(x),
 				}
 			}
 
@@ -246,6 +255,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextFeatures(_) => concrete!(ContextFeatures),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
+					Self::ResourceHash(_) => concrete!(ResourceHash),
 				}
 			}
 
@@ -351,6 +361,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
 					Self::ContextFeatures(features) => format!("ContextFeatures({features:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
+					Self::ResourceHash(hash) => format!("ResourceHash({hash:?})"),
 				}
 			}
 		}
@@ -396,6 +407,7 @@ tagged_value! {
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
+	Resource(graphene_application_io::resource::ResourceId),
 	// ==========
 	// ENUM TYPES
 	// ==========
@@ -621,7 +633,11 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Graphic>)))),
 			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Artboard>)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
-				let first_element = content.as_object().and_then(|c| c.get("element")).and_then(|e| e.as_array()).and_then(|arr| arr.first());
+				let first_element = content
+					.as_object()
+					.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
+					.and_then(|e| e.as_array())
+					.and_then(|arr| arr.first());
 				if let Some(image_value) = first_element {
 					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));

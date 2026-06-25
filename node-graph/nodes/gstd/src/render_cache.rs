@@ -5,14 +5,13 @@ use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::value::RenderOutput;
-use graphene_application_io::{ApplicationIo, ImageTexture};
+use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphene_application_io::ImageTexture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
-
-use crate::render_node::RenderOutputType;
+use wgpu_executor::WgpuExecutor;
 
 pub const TILE_SIZE: u32 = 256;
 pub const MAX_CACHE_MEMORY_BYTES: usize = 512 * 1024 * 1024;
@@ -90,8 +89,8 @@ impl CacheKey {
 			thumbnail,
 			aligned_strokes,
 			override_paint_order,
-			animation_time_ms: (animation_time * 1000.0).round() as i64,
-			real_time_ms: (real_time * 1000.0).round() as i64,
+			animation_time_ms: (animation_time * 1000.).round() as i64,
+			real_time_ms: (real_time * 1000.).round() as i64,
 			pointer: pointer_bytes,
 		}
 	}
@@ -327,7 +326,8 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	editor_api: &'a PlatformEditorApi,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> RenderOutput {
@@ -369,8 +369,8 @@ pub async fn render_output_cache<'a: 'n>(
 		render_params.thumbnail,
 		render_params.aligned_strokes,
 		render_params.override_paint_order,
-		ctx.try_animation_time().unwrap_or(0.0),
-		ctx.try_real_time().unwrap_or(0.0),
+		ctx.try_animation_time().unwrap_or(0.),
+		ctx.try_real_time().unwrap_or(0.),
 		ctx.try_pointer_position(),
 	);
 
@@ -404,11 +404,9 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-
-	let output_texture = exec.request_texture(physical_resolution).await;
-
-	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, exec);
+	let executor = executor.expect("GPU executor not available");
+	let output_texture = executor.request_texture(physical_resolution).await;
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(output_texture.into()),
@@ -473,8 +471,8 @@ fn composite_cached_regions(
 	viewport_transform: &DAffine2,
 	exec: &wgpu_executor::WgpuExecutor,
 ) -> rendering::RenderMetadata {
-	let device = &exec.context.device;
-	let queue = &exec.context.queue;
+	let device = &exec.context().device;
+	let queue = &exec.context().queue;
 	let output_resolution = UVec2::new(output_texture.width(), output_texture.height());
 
 	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("composite") });

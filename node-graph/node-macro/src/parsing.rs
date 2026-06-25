@@ -54,6 +54,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) serialize: Option<Path>,
 	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork
 	pub(crate) memoize: bool,
+	/// Whether this node provides a scope
+	pub(crate) inject_scope: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -61,7 +63,7 @@ pub enum ParsedValueSource {
 	#[default]
 	None,
 	Default(TokenStream2),
-	Scope(LitStr),
+	Scope(Expr),
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -261,6 +263,7 @@ impl Parse for NodeFnAttributes {
 		let mut shader_node = None;
 		let mut serialize = None;
 		let mut memoize = false;
+		let mut inject_scope = false;
 
 		let content = input;
 		// let content;
@@ -391,13 +394,25 @@ impl Parse for NodeFnAttributes {
 					}
 					memoize = true;
 				}
+				// Instructs the preprocessor to make this node available as a scope.
+				// Other nodes can then access it with `#[scope(node::IDENTIFIER)]`.
+				//
+				// Example usage:
+				// #[node_macro::node(..., inject_scope, ...)]
+				"inject_scope" => {
+					let path = meta.require_path_only()?;
+					if inject_scope {
+						return Err(Error::new_spanned(path, "Multiple 'inject_scope' attributes are not allowed"));
+					}
+					inject_scope = true;
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', and 'memoize'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -430,6 +445,7 @@ impl Parse for NodeFnAttributes {
 			shader_node,
 			serialize,
 			memoize,
+			inject_scope,
 		})
 	}
 }
@@ -979,7 +995,7 @@ mod tests {
 							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
 						}
 						(ParsedValueSource::Scope(p), ParsedValueSource::Scope(e)) => {
-							assert_eq!(p.value(), e.value());
+							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
 						}
 						_ => panic!("Mismatched default values"),
 					}
@@ -1038,6 +1054,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1107,6 +1124,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1190,6 +1208,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1255,6 +1274,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1332,6 +1352,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1397,6 +1418,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1462,6 +1484,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				inject_scope: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

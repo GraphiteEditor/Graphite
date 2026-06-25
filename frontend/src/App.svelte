@@ -23,7 +23,7 @@
 		// Create the editor and subscriptions router
 		const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
 		subscriptions = createSubscriptionsRouter();
-		editor = EditorWrapper.create(operatingSystem(), randomSeed, (messageType: MessageName, messageData: FrontendMessage) => {
+		editor = await EditorWrapper.create(operatingSystem(), randomSeed, (messageType: MessageName, messageData: FrontendMessage) => {
 			subscriptions?.handleFrontendMessage(messageType, messageData);
 		});
 

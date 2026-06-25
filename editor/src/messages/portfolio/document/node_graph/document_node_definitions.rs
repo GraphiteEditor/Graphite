@@ -8,8 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::CachedData;
-use crate::messages::prelude::Message;
+use crate::messages::prelude::{FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -28,10 +27,11 @@ use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
-	pub cached_data: &'a CachedData,
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub resources: &'a ResourceMessageHandler,
+	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
 }
@@ -787,9 +787,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								..Default::default()
 							},
-							// 3: Vec2 to Point
+							// 3: As Vector (auto-converts the decomposed translation into a single-anchor List<Vector>)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::vec_2_to_point::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::as_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								..Default::default()
 							},
@@ -858,7 +858,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 3: Vec2 to Point
+								// 3: As Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
@@ -922,7 +922,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::import(concrete!(String), 1)],
+								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(concrete!(String), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
 								..Default::default()
 							},
@@ -1249,22 +1249,17 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::scope(platform_application_io::wgpu_executor::IDENTIFIER)],
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
 								..Default::default()
 							},
@@ -2047,6 +2042,10 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
+			// Lazily load the font catalog (like the Text tool) so the dropdown has entries
+			if context.fonts.font_catalog.is_empty() {
+				context.responses.add(FontsMessage::LoadCatalog);
+			}
 			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {

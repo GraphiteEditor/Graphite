@@ -1,8 +1,9 @@
 pub mod any;
-pub mod pixel_preview;
 pub mod platform_application_io;
+pub mod render_background;
 pub mod render_cache;
 pub mod render_node;
+pub mod render_pixel_preview;
 pub mod text;
 pub use blending_nodes;
 pub use brush_nodes as brush;

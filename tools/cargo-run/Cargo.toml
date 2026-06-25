@@ -9,3 +9,5 @@ default-run = "cargo-run"
 
 [dependencies]
 thiserror = { workspace = true }
+semver = "1"
+duct = "1"

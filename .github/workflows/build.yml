@@ -58,6 +58,8 @@ jobs:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
+      WASM_BINDGEN_CLI_VERSION: "0.2.121"
+      BINARYEN_VERSION: "130"
     steps:
       - name: 📥 Clone repository
         uses: actions/checkout@v6
@@ -65,18 +67,10 @@ jobs:
           repository: ${{ inputs.checkout_repo || github.repository }}
           ref: ${{ inputs.checkout_ref || '' }}
 
-      - name: 🗑 Clear wasm-bindgen cache
-        run: rm -r ~/.cache/.wasm-pack || true
-
       - name: 🟢 Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-
-      - name: 🚧 Install build dependencies
-        run: |
-          cd frontend
-          npm run setup
 
       - name: 🦀 Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -86,6 +80,19 @@ jobs:
           cache: false
           rustflags: ""
           target: wasm32-unknown-unknown
+
+      - name: 🚧 Install wasm-bindgen-cli and Binaryen wasm-opt
+        run: |
+          if ! wasm-bindgen --version 2>/dev/null | grep -qF "$WASM_BINDGEN_CLI_VERSION"; then
+            cargo install -f "wasm-bindgen-cli@$WASM_BINDGEN_CLI_VERSION"
+          fi
+
+          BINARYEN_DIR="$HOME/.cache/binaryen-version_$BINARYEN_VERSION"
+          if [ ! -x "$BINARYEN_DIR/bin/wasm-opt" ]; then
+            mkdir -p "$BINARYEN_DIR"
+            curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-x86_64-linux.tar.gz" | tar xz -C "$BINARYEN_DIR" --strip-components=1
+          fi
+          echo "$BINARYEN_DIR/bin" >> "$GITHUB_PATH"
 
       - name: 🔀 Choose production deployment environment and insert template
         id: production-env
@@ -119,11 +126,21 @@ jobs:
             echo "No Cloudflare API token available (fork PR), skipping deploy."
             exit 0
           fi
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            DEPLOY_BRANCH="master"
+          else
+            DEPLOY_BRANCH="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
+            if [ "$DEPLOY_BRANCH" = "master" ] || [ -z "$DEPLOY_BRANCH" ]; then
+              DEPLOY_BRANCH="preview-${{ github.run_id }}"
+            fi
+          fi
+
           MAX_ATTEMPTS=8
           DELAY=15
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
-            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
+            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --branch="$DEPLOY_BRANCH" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
             if [ ${PIPESTATUS[0]} -eq 0 ]; then
               URL=$(grep -oP 'https://[^\s]+\.pages\.dev' /tmp/wrangler_output | head -1)
               echo "url=$URL" >> "$GITHUB_OUTPUT"
@@ -284,6 +301,7 @@ jobs:
 
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
+      BINARYEN_VERSION: "130"
 
     steps:
       - name: 📥 Clone repository
@@ -331,13 +349,15 @@ jobs:
           winget install --id LLVM.LLVM -e --accept-package-agreements --accept-source-agreements
           winget install --id Kitware.CMake -e --accept-package-agreements --accept-source-agreements
           winget install --id OpenSSL.OpenSSL -e --accept-package-agreements --accept-source-agreements
-          winget install --id WebAssembly.Binaryen -e --accept-package-agreements --accept-source-agreements
           winget install --id GnuWin32.PkgConfig -e --accept-package-agreements --accept-source-agreements
 
           "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Append
           "PKG_CONFIG_PATH=C:\Program Files\OpenSSL-Win64\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          cargo binstall --no-confirm --force wasm-pack
+          curl.exe -sSfL -o "$env:RUNNER_TEMP\binaryen.tar.gz" "https://github.com/WebAssembly/binaryen/releases/download/version_$env:BINARYEN_VERSION/binaryen-version_$env:BINARYEN_VERSION-x86_64-windows.tar.gz"
+          tar -xzf "$env:RUNNER_TEMP\binaryen.tar.gz" -C $env:RUNNER_TEMP
+          "$env:RUNNER_TEMP\binaryen-version_$env:BINARYEN_VERSION\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
           cargo binstall --no-confirm --force cargo-about
           cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
 
@@ -475,6 +495,7 @@ jobs:
 
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
+      BINARYEN_VERSION: "130"
 
     steps:
       - name: 📥 Clone repository
@@ -519,7 +540,6 @@ jobs:
           brew install \
             pkg-config \
             openssl@3 \
-            binaryen \
             llvm \
             cargo-binstall
 
@@ -527,7 +547,13 @@ jobs:
           echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
           echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
 
-          cargo binstall --no-confirm --force wasm-pack
+          BINARYEN_DIR="$HOME/.cache/binaryen-version_$BINARYEN_VERSION"
+          if [ ! -x "$BINARYEN_DIR/bin/wasm-opt" ]; then
+            mkdir -p "$BINARYEN_DIR"
+            curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-arm64-macos.tar.gz" | tar xz -C "$BINARYEN_DIR" --strip-components=1
+          fi
+          echo "$BINARYEN_DIR/bin" >> "$GITHUB_PATH"
+
           cargo binstall --no-confirm --force cargo-about
           cargo binstall --no-confirm --force "wasm-bindgen-cli@${WASM_BINDGEN_CLI_VERSION}"
 

@@ -6,6 +6,8 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
+use graph_craft::application_io::resource::ResourceStorage;
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
@@ -19,6 +21,7 @@ pub struct Dispatcher {
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
+	pub(crate) future_message_handler: FutureMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	clipboard_message_handler: ClipboardMessageHandler,
 	color_picker_message_handler: ColorPickerMessageHandler,
@@ -29,17 +32,26 @@ pub struct DispatcherMessageHandlers {
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
+	network_message_handler: NetworkMessageHandler,
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
+	pub(crate) resource_storage_message_handler: ResourceStorageMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
+	pub fn with_resource_storage(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+		Self {
+			resource_storage_message_handler: ResourceStorageMessageHandler::new(resource_storage),
+			..Self::default()
+		}
+	}
+
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
 		Self {
 			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
-			..Default::default()
+			..Self::default()
 		}
 	}
 }
@@ -54,7 +66,6 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitEyedropperPreviewRender),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontDataLoad),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
@@ -78,15 +89,16 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new() -> Self {
-		Self::default()
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+		let mut s = Self::default();
+		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
+		s
 	}
 
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self {
-			message_handlers: DispatcherMessageHandlers::with_executor(executor),
-			..Default::default()
-		}
+		let mut s = Self::default();
+		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
+		s
 	}
 
 	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
@@ -113,6 +125,13 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
+
+		// Drain async results into the queue before processing the new message.
+		let mut async_results = VecDeque::new();
+		self.message_handlers.future_message_handler.drain_results(&mut async_results);
+		if !async_results.is_empty() {
+			Self::schedule_execution(&mut self.message_queues, true, async_results);
+		}
 
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
@@ -163,6 +182,9 @@ impl Dispatcher {
 				Message::AppWindow(message) => {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
+				Message::Future(message) => {
+					self.message_handlers.future_message_handler.process_message(message, &mut queue, FutureMessageContext {});
+				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
 				Message::ColorPicker(message) => self.message_handlers.color_picker_message_handler.process_message(message, &mut queue, ()),
@@ -183,17 +205,7 @@ impl Dispatcher {
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Frontend(message) => {
-					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontDataLoad { .. } | FrontendMessage::TriggerFontCatalogLoad = message {
-						self.responses.push(message);
-						self.cleanup_queues(false);
-
-						// Return early to avoid running the code after the match block
-						return;
-					} else {
-						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-						self.responses.push(message);
-					}
+					self.responses.push(message);
 				}
 				Message::InputPreprocessor(message) => {
 					self.message_handlers.input_preprocessor_message_handler.process_message(
@@ -218,6 +230,14 @@ impl Dispatcher {
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
+				Message::Network(message) => {
+					self.message_handlers.network_message_handler.process_message(message, &mut queue, NetworkMessageContext {});
+				}
+				Message::ResourceStorage(message) => {
+					self.message_handlers
+						.resource_storage_message_handler
+						.process_message(message, &mut queue, ResourceStorageMessageContext {});
+				}
 				Message::Portfolio(message) => {
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -230,6 +250,7 @@ impl Dispatcher {
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
 							viewport: &self.message_handlers.viewport_message_handler,
+							resource_storage: &self.message_handlers.resource_storage_message_handler,
 						},
 					);
 				}
@@ -297,7 +318,7 @@ impl Dispatcher {
 						document_id,
 						document,
 						input: &self.message_handlers.input_preprocessor_message_handler,
-						cached_data: &self.message_handlers.portfolio_message_handler.cached_data,
+						fonts: &self.message_handlers.portfolio_message_handler.fonts,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
 						viewport: &self.message_handlers.viewport_message_handler,

@@ -6,12 +6,13 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
-use crate::messages::portfolio::utility_types::{CachedData, FontCatalogStyle};
+use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
@@ -822,11 +823,27 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 }
 
 pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetInstance>, Option<Vec<WidgetInstance>>) {
+	pub fn assign_font_message(node_id: NodeId, font: Font) -> Message {
+		let resource_id = ResourceId::new();
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::Resource(ResourceMessage::AddFont { resource_id, font }).into(),
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: graphene_std::text::text::FontInput::INDEX,
+					value: TaggedValue::Resource(resource_id),
+				}
+				.into(),
+			]),
+		}
+	}
+
 	let ParameterWidgetsInfo {
-		cached_data,
 		document_node,
 		node_id,
 		index,
+		resources,
+		fonts,
 		..
 	} = parameter_widgets_info;
 
@@ -839,66 +856,37 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		return (vec![], None);
 	};
 
-	if let Some(TaggedValue::Font(font)) = &input.as_non_exposed_value() {
+	// A freshly added node carries the empty-resource `TypeDefault` placeholder until a font is chosen
+	let font = match input.as_non_exposed_value() {
+		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
+		Some(TaggedValue::TypeDefault(_)) => Font::default(),
+		_ => return (first_widgets, second_widgets),
+	};
+	{
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
-				cached_data
+				fonts
 					.font_catalog
-					.0
 					.iter()
 					.map(|family| {
+						let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
+						let new_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
+						let commit_font = new_font.clone();
 						MenuListEntry::new(family.name.clone())
 							.label(family.name.clone())
 							.font(family.closest_style(400, false).preview_url(&family.name))
-							.on_update({
-								// Construct the new font using the new family and the initial or previous style, although this style might not exist in the catalog
-								let mut new_font = Font::new(family.name.clone(), font.font_style_to_restore.clone().unwrap_or_else(|| font.font_style.clone()));
-								new_font.font_style_to_restore = font.font_style_to_restore.clone();
-
-								// If not already, store the initial style so it can be restored if the user switches to another family
-								if new_font.font_style_to_restore.is_none() {
-									new_font.font_style_to_restore = Some(new_font.font_style.clone());
+							.on_update(move |_| assign_font_message(node_id, new_font.clone()))
+							.on_commit(move |_| {
+								DeferMessage::AfterGraphRun {
+									messages: vec![assign_font_message(node_id, commit_font.clone()), commit_value(&())],
 								}
-
-								// Use the closest style available in the family for the new font to ensure the style exists
-								let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&new_font.font_style, "");
-								new_font.font_style = family.closest_style(weight, italic).to_named_style();
-
-								move |_| {
-									let new_font = new_font.clone();
-
-									Message::Batched {
-										messages: Box::new([
-											PortfolioMessage::LoadFontData { font: new_font.clone() }.into(),
-											update_value(move |_| TaggedValue::Font(new_font.clone()), node_id, index)(&()),
-										]),
-									}
-								}
-							})
-							.on_commit({
-								// Use the new value from the user selection
-								let font_family = family.name.clone();
-
-								// Use the previous style selection and extract its weight and italic properties, then find the closest style in the new family
-								let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
-								let font_style = family.closest_style(weight, italic).to_named_style();
-
-								move |_| {
-									// Intentionally drop `font_style_to_restore` on commit so the committed style becomes the new basis
-									// for subsequent family switches. Preserving the original style intent is hover-only behavior.
-									let new_font = Font::new(font_family.clone(), font_style.clone());
-
-									DeferMessage::AfterGraphRun {
-										messages: vec![update_value(move |_| TaggedValue::Font(new_font.clone()), node_id, index)(&()), commit_value(&())],
-									}
-									.into()
-								}
+								.into()
 							})
 					})
 					.collect::<Vec<_>>(),
 			])
-			.selected_index(cached_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.selected_index(fonts.font_catalog.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
 			.virtual_scrolling(true)
 			.widget_instance(),
 		]);
@@ -908,32 +896,18 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		second_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new({
-				cached_data
+				fonts
 					.font_catalog
-					.0
 					.iter()
 					.find(|family| family.name == font.font_family)
 					.map(|family| {
 						let build_entry = |style: &FontCatalogStyle| {
 							let font_style = style.to_named_style();
+							let font_family = font.font_family.clone();
+							let new_font = Font::new(font_family, font_style.clone());
 							MenuListEntry::new(font_style.clone())
-								.label(font_style.clone())
-								.on_update({
-									let font_family = font.font_family.clone();
-									let font_style = font_style.clone();
-
-									move |_| {
-										// Keep the existing family
-										let new_font = Font::new(font_family.clone(), font_style.clone());
-
-										Message::Batched {
-											messages: Box::new([
-												PortfolioMessage::LoadFontData { font: new_font.clone() }.into(),
-												update_value(move |_| TaggedValue::Font(new_font.clone()), node_id, index)(&()),
-											]),
-										}
-									}
-								})
+								.label(font_style)
+								.on_update(move |_| assign_font_message(node_id, new_font.clone()))
 								.on_commit(commit_value)
 						};
 
@@ -946,9 +920,8 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.unwrap_or_default()
 			})
 			.selected_index(
-				cached_data
+				fonts
 					.font_catalog
-					.0
 					.iter()
 					.find(|family| family.name == font.font_family)
 					.and_then(|family| {
@@ -1193,28 +1166,6 @@ pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup 
 	let (font_widgets, style_widgets) = font_inputs(parameter_widgets_info);
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 }
-
-// pub fn curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-// 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-// 	let mut widgets = start_widgets(parameter_widgets_info);
-
-// 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-// 	let Some(input) = document_node.inputs.get(index) else {
-// 		log::warn!("A widget failed to be built because its node's input index is invalid.");
-// 		return LayoutGroup::row(vec![]);
-// 	};
-// 	if let Some(TaggedValue::Curve(curve)) = &input.as_non_exposed_value() {
-// 		widgets.extend_from_slice(&[
-// 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-// 			CurveInput::new(curve.clone())
-// 				.on_update(update_value(|x: &CurveInput| TaggedValue::Curve(x.value.clone()), node_id, index))
-// 				.on_commit(commit_value)
-// 				.widget_instance(),
-// 		])
-// 	}
-// 	LayoutGroup::row(widgets)
-// }
 
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
 	let network = context
@@ -2483,35 +2434,29 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets_first_row.push(
 		ColorInput::default()
 			.value(FillChoiceUI::from(&FillChoice::from(fill.clone())))
-			.on_update(move |x: &ColorInput| Message::Batched {
-				messages: Box::new([
-					match &fill2 {
-						Fill::None => NodeGraphMessage::SetInputValue {
+			.on_update(move |x: &ColorInput| {
+				let new_fill = FillChoice::from(&x.value).to_fill(fill2.as_gradient());
+				let (backup_index, backup_value) = match &new_fill {
+					Fill::None => (BackupColorInput::INDEX, TaggedValue::Color(None)),
+					Fill::Solid(color) => (BackupColorInput::INDEX, TaggedValue::Color(Some(*color))),
+					Fill::Gradient(gradient) => (BackupGradientInput::INDEX, TaggedValue::FillGradient(gradient.clone())),
+				};
+				Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(None),
+							input_index: backup_index,
+							value: backup_value,
 						}
 						.into(),
-						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
+						NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(Some(*color)),
+							input_index: FillInput::<Color>::INDEX,
+							value: TaggedValue::Fill(new_fill),
 						}
 						.into(),
-						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
-							node_id,
-							input_index: BackupGradientInput::INDEX,
-							value: TaggedValue::FillGradient(gradient.clone()),
-						}
-						.into(),
-					},
-					NodeGraphMessage::SetInputValue {
-						node_id,
-						input_index: FillInput::<Color>::INDEX,
-						value: TaggedValue::Fill(FillChoice::from(&x.value).to_fill(fill2.as_gradient())),
-					}
-					.into(),
-				]),
+					]),
+				}
 			})
 			.on_commit(commit_value)
 			.widget_instance(),
@@ -2813,8 +2758,8 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
-	cached_data: &'a CachedData,
 	network_interface: &'a NodeNetworkInterface,
+	resources: &'a ResourceMessageHandler,
 	selection_network_path: &'a [NodeId],
 	document_node: Option<&'a DocumentNode>,
 	node_id: NodeId,
@@ -2824,6 +2769,7 @@ pub struct ParameterWidgetsInfo<'a> {
 	input_type: FrontendGraphDataType,
 	blank_assist: bool,
 	exposable: bool,
+	fonts: &'a FontsMessageHandler,
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
@@ -2836,9 +2782,10 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
-			cached_data: context.cached_data,
 			network_interface: context.network_interface,
+			resources: context.resources,
 			selection_network_path: context.selection_network_path,
+			fonts: context.fonts,
 			document_node,
 			node_id,
 			index,

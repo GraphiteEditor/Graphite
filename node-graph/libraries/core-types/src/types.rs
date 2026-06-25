@@ -154,6 +154,19 @@ impl ProtoNodeIdentifier {
 	pub fn as_str(&self) -> &str {
 		self.name.as_ref()
 	}
+
+	pub const fn as_static_str(&self) -> &'static str {
+		match self.name {
+			Cow::Borrowed(name) => name,
+			Cow::Owned(_) => panic!("`as_static_str` called on a `ProtoNodeIdentifier` backed by an owned string"),
+		}
+	}
+}
+
+impl From<ProtoNodeIdentifier> for Cow<'static, str> {
+	fn from(val: ProtoNodeIdentifier) -> Self {
+		val.name
+	}
 }
 
 impl Display for ProtoNodeIdentifier {

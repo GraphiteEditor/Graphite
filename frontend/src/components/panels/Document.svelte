@@ -7,6 +7,7 @@
 	import Graph from "/src/components/views/Graph.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
@@ -16,7 +17,7 @@
 	import { pasteFile } from "/src/utility-functions/files";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
-	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
+	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
@@ -52,6 +53,10 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
+
+	// Web-only "Initializing Renderer…" overlay shown until the first Vello-rendered artwork arrives
+	const isWeb = import.meta.env.MODE !== "native";
+	let firstArtworkReceived = hasFirstArtworkBeenReceived();
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -470,6 +475,11 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
 			await tick();
 
+			if (!firstArtworkReceived) {
+				firstArtworkReceived = true;
+				markFirstArtworkReceived();
+			}
+
 			updateDocumentArtwork(data.svg);
 		});
 		subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
@@ -708,6 +718,9 @@
 							>
 							</canvas>
 						{/if}
+						{#if isWeb}
+							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
+						{/if}
 					</div>
 
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
@@ -942,6 +955,31 @@
 						.text-input {
 							word-break: break-all;
 							unicode-bidi: plaintext;
+						}
+
+						.shader-compiling-overlay {
+							position: absolute;
+							inset: 0;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+							pointer-events: none;
+							opacity: 0;
+							transition: opacity 0.5s ease;
+
+							&.show {
+								opacity: 1;
+								animation: shader-compiling-overlay-fade-in 0.5s ease 0.5s both;
+							}
+
+							@keyframes shader-compiling-overlay-fade-in {
+								from {
+									opacity: 0;
+								}
+								to {
+									opacity: 1;
+								}
+							}
 						}
 
 						.text-input div {

@@ -1,17 +1,17 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::List;
-use core_types::ops::ListConvert;
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_LEGACY, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
+use std::borrow::Cow;
 use vector_types::GradientStops;
-// use vector_types::Vector;
-
 pub use vector_types::Vector;
+use vector_types::vector::style::Fill;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
@@ -22,6 +22,7 @@ pub enum Graphic {
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
 	Gradient(List<GradientStops>),
+	Text(List<String>),
 }
 
 impl Default for Graphic {
@@ -103,58 +104,79 @@ impl From<List<GradientStops>> for Graphic {
 	}
 }
 
+// String
+impl From<String> for Graphic {
+	fn from(text: String) -> Self {
+		Graphic::Text(List::new_from_element(text))
+	}
+}
+impl From<List<String>> for Graphic {
+	fn from(text: List<String>) -> Self {
+		Graphic::Text(text)
+	}
+}
+
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`List`s composes transforms and opacity.
 fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
 	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
-		for current_graphic_row in current_graphic_list.into_iter() {
-			let layer_path: List<NodeId> = current_graphic_row.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
-			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let current_opacity: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY, 1.);
-			let current_fill: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+		for current_graphic_item in current_graphic_list.into_iter() {
+			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
+			// Flattening composes a parent attribute onto its children only when the parent has it,
+			// so an absent parent attribute never invents a column the children didn't already have.
+			let parent_has_transform = current_graphic_item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
+			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
+			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
+			let parent_has_layer_path = current_graphic_item.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH).is_some();
 
-			match current_graphic_row.into_element() {
-				// Compose the parent's transform, opacity, and fill onto each child row
+			let layer_path: List<NodeId> = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let current_opacity: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY, 1.);
+			let current_fill: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+
+			match current_graphic_item.into_element() {
+				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
+				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
 				Graphic::Graphic(mut sub_list) => {
-					// Identity default means a missing attribute still composes correctly
-					for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-						*v = current_transform * *v;
+					if parent_has_transform {
+						for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+							*v = current_transform * *v;
+						}
 					}
-
-					// f64 defaults to 0, but opacity/fill default to 1, so missing attributes must be set rather than multiplied
-					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY) {
-						for v in values {
+					if parent_has_opacity {
+						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
 							*v *= current_opacity;
 						}
-					} else {
-						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
-							*v = current_opacity;
-						}
 					}
-					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY_FILL) {
-						for v in values {
-							*v *= current_fill;
-						}
-					} else {
+					if parent_has_fill {
 						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
-							*v = current_fill;
+							*v *= current_fill;
 						}
 					}
 
 					flatten_recursive(output, sub_list, extract_variant);
 				}
-				// Extract the target variant and push its items with composed transform, opacity, and fill
+				// Extract the target variant and push its items, composing the parent's attributes onto each
 				other => {
 					if let Some(typed_list) = extract_variant(other) {
 						for mut item in typed_list.into_iter() {
-							let row_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-							let row_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-							let row_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-
-							item.set_attribute(ATTR_TRANSFORM, current_transform * row_transform);
-							item.set_attribute(ATTR_OPACITY, current_opacity * row_opacity);
-							item.set_attribute(ATTR_OPACITY_FILL, current_fill * row_fill);
-							item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+							// Each `|| item.attribute(...)` keeps an attribute the item itself carries
+							// (recomposed with the parent's identity value) even when the parent lacks it
+							if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
+								let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+								item.set_attribute(ATTR_TRANSFORM, current_transform * item_transform);
+							}
+							if parent_has_opacity || item.attribute::<f64>(ATTR_OPACITY).is_some() {
+								let item_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
+								item.set_attribute(ATTR_OPACITY, current_opacity * item_opacity);
+							}
+							if parent_has_fill || item.attribute::<f64>(ATTR_OPACITY_FILL).is_some() {
+								let item_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+								item.set_attribute(ATTR_OPACITY_FILL, current_fill * item_fill);
+							}
+							if parent_has_layer_path {
+								item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+							}
 
 							output.push(item);
 						}
@@ -167,6 +189,148 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 	let mut output = List::new();
 	flatten_recursive(&mut output, content, extract_variant);
 	output
+}
+
+/// Converts a `Fill` enum into the `List<Graphic>` representation used as paint storage.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn fill_to_graphic_list(fill: &Fill, bounding_box_transform: DAffine2) -> Option<List<Graphic>> {
+	match fill {
+		Fill::None => None,
+		Fill::Solid(color) => Some(List::new_from_element((*color).into())),
+		Fill::Gradient(gradient) => {
+			let gradient_transform = gradient.transform * gradient.to_transform();
+
+			// TODO: Eventually remove this document upgrade code
+			// Absolute gradients carry their effective frame into the new pipeline; legacy bounding-box gradients bake the bbox
+			// in and flag the legacy render path until the deferred migration converts them.
+			let (transform, legacy) = if gradient.absolute {
+				(gradient_transform, false)
+			} else {
+				(bounding_box_transform * gradient_transform, true)
+			};
+			let gradient_item = Item::new_from_element(gradient.stops.clone())
+				.with_attribute(ATTR_TRANSFORM, transform)
+				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
+				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method)
+				.with_attribute(ATTR_GRADIENT_LEGACY, legacy);
+			let gradient_list = List::new_from_item(gradient_item);
+
+			Some(List::new_from_element(Graphic::Gradient(gradient_list)))
+		}
+	}
+}
+
+/// Converts a `Color` into the `List<Graphic>` representation used as paint storage.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn color_to_graphic_list(color: Option<Color>) -> Option<List<Graphic>> {
+	color.as_ref().map(|color| List::new_from_element((*color).into()))
+}
+
+/// Look up the paint graphics stored under attribute for a vector item, normalizing any graphic list type to `List<Graphic>`.
+pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
+	list.attribute::<List<Graphic>>(attribute, index)
+		.map(Cow::Borrowed)
+		.or_else(|| list.attribute::<List<Color>>(attribute, index).map(|c| Cow::Owned(c.clone().into_graphic_list())))
+		.or_else(|| list.attribute::<List<GradientStops>>(attribute, index).map(|g| Cow::Owned(g.clone().into_graphic_list())))
+		.or_else(|| list.attribute::<List<Vector>>(attribute, index).map(|v| Cow::Owned(v.clone().into_graphic_list())))
+		.or_else(|| list.attribute::<List<Raster<CPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
+		.or_else(|| list.attribute::<List<Raster<GPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
+		// Treat a blank attribute as absent so consumers fall back to the legacy `style` instead of masking it.
+		.filter(|graphic_list| graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty()))
+}
+
+/// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
+/// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
+pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
+	list.attribute::<List<Graphic>>(attribute, index)
+		.is_some_and(|graphics| graphics.element(0).is_some_and(|graphic| !graphic.is_empty()))
+		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Raster<CPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+		|| list.attribute::<List<Raster<GPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+}
+
+/// Look up the fill paint graphics for a vector item, falling back to the legacy
+/// `style.fill` when the attribute is absent or empty.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn fill_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
+	graphic_list_at(list, index, ATTR_FILL).or_else(|| {
+		let vector = list.element(index)?;
+		let bounds = vector.nonzero_bounding_box();
+		let bounding_box_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+		fill_to_graphic_list(vector.style.fill(), bounding_box_transform).map(Cow::Owned)
+	})
+}
+
+/// Look up the stroke paint graphics for a vector item, falling back to the legacy
+/// `style.stroke.color` when the attribute is absent or empty.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn stroke_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
+	graphic_list_at(list, index, ATTR_STROKE).or_else(|| {
+		let vector = list.element(index)?;
+		color_to_graphic_list(vector.style.stroke().and_then(|s| s.color())).map(Cow::Owned)
+	})
+}
+
+/// Check whether the fill paint for a vector item is fully opaque, falling back to
+/// the legacy `style.fill` when the attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Fill` fallback path performs.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn is_fill_opaque_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = graphic_list_at(list, index, ATTR_FILL) {
+		return graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque());
+	}
+	let Some(vector) = list.element(index) else { return false };
+	match vector.style.fill() {
+		Fill::None => false,
+		Fill::Solid(color) => color.is_opaque(),
+		Fill::Gradient(gradient) => gradient.stops.iter().all(|stop| stop.color.is_opaque()),
+	}
+}
+
+/// Check whether the fill paint for a vector item is fully transparent, falling back to
+/// the legacy `style.fill` when the attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Fill` fallback path performs.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn is_fill_fully_transparent_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = graphic_list_at(list, index, ATTR_FILL) {
+		return graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent());
+	}
+	let Some(vector) = list.element(index) else { return false };
+	match vector.style.fill() {
+		Fill::None => true,
+		Fill::Solid(color) => color.a() == 0.,
+		Fill::Gradient(gradient) => gradient.stops.iter().all(|stop| stop.color.a() == 0.),
+	}
+}
+
+/// Check whether the stroke paint for a vector item is fully opaque, falling back to
+/// the legacy `style.stroke.color` when the attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Stroke.color` fallback path performs.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn is_stroke_opaque_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = graphic_list_at(list, index, ATTR_STROKE) {
+		return graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque());
+	}
+	let Some(color) = list.element(index).and_then(|vector| vector.style.stroke()).and_then(|stroke| stroke.color()) else {
+		return false;
+	};
+	color.is_opaque()
+}
+
+/// Check whether the stroke paint for a vector item is fully transparent, falling back to
+/// the legacy `style.stroke.color` when the attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Stroke.color` fallback path performs.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn is_stroke_fully_transparent_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = graphic_list_at(list, index, ATTR_STROKE) {
+		return graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent());
+	}
+	let Some(color) = list.element(index).and_then(|vector| vector.style.stroke()).and_then(|stroke| stroke.color()) else {
+		return true;
+	};
+	color.a() == 0.
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
@@ -199,6 +363,12 @@ impl TryFromGraphic for GradientStops {
 	}
 }
 
+impl TryFromGraphic for String {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		if let Graphic::Text(t) = graphic { Some(t) } else { None }
+	}
+}
+
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicList {
 	fn into_graphic_list(self) -> List<Graphic>;
@@ -220,7 +390,7 @@ impl IntoGraphicList for List<Graphic> {
 
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic row so a subsequent
+		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic item so a subsequent
 		// `flatten_graphic_list` doesn't overwrite the inner Vector's stamp with an empty value
 		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
@@ -255,6 +425,17 @@ impl IntoGraphicList for List<GradientStops> {
 	}
 }
 
+impl IntoGraphicList for List<String> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let mut graphic_list = List::new_from_element(Graphic::Text(self));
+		if !layer_path.is_empty() {
+			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		}
+		graphic_list
+	}
+}
+
 impl IntoGraphicList for DAffine2 {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
@@ -265,6 +446,13 @@ impl IntoGraphicList for DAffine2 {
 impl From<DAffine2> for Graphic {
 	fn from(_: DAffine2) -> Self {
 		Graphic::default()
+	}
+}
+
+// DVec2
+impl From<DVec2> for Graphic {
+	fn from(position: DVec2) -> Self {
+		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position)))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -324,6 +512,7 @@ impl Graphic {
 			Graphic::RasterGPU(list) => all_clipped(list),
 			Graphic::Color(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
+			Graphic::Text(list) => all_clipped(list),
 		}
 	}
 
@@ -332,9 +521,81 @@ impl Graphic {
 			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
 				let Some(element) = vector.element(index) else { return false };
 				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-				opacity > 1. - f64::EPSILON && element.style.fill().is_opaque() && element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+
+				let fill_opaque_or_absent = match graphic_list_at(vector, index, ATTR_FILL) {
+					Some(graphic_list) => graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()),
+					None => element.style.fill().is_opaque(),
+				};
+
+				let stroke_invisible_or_transparent = element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+					|| if let Some(graphic_list) = graphic_list_at(vector, index, ATTR_STROKE) {
+						graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent())
+					} else {
+						element.style.stroke().and_then(|stroke| stroke.color()).is_none_or(|color| color.a() == 0.)
+					};
+
+				opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 			}),
 			_ => false,
+		}
+	}
+
+	pub fn is_opaque(&self) -> bool {
+		match self {
+			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
+			Graphic::Vector(list) => {
+				!list.is_empty()
+					&& (0..list.len()).all(|i| {
+						let Some(vector) = list.element(i) else { return false };
+						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_fill_opaque_at(list, i);
+						let stroke_opaque_or_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_opaque_at(list, i);
+						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
+					})
+			}
+			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
+			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+		}
+	}
+
+	pub fn is_fully_transparent(&self) -> bool {
+		match self {
+			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
+			Graphic::Vector(list) => (0..list.len()).all(|i| {
+				let Some(vector) = list.element(i) else { return false };
+				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+				if opacity <= f64::EPSILON {
+					return true;
+				}
+				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+				let fill_invisible = opacity_fill <= f64::EPSILON || is_fill_fully_transparent_at(list, i);
+				let stroke_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_fully_transparent_at(list, i);
+				fill_invisible && stroke_invisible
+			}),
+			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
+			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+		}
+	}
+
+	/// True if this paint opaquely covers the entire fill region.
+	/// Vector, Raster, and a nested Graphic may leave gaps, so they return false.
+	pub fn covers_opaquely(&self) -> bool {
+		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
+	}
+
+	/// Returns true if this graphic's inner list is empty.
+	pub fn is_empty(&self) -> bool {
+		match self {
+			Graphic::Graphic(list) => list.is_empty(),
+			Graphic::Vector(list) => list.is_empty(),
+			Graphic::Color(list) => list.is_empty(),
+			Graphic::Gradient(list) => list.is_empty(),
+			Graphic::RasterCPU(list) => list.is_empty(),
+			Graphic::RasterGPU(list) => list.is_empty(),
+			Graphic::Text(list) => list.is_empty(),
 		}
 	}
 }
@@ -348,6 +609,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -359,22 +621,23 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
 	}
 }
 
 impl ListConvert<Graphic> for Vector {
-	fn convert_row(self) -> Graphic {
+	fn convert_item(self) -> Graphic {
 		Graphic::Vector(List::new_from_element(self))
 	}
 }
 impl ListConvert<Graphic> for Raster<CPU> {
-	fn convert_row(self) -> Graphic {
+	fn convert_item(self) -> Graphic {
 		Graphic::RasterCPU(List::new_from_element(self))
 	}
 }
 impl ListConvert<Graphic> for Raster<GPU> {
-	fn convert_row(self) -> Graphic {
+	fn convert_item(self) -> Graphic {
 		Graphic::RasterGPU(List::new_from_element(self))
 	}
 }
@@ -388,6 +651,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
+			Self::Text(list) => list.render_complexity(),
 		}
 	}
 }
@@ -414,9 +678,9 @@ impl<T: Clone> AtIndex for List<T> {
 	type Output = List<T>;
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
-		self.clone_item(index).map(|row| {
+		self.clone_item(index).map(|item| {
 			let mut result_list = Self::default();
-			result_list.push(row);
+			result_list.push(item);
 			result_list
 		})
 	}
@@ -447,9 +711,9 @@ impl<T: Clone> OmitIndex for List<T> {
 		let mut result = Self::default();
 		for i in 0..self.len() {
 			if i != index
-				&& let Some(row) = self.clone_item(i)
+				&& let Some(item) = self.clone_item(i)
 			{
-				result.push(row);
+				result.push(item);
 			}
 		}
 		result
@@ -460,5 +724,115 @@ impl<T: Clone> OmitIndex for List<T> {
 			return self.clone();
 		}
 		self.omit_index(self.len() - index)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::list::List;
+
+	fn vector_graphic() -> Graphic {
+		Graphic::Vector(List::new_from_element(Vector::default()))
+	}
+
+	// Flattening must not invent attribute columns that neither the parent graphic nor the child carried
+	#[test]
+	fn flatten_does_not_invent_attributes() {
+		let graphics = List::new_from_element(vector_graphic());
+		let flattened: List<Vector> = graphics.into_flattened_list();
+		for key in [ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, ATTR_EDITOR_LAYER_PATH] {
+			assert!(!flattened.attribute_keys().any(|k| k == key), "flatten invented the `{key}` attribute");
+		}
+	}
+
+	// A parent attribute that is present must compose onto the flattened children
+	#[test]
+	fn flatten_propagates_present_attributes() {
+		let mut graphics = List::new_from_element(vector_graphic());
+		graphics.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		let flattened: List<Vector> = graphics.into_flattened_list();
+		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+
+		let mut group = List::new_from_element(Graphic::Graphic(List::new_from_element(vector_graphic())));
+		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		let flattened: List<Vector> = group.into_flattened_list();
+		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+	}
+}
+
+#[cfg(test)]
+mod graphic_is_opaque_tests {
+	use vector_types::{GradientSpreadMethod, GradientStop};
+
+	use super::*;
+
+	fn color_graphic(alpha: f64) -> Graphic {
+		let color = Color::from_rgbaf32(1., 0., 0., alpha as f32).unwrap();
+		Graphic::Color(List::new_from_element(color))
+	}
+
+	fn gradient_graphic(gradient: GradientStops) -> Graphic {
+		let mut gradient_list = List::new_from_element(gradient);
+		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
+		Graphic::Gradient(gradient_list)
+	}
+
+	#[test]
+	fn opaque_color_is_opaque() {
+		let g = color_graphic(1.);
+		assert!(g.is_opaque());
+	}
+
+	#[test]
+	fn transparent_color_is_not_opaque() {
+		let g = color_graphic(0.5);
+		assert!(!g.is_opaque());
+	}
+
+	#[test]
+	fn vector_is_not_opaque() {
+		let g = Graphic::Vector(List::default());
+		assert!(!g.is_opaque());
+	}
+
+	#[test]
+	fn gradient_with_all_opaque_stops_is_opaque() {
+		let color_1 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
+		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
+		let gradient = GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: color_1,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: color_2,
+			},
+		]);
+		let g = gradient_graphic(gradient);
+		assert!(g.is_opaque());
+	}
+
+	#[test]
+	fn gradient_with_transparent_stop_is_not_opaque() {
+		let color_1 = Color::from_rgbaf32(1., 0., 0., 0.5).unwrap();
+		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
+		let gradient = GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: color_1,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: color_2,
+			},
+		]);
+		let g = gradient_graphic(gradient);
+		assert!(!g.is_opaque());
 	}
 }

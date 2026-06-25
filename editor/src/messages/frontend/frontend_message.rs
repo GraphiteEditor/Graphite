@@ -15,7 +15,6 @@ use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
-use graphene_std::text::Font;
 use graphene_std::vector::style::FillChoiceUI;
 use std::path::PathBuf;
 
@@ -110,11 +109,6 @@ pub enum FrontendMessage {
 	TriggerFetchAndOpenDocument {
 		name: String,
 		filename: String,
-	},
-	TriggerFontCatalogLoad,
-	TriggerFontDataLoad {
-		font: Font,
-		url: String,
 	},
 	TriggerPersistenceReadState,
 	TriggerPersistenceReadDocument {

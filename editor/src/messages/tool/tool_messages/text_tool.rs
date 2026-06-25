@@ -6,23 +6,24 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::portfolio::utility_types::{CachedData, FontCatalog, FontCatalogStyle};
+use crate::messages::portfolio::fonts::utility_types::{FontCatalog, FontCatalogStyle};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
 	ToolColorOptions, apply_fill_only_color_pick, apply_fill_only_enabled, refresh_slot_working_color, selection_changed_since_last_sync, solid, sync_fill_only,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::resize::{Resize, viewport_zoom, window_aligned_transform};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::utility_types::ToolRefreshOptions;
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
+use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
 use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
@@ -34,11 +35,11 @@ pub struct TextTool {
 }
 
 pub struct TextOptions {
-	font_size: f64,
-	character_spacing: f64,
 	font: Font,
+	font_size: f64,
+	letter_spacing: f64,
+	letter_tilt: f64,
 	fill: ToolColorOptions,
-	tilt: f64,
 	align: TextAlign,
 	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
 	last_synced_selection: Vec<LayerNodeIdentifier>,
@@ -47,11 +48,11 @@ pub struct TextOptions {
 impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
-			font_size: 24.,
-			character_spacing: 0.,
 			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
+			font_size: 24.,
+			letter_spacing: 0.,
+			letter_tilt: 0.,
 			fill: ToolColorOptions::new_enabled(),
-			tilt: 0.,
 			align: TextAlign::default(),
 			last_synced_selection: Vec::new(),
 		}
@@ -105,29 +106,28 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Vec<WidgetInstance> {
-	// If a single text layer is selected, the control bar's font/style menus drive that layer's text node directly, going through the
-	// same code path as the Properties panel (LoadFontData + SetInputValue, with closest_style and font_style_to_restore bookkeeping).
-	// Otherwise the menus only update the control bar option for the next created text.
 	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface));
 
-	let font_input_index = graphene_std::text::text::FontInput::INDEX;
-	let apply_font = move |new_font: Font| -> Message {
+	let apply_font = move |font: Font| -> Message {
 		match text_node_id {
-			Some(node_id) => NodeGraphMessage::SetInputValue {
-				node_id,
-				input_index: font_input_index,
-				value: TaggedValue::Font(new_font),
+			Some(node_id) => {
+				let resource_id = ResourceId::new();
+				Message::Batched {
+					messages: Box::new([
+						DocumentMessage::Resource(ResourceMessage::AddFont { resource_id, font }).into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: graphene_std::text::text::FontInput::INDEX,
+							value: TaggedValue::Resource(resource_id),
+						}
+						.into(),
+					]),
+				}
 			}
-			.into(),
 			None => TextToolMessage::UpdateOptions {
-				options: TextOptionsUpdate::Font { font: new_font },
+				options: TextOptionsUpdate::Font { font },
 			}
 			.into(),
-		}
-	};
-	let preview_font = move |new_font: Font| -> Message {
-		Message::Batched {
-			messages: Box::new([PortfolioMessage::LoadFontData { font: new_font.clone() }.into(), apply_font(new_font)]),
 		}
 	};
 	let commit_font = move |new_font: Font| -> Message {
@@ -142,35 +142,27 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 
 	let font = DropdownInput::new(vec![
 		font_catalog
-			.0
 			.iter()
 			.map(|family| {
 				let current_font = &tool.options.font;
-				let mut new_font = Font::new(family.name.clone(), current_font.font_style_to_restore.clone().unwrap_or_else(|| current_font.font_style.clone()));
-				new_font.font_style_to_restore = current_font.font_style_to_restore.clone().or_else(|| Some(new_font.font_style.clone()));
-				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&new_font.font_style, "");
-				new_font.font_style = family.closest_style(weight, italic).to_named_style();
-
-				// Intentionally drop `font_style_to_restore` on commit so the committed style becomes the new basis for
-				// subsequent family switches. Preserving the original style intent is hover-only behavior (handled by `new_font`).
 				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&current_font.font_style, "");
-				let commit_only_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
+				let new_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
+				let commit_only_font = new_font.clone();
 
 				MenuListEntry::new(family.name.clone())
 					.label(family.name.clone())
 					.font(family.closest_style(400, false).preview_url(&family.name))
-					.on_update(move |_| preview_font(new_font.clone()))
+					.on_update(move |_| apply_font(new_font.clone()))
 					.on_commit(move |_| commit_font(commit_only_font.clone()))
 			})
 			.collect::<Vec<_>>(),
 	])
-	.selected_index(font_catalog.0.iter().position(|family| family.name == tool.options.font.font_family).map(|i| i as u32))
+	.selected_index(font_catalog.iter().position(|family| family.name == tool.options.font.font_family).map(|i| i as u32))
 	.virtual_scrolling(true)
 	.widget_instance();
 
 	let style = DropdownInput::new({
 		font_catalog
-			.0
 			.iter()
 			.find(|family| family.name == tool.options.font.font_family)
 			.map(|family| {
@@ -182,7 +174,7 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 
 					MenuListEntry::new(font_style.clone())
 						.label(font_style)
-						.on_update(move |_| preview_font(new_font.clone()))
+						.on_update(move |_| apply_font(new_font.clone()))
 						.on_commit(move |_| commit_font(new_font_for_commit.clone()))
 				};
 
@@ -196,7 +188,6 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 	})
 	.selected_index(
 		font_catalog
-			.0
 			.iter()
 			.find(|family| family.name == tool.options.font.font_family)
 			.and_then(|family| {
@@ -253,7 +244,7 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 }
 
 impl ToolRefreshOptions for TextTool {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData) {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>) {
 		// Defer to the SelectionChanged handler which has document context, required for the font/style
 		// dropdowns to bind to the selected text layer's node graph inputs
 		responses.add(TextToolMessage::SelectionChanged);
@@ -299,11 +290,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			self.options.fill.fill_choice = Some(solid(context.global_tool_data.primary_color));
 		}
 
+		if context.fonts.font_catalog.is_empty() {
+			responses.add_front(FontsMessage::LoadCatalog);
+		}
+
 		let options = match message {
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some((_, font, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface)
+					&& let Some((_, font, typesetting)) = graph_modification_utils::get_text(layer, &context.document.network_interface, context.fonts, &context.document.resources)
 				{
 					self.options.align = typesetting.align;
 					self.options.font_size = typesetting.font_size;
@@ -311,7 +306,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
 						editing_text.typesetting.align = typesetting.align;
 						editing_text.typesetting.font_size = typesetting.font_size;
-						editing_text.font = font.clone();
+						editing_text.font = font;
 					}
 				}
 
@@ -326,7 +321,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				// Text tool has no fill checkbox; keep enabled so new text never starts with `None`
 				self.options.fill.enabled = Some(true);
 
-				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
+				self.send_layout(responses, LayoutTarget::ToolOptions, &context.fonts.font_catalog, context.document);
 				return;
 			}
 			_ => {
@@ -385,7 +380,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
+		self.send_layout(responses, LayoutTarget::ToolOptions, &context.fonts.font_catalog, context.document);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -476,9 +471,9 @@ struct TextToolData {
 }
 
 impl TextToolData {
-	fn delete_empty_layer(&mut self, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
+	fn delete_empty_layer(&mut self, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Remove the editable textbox UI first
-		self.set_editing(false, font_cache, responses);
+		self.set_editing(false, fonts, responses);
 
 		// Delete the empty text layer and update the graph
 		responses.add(NodeGraphMessage::DeleteNodes {
@@ -491,15 +486,16 @@ impl TextToolData {
 	}
 
 	/// Set the editing state of the currently modifying layer
-	fn set_editing(&self, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	fn set_editing(&self, editable: bool, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			let (align, align_last) = editing_text.typesetting.align.css();
+			let font_data = fonts.get_resource_or_queue_load(&editing_text.font, responses).as_ref().to_vec().into();
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.map_or("#000000".to_string(), |color| SRGBA8::from(color).to_css_hex()),
-				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
+				font_data,
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
@@ -517,13 +513,13 @@ impl TextToolData {
 		}
 	}
 
-	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
+	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting, _) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface, fonts, &document.resources)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
-			font: font.clone(),
+			font,
 			typesetting,
 			color: Some(color),
 			transform,
@@ -532,20 +528,20 @@ impl TextToolData {
 		Some(())
 	}
 
-	fn start_editing_layer(&mut self, layer: LayerNodeIdentifier, tool_state: TextToolFsmState, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	fn start_editing_layer(&mut self, layer: LayerNodeIdentifier, tool_state: TextToolFsmState, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Cannot edit ROOT_PARENT in TextTooLData")
 		}
 
 		if tool_state == TextToolFsmState::Editing {
-			self.set_editing(false, font_cache, responses);
+			self.set_editing(false, fonts, responses);
 		}
 
 		self.layer = layer;
-		if self.load_layer_text_node(document).is_some() {
+		if self.load_layer_text_node(document, fonts).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
-			self.set_editing(true, font_cache, responses);
+			self.set_editing(true, fonts, responses);
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
@@ -557,14 +553,16 @@ impl TextToolData {
 		};
 	}
 
-	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
-		// Create new text
+	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		self.new_text = String::new();
 		responses.add(DocumentMessage::AddTransaction);
 
 		self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
 
-		responses.add(PortfolioMessage::LoadFontData { font: editing_text.font.clone() });
+		responses.add(FontsMessage::Load {
+			font: editing_text.font.clone(),
+			response: Box::new(NodeGraphMessage::RunDocumentGraph.into()),
+		});
 		responses.add(GraphOperationMessage::NewTextLayer {
 			id: self.layer.to_node(),
 			text: String::new(),
@@ -575,12 +573,12 @@ impl TextToolData {
 		});
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
-			fill: if let Some(color) = editing_text.color { Fill::Solid(color) } else { Fill::None },
+			fill: editing_text.color.map_or(Fill::None, Fill::Solid),
 		});
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
 
-		self.set_editing(true, font_cache, responses);
+		self.set_editing(true, fonts, responses);
 
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
@@ -602,20 +600,19 @@ impl TextToolData {
 		});
 	}
 
-	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
+	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
+		let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
 		document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).find(|&layer| {
-			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-			let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
-
+			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, fonts, responses);
 			transformed_quad.contains(mouse)
 		})
 	}
 
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache) {
+	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		self.snap_candidates.clear();
 
 		if let Some(ResizingLayer { id, .. }) = self.layer_dragging {
-			let quad = document.metadata().transform_to_document(id) * text_bounding_box(id, document, font_cache);
+			let quad = document.metadata().transform_to_document(id) * text_bounding_box(id, document, fonts, responses);
 			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 		}
 	}
@@ -651,26 +648,27 @@ impl Fsm for TextToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext {
-			document,
-			input,
-			cached_data,
-			viewport,
-			..
-		} = transition_data;
-		let font_cache = &cached_data.font_cache;
+		let ToolActionMessageContext { document, input, fonts, viewport, .. } = transition_data;
 		let fill_color = COLOR_OVERLAY_BLUE_05;
 
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				let transform = document.metadata().transform_to_viewport(tool_data.layer).to_cols_array();
+				// While editing, the text is blanked, so the layer's rendered transform metadata is absent; read the Transform node so the overlay tracks placement
+				let transform = document
+					.metadata()
+					.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
+					.to_cols_array();
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform { transform });
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
-					let far = graphene_std::text::bounding_box(&tool_data.new_text, &editing_text.font, font_cache, editing_text.typesetting, false);
+					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+					let far = graphene_std::text::bounding_box(&tool_data.new_text, &font_resource, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
+						let transformed_quad = document
+							.metadata()
+							.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
+							* quad;
 						overlay_context.quad(transformed_quad, None, Some(fill_color));
 					}
 				}
@@ -694,7 +692,7 @@ impl Fsm for TextToolFsmState {
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
 				let layer = all_layers.find(|&layer| document.metadata().is_text_layer(layer));
-				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
+				let bounds = layer.map(|layer| text_bounding_box(layer, document, fonts, responses));
 				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
 				if layer.is_none() || bounds.is_none() || layer_transform.matrix2.determinant() == 0. {
@@ -710,10 +708,11 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface)
-							&& lines_clipping(text.as_str(), font, font_cache, typesetting)
-						{
-							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
+							let font_resource = fonts.get_resource_or_queue_load(&font, responses);
+							if lines_clipping(text.as_str(), &font_resource, typesetting) {
+								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+							}
 						}
 
 						bounding_box_manager.render_overlays(&mut overlay_context, false);
@@ -728,7 +727,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
-					tool_data.start_editing_layer(layer, state, document, font_cache, responses);
+					tool_data.start_editing_layer(layer, state, document, fonts, responses);
 					return TextToolFsmState::Editing;
 				}
 
@@ -769,10 +768,10 @@ impl Fsm for TextToolFsmState {
 						bounds.original_bound_transform = bounds.transform;
 						bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
 					}
-					tool_data.get_snap_candidates(document, font_cache);
+					tool_data.get_snap_candidates(document, fonts, responses);
 
 					return TextToolFsmState::ResizingBounds;
-				} else if let Some(clicked_layer) = TextToolData::check_click(document, input, font_cache) {
+				} else if let Some(clicked_layer) = TextToolData::check_click(document, input, fonts, responses) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					if selected != Some(clicked_layer) {
@@ -784,7 +783,7 @@ impl Fsm for TextToolFsmState {
 						id: clicked_layer,
 						original_transform,
 					});
-					tool_data.get_snap_candidates(document, font_cache);
+					tool_data.get_snap_candidates(document, fonts, responses);
 					return TextToolFsmState::Dragging;
 				}
 				TextToolFsmState::Placing
@@ -967,29 +966,29 @@ impl Fsm for TextToolFsmState {
 				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
 				// Check if the user has clicked (no dragging) on some existing text
-				if !has_dragged && let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, font_cache) {
-					tool_data.start_editing_layer(clicked_text_layer_path, self, document, font_cache, responses);
+				if !has_dragged && let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, fonts, responses) {
+					tool_data.start_editing_layer(clicked_text_layer_path, self, document, fonts, responses);
 					return TextToolFsmState::Editing;
 				}
 
-				// Otherwise create some new text
-				let constraint_size = has_dragged.then_some((start - end).abs());
+				// Otherwise create some new text. The window-aligned transform is in viewport space, so the editing overlay (a screen-space CSS matrix) carries the zoom.
+				let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
 				let editing_text = EditingText {
 					text: String::new(),
-					transform: DAffine2::from_translation(start),
+					transform: window_aligned_transform(document, start, DVec2::ONE),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
+						letter_spacing: tool_options.letter_spacing,
+						letter_tilt: tool_options.letter_tilt,
 						max_width: constraint_size.map(|size| size.x),
-						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
-						tilt: tool_options.tilt,
 						align: tool_options.align,
 						..TypesettingConfig::default()
 					},
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),
 				};
-				tool_data.new_text(document, editing_text, font_cache, responses);
+				tool_data.new_text(document, editing_text, fonts, responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
@@ -1004,7 +1003,7 @@ impl Fsm for TextToolFsmState {
 				}
 
 				if drag_too_small && let Some(layer_info) = &tool_data.layer_dragging {
-					tool_data.start_editing_layer(layer_info.id, self, document, font_cache, responses);
+					tool_data.start_editing_layer(layer_info.id, self, document, fonts, responses);
 					return TextToolFsmState::Editing;
 				}
 				tool_data.layer_dragging.take();
@@ -1013,8 +1012,9 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
 				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
+				let font_resource = fonts.get_resource_or_queue_load(&font, responses);
 				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
-					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
+					font_data: font_resource.as_ref().to_vec().into(),
 				});
 
 				TextToolFsmState::Editing
@@ -1023,7 +1023,7 @@ impl Fsm for TextToolFsmState {
 				tool_data.new_text = new_text;
 
 				if !is_left_or_right_click {
-					tool_data.set_editing(false, font_cache, responses);
+					tool_data.set_editing(false, fonts, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
@@ -1034,7 +1034,7 @@ impl Fsm for TextToolFsmState {
 					TextToolFsmState::Ready
 				} else {
 					if tool_data.new_text.is_empty() {
-						return tool_data.delete_empty_layer(font_cache, responses);
+						return tool_data.delete_empty_layer(fonts, responses);
 					}
 
 					responses.add(FrontendMessage::TriggerTextCommit);
@@ -1055,7 +1055,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
 				if tool_data.new_text.is_empty() {
-					return tool_data.delete_empty_layer(font_cache, responses);
+					return tool_data.delete_empty_layer(fonts, responses);
 				}
 
 				responses.add(FrontendMessage::TriggerTextCommit);

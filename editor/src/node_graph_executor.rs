@@ -9,7 +9,6 @@ use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingI
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::RenderMetadata;
-use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
@@ -95,10 +94,6 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
-	}
-
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
 		self.runtime_io
 			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
@@ -113,8 +108,14 @@ impl NodeGraphExecutor {
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
+		let resources = document.resources.registry.clone();
+
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+				network,
+				resources,
+				node_to_inspect: Vec::new(),
+			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
@@ -128,8 +129,10 @@ impl NodeGraphExecutor {
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 
+			let resources = document.resources.registry.clone();
+
 			self.runtime_io
-				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
 
@@ -237,6 +240,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+		let resources = document.resources.registry.clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
 			graphene_std::application_io::ExportFormat::Svg
@@ -278,7 +282,11 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+				network,
+				resources,
+				node_to_inspect: Vec::new(),
+			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((
@@ -438,6 +446,8 @@ impl NodeGraphExecutor {
 			text_frames,
 			clip_targets,
 			vector_data,
+			fill_attributes,
+			stroke_attributes,
 			backgrounds: _,
 		} = render_output.metadata;
 
@@ -448,10 +458,17 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+
+		// TODO: Eventually remove this document upgrade code
+		// Runs after click targets land (this graph run's geometry bounds) so the deferred gradient migration can use them.
+		responses.add(DocumentMessage::MigrateLegacyGradients);
+
 		responses.add(DocumentMessage::UpdateOutlines { outlines });
 		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
+		responses.add(DocumentMessage::UpdateFillAttributes { fill_attributes });
+		responses.add(DocumentMessage::UpdateStrokeAttributes { stroke_attributes });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

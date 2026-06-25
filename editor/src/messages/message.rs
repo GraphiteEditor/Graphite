@@ -24,6 +24,8 @@ pub enum Message {
 	#[child]
 	Frontend(FrontendMessage),
 	#[child]
+	Future(FutureMessage),
+	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
 	KeyMapping(KeyMappingMessage),
@@ -32,9 +34,13 @@ pub enum Message {
 	#[child]
 	MenuBar(MenuBarMessage),
 	#[child]
+	Network(NetworkMessage),
+	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
 	Preferences(PreferencesMessage),
+	#[child]
+	ResourceStorage(ResourceStorageMessage),
 	#[child]
 	Tool(ToolMessage),
 	#[child]

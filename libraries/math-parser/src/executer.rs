@@ -63,38 +63,38 @@ mod tests {
 	}
 
 	eval_tests! {
-		test_addition: Value::from_f64(7.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
+		test_addition: Value::from_f64(7.) => Node::BinOp {
+			lhs: Box::new(Node::Lit(Literal::Float(3.))),
 			op: BinaryOp::Add,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
-		test_subtraction: Value::from_f64(1.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(5.0))),
+		test_subtraction: Value::from_f64(1.) => Node::BinOp {
+			lhs: Box::new(Node::Lit(Literal::Float(5.))),
 			op: BinaryOp::Sub,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
-		test_multiplication: Value::from_f64(12.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
+		test_multiplication: Value::from_f64(12.) => Node::BinOp {
+			lhs: Box::new(Node::Lit(Literal::Float(3.))),
 			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
 		test_division: Value::from_f64(2.5) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(5.0))),
+			lhs: Box::new(Node::Lit(Literal::Float(5.))),
 			op: BinaryOp::Div,
-			rhs: Box::new(Node::Lit(Literal::Float(2.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(2.))),
 		},
-		test_negation: Value::from_f64(-3.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(3.0))),
+		test_negation: Value::from_f64(-3.) => Node::UnaryOp {
+			expr: Box::new(Node::Lit(Literal::Float(3.))),
 			op: UnaryOp::Neg,
 		},
-		test_sqrt: Value::from_f64(2.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(4.0))),
+		test_sqrt: Value::from_f64(2.) => Node::UnaryOp {
+			expr: Box::new(Node::Lit(Literal::Float(4.))),
 			op: UnaryOp::Sqrt,
 		},
-		 test_power: Value::from_f64(8.0) => Node::BinOp {
-			 lhs: Box::new(Node::Lit(Literal::Float(2.0))),
+		 test_power: Value::from_f64(8.) => Node::BinOp {
+			 lhs: Box::new(Node::Lit(Literal::Float(2.))),
 			 op: BinaryOp::Pow,
-			 rhs: Box::new(Node::Lit(Literal::Float(3.0))),
+			 rhs: Box::new(Node::Lit(Literal::Float(3.))),
 		 },
 	}
 }

@@ -421,22 +421,22 @@ fn random(
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Convert a number to an integer of the type u32, which may be the required type for certain node inputs.
-#[node_macro::node(name("To u32"), category("Debug"))]
-fn to_u32(_: impl Ctx, value: u32) -> u32 {
+#[node_macro::node(name("As u32"), category("Debug"))]
+fn as_u32(_: impl Ctx, value: u32) -> u32 {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Convert a number to an integer of the type u64, which may be the required type for certain node inputs.
-#[node_macro::node(name("To u64"), category("Debug"))]
-fn to_u64(_: impl Ctx, value: u64) -> u64 {
+#[node_macro::node(name("As u64"), category("Debug"))]
+fn as_u64(_: impl Ctx, value: u64) -> u64 {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs.
-#[node_macro::node(name("To f64"), category("Debug"))]
-fn to_f64(_: impl Ctx, value: f64) -> f64 {
+#[node_macro::node(name("As f64"), category("Debug"))]
+fn as_f64(_: impl Ctx, value: f64) -> f64 {
 	value
 }
 

@@ -2,7 +2,7 @@ use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
@@ -484,6 +484,18 @@ pub struct Gradient {
 	pub end: DVec2,
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub spread_method: GradientSpreadMethod,
+	// TODO: Eventually remove this document upgrade code
+	/// Whether `start`/`end` are absolute (layer-space) rather than in the legacy [0,1] bounding-box space.
+	/// Documents predating the gradient migration deserialize this as `false`; the deferred migration converts
+	/// them and sets it `true`. Once all documents are migrated, the legacy rendering path can be removed.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub absolute: bool,
+	// TODO: Eventually remove this document upgrade code
+	/// An extra frame adjustment composed onto the `start`/`end` frame (`transform * to_transform()`), letting the gradient
+	/// describe shapes the endpoint pair cannot, such as an elliptical radial. It defaults to identity, so existing documents
+	/// (which only have `start`/`end`) are unaffected; the migration stores a non-identity value only where it's needed.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub transform: DAffine2,
 }
 
 impl Default for Gradient {
@@ -494,6 +506,9 @@ impl Default for Gradient {
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
 			spread_method: GradientSpreadMethod::Pad,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 }
@@ -512,6 +527,41 @@ impl std::fmt::Display for Gradient {
 }
 
 impl Gradient {
+	// TODO: Eventually remove this document upgrade code
+	/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one in the geometry's local space.
+	/// `bounding_box` maps [0,1] onto the geometry's bounding box; `layer_transform` is the layer's own transform,
+	/// used to bake the elliptical adjustment that reproduces the legacy isotropic radial through a non-uniform layer.
+	pub fn to_absolute(&self, bounding_box: DAffine2, layer_transform: DAffine2) -> Gradient {
+		let start = bounding_box.transform_point2(self.start);
+		let end = bounding_box.transform_point2(self.end);
+		let direction = end - start;
+
+		// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
+		// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
+		let radial_invertible =
+			self.gradient_type == GradientType::Radial && layer_transform.is_finite() && layer_transform.matrix2.determinant().recip().is_finite() && direction.length_squared() > 1e-20;
+		let transform = if radial_invertible {
+			let radius = (layer_transform.matrix2 * direction).length();
+			let circle = DAffine2 {
+				matrix2: DMat2::from_diagonal(DVec2::splat(radius)),
+				translation: layer_transform.transform_point2(start),
+			};
+			let base = DAffine2::from_cols(direction, direction.perp(), start);
+			(layer_transform.inverse() * circle) * base.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		Gradient {
+			start,
+			end,
+			transform,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			..self.clone()
+		}
+	}
+
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
 	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType, spread_method: GradientSpreadMethod) -> Self {
 		let stops = GradientStops::new([
@@ -533,6 +583,9 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 
@@ -554,6 +607,9 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			// TODO: Eventually remove this document upgrade code
+			absolute: self.absolute,
+			transform: if time < 0.5 { self.transform } else { other.transform },
 		}
 	}
 
@@ -586,6 +642,12 @@ impl Gradient {
 		self.stops.color.insert(index, new_color);
 
 		Some(index)
+	}
+
+	/// Builds the affine that places the gradient endpoints at `start` and `end` when applied to canonical gradient space (0, 0) -> (1, 0).
+	pub fn to_transform(&self) -> DAffine2 {
+		let direction = self.end - self.start;
+		DAffine2::from_cols(direction, direction.perp(), self.start)
 	}
 }
 
@@ -623,5 +685,29 @@ impl core_types::bounds::BoundingBox for GradientStops {
 		let start = transform.transform_point2(DVec2::ZERO);
 		let end = transform.transform_point2(DVec2::X);
 		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use glam::DVec2;
+
+	fn linear_gradient(start: DVec2, end: DVec2) -> Gradient {
+		Gradient { start, end, ..Default::default() }
+	}
+
+	#[test]
+	fn to_transform_roundtrip() {
+		let cases = [(DVec2::ZERO, DVec2::X), (DVec2::new(10., 20.), DVec2::new(50., 30.)), (DVec2::new(-5., -5.), DVec2::new(5., 3.))];
+
+		for (start, end) in cases {
+			let transform = linear_gradient(start, end).to_transform();
+			let recovered_start = transform.transform_point2(DVec2::ZERO);
+			let recovered_end = transform.transform_point2(DVec2::X);
+
+			assert!((recovered_start - start).length() < 1e-10);
+			assert!((recovered_end - end).length() < 1e-10);
+		}
 	}
 }

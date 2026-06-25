@@ -21,21 +21,23 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
-use crate::messages::portfolio::utility_types::{CachedData, PanelType};
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
+use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
@@ -51,7 +53,6 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub cached_data: &'a CachedData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -59,6 +60,8 @@ pub struct DocumentMessageContext<'a> {
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
+	pub fonts: &'a FontsMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -85,6 +88,9 @@ pub struct DocumentMessageHandler {
 	//
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
+	/// Resources embedded in the document.
+	#[serde(default, skip_serializing_if = "ResourceMessageHandler::is_empty")]
+	pub resources: ResourceMessageHandler,
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
@@ -118,6 +124,11 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
+	// TODO: Eventually remove this document upgrade code
+	/// Set when a freshly-opened document still has legacy bounding-box-relative gradients; the deferred gradient
+	/// migration converts them to absolute after the first graph run (when geometry bounds are available) and clears this.
+	#[serde(skip)]
+	pub(crate) pending_gradient_migration: bool,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -160,6 +171,7 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network_interface: default_document_network_interface(),
+			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -174,6 +186,8 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
+			// TODO: Eventually remove this document upgrade code
+			pending_gradient_migration: false,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
@@ -192,7 +206,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			cached_data,
 			executor,
 			viewport,
 			current_tool,
@@ -200,6 +213,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
+			resource_storage,
+			fonts,
 		} = context;
 
 		match message {
@@ -226,11 +241,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {
+					executor,
 					network_interface: &mut self.network_interface,
+					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					executor,
-					cached_data,
+					fonts,
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
@@ -273,6 +289,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::Resource(message) => {
+				let context = ResourceMessageContext { document_id, fonts };
+				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				let axis = match axis {
@@ -437,34 +457,85 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
 				});
 
-				for layer in layers.into_iter().rev() {
-					let Some(parent) = layer.parent(self.metadata()) else { continue };
+				for original_layer in layers.into_iter().rev() {
+					let Some(parent) = original_layer.parent(self.metadata()) else { continue };
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![original_layer.to_node()]), parent);
 
-					// Copy the layer
-					let mut copy_ids = HashMap::new();
-					let node_id = layer.to_node();
-					copy_ids.insert(node_id, NodeId(0));
-
-					self.network_interface
-						.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
-						.enumerate()
-						.for_each(|(index, node_id)| {
-							copy_ids.insert(node_id, NodeId((index + 1) as u64));
-						});
-
-					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
-
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
-
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-
-					let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
-					let layer = LayerNodeIdentifier::new_unchecked(layer_id);
-					new_dragging.push(layer);
-					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
-					responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+					let Some(new_layer) = self.duplicate_layer(original_layer, responses) else { continue };
+					new_dragging.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index,
+					});
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
+				if !self.selection_network_path.is_empty() {
+					log::error!("Duplicating selected layers is only supported for the document network");
+					return;
+				}
+
+				// Mirror the placement constraints enforced when moving layers so a copy can't land somewhere a move couldn't
+				let any_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
+					return;
+				}
+
+				let selected_any_non_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
+					return;
+				}
+
+				let layers_to_duplicate = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				if layers_to_duplicate.is_empty() {
+					return;
+				}
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				let mut new_layers = Vec::new();
+				for layer in layers_to_duplicate {
+					let Some(new_layer) = self.duplicate_layer(layer, responses) else { continue };
+
+					// Insert each copy one slot below the previous so the duplicates keep their original top-to-bottom order
+					let placement_index = insert_index + new_layers.len();
+					new_layers.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index: placement_index,
+					});
+
+					// Compensate the local transform so a copy dropped into a differently-transformed parent stays put in world space
+					if layer.parent(self.metadata()) != Some(parent) {
+						let layer_world_transform = self.network_interface.document_metadata().transform_to_viewport(layer);
+						let undo_parent_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: new_layer,
+							transform: undo_parent_transform * layer_world_transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					}
+				}
+
+				let nodes = new_layers.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -510,7 +581,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.context_menu = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 				}
-				// Exit one level up if inside a nested network
+				// Go back up one level in the breadcrumb path if we're in a subgraph
 				else if !self.breadcrumb_network_path.is_empty() {
 					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
 				}
@@ -626,10 +697,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::BlendSelectedLayers => {
-				self.handle_group_selected_layers(GroupFolderType::Blend, responses);
+				self.group_selected_layers(GroupFolderType::Blend, responses);
 			}
 			DocumentMessage::MorphSelectedLayers => {
-				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
+				self.group_selected_layers(GroupFolderType::Morph, responses);
 			}
 			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
 				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
@@ -650,10 +721,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.handle_expand_fill_stroke_on_selected_layers(responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
-				self.handle_group_selected_layers(group_folder_type, responses);
+				self.group_selected_layers(group_folder_type, responses);
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
-				self.handle_move_selected_layers_to(parent, insert_index, responses);
+				self.move_selected_layers_to(parent, insert_index, responses);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -676,9 +747,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				delta_x,
 				delta_y,
 				resize,
-				resize_opposite_corner,
+				resize_opposite,
 			} => {
-				self.handle_nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
+				let resize = ipp.keyboard.key(resize);
+				let resize_opposite = ipp.keyboard.key(resize_opposite);
+				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
@@ -912,19 +985,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
-
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				responses.add(FrontendMessage::TriggerSaveDocument {
-					document_id,
-					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path,
-					folder,
-					content: self.serialize_document().into_bytes().into(),
+				let mut document = self.clone();
+				let resources_load_handle = resource_storage.resources();
+
+				responses.add(async move {
+					document.resources.collect_garbage(document.used_resources(false).as_ref());
+					document.resources.embed_resources(resources_load_handle).await;
+
+					let content = document.serialize_document().into_bytes().into();
+
+					Message::Frontend(FrontendMessage::TriggerSaveDocument {
+						document_id,
+						name,
+						path,
+						folder,
+						content,
+					})
 				});
 			}
 			DocumentMessage::SavedDocument { path } => {
@@ -1290,6 +1373,38 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
 			}
+			// TODO: Eventually remove this document upgrade code
+			DocumentMessage::MigrateLegacyGradients => {
+				if self.pending_gradient_migration {
+					self.pending_gradient_migration = false;
+
+					// Read each layer's legacy gradient and compute its absolute form from the now-available local bounds
+					let layers: Vec<_> = self.metadata().all_layers().collect();
+					let conversions: Vec<(NodeId, Fill)> = layers
+						.into_iter()
+						.filter_map(|layer| {
+							let gradient = graph_modification_utils::get_gradient(layer, &self.network_interface)?;
+							if gradient.absolute {
+								return None;
+							}
+							let fill_node_id = graph_modification_utils::get_fill_node_id(layer, &self.network_interface)?;
+							let bounds = self.metadata().nonzero_bounding_box(layer);
+							let bounding_box = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+							let layer_transform = self.metadata().upstream_transform(layer.to_node());
+							Some((fill_node_id, Fill::Gradient(gradient.to_absolute(bounding_box, layer_transform))))
+						})
+						.collect();
+
+					let converted_any = !conversions.is_empty();
+					for (fill_node_id, fill) in conversions {
+						self.network_interface
+							.set_input(&InputConnector::node(fill_node_id, 1), NodeInput::value(TaggedValue::Fill(fill), false), &[]);
+					}
+					if converted_any {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
+			}
 			DocumentMessage::UpdateOutlines { outlines } => {
 				let layer_outlines = outlines
 					.into_iter()
@@ -1307,11 +1422,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_text_frames = text_frames
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, frame)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, frame)
-						})
+					.filter(|&(node_id, _)| self.network_interface.is_layer(&node_id, &[]))
+					.map(|(node_id, frame)| {
+						let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+						(layer, frame)
 					})
 					.collect();
 				self.network_interface.update_text_frames(layer_text_frames);
@@ -1332,6 +1446,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					})
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
+			}
+			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_fill_attributes = fill_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_fill_attributes(layer_fill_attributes);
+			}
+			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_stroke_attributes = stroke_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -2198,6 +2340,30 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
+	/// Copies `layer` together with its full upstream node chain, queueing the new nodes with freshly minted IDs.
+	/// Returns the new layer's identifier; the caller places it into the stack with a `MoveLayerToStack` response.
+	fn duplicate_layer(&mut self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
+		let mut copy_ids = HashMap::new();
+		copy_ids.insert(layer.to_node(), NodeId(0));
+		self.network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+			.enumerate()
+			.for_each(|(index, node_id)| {
+				copy_ids.insert(node_id, NodeId((index + 1) as u64));
+			});
+
+		let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+		let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+		let Some(&new_layer_id) = new_ids.get(&NodeId(0)) else {
+			log::error!("Could not duplicate layer because its root node copy is missing");
+			return None;
+		};
+		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+
+		Some(LayerNodeIdentifier::new_unchecked(new_layer_id))
+	}
+
 	pub fn group_layers(
 		responses: &mut VecDeque<Message>,
 		insert_index: usize,
@@ -2318,9 +2484,7 @@ impl DocumentMessageHandler {
 		folder_id
 	}
 
-	/// Helper method for GroupSelectedLayers message.
-	/// Handles grouping layers in both artboard and non-artboard workflows.
-	fn handle_group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
+	fn group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::AddTransaction);
 
 		let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
@@ -2391,10 +2555,23 @@ impl DocumentMessageHandler {
 				continue;
 			};
 
-			let has_fill = !matches!(style.fill, Fill::None);
+			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
+			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+
+			let has_fill = if let Some(list) = fill_graphic_list {
+				list.element(0).is_some()
+			} else {
+				!matches!(style.fill, Fill::None)
+			};
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
-			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke());
+			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no attribute is present.
+			let stroke_visible = if let Some(list) = stroke_graphic_list {
+				list.element(0).is_some_and(|g| !g.is_fully_transparent())
+			} else {
+				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
+			};
+			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
@@ -2449,9 +2626,7 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Helper method for MoveSelectedLayersTo message.
-	/// Handles moving selected layers to a new parent with proper transform preservation.
-	fn handle_move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
+	fn move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
 		if !self.selection_network_path.is_empty() {
 			log::error!("Moving selected layers is only supported for the Document Network");
 			return;
@@ -2545,38 +2720,37 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 	}
 
-	/// Helper method for NudgeSelectedLayers message.
-	/// Handles keyboard nudging of selected layers with optional resize mode.
-	fn handle_nudge_selected_layers(
-		&mut self,
-		delta_x: f64,
-		delta_y: f64,
-		resize: Key,
-		resize_opposite_corner: Key,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		responses: &mut VecDeque<Message>,
-	) {
-		responses.add(DocumentMessage::AddTransaction);
-
-		let resize = ipp.keyboard.key(resize);
-		let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-
+	fn nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, resize: bool, resize_opposite: bool, responses: &mut VecDeque<Message>) {
 		let can_move = |layer| {
 			let selected = self.network_interface.selected_nodes();
 			selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
 		};
 
-		// Nudge translation without resizing
-		if !resize {
-			let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
-			responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
+		if resize {
+			let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
+			// Combine only finite bounds (a non-finite box would poison the scale), bailing before opening a transaction if none remain
+			let Some([min, max]) = layers
+				.iter()
+				.filter_map(|&layer| self.metadata().bounding_box_document(layer))
+				.filter(|[min, max]| min.is_finite() && max.is_finite())
+				.reduce(Quad::combine_bounds)
+			else {
+				return;
+			};
 
-			for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+			let resized = nudge_resize_bounds(min, max, DVec2::new(delta_x, delta_y), self.document_ptz.tilt(), resize_opposite);
+
+			// Express the document-space scale in viewport space so it composes with each layer like the rest of the transform pipeline
+			let document_to_viewport = self.metadata().document_to_viewport;
+			let transform = document_to_viewport * resized.transform * document_to_viewport.inverse();
+
+			responses.add(DocumentMessage::AddTransaction);
+
+			for layer in layers {
 				responses.add(GraphOperationMessage::TransformChange {
 					layer,
 					transform,
-					transform_in: TransformIn::Local,
+					transform_in: TransformIn::Viewport,
 					skip_rerender: false,
 				});
 			}
@@ -2584,72 +2758,18 @@ impl DocumentMessageHandler {
 			return;
 		}
 
-		let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
-		let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
+		responses.add(DocumentMessage::AddTransaction);
 
-		// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
-		let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
-		let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
-			0 => (delta_x, delta_y, false, false),
-			1 => (delta_y, -delta_x, false, true),
-			2 => (-delta_x, -delta_y, true, true),
-			3 => (-delta_y, delta_x, true, false),
-			_ => unreachable!(),
-		};
-
-		let size = existing_bottom_right - existing_top_left;
-		// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
-		// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
-		let size = size.max(DVec2::ONE);
-		let enlargement = DVec2::new(
-			if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
-			if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
-		);
-		let enlargement_factor = (enlargement + size) / size;
-
-		let position = DVec2::new(
-			existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
-			existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
-		);
-		let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
-		if !pivot.x.is_finite() {
-			pivot.x = 0.;
-		}
-		if !pivot.y.is_finite() {
-			pivot.y = 0.;
-		}
-		let scale = DAffine2::from_scale(enlargement_factor);
-		let pivot = DAffine2::from_translation(pivot);
-		let transformation = pivot * scale * pivot.inverse();
-		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-			let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-			let original_transform = self.metadata().upstream_transform(layer.to_node());
-			let new = to.inverse() * transformation * to * original_transform;
-			responses.add(GraphOperationMessage::TransformSet {
+			responses.add(GraphOperationMessage::TransformChange {
 				layer,
-				transform: new,
+				transform,
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
-		}
-	}
-
-	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
-		let mut fonts_to_load = HashSet::new();
-
-		for (_, node, _) in self.document_network().recursive_nodes() {
-			for input in &node.inputs {
-				if let Some(TaggedValue::Font(font)) = input.as_value() {
-					fonts_to_load.insert(font.clone());
-				}
-			}
-		}
-
-		for font in fonts_to_load {
-			responses.add(PortfolioMessage::LoadFontData { font });
 		}
 	}
 
@@ -3462,6 +3582,21 @@ impl DocumentMessageHandler {
 	pub fn graph_view_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
 	}
+
+	pub fn garbage_collect_resources(&mut self) {
+		let used_resources = self.used_resources(true);
+		self.resources.collect_garbage(&used_resources);
+	}
+
+	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
+		let mut resources = HashSet::new();
+		self.network_interface.collect_used_resources(&mut resources);
+		if include_history {
+			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+		}
+		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
+	}
 }
 
 /// Create a network interface with a single export
@@ -3830,6 +3965,37 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
 		assert!(true, "Application didn't crash after folder move operation");
 	}
+
+	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.
+	// Inspecting it via the Data panel (which splices in a monitor node) must not leave a dangling reference that crashes compilation.
+	#[tokio::test]
+	async fn merge_selected_nodes_while_inspecting_does_not_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let node_a = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		let node_b = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_a, node_b] }).await;
+		editor.handle_message(NodeGraphMessage::MergeSelectedNodes).await;
+
+		let merged = editor.active_document().network_interface.selected_nodes_in_nested_network(&[]).unwrap().0.clone();
+		assert_eq!(merged.len(), 1, "merge should leave one encapsulating node selected");
+
+		// Simulate the Data panel inspecting the merged node, which compiles the graph with a monitor node spliced in
+		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO)
+			.unwrap();
+		editor.runtime.run().await;
+
+		let mut messages = VecDeque::new();
+		editor.editor.poll_node_graph_evaluation(&mut messages).unwrap();
+	}
+
 	#[tokio::test]
 	async fn test_moving_folder_with_children() {
 		let mut editor = EditorTestUtils::create();
