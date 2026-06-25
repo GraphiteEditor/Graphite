@@ -956,7 +956,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn path_from_subpaths(subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, stroke_transform: DAffine2) -> Path2d {
+	fn path_from_subpaths(&self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, stroke_transform: DAffine2) -> Path2d {
 		let path = Path2d::new().expect("Failed to create Path2d");
 
 		for subpath in subpaths {
@@ -1026,7 +1026,7 @@ impl OverlayContext {
 			for curve in curves {
 				match curve {
 					PathSeg::Line(line) => {
-						let a = transform.transform_point2(point_to_dvec2(line.p1));
+						let a = point_to_dvec2(line.p1);
 						let a = self.snap_to_physical_pixel_center(a);
 						self.render_context.line_to(a.x, a.y);
 					}
@@ -1070,7 +1070,7 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			let path = Self::path_from_subpaths(subpaths.iter(), true, transform);
+			let path = self.path_from_subpaths(subpaths.iter(), true, transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
@@ -1128,7 +1128,7 @@ impl OverlayContext {
 		return pattern;
 	}
 
-	fn path_and_winding_for_fill(vector_data: &Vector, transform: DAffine2) -> (Option<Path2d>, CanvasWindingRule) {
+	fn path_and_winding_for_fill(&self, vector_data: &Vector, transform: DAffine2) -> (Option<Path2d>, CanvasWindingRule) {
 		if vector_data.use_face_fill() {
 			let subpaths: Vec<Subpath<PointId>> = {
 				let face_paths = vector_data.construct_faces().filter(|face| face.area() >= 0.);
@@ -1137,7 +1137,7 @@ impl OverlayContext {
 				// TODO: test if closed on face_paths holds on all cases
 				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), true)).collect()
 			};
-			let path = Self::path_from_subpaths(subpaths.iter(), false, transform);
+			let path = self.path_from_subpaths(subpaths.iter(), false, transform);
 
 			(Some(path), CanvasWindingRule::Nonzero)
 		} else if vector_data.is_branching() {
@@ -1149,7 +1149,7 @@ impl OverlayContext {
 
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		let path = Self::path_from_subpaths(subpaths, true, transform);
+		let path = self.path_from_subpaths(subpaths, true, transform);
 
 		self.render_context.set_fill_style_str(color);
 		self.render_context.fill_with_path_2d(&path);
@@ -1170,7 +1170,7 @@ impl OverlayContext {
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
 			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths as closed.
-			let path = Self::path_from_subpaths(subpaths, false, applied_stroke_transform);
+			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
@@ -1182,7 +1182,7 @@ impl OverlayContext {
 					self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
 				}
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
-				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform);
+				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, applied_stroke_transform);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
 				self.render_context.fill_with_path_2d_and_winding(&path, winding);
@@ -1260,8 +1260,8 @@ impl OverlayContext {
 		} else {
 			if let PathStyleType::Fill = style_type {
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
-				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, transform);
-				let path = new_path.unwrap_or(Self::path_from_subpaths(subpaths, false, transform));
+				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, transform);
+				let path = new_path.unwrap_or(self.path_from_subpaths(subpaths, false, transform));
 
 				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
 				self.render_context.fill_with_path_2d_and_winding(&path, winding);

@@ -26,7 +26,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
@@ -1410,16 +1410,6 @@ impl Render for List<Vector> {
 						continue;
 					};
 
-					let cap = match stroke.cap {
-						StrokeCap::Butt => Cap::Butt,
-						StrokeCap::Round => Cap::Round,
-						StrokeCap::Square => Cap::Square,
-					};
-					let join = match stroke.join {
-						StrokeJoin::Miter => Join::Miter,
-						StrokeJoin::Bevel => Join::Bevel,
-						StrokeJoin::Round => Join::Round,
-					};
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
