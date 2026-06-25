@@ -1,4 +1,4 @@
-use core_types::animation::{AnimationCurve, Keyframe};
+use core_types::animation::AnimationCurve;
 use core_types::list::{Item, List};
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
@@ -34,16 +34,6 @@ fn eval_curve(_: impl Ctx, curve: Item<AnimationCurve>, time: Item<f64>) -> Item
 	let curve = curve.into_element();
 	let time = time.into_element();
 	Item::new_from_element(curve.evaluate(time))
-}
-
-/// Contstructs a new AnimationCurves value with default curve
-#[node_macro::node(category("Value"))]
-fn animation_curve_value(_: impl Ctx, _primary: ()) -> Item<AnimationCurve> {
-	let mut curve = AnimationCurve::new();
-	curve.insert_keyframe(Keyframe::new_linear(DVec2::new(0.0, 0.0), None));
-	curve.insert_keyframe(Keyframe::new_constant(DVec2::new(1.0, 360.0), None));
-
-	Item::new_from_element(curve)
 }
 
 /// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
