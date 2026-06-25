@@ -21,7 +21,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 	let physical_scale = render_params.scale;
 
 	let footprint = *ctx.footprint();
-	let viewport_zoom = footprint.scale_magnitudes().x * physical_scale;
+	let viewport_zoom = footprint.scale_magnitudes().x;
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
 		let context = OwnedContextImpl::from(ctx).into_context();
@@ -32,6 +32,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 	let logical_resolution = physical_resolution.as_dvec2() / physical_scale;
 
 	let logical_footprint = Footprint {
+		transform: DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform,
 		resolution: logical_resolution.as_uvec2().max(UVec2::ONE),
 		..footprint
 	};
@@ -45,7 +46,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 	let upstream_resolution = upstream_size.as_uvec2().max(UVec2::ONE);
 
 	let upstream_footprint = Footprint {
-		transform: DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * DAffine2::from_translation(-upstream_min),
+		transform: DAffine2::from_translation(-upstream_min),
 		resolution: upstream_resolution,
 		quality: footprint.quality,
 	};
@@ -55,7 +56,8 @@ pub async fn render_pixel_preview<'a: 'n>(
 
 	let RenderOutputType::Texture(ref source_texture) = result.data else { return result };
 
-	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
+	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
+	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
 	let resampled = pipeline
 		.run::<PixelPreview>(&PixelPreviewArgs {
@@ -69,7 +71,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 
 	result
 		.metadata
-		.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min) * DAffine2::from_scale(DVec2::splat(physical_scale)));
+		.apply_transform(logical_transform * DAffine2::from_translation(upstream_min) * DAffine2::from_scale(DVec2::splat(physical_scale)));
 
 	result
 }

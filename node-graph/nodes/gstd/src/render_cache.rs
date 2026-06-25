@@ -345,12 +345,10 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let device_scale = render_params.scale;
-	let zoom = footprint.scale_magnitudes().x;
+	let zoom = footprint.scale_magnitudes().x / render_params.scale;
 	let rotation = footprint.decompose_rotation();
 
-	let viewport_origin_offset = footprint.transform.translation;
-	let device_origin_offset = viewport_origin_offset * device_scale;
+	let device_origin_offset = footprint.transform.translation;
 	let viewport_bounds_device = AxisAlignedBbox {
 		start: -device_origin_offset,
 		end: footprint.resolution.as_dvec2() - device_origin_offset,
@@ -361,7 +359,7 @@ pub async fn render_output_cache<'a: 'n>(
 	let cache_key = CacheKey::new(
 		max_region_area,
 		render_params.render_mode as u64,
-		device_scale,
+		render_params.scale,
 		zoom,
 		rotation,
 		render_params.for_export,
@@ -387,8 +385,8 @@ pub async fn render_output_cache<'a: 'n>(
 			ctx.clone(),
 			render_params,
 			&footprint.transform,
-			&viewport_origin_offset,
-			device_scale,
+			&device_origin_offset,
+			render_params.scale,
 		)
 		.await;
 		new_regions.push(region);
@@ -406,7 +404,9 @@ pub async fn render_output_cache<'a: 'n>(
 
 	let executor = executor.expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution).await;
-	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
+
+	let logical_viewport_transform = DAffine2::from_scale(DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &logical_viewport_transform, executor);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(output_texture.into()),
@@ -433,7 +433,7 @@ where
 	let tile_count = (max_tile - min_tile) + IVec2::ONE;
 	let region_pixel_size = (tile_count * TILE_SIZE as i32).as_uvec2();
 
-	let tile_global_offset = min_tile.as_dvec2() * (TILE_SIZE as f64 / device_scale) + *viewport_origin_offset;
+	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
 	let region_transform = DAffine2::from_translation(-tile_global_offset) * *viewport_transform;
 	let region_footprint = Footprint {
 		transform: region_transform,
@@ -449,7 +449,8 @@ where
 		unreachable!("render_missing_region: expected texture output from Vello render");
 	};
 
-	let pixel_to_document = region_transform.inverse();
+	let logical_region_transform = DAffine2::from_scale(DVec2::splat(1.0 / device_scale)) * region_transform;
+	let pixel_to_document = logical_region_transform.inverse();
 	result.metadata.apply_transform(pixel_to_document);
 
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
