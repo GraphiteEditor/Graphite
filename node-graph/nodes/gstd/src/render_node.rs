@@ -1,6 +1,6 @@
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs, InjectFootprint};
+use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
@@ -24,7 +24,7 @@ pub struct RenderIntermediate {
 
 #[node_macro::node(category(""))]
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs + InjectFootprint,
+	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> List<Artboard>,
 		Context -> List<Graphic>,
@@ -42,12 +42,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	let logical_footprint = *ctx.footprint();
-	let physical_footprint = Footprint {
-		transform: glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * logical_footprint.transform,
-		..logical_footprint
-	};
-	let ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(physical_footprint).into_context();
+	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
 	let data = data.eval(ctx).await;
 
 	let footprint = Footprint::default();
@@ -93,15 +88,17 @@ async fn render<'a: 'n>(
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
+	let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
+
 	let RenderIntermediate { ty, mut metadata } = data;
-	metadata.apply_transform(footprint.transform);
+	metadata.apply_transform(logical_transform);
 
 	let data = match (render_params.render_output_type, ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
 			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
 
 			let mut render = SvgRender::from(data.as_ref());
-			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+			render.wrap_with_transform(logical_transform, Some(logical_resolution));
 
 			let output = SvgRenderOutput::from(render);
 			assert!(output.svg_defs.is_empty());
@@ -113,11 +110,9 @@ async fn render<'a: 'n>(
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
 			let (scene, context) = data.as_ref();
-			let scale = render_params.scale;
 			let physical_resolution = render_params.footprint.resolution;
 
-			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
-			let footprint_transform = scale_transform * render_params.footprint.transform;
+			let footprint_transform = render_params.footprint.transform;
 			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
 
 			let mut transformed_scene = vello::Scene::new();
@@ -157,11 +152,15 @@ async fn create_context<'a: 'n>(
 	render_config: RenderConfig,
 	data: impl Node<Context<'static>, Output = RenderOutput>,
 ) -> RenderOutput {
-	let footprint = render_config.viewport;
-
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
+	};
+
+	let logical_viewport = render_config.viewport;
+	let footprint = Footprint {
+		transform: glam::DAffine2::from_scale(glam::DVec2::splat(render_config.scale)) * logical_viewport.transform,
+		..logical_viewport
 	};
 
 	let render_params = RenderParams {
@@ -169,7 +168,7 @@ async fn create_context<'a: 'n>(
 		for_export: render_config.for_export,
 		render_output_type,
 		scale: render_config.scale,
-		viewport_zoom: footprint.scale_magnitudes().x,
+		viewport_zoom: logical_viewport.scale_magnitudes().x,
 		..Default::default()
 	};
 
