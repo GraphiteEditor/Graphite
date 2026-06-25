@@ -15,8 +15,8 @@ use graphene_std::vector::style::RenderMode;
 
 use super::memo_network::MemoNetwork;
 use super::{
-	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NodeNetworkInterface, NodeNetworkMetadata, NodePersistentMetadata,
-	NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
+	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
+	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
 };
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
@@ -203,15 +203,24 @@ pub fn collect_network_view_settings(
 			continue;
 		};
 		let navigation = &network_metadata.persistent_metadata.navigation_metadata;
+		let default_navigation = NavigationMetadata::default();
 
+		// Only persist nav fields that diverge from the default, so a network sitting at its default view stays
+		// out of `session.json` (the `if !settings.is_empty()` guard below then skips it entirely).
 		let mut settings = BTreeMap::new();
-		if let Ok(value) = serde_json::to_value(navigation.node_graph_ptz) {
+		if navigation.node_graph_ptz != default_navigation.node_graph_ptz
+			&& let Ok(value) = serde_json::to_value(navigation.node_graph_ptz)
+		{
 			settings.insert(session::network::NAV_PTZ.to_string(), value);
 		}
-		if let Ok(value) = serde_json::to_value(navigation.node_graph_to_viewport) {
+		if navigation.node_graph_to_viewport != default_navigation.node_graph_to_viewport
+			&& let Ok(value) = serde_json::to_value(navigation.node_graph_to_viewport)
+		{
 			settings.insert(session::network::NAV_TRANSFORM.to_string(), value);
 		}
-		if let Ok(value) = serde_json::to_value(navigation.node_graph_width) {
+		if navigation.node_graph_width != default_navigation.node_graph_width
+			&& let Ok(value) = serde_json::to_value(navigation.node_graph_width)
+		{
 			settings.insert(session::network::NAV_WIDTH.to_string(), value);
 		}
 

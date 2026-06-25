@@ -75,9 +75,7 @@ pub(crate) fn diff_registries(stored: &graph_storage::Registry, target: &graph_s
 	}
 
 	if stored.attributes != target.attributes {
-		let stored_keys: std::collections::BTreeSet<_> = stored.attributes.keys().collect();
-		let target_keys: std::collections::BTreeSet<_> = target.attributes.keys().collect();
-		let _ = writeln!(out, "  document attributes differ: stored_keys={stored_keys:?} target_keys={target_keys:?}");
+		diff_attributes(&mut out, "  document attributes", &stored.attributes, &target.attributes);
 	}
 
 	out

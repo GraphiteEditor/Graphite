@@ -208,10 +208,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let Some(byte_store) = resource_storage.storage() else { return };
 				let validate = preferences.validate_storage_round_trip;
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
-				document.commit_storage_snapshot(byte_store, validate);
+
+				// The `.gdd` snapshot needs the byte store, but the legacy document and session state must autosave even
+				// without it, otherwise the autosave persists nothing.
+				if let Some(byte_store) = resource_storage.storage() {
+					document.commit_storage_snapshot(byte_store, validate);
+				}
 				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
@@ -958,8 +962,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.set_save_state(document_is_saved);
 
 				let document_name_from_path = document_path.as_ref().and_then(|path| {
-					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
-						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					if path.extension().is_some_and(|extension| extension == FILE_EXTENSION || extension == GDD_FILE_EXTENSION) {
+						path.file_stem().map(|stem| stem.to_string_lossy().to_string())
 					} else {
 						None
 					}

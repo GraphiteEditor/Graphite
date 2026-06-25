@@ -1038,7 +1038,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let save_as_gdd = preferences.save_as_gdd;
 				let extension = if save_as_gdd { GDD_FILE_EXTENSION } else { FILE_EXTENSION };
 				let name = format!("{}.{}", self.name.clone(), extension);
-				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
+
+				// Keep the path's extension in sync with the chosen format so bytes and filename agree.
+				let path = match message {
+					DocumentMessage::SaveDocumentAs => None,
+					_ => self.path.clone().map(|path| path.with_extension(extension)),
+				};
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
@@ -1097,8 +1102,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
-					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
-						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					if path.extension().is_some_and(|extension| extension == FILE_EXTENSION || extension == GDD_FILE_EXTENSION) {
+						path.file_stem().map(|stem| stem.to_string_lossy().to_string())
 					} else {
 						None
 					}

@@ -3499,7 +3499,16 @@ impl NodeNetworkInterface {
 				let self_persistent = &mut self_network_metadata.persistent_metadata;
 				let other_persistent = &other_network_metadata.persistent_metadata;
 				self_persistent.navigation_metadata = other_persistent.navigation_metadata.clone();
-				self_persistent.previewing = other_persistent.previewing;
+
+				// The live preview root may name a node that the rebuilt-from-storage network no longer contains
+				// (e.g. after a storage undo), so only carry it over when the root still exists; otherwise drop it.
+				self_persistent.previewing = match other_persistent.previewing {
+					Previewing::Yes {
+						root_node_to_restore: Some(root_node),
+					} if !self_persistent.node_metadata.contains_key(&root_node.node_id) => Previewing::No,
+					previewing => previewing,
+				};
+
 				self_persistent.selection_undo_history = other_persistent.selection_undo_history.clone();
 				self_persistent.selection_redo_history = other_persistent.selection_redo_history.clone();
 			}

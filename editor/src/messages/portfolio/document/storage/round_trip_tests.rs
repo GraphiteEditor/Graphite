@@ -340,14 +340,16 @@ async fn live_undo_shadows_storage_cursor() {
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let before_edit = editor.active_document().network_interface.document_network().clone();
 	editor.draw_ellipse(50., 50., 150., 150.).await;
-	assert_ne!(&before_edit, editor.active_document().network_interface.document_network(), "edit should change the network");
+	let after_edit = editor.active_document().network_interface.document_network().clone();
+	assert_ne!(&before_edit, &after_edit, "edit should change the network");
 
 	// Real undo: the shadow drives gdd.undo() and (debug) asserts the cursor matches the restored interface.
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &before_edit, "undo should restore the pre-edit network");
 
-	// Real redo: shadow drives gdd.redo() + checks again.
+	// Real redo: the shadow drives gdd.redo() and must reproduce the post-edit network.
 	editor.handle_message(DocumentMessage::Redo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo should restore the post-edit network");
 }
 
 #[tokio::test]
