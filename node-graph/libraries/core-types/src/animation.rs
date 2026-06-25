@@ -1,5 +1,4 @@
-//! Animation Curve implementation based off of Blender's fcurves.
-//!
+//! Animation Curves
 
 use dyn_any::DynAny;
 
