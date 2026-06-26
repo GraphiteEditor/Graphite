@@ -1,10 +1,10 @@
-use core_types::animation::AnimationCurve;
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
+use graphene_animation::AnimationCurve;
 use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::ImageTexture;
 use graphene_std::brush::brush_stroke::BrushStroke;

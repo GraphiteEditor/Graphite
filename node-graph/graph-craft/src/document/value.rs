@@ -3,7 +3,6 @@ use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
-use core_types::animation::AnimationCurve;
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::transform::Footprint;
@@ -12,6 +11,7 @@ use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDe
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_animation::AnimationCurve;
 use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops};

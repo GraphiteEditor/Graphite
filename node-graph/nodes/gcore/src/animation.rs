@@ -1,8 +1,8 @@
-use core_types::animation::{AnimationCurve, Keyframe};
 use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphene_animation::AnimationCurve;
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};

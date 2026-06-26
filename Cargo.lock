@@ -1964,6 +1964,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "graph-craft",
+ "graphene-animation",
  "graphene-application-io",
  "graphene-core",
  "graphene-hash",
@@ -2004,6 +2005,17 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "graphene-animation"
+version = "0.1.0"
+dependencies = [
+ "dyn-any",
+ "glam",
+ "graphene-hash",
+ "kurbo",
+ "serde",
 ]
 
 [[package]]
@@ -2068,6 +2080,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-animation",
  "graphene-hash",
  "graphic-types",
  "log",
@@ -2879,6 +2892,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graphene-animation",
  "graphene-core",
  "graphene-std",
  "gungraun",

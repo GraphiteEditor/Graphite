@@ -1,11 +1,11 @@
 use core::f64;
-use core_types::animation::AnimationCurve;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
 use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphene_animation::AnimationCurve;
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
