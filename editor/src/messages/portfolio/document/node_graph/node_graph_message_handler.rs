@@ -793,7 +793,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.transform_point2(cursor_viewport_location);
 
 				// Sort the selected nodes by the new id so that we know which node was selected first
-				data.sort_by(|a, b| a.0.cmp(&b.0));
+				data.sort_by_key(|a| a.0);
 
 				// Get position of the first node selected for copying that has an absolute position. Calculate paste offset from the cursor
 				// If no nodes with absolute position, then there is no offset from cursor
