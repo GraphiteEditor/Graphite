@@ -814,10 +814,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 				});
 
-				let copy_position = if let Some(position) = copy_position_opt { position } else { &IVec2::default() };
+				let copy_position = copy_position_opt.copied().unwrap_or_default();
 				let graph_delta = IVec2::new(
-					((cursor_to_node_graph.x / 24.).round()) as i32 - copy_position.x,
-					((cursor_to_node_graph.y / 24.).round()) as i32 - copy_position.y,
+					((cursor_to_node_graph.x / GRID_SIZE as f64).round()) as i32 - copy_position.x,
+					((cursor_to_node_graph.y / GRID_SIZE as f64).round()) as i32 - copy_position.y,
 				);
 
 				responses.add(DocumentMessage::AddTransaction);
