@@ -30,7 +30,8 @@ pub enum AnimationTimeMode {
 
 /// Evaluate the value of an animation curve
 #[node_macro::node(category("Animation"))]
-fn eval_curve(_: impl Ctx, curve: AnimationCurve, time: f64) -> f64 {
+fn eval_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: AnimationCurve) -> f64 {
+	let time = ctx.try_animation_time().unwrap_or_default();
 	curve.evaluate(time)
 }
 
