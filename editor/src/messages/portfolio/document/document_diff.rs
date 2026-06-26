@@ -138,9 +138,19 @@ fn diff_attributes(out: &mut String, label: &str, stored: &graph_storage::Attrib
 	let target_keys: std::collections::BTreeSet<_> = target.keys().collect();
 	let missing: Vec<_> = target_keys.difference(&stored_keys).collect();
 	let extra: Vec<_> = stored_keys.difference(&target_keys).collect();
-	let differing: Vec<_> = stored_keys.intersection(&target_keys).filter(|k| stored.get(**k) != target.get(**k)).collect();
 
-	let _ = writeln!(out, "{label}: missing_from_stored={missing:?} extra_in_stored={extra:?} differing_values={differing:?}");
+	// Split value drift from timestamp-only drift: each attribute carries an LWW timestamp, so comparing
+	// whole records would flag equal-value entries that merely differ in when they were last set.
+	let (differing_values, differing_timestamps): (Vec<_>, Vec<_>) = stored_keys
+		.intersection(&target_keys)
+		.copied()
+		.filter(|k| stored.get(*k) != target.get(*k))
+		.partition(|k| stored.get(*k).map(|v| &v.value) != target.get(*k).map(|v| &v.value));
+
+	let _ = writeln!(
+		out,
+		"{label}: missing_from_stored={missing:?} extra_in_stored={extra:?} differing_values={differing_values:?} differing_timestamps={differing_timestamps:?}"
+	);
 }
 
 /// Human-readable summary of how two networks differ (exports, node set, per-node payloads, scope injections).
