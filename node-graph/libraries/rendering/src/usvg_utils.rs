@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use core_types::{Color, math::quad::Quad};
 use glam::{DAffine2, DVec2};
+use log::warn;
 use vector_types::{
 	subpath::{ManipulatorGroup, Subpath},
 	vector::PointId,
@@ -240,7 +241,7 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite
 			}))
 		}
 		usvg::Paint::Pattern(_) => {
-			// warn!("SVG patterns are not currently supported");
+			warn!("SVG patterns are not currently supported");
 			None
 		}
 	}

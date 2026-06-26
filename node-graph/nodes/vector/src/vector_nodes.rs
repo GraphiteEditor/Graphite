@@ -12,12 +12,14 @@ use core_types::{
 	OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
+use rendering::usvg_utils::extract_graphite_gradient_stops;
+use rendering::usvg_utils::{ParsedSvgNode, extract_usvg_node, extract_usvg_path};
+use rendering::vtracer_utils::convert_to_svg;
 use std::collections::hash_map::DefaultHasher;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
@@ -31,6 +33,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::{Subpath, Vector};
 
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
@@ -883,6 +886,99 @@ where
 	}
 
 	result
+}
+
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+pub fn vectorize(_ctx: impl Ctx, image: List<Raster<CPU>>) -> List<Vector> {
+	image
+		.into_iter()
+		.map(|row| {
+			// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let image_data = row.element();
+			let vectorized_image = convert_to_svg(image_data);
+			let image_svg = vectorized_image.to_string();
+			let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
+				Ok(t) => t,
+				Err(e) => {
+					// TODO: use proper error statements
+					panic!("Failed to create a usvg tree:\n{e}");
+				}
+			};
+			// log::debug!("vectorized_image: {}", image_svg);
+
+			let mut subpaths: Vec<Subpath<PointId>> = vec![];
+			let graphite_gradient_stops = extract_graphite_gradient_stops(&image_svg);
+			// let mut i = 1;
+			for child in svg_tree.root().children() {
+				match child {
+					usvg::Node::Path(path) => {
+						let parsed_path = extract_usvg_path(child, path, &graphite_gradient_stops);
+						let mut child_subpaths = parsed_path.subpaths.clone();
+						child_subpaths.iter_mut().for_each(|s| s.apply_transform(parsed_path.transform));
+						subpaths.extend(child_subpaths);
+
+						// log::debug!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
+						// i += 1;
+					}
+					usvg::Node::Group(_) => {
+						let parsed_node = extract_usvg_node(child, &graphite_gradient_stops);
+						let parsed_group = if let ParsedSvgNode::Group(group) = parsed_node {
+							group
+						} else {
+							panic!("Must return a SVG group.");
+						};
+
+						for child in parsed_group.children {
+							if let ParsedSvgNode::Path(path) = child {
+								let mut child_subpaths = path.subpaths.clone();
+								child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
+								subpaths.extend(child_subpaths);
+
+								// log::debug!("Reading path (in a group) {} from a total of {}.", i, svg_tree.root().children().len());
+								// i += 1;
+							}
+						}
+					}
+					_ => {}
+				}
+			}
+
+			/*
+			let mut path = BezPath::new();
+			for subpath in vectorized_image.paths.iter() {
+				let svg_path = subpath.to_string();
+				println!("svg_path: {}", svg_path);
+				// TODO: use usvg instead to read from the svg path
+				let bezpath: BezPath = kurbo::BezPath::from_svg(svg_path.as_str()).expect("failed to convert SVG into BezPath.");
+
+				for curve in bezpath.segments() {
+					match curve {
+						PathSeg::Line(line) => {
+							println!("Inserting line: {:?}", line);
+							let a = transform.transform_point2(point_to_dvec2(line.p1));
+							path.line_to(kurbo::Point::new(a.x, a.y));
+						}
+						PathSeg::Quad(quad_bez) => {
+							println!("Inserting quad_bez: {:?}", quad_bez);
+							let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
+							let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
+							path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
+						}
+						PathSeg::Cubic(cubic_bez) => {
+							println!("Inserting cubic_bez: {:?}", cubic_bez);
+							let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
+							let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
+							let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
+							path.curve_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y), kurbo::Point::new(c.x, c.y));
+						}
+					}
+				}
+			}
+			*/
+			let vector = Vector::from_subpaths(subpaths, true);
+			Item::from_parts(vector, row.attributes().clone())
+		})
+		.collect::<List<Vector>>()
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.

@@ -40,7 +40,6 @@ wasm = [
 # Local dependencies
 no-std-types = { workspace = true }
 node-macro = { workspace = true }
-rendering = { workspace = true }
 
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
@@ -58,7 +57,6 @@ glam = { workspace = true }
 spirv-std = { workspace = true }
 num-traits = { workspace = true }
 num_enum = { workspace = true }
-usvg = {workspace = true }
 
 # Workspace std dependencies
 image = { workspace = true, optional = true }
