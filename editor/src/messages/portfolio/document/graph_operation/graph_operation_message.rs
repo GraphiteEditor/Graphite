@@ -10,15 +10,22 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
-	FillSet {
+	FillColorSet {
 		layer: LayerNodeIdentifier,
-		fill: Fill,
+		color: Option<Color>,
+	},
+	FillGradientSet {
+		layer: LayerNodeIdentifier,
+		gradient: GradientStops,
+		gradient_type: GradientType,
+		spread_method: GradientSpreadMethod,
+		transform: DAffine2,
 	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
@@ -28,10 +35,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		stops: GradientStops,
 	},
-	GradientLineSet {
+	GradientTransformSet {
 		layer: LayerNodeIdentifier,
-		start: DVec2,
-		end: DVec2,
+		transform: DAffine2,
 	},
 	GradientTypeSet {
 		layer: LayerNodeIdentifier,

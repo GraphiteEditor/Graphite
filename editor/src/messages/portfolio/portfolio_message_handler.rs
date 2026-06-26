@@ -1129,8 +1129,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 
 						// Add default fill and stroke to the layer
-						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
-						responses.add(GraphOperationMessage::FillSet { layer, fill });
+						responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(Color::WHITE) });
 
 						let color = Some(Color::BLACK);
 						let stroke = graphene_std::vector::style::Stroke::new(DEFAULT_STROKE_WIDTH);

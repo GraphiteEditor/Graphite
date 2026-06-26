@@ -4,7 +4,7 @@ use crate::messages::tool::common_functionality::color_selector::solid;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoiceUI};
+use graphene_std::vector::style::FillChoiceUI;
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -161,14 +161,17 @@ impl Fsm for FillToolFsmState {
 				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
 					return self;
 				}
-				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
+				let color = match color_event {
+					FillToolMessage::FillPrimaryColor => global_tool_data.primary_color,
+					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color,
 					_ => return self,
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+				responses.add(GraphOperationMessage::FillColorSet {
+					layer: layer_identifier,
+					color: Some(color),
+				});
 
 				FillToolFsmState::Filling
 			}
