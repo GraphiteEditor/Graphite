@@ -12,7 +12,9 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
+use crate::messages::portfolio::document::utility_types::network_interface::{
+	self, FlowType, InputConnector, LayerPosition, NodeNetworkInterface, NodePosition, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
+};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
@@ -776,6 +778,48 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				}
 
+				// Get network path of node overlay
+				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+					log::error!("Could not get network metadata in PasteNodes");
+					return;
+				};
+
+				let cursor_viewport_location = ipp.mouse.position;
+				let cursor_to_node_graph = network_metadata
+					.persistent_metadata
+					.navigation_metadata
+					.node_graph_to_viewport
+					.inverse()
+					.transform_point2(cursor_viewport_location);
+
+				// Sort the selected nodes by the new id so that we know which node was selected first
+				data.sort_by(|a, b| a.0.cmp(&b.0));
+
+				// Get position of the first node selected for copying that has an absolute position. Calculate paste offset from the cursor
+				// If no nodes with absolute position, then there is no offset from cursor
+				let copy_position_opt = data.iter().find_map(|(_, template)| match &template.persistent_node_metadata.node_type_metadata {
+					NodeTypePersistentMetadata::Layer(layer_metadata) => {
+						if let LayerPosition::Absolute(position) = &layer_metadata.position {
+							Some(position)
+						} else {
+							None
+						}
+					}
+					NodeTypePersistentMetadata::Node(node_metadata) => {
+						if let NodePosition::Absolute(position) = node_metadata.position() {
+							Some(position)
+						} else {
+							None
+						}
+					}
+				});
+
+				let copy_position = if let Some(position) = copy_position_opt { position } else { &IVec2::default() };
+				let graph_delta = IVec2::new(
+					((cursor_to_node_graph.x / 24.).round()) as i32 - copy_position.x,
+					((cursor_to_node_graph.y / 24.).round()) as i32 - copy_position.y,
+				);
+
 				responses.add(DocumentMessage::AddTransaction);
 
 				let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
@@ -783,7 +827,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 
 				let nodes: Vec<_> = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes })
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+
+				// Shift nodes based on offset
+				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true })
 			}
 			NodeGraphMessage::PointerDown {
 				shift_click,

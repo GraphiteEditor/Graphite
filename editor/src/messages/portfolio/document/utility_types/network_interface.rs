@@ -6931,6 +6931,7 @@ impl NodePersistentMetadata {
 	pub fn new(position: NodePosition) -> Self {
 		Self { position }
 	}
+
 	pub fn position(&self) -> &NodePosition {
 		&self.position
 	}
