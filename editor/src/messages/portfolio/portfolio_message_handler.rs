@@ -1888,20 +1888,26 @@ impl PortfolioMessageHandler {
 		// Mount the per-document `Gdd` working copy asynchronously (its container is built off-thread).
 		// The document is already usable; the working copy attaches once the future resolves. With no
 		// configured root the working copy is in-memory, so the mount path still runs uniformly.
-		// Pass the just-loaded runtime network + a resource handle so a reopen can compare the stored
-		// `.gdd` against this legacy load (compare-on-open).
-		let legacy_network = self
-			.documents
-			.get(&document_id)
-			.map(|document| document.network_interface.document_network().clone())
-			.unwrap_or_default();
-		responses.add(Self::mount_document_storage(
-			self.working_copy_root.clone(),
-			document_id,
-			legacy_network,
-			resource_storage.resources(),
-			validate,
-		));
+		//
+		// Only mount for legacy loads: a `.gdd` open already mounted its working copy (with the persisted
+		// undo/redo cursor), and remounting would overwrite it and drop that history state.
+		if self.documents.get(&document_id).and_then(|document| document.storage()).is_none() {
+			// Pass the just-loaded runtime network + a resource handle so a reopen can compare the stored
+			// `.gdd` against this legacy load (compare-on-open).
+			let legacy_network = self
+				.documents
+				.get(&document_id)
+				.map(|document| document.network_interface.document_network().clone())
+				.unwrap_or_default();
+
+			responses.add(Self::mount_document_storage(
+				self.working_copy_root.clone(),
+				document_id,
+				legacy_network,
+				resource_storage.resources(),
+				validate,
+			));
+		}
 	}
 
 	/// Build the `FutureMessage` that constructs (or reopens) the document's `Gdd` working copy and
