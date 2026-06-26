@@ -144,7 +144,7 @@ impl From<Gradient> for Fill {
 
 /// Describes the fill of a layer, but unlike [`Fill`], this doesn't store a [`Gradient`] directly but just its [`GradientStops`].
 ///
-/// Can be None, a solid [Color], or a linear/radial [Gradient].
+/// Can be None, a solid [Color], or a linear/radial [GradientStops].
 ///
 /// In the future we'll probably also add a pattern fill.
 ///

@@ -2841,8 +2841,7 @@ impl Fsm for PathToolFsmState {
 						let stroke = graphene_std::vector::style::Stroke::new(DEFAULT_STROKE_WIDTH);
 						responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 
-						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
-						responses.add(GraphOperationMessage::FillSet { layer, fill });
+						responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(Color::WHITE) });
 
 						new_layers.push(layer);
 

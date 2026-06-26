@@ -60,8 +60,7 @@ impl ToolColorOptions {
 			return;
 		}
 		if let Some(FillChoice::Solid(color)) = &self.fill_choice {
-			let fill = graphene_std::vector::style::Fill::Solid(*color);
-			responses.add(GraphOperationMessage::FillSet { layer, fill });
+			responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) });
 		}
 	}
 

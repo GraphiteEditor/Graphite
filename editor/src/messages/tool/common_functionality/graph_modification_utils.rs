@@ -350,9 +350,9 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
 /// vertical lines we fall back to a stable tiebreaker on (x + y) so the choice doesn't flicker between equal alternatives.
-pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, transform: glam::DAffine2) -> bool {
-	let viewport_start = transform.transform_point2(start);
-	let viewport_end = transform.transform_point2(end);
+pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
+	let viewport_start = transform.transform_point2(DVec2::X);
+	let viewport_end = transform.transform_point2(DVec2::ZERO);
 	if (viewport_end.x - viewport_start.x).abs() > f64::EPSILON * 1e6 {
 		viewport_end.x > viewport_start.x
 	} else {
@@ -796,12 +796,40 @@ pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<Select
 pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
-		let existing_gradient = get_fill_value(layer, &document.network_interface).and_then(|f| match f {
-			Fill::Gradient(g) => Some(g),
-			_ => None,
-		});
-		let fill = fill_choice.clone().to_fill(existing_gradient.as_ref());
-		responses.add(GraphOperationMessage::FillSet { layer, fill });
+		match &fill_choice {
+			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
+			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
+			FillChoice::Gradient(stops) => {
+				let fill_node = NodeGraphLayer::new(layer, &document.network_interface)
+					.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
+					.and_then(|id| document.network_interface.document_network().nodes.get(&id));
+
+				let read = |index: usize| fill_node.and_then(|node| node.inputs.get(index)).and_then(|input| input.as_value());
+
+				let gradient_type = match read(graphene_std::vector::fill::GradientTypeInput::INDEX) {
+					Some(TaggedValue::GradientType(value)) => *value,
+					_ => GradientType::default(),
+				};
+				let spread_method = match read(graphene_std::vector::fill::SpreadMethodInput::INDEX) {
+					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
+					_ => GradientSpreadMethod::default(),
+				};
+				let transform = match read(graphene_std::vector::fill::TransformInput::INDEX) {
+					Some(TaggedValue::OptionalDAffine2(value)) => {
+						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
+					}
+					_ => DAffine2::IDENTITY,
+				};
+
+				responses.add(GraphOperationMessage::FillGradientSet {
+					layer,
+					gradient: stops.clone(),
+					gradient_type,
+					spread_method,
+					transform,
+				});
+			}
+		}
 	}
 }
 
