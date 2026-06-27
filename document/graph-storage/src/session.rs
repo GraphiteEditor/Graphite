@@ -1,5 +1,8 @@
+#[cfg(any(feature = "conversion", test))]
+use crate::NodeMetadataSource;
+#[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
-use crate::{ApplyMode, Delta, Document, History, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, Delta, Document, History, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -19,6 +22,7 @@ impl Session {
 	/// Mints a fresh `PeerId` from the process-wide UUID generator and wraps an empty `Document`.
 	/// Two peers in the same process will collide (the generator is seeded once); use `with_peer`
 	/// in tests where determinism matters.
+	#[cfg(any(feature = "conversion", test))]
 	pub fn new() -> Self {
 		Self::with_peer(PeerId(core_types::uuid::generate_uuid()))
 	}
@@ -49,6 +53,12 @@ impl Session {
 
 	pub fn registry(&self) -> &Registry {
 		&self.document.working_registry
+	}
+
+	/// The registry after applying retired history only, without the unretired hot tail. Persisted as the
+	/// snapshot alongside `history` + hot log so a reopen restores the same retired-then-hot layering.
+	pub fn retired_registry(&self) -> &Registry {
+		&self.document.retired_snapshot
 	}
 
 	/// Diff the current registry against a fresh conversion of `network`, then commit each emitted
@@ -107,15 +117,15 @@ impl Session {
 			ops.push(RegistryDelta::AddSource { id, key, source: embedded.clone() });
 		}
 
-		// Caller contract: this runs on a throwaway export clone with no unretired hot ops, so the
-		// working registry equals the snapshot. Overwriting working with the advanced snapshot below
-		// would otherwise drop hot-zone edits, so reject the call rather than corrupt state.
-		if !self.document.hot_log.is_empty() {
-			return Err(CrdtError::HotLogNotEmpty);
-		}
-
+		// These are retired deltas, so `commit_ops` advances the retired snapshot and history. The working
+		// registry sits at `retired_snapshot + hot tail`, so mirror each committed delta onto it with its own
+		// timestamp rather than cloning the snapshot over it, which would discard any unretired hot-zone edits.
 		let revs = self.commit_ops(ops, false)?;
-		self.document.working_registry = self.document.retired_snapshot.clone();
+		for &rev in &revs {
+			let Some(delta) = self.document.history.get(rev) else { continue };
+			let (kind, timestamp) = (delta.kind.clone(), delta.timestamp);
+			self.document.apply_op_idempotent(kind, timestamp)?;
+		}
 		Ok(revs)
 	}
 
@@ -432,6 +442,12 @@ impl Session {
 		self.document.history.iter()
 	}
 
+	/// The retired delta for `rev`, or `None` if it isn't in history. O(1) lookup, for callers that
+	/// already hold the revs they want (e.g. persisting a freshly-retired batch) and don't need a scan.
+	pub fn delta(&self, rev: Rev) -> Option<&Delta> {
+		self.document.history.get(rev)
+	}
+
 	/// Verify the retired history loaded from an untrusted source: content-addressed ids match their
 	/// recomputed hashes, and the deltas are topologically ordered. See [`History::verify`].
 	pub fn verify_history(&self) -> Result<(), CrdtError> {
@@ -465,6 +481,19 @@ impl Session {
 		self.document.head
 	}
 
+	/// The latest retired commit broadcast to at least one peer. Commits after it are silently
+	/// rewritable; commits at or before it are published. `None` until broadcast transport lands.
+	pub fn last_broadcast_rev(&self) -> Option<Rev> {
+		self.document.last_broadcast_rev
+	}
+
+	/// Advance the published frontier to `rev` as commits are broadcast. The frontier is monotonic, so
+	/// this only moves it forward (never back to `None`). Set by the (future) broadcast transport;
+	/// persisted in `session.json` so the silent/published boundary survives a reopen.
+	pub fn publish_up_to(&mut self, rev: Rev) {
+		self.document.last_broadcast_rev = Some(rev);
+	}
+
 	/// Test-only: every retired delta, cloned, for feeding one session's branch into another's `merge`.
 	#[cfg(test)]
 	pub(crate) fn cloned_deltas(&self) -> Vec<Delta> {
@@ -488,6 +517,7 @@ impl Session {
 }
 
 /// Errors from `Session::commit_from_runtime`.
+#[cfg(any(feature = "conversion", test))]
 #[derive(Debug, thiserror::Error)]
 pub enum CommitError {
 	#[error("Failed to convert runtime network: {0}")]
@@ -496,6 +526,7 @@ pub enum CommitError {
 	Crdt(#[from] CrdtError),
 }
 
+#[cfg(any(feature = "conversion", test))]
 impl Default for Session {
 	fn default() -> Self {
 		Self::new()
@@ -537,8 +568,6 @@ pub enum CrdtError {
 	/// PeerId is already registered to a different UserId.
 	#[error("Peer {0:?} is already registered to a different user")]
 	PeerRegistrationConflict(PeerId),
-	#[error("Operation requires an empty hot log")]
-	HotLogNotEmpty,
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
 }

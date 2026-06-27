@@ -33,28 +33,11 @@ wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
 ron = { workspace = true }
 serde_json = { workspace = true }
 node-macro = { workspace = true }
-
-[package.metadata.wasm-pack.profile.dev]
-wasm-opt = false
-
-[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
-debug-js-glue = true
-demangle-name-section = true
-dwarf-debug-info = false
-
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-Os", "-g"]
-
-[package.metadata.wasm-pack.profile.release.wasm-bindgen]
-debug-js-glue = false
-demangle-name-section = false
-dwarf-debug-info = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

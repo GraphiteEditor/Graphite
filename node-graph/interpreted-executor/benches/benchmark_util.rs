@@ -4,7 +4,6 @@ use futures::executor::block_on;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile, load_from_name};
 use graphene_std::application_io::EditorApi;
-use graphene_std::application_io::resource::ResourceRegistry;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 
@@ -13,7 +12,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let editor_api = std::sync::Arc::new(EditorApi::default());
 	let mut network = wrap_network_in_scope(network, editor_api);
 	let preprocessor = preprocessor::Preprocessor::new();
-	preprocessor.preprocess(&mut network, &ResourceRegistry::default()).unwrap();
+	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);
 	let executor = block_on(DynamicExecutor::new(proto_network.clone())).unwrap();
 	(executor, proto_network)

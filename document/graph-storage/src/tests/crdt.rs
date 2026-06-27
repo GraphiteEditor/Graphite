@@ -777,20 +777,33 @@ fn no_op_commit_preserves_redo_stack() {
 	assert!(session.can_redo(), "a no-op commit must not clear the redo stack");
 }
 
-/// `embed_resource_sources` overwrites the working registry with the snapshot, valid only when no
-/// unretired hot ops are present. Called with a non-empty hot log it must error rather than silently
-/// drop the hot-zone edits.
+/// `embed_resource_sources` commits its `AddSource` deltas as retired, then mirrors them onto the
+/// working registry. With unretired hot ops present it must keep the hot-zone edits (export of a
+/// mid-interaction document is lossless) rather than clobbering the working registry with the snapshot.
 #[test]
-fn embed_resource_sources_rejects_unretired_hot_ops() {
+fn embed_resource_sources_preserves_unretired_hot_ops() {
 	let mut session = Session::with_peer(PeerId(1));
 	let resources = graphene_resource::ResourceRegistry::new();
 
-	// Stage without retiring, leaving hot ops in the log.
-	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage");
-	assert!(!session.hot_log().is_empty(), "staging should leave unretired hot ops");
+	// Retire a base so the network's nodes live in the retired snapshot.
+	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage base");
+	let base_up_to = session.hot_log().last().expect("staged base").timestamp;
+	session.retire(base_up_to).expect("retire base");
 
-	let result = session.embed_resource_sources(std::iter::empty::<ResourceId>());
-	assert!(matches!(result, Err(crate::CrdtError::HotLogNotEmpty)), "expected HotLogNotEmpty, got {result:?}");
+	// Stage an embedded resource without retiring, leaving it in the hot log (the working registry now
+	// holds it, the retired snapshot does not).
+	let hash = ResourceHash::from(&b"hot-resource"[..]);
+	let id = ResourceId::new();
+	session.stage_embedded_resource(id, hash).expect("stage resource");
+	assert!(!session.hot_log().is_empty(), "staging should leave unretired hot ops");
+	assert!(session.registry().resources.contains_key(&id), "working registry should hold the hot resource");
+
+	session.embed_resource_sources(std::iter::empty::<ResourceId>()).expect("embed tolerates a non-empty hot log");
+
+	// The hot-zone resource survives in the working registry (not reset to the snapshot), and the hot log
+	// is untouched so a later retire still promotes it.
+	assert!(session.registry().resources.contains_key(&id), "hot resource must survive the embed");
+	assert!(!session.hot_log().is_empty(), "embed must not drain the hot log");
 }
 
 /// A delta's `Rev` is content-addressed, so two byte-equal deltas must hash identically regardless

@@ -84,7 +84,6 @@ deps.crane.lib.buildPackage (
       pkgs.nodejs
       pkgs.binaryen
       pkgs.wasm-bindgen-cli_0_2_121
-      pkgs.wasm-pack
       pkgs.cargo-about
       pkgs.removeReferencesTo
       pkgs.importNpmLock.npmConfigHook
@@ -94,7 +93,6 @@ deps.crane.lib.buildPackage (
       npmRoot = "${info.src}/frontend";
     };
     npmRoot = "frontend";
-    npmConfigScript = "setup";
     makeCacheWritable = true;
 
     env = {
@@ -111,7 +109,7 @@ deps.crane.lib.buildPackage (
     '';
 
     preBuild = ''
-      # Prevent `package-installer.js` from trying to update npm dependencies
+      # Prevent `cargo-run`'s frontend setup from trying to update npm dependencies
       touch -r frontend/package-lock.json -d '+1 year' frontend/node_modules/.install-timestamp
 
       export HOME="$TMPDIR"

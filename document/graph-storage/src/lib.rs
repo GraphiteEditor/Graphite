@@ -21,14 +21,18 @@ pub mod to_runtime;
 pub use attributes::*;
 pub use crdt::*;
 pub use document::*;
-pub use from_runtime::{RuntimeConversion, decode_declaration, encode_declaration};
 pub use history::History;
 pub use ids::*;
-pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
 pub use model::*;
 pub use registry::*;
 pub use resources::*;
 pub use session::*;
+
+#[cfg(any(feature = "conversion", test))]
+pub use from_runtime::{RuntimeConversion, decode_declaration, encode_declaration};
+#[cfg(any(feature = "conversion", test))]
+pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
+#[cfg(any(feature = "conversion", test))]
 pub use to_runtime::Declarations;
 
 #[cfg(test)]
