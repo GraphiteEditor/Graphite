@@ -11,7 +11,32 @@ pub fn frontend_dir() -> PathBuf {
 }
 
 pub fn setup() -> Result<(), Error> {
-	utils::npm(["run", "setup"]).dir(frontend_dir()).run()
+	let frontend = frontend_dir();
+	let node_modules = frontend.join("node_modules");
+	let timestamp_path = node_modules.join(".install-timestamp");
+
+	let mtime = |p: PathBuf| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+
+	if let Some(install_time) = mtime(timestamp_path.clone())
+		&& let Some(package_json_time) = mtime(frontend.join("package.json"))
+		&& let Some(package_lock_json_time) = mtime(frontend.join("package-lock.json"))
+		&& install_time >= package_json_time
+		&& install_time >= package_lock_json_time
+	{
+		return Ok(());
+	}
+
+	eprintln!("Installing npm packages...");
+	let install = || utils::npm(["ci", "--include=dev", "--prefer-offline", "--no-audit", "--no-fund"]).dir(&frontend).run();
+	if install().is_err() {
+		eprintln!("Failed to install npm packages. Wiping `frontend/node_modules` and retrying...");
+		let _ = std::fs::remove_dir_all(&node_modules);
+		install()?;
+	}
+
+	std::fs::write(&timestamp_path, "").map_err(|e| Error::Io(e, format!("writing '{}'", timestamp_path.display())))?;
+	eprintln!("Finished installing npm packages.");
+	Ok(())
 }
 
 pub fn build_wasm(release: bool, native: bool) -> Result<(), Error> {

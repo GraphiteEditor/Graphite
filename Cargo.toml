@@ -230,7 +230,7 @@ cargo-gpu-install = { version = "0.10.0-alpha.1", default-features = false }
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"
-linesweeper = "0.3"
+linesweeper = "0.4"
 smallvec = "1.13.2"
 zip = { version = "8", default-features = false }
 

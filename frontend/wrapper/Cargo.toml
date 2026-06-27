@@ -33,7 +33,6 @@ wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
 ron = { workspace = true }
