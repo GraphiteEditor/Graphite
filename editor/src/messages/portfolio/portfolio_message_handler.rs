@@ -807,7 +807,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.pending_gdd_opens = self.pending_gdd_opens.saturating_sub(1);
 
 				let Some(mut document) = document.map(|boxed| *boxed) else {
-					// The build failed and already logged; nothing to insert.
+					// The build failed and already logged; surface a dialog so a corrupt or invalid `.gdd`
+					// doesn't look like Open silently did nothing.
+					let name = document_name
+						.filter(|name| !name.trim().is_empty())
+						.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
+						.unwrap_or_default();
+					simple_dialogs::FailedToOpenDocumentDialog { document_name: name }.send_dialog_to_frontend(responses);
 					return;
 				};
 				document.finalize_storage_load();

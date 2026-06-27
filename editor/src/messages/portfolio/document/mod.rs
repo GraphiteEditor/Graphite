@@ -3,7 +3,7 @@ mod document_history;
 mod document_message;
 mod document_message_handler;
 #[cfg(test)]
-mod storage;
+mod storage_tests;
 
 pub mod data_panel;
 pub mod graph_operation;

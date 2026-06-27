@@ -64,13 +64,24 @@ pub(crate) fn diff_registries(stored: &graph_storage::Registry, target: &graph_s
 	let target_resources: std::collections::BTreeSet<_> = target.resources.keys().copied().collect();
 	let missing_resources: Vec<_> = target_resources.difference(&stored_resources).collect();
 	let extra_resources: Vec<_> = stored_resources.difference(&target_resources).collect();
-	if !missing_resources.is_empty() || !extra_resources.is_empty() {
+	let shared_resource_diffs: Vec<_> = stored_resources
+		.intersection(&target_resources)
+		.filter(|id| !resource_value_equal(&stored.resources[id], &target.resources[id]))
+		.collect();
+	if !missing_resources.is_empty() || !extra_resources.is_empty() || !shared_resource_diffs.is_empty() {
 		let _ = writeln!(out, "  resources: stored={} target={}", stored_resources.len(), target_resources.len());
 		if !missing_resources.is_empty() {
 			let _ = writeln!(out, "    missing from stored: {missing_resources:?}");
 		}
 		if !extra_resources.is_empty() {
 			let _ = writeln!(out, "    extra in stored:     {extra_resources:?}");
+		}
+		if !shared_resource_diffs.is_empty() {
+			let _ = writeln!(out, "    differing payloads:  {shared_resource_diffs:?}");
+			for id in &shared_resource_diffs {
+				let _ = writeln!(out, "      resource {id}:");
+				diff_resource(&mut out, &stored.resources[id], &target.resources[id]);
+			}
 		}
 	}
 
@@ -130,6 +141,40 @@ fn diff_network(out: &mut String, stored: &graph_storage::Network, target: &grap
 
 	if stored.attributes != target.attributes {
 		diff_attributes(out, "        attributes", &stored.attributes, &target.attributes);
+	}
+}
+
+/// Value-level resource comparison (same resolved hash, same source bodies keyed by `SourceKey`),
+/// ignoring LWW timestamps. Mirrors `graph_storage`'s internal `resources_value_equal` for a single
+/// entry, since that helper is crate-private and only operates over a whole store.
+fn resource_value_equal(stored: &graph_storage::ResourceEntry, target: &graph_storage::ResourceEntry) -> bool {
+	stored.hash == target.hash && stored.sources.len() == target.sources.len() && stored.sources.iter().all(|(key, value)| target.source(key).is_some_and(|other| value.source == other.source))
+}
+
+fn diff_resource(out: &mut String, stored: &graph_storage::ResourceEntry, target: &graph_storage::ResourceEntry) {
+	if stored.hash != target.hash {
+		let _ = writeln!(out, "        hash: stored={:?} target={:?}", stored.hash, target.hash);
+	}
+	if stored.sources.len() != target.sources.len() {
+		let _ = writeln!(out, "        sources.len: stored={} target={}", stored.sources.len(), target.sources.len());
+	}
+
+	// Report source bodies that drift for a shared key, plus keys present on only one side.
+	for (key, value) in &stored.sources {
+		match target.source(key) {
+			Some(other) if other.source != value.source => {
+				let _ = writeln!(out, "        source[{key:?}]: stored={:?} target={:?}", value.source, other.source);
+			}
+			None => {
+				let _ = writeln!(out, "        source[{key:?}]: only in stored");
+			}
+			Some(_) => {}
+		}
+	}
+	for (key, _) in &target.sources {
+		if stored.source(key).is_none() {
+			let _ = writeln!(out, "        source[{key:?}]: only in target");
+		}
 	}
 }
 
