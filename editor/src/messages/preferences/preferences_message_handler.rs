@@ -31,6 +31,10 @@ pub struct PreferencesMessageHandler {
 	/// Save documents in the new `.gdd` container format (with the legacy `.graphite` embedded as a
 	/// recovery fallback) instead of a plain `.graphite` file. Off by default while `.gdd` is in soak.
 	pub save_as_gdd: bool,
+	/// Show the in-soak "Documents" storage section (`.gdd` save and round-trip validation) in the
+	/// preferences dialog. Toggled from the developer debug menu; off by default to keep the soak-only
+	/// options out of sight until a developer opts in.
+	pub show_storage_preferences: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
 }
@@ -76,6 +80,7 @@ impl Default for PreferencesMessageHandler {
 			disable_ui_acceleration: cfg!(target_os = "linux"), // TODO: Set this back to false once we have ui acceleration working more reliably on linux
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
+			show_storage_preferences: false,
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
@@ -147,6 +152,10 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::SaveAsGdd { enabled } => {
 				self.save_as_gdd = enabled;
+			}
+			PreferencesMessage::ToggleShowStoragePreferences => {
+				self.show_storage_preferences = !self.show_storage_preferences;
+				responses.add(MenuBarMessage::SendLayout);
 			}
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {
