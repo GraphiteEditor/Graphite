@@ -30,6 +30,8 @@ rustc-hash = { workspace = true }
 log = { workspace = true }
 qrcodegen = { workspace = true }
 usvg = {workspace = true }
+vtracer = { workspace = true }
+visioncortex = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

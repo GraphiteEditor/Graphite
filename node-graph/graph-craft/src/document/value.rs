@@ -448,6 +448,9 @@ tagged_value! {
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
+	ColorMode(vector_types::vectorize_config::ColorMode),
+	Hierarchical(vector_types::vectorize_config::Hierarchical),
+	PathSimplifyMode(vector_types::vectorize_config::PathSimplifyMode)
 }
 
 impl TaggedValue {

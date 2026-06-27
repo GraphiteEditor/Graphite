@@ -2068,6 +2068,7 @@ dependencies = [
  "tsify",
  "url",
  "vector-nodes",
+ "vector-types",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4954,8 +4955,6 @@ dependencies = [
  "vector-types",
  "vello",
  "vello_encoding",
- "visioncortex",
- "vtracer",
 ]
 
 [[package]]
@@ -6719,6 +6718,8 @@ dependencies = [
  "tsify",
  "usvg",
  "vector-types",
+ "visioncortex",
+ "vtracer",
  "wasm-bindgen",
 ]
 
@@ -6744,6 +6745,8 @@ dependencies = [
  "serde",
  "tinyvec",
  "tsify",
+ "visioncortex",
+ "vtracer",
  "wasm-bindgen",
 ]
 

@@ -30,6 +30,7 @@ graphene-application-io = { workspace = true, features = ["serde"] }
 rendering = { workspace = true, features = ["serde"] }
 raster-nodes = { workspace = true, features = ["serde"] }
 vector-nodes = { workspace = true, features = ["serde"] }
+vector-types = { workspace = true, features = ["serde"] }
 graphic-types = { workspace = true, features = ["serde"] }
 text-nodes = { workspace = true, features = ["serde"] }
 

@@ -19,7 +19,7 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use rendering::usvg_utils::extract_graphite_gradient_stops;
 use rendering::usvg_utils::{ParsedSvgNode, extract_usvg_node, extract_usvg_path};
-use rendering::vtracer_utils::convert_to_svg;
+use repeat_nodes::raster_types::Bitmap;
 use std::collections::hash_map::DefaultHasher;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
@@ -33,7 +33,9 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::vectorize_config;
 use vector_types::{Subpath, Vector};
+use vtracer::{ColorImage, Config, convert};
 
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
@@ -888,14 +890,46 @@ where
 	result
 }
 
-#[node_macro::node(category("Vector"), path(core_types::vector))]
-pub fn vectorize(_ctx: impl Ctx, image: List<Raster<CPU>>) -> List<Vector> {
+#[node_macro::node(category("Vector"), path(core_types::vector), properties("vectorize_properties"))]
+pub fn vectorize(
+	_ctx: impl Ctx,
+	image: List<Raster<CPU>>,
+	color_mode: vectorize_config::ColorMode,
+	hierarchical: vectorize_config::Hierarchical,
+	#[default(4.)] filter_speckle: f64,
+	#[default(6.)] color_precision: f64,
+	#[default(16.)] layer_difference: f64,
+	path_simplify_mode: vectorize_config::PathSimplifyMode,
+	#[default(60.)] corner_threshold: f64,
+	#[default(4.)] length_threshold: f64,
+	#[default(10.)] max_iterations: f64,
+	#[default(45.)] splice_threshold: f64,
+	#[default(6.)] path_precision: f64,
+) -> List<Vector> {
 	image
 		.into_iter()
 		.map(|row| {
 			// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let image_data = row.element();
-			let vectorized_image = convert_to_svg(image_data);
+			let color_image = ColorImage {
+				width: image_data.width() as usize,
+				height: image_data.height() as usize,
+				pixels: image_data.to_flat_u8().0,
+			};
+			let config: Config = Config {
+				color_mode: color_mode.to_vtracer(),
+				hierarchical: hierarchical.to_vtracer(),
+				filter_speckle: filter_speckle as usize,
+				color_precision: color_precision as i32,
+				layer_difference: layer_difference as i32,
+				mode: path_simplify_mode.to_vtracer(),
+				corner_threshold: corner_threshold as i32,
+				length_threshold,
+				max_iterations: max_iterations as usize,
+				splice_threshold: splice_threshold as i32,
+				path_precision: Some(path_precision as u32),
+			};
+			let vectorized_image = convert(color_image, config).expect("failed to obtain an SvgFile from vtracer.");
 			let image_svg = vectorized_image.to_string();
 			let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
 				Ok(t) => t,
