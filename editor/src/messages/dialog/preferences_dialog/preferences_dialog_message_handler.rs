@@ -306,7 +306,8 @@ impl PreferencesDialogMessageHandler {
 		// =========
 		// DOCUMENTS
 		// =========
-		{
+		// Soak-only `.gdd` storage options, hidden unless enabled from the developer debug menu.
+		if preferences.show_storage_preferences {
 			let header = vec![TextLabel::new("Documents").italic(true).widget_instance()];
 
 			let save_as_gdd_description = "
