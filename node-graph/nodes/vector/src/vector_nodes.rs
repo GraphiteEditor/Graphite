@@ -1269,12 +1269,20 @@ async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 	content
 		.into_iter()
 		.flat_map(|row| {
-			let style = row.element().style.clone();
-			let (element, attributes) = row.into_parts();
+			let bezpaths = row.element().stroke_bezpath_iter().collect::<Vec<_>>();
 
-			element
-				.stroke_bezpath_iter()
-				.map(move |bezpath| {
+			// Pass the original element through unchanged when it has no subpaths, so its attributes
+			// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
+			if bezpaths.is_empty() {
+				return vec![row];
+			}
+
+			let style = row.element().style.clone();
+			let (_, attributes) = row.into_parts();
+
+			bezpaths
+				.into_iter()
+				.map(|bezpath| {
 					let mut vector = Vector::default();
 					vector.append_bezpath(bezpath);
 					vector.style = style.clone();
