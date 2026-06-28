@@ -16,7 +16,7 @@ const DEBOUNCE: Duration = Duration::from_millis(500);
 fn main() -> ExitCode {
 	let release = std::env::args().nth(1).as_deref() == Some("release");
 
-	let _guard = match watch(cargo_run::frontend::build_wasm_steps(release, false)) {
+	let _guard = match watch(release) {
 		Ok(guard) => guard,
 		Err(e) => {
 			eprintln!("Error setting up file watcher: {e}");
@@ -32,8 +32,7 @@ struct WatchGuard {
 	_debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
 }
 
-fn watch(steps: impl IntoIterator<Item = Expression>) -> Result<WatchGuard, Error> {
-	let steps: Vec<Expression> = steps.into_iter().collect();
+fn watch(release: bool) -> Result<WatchGuard, Error> {
 	let root = std::env::current_dir()
 		.and_then(|p| p.canonicalize())
 		.map_err(|e| Error::Io(e, "Failed to resolve root for file watcher".into()))?;
@@ -65,7 +64,9 @@ fn watch(steps: impl IntoIterator<Item = Expression>) -> Result<WatchGuard, Erro
 				if let Some(c) = current.take() {
 					c.kill();
 				}
-				current = Some(sequence(steps.clone()));
+				current = Some(sequence_then(cargo_run::frontend::build_wasm_steps(release, false), move || {
+					cargo_run::frontend::heal_steps_if_corrupt(release, false)
+				}));
 			}
 		}
 		Err(errors) => {

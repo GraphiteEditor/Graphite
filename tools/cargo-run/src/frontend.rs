@@ -40,8 +40,34 @@ pub fn setup() -> Result<(), Error> {
 }
 
 pub fn build_wasm(release: bool, native: bool) -> Result<(), Error> {
-	sequence(build_wasm_steps(release, native)).wait();
+	sequence_then(build_wasm_steps(release, native), move || heal_steps_if_corrupt(release, native)).wait();
 	Ok(())
+}
+
+/// A corrupt incremental wasm build (e.g. from an interrupted or concurrent `cargo build`) can leave some
+/// Rust functions undefined; `rust-lld` then emits them as imports from the `env` module, and wasm-bindgen
+/// writes `import … from "env"` into the glue, which Vite cannot resolve. The build itself exits successfully,
+/// so this marker in the generated glue is what lets us notice the breakage and auto-recover.
+pub fn wasm_build_is_corrupt() -> bool {
+	let glue = frontend_dir().join("wrapper").join("pkg").join(format!("{OUT_NAME}.js"));
+	std::fs::read_to_string(glue).is_ok_and(|js| js.contains("from \"env\""))
+}
+
+/// If the just-finished wasm build is corrupt (see [`wasm_build_is_corrupt`]), wipes the wasm target triple's
+/// own directory and returns the steps to rebuild it from scratch. Otherwise returns no steps.
+pub fn heal_steps_if_corrupt(release: bool, native: bool) -> Vec<Expression> {
+	if !wasm_build_is_corrupt() {
+		return Vec::new();
+	}
+	let wasm_target_dir = target_dir().join(WASM_TARGET);
+	eprintln!("The Wasm build emitted undefined `env` imports, a sign of corrupt incremental artifacts (typically from an interrupted build).");
+	eprintln!("Fixing by wiping `{}` and rebuilding...", wasm_target_dir.display());
+	match std::fs::remove_dir_all(&wasm_target_dir) {
+		Ok(()) => {}
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+		Err(e) => eprintln!("warning: could not fully clean `{}`: {e}", wasm_target_dir.display()),
+	}
+	build_wasm_steps(release, native)
 }
 
 pub fn build_wasm_steps(release: bool, native: bool) -> Vec<Expression> {
