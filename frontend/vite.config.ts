@@ -51,9 +51,9 @@ function webkitUserSelectPrefix(): PluginOption {
 			if (!id.endsWith(".svelte")) return;
 
 			return code.replace(/<style(?=\s|>)([^>]*)>(.*?)<\/style>/gs, (_, attrs, content) => {
-				// The negative lookbehind avoids re-matching the `user-select` inside `-webkit-user-select`/`-moz-user-select`.
+				// The lookbehind requires a property boundary on the left, so it skips `-webkit-`/`-moz-` prefixes, `--custom` properties, and `$scss-variables`.
 				// Excluding newlines/braces from the value stops a `user-select` mentioned in a comment from swallowing the following declarations.
-				const prefixed = content.replace(/(?<!-)user-select\s*:\s*([^;{}\r\n]+);/g, "-webkit-user-select: $1; user-select: $1;");
+				const prefixed = content.replace(/(?<![\w$-])user-select\s*:\s*([^;{}\r\n]+);/g, "-webkit-user-select: $1; user-select: $1;");
 				return `<style${attrs}>${prefixed}</style>`;
 			});
 		},
