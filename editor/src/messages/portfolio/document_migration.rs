@@ -2266,33 +2266,34 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
+	// Upgrade the "Grid" node from its six-input layout to the current seven-input layout (which adds a trailing
+	// "connect_cells" toggle, defaulting to the connected mesh that older grids produced). Legacy documents also placed
+	// "angles" at index 3 instead of index 5 (after "columns" and "rows"); reorder those. Either way, "connect_cells" is
+	// left at its default from the new node template.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER) && inputs_count == 6 {
-		let node_definition = resolve_document_node_type(&reference)?;
-		let mut new_node_template = node_definition.default_node_template();
-
-		let mut current_node_template = document.network_interface.create_node_template(node_id, network_path)?;
+		let mut new_node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template)?;
-		let index_3_value = old_inputs.get(3).cloned();
 
-		let mut upgraded = false;
-
-		if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value
-			&& matches!(*tagged_value, TaggedValue::DVec2(_))
+		let mut legacy_angles_layout = false;
+		if let Some(NodeInput::Value { tagged_value, exposed: _ }) = old_inputs.get(3)
+			&& matches!(**tagged_value, TaggedValue::DVec2(_))
 		{
-			// Move index 3 to the end
+			legacy_angles_layout = true;
+		}
+
+		if legacy_angles_layout {
+			// Old order: [primary, grid_type, spacing, angles, columns, rows]; move "angles" from index 3 to index 5.
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
-
-			upgraded = true;
-		}
-
-		if !upgraded {
-			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut current_node_template);
+		} else {
+			// Modern six-input order; carry each input over to the same index.
+			for (index, input) in old_inputs.iter().take(6).enumerate() {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+			}
 		}
 	}
 
