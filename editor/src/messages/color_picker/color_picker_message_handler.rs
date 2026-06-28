@@ -352,6 +352,10 @@ impl ColorPickerMessageHandler {
 				if anchor >= gradient.position.len() || gradient.position.len() <= 2 {
 					return;
 				}
+				// Never remove the active (dragged) stop itself, this should only ever target the frozen copy.
+				if self.active_marker_index == Some(anchor as u32) {
+					return;
+				}
 				gradient.remove(anchor);
 				// Keep the dragged stop active. Its index shifts down if the removed copy came before it.
 				if let Some(active) = self.active_marker_index

@@ -1785,6 +1785,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(OverlaysMessage::Draw);
 				}
 				if is_stroke_node || is_fill_node || is_shape_generator_node || is_text_node {
+					responses.add(SelectToolMessage::SelectionChanged);
 					responses.add(PenToolMessage::SelectionChanged);
 					responses.add(FreehandToolMessage::SelectionChanged);
 					responses.add(SplineToolMessage::SelectionChanged);
