@@ -38,9 +38,6 @@ trait VectorListIterMut {
 	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
 
 	fn vector_count(&self) -> usize;
-
-	/// Iterates over a mutable reference to each vector item's transform, used by the transform-assignment nodes.
-	fn vector_transforms_iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut DAffine2>;
 }
 
 impl VectorListIterMut for List<Graphic> {
@@ -57,13 +54,6 @@ impl VectorListIterMut for List<Graphic> {
 	fn vector_count(&self) -> usize {
 		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
 	}
-
-	fn vector_transforms_iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut DAffine2> {
-		// Grab only the direct children
-		self.iter_element_values_mut()
-			.filter_map(|graphic| graphic.as_vector_mut())
-			.flat_map(|vector_list| vector_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM))
-	}
 }
 
 impl VectorListIterMut for List<Vector> {
@@ -76,10 +66,6 @@ impl VectorListIterMut for List<Vector> {
 
 	fn vector_count(&self) -> usize {
 		self.len()
-	}
-
-	fn vector_transforms_iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut DAffine2> {
-		self.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM)
 	}
 }
 
@@ -149,12 +135,11 @@ where
 }
 
 #[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn assign_rotations<T: VectorListIterMut + 'n + Send>(
+async fn assign_rotations<T: 'n + Send>(
 	_: impl Ctx,
-	#[implementations(List<Graphic>, List<Vector>)] mut content: T,
-	#[range((0., 360.))]
-	#[default(360.)]
-	angle: Angle,
+	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)] mut content: List<T>,
+	#[default(-180.)] angle_min: Angle,
+	#[default(180.)] angle_max: Angle,
 	/// Whether to reverse the order.
 	reverse: bool,
 	/// Whether to randomize the rotation selection for each element.
@@ -165,8 +150,8 @@ async fn assign_rotations<T: VectorListIterMut + 'n + Send>(
 	#[range((-50., 50.))] bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
-) -> T {
-	let count = content.vector_count() as u32;
+) -> List<T> {
+	let count = content.len() as u32;
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
@@ -185,23 +170,24 @@ async fn assign_rotations<T: VectorListIterMut + 'n + Send>(
 				_ => index as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 			},
 		};
-		let rotation_transform = DAffine2::from_angle(factor * angle.to_radians());
-		transform.left_apply_transform(&rotation_transform);
+		let rotation = factor * (angle_max.to_radians() - angle_min.to_radians()) + angle_min.to_radians();
+		let rotation_transform = DAffine2::from_angle(rotation);
+		transform.apply_transform(&rotation_transform);
 	};
 
 	if reverse {
-		content.vector_transforms_iter_mut().rev().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).rev().enumerate().for_each(apply);
 	} else {
-		content.vector_transforms_iter_mut().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate().for_each(apply);
 	}
 
 	content
 }
 
 #[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn assign_translations<T: VectorListIterMut + 'n + Send>(
+async fn assign_translations<T: 'n + Send>(
 	_: impl Ctx,
-	#[implementations(List<Graphic>, List<Vector>)] mut content: T,
+	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)] mut content: List<T>,
 	x_min: f64,
 	x_max: f64,
 	y_min: f64,
@@ -217,8 +203,8 @@ async fn assign_translations<T: VectorListIterMut + 'n + Send>(
 	#[range((-50., 50.))] y_bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
-) -> T {
-	let count = content.vector_count() as u32;
+) -> List<T> {
+	let count = content.len() as u32;
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
@@ -255,9 +241,9 @@ async fn assign_translations<T: VectorListIterMut + 'n + Send>(
 	};
 
 	if reverse {
-		content.vector_transforms_iter_mut().rev().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).rev().enumerate().for_each(apply);
 	} else {
-		content.vector_transforms_iter_mut().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate().for_each(apply);
 	}
 
 	content
@@ -265,9 +251,9 @@ async fn assign_translations<T: VectorListIterMut + 'n + Send>(
 
 // TODO: decide if we want to keep both circular and non-circular versions
 #[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn assign_translations_circular<T: VectorListIterMut + 'n + Send>(
+async fn assign_translations_circular<T: 'n + Send>(
 	_: impl Ctx,
-	#[implementations(List<Graphic>, List<Vector>)] mut content: T,
+	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)] mut content: List<T>,
 	radius_min: f64,
 	radius_max: f64,
 	#[default(-180.)] angle_min: Angle,
@@ -283,8 +269,8 @@ async fn assign_translations_circular<T: VectorListIterMut + 'n + Send>(
 	#[range((-50., 50.))] angle_bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
-) -> T {
-	let count = content.vector_count() as u32;
+) -> List<T> {
+	let count = content.len() as u32;
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
@@ -323,18 +309,18 @@ async fn assign_translations_circular<T: VectorListIterMut + 'n + Send>(
 	};
 
 	if reverse {
-		content.vector_transforms_iter_mut().rev().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).rev().enumerate().for_each(apply);
 	} else {
-		content.vector_transforms_iter_mut().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate().for_each(apply);
 	}
 
 	content
 }
 
 #[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn assign_scales<T: VectorListIterMut + 'n + Send>(
+async fn assign_scales<T: 'n + Send>(
 	_: impl Ctx,
-	#[implementations(List<Graphic>, List<Vector>)] mut content: T,
+	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)] mut content: List<T>,
 	#[default(0.5)] min_scale: f64,
 	#[default(2.)] max_scale: f64,
 	/// Whether to reverse the order.
@@ -347,8 +333,8 @@ async fn assign_scales<T: VectorListIterMut + 'n + Send>(
 	#[range((-50., 50.))] bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
-) -> T {
-	let count = content.vector_count() as u32;
+) -> List<T> {
+	let count = content.len() as u32;
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
@@ -373,9 +359,9 @@ async fn assign_scales<T: VectorListIterMut + 'n + Send>(
 	};
 
 	if reverse {
-		content.vector_transforms_iter_mut().rev().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).rev().enumerate().for_each(apply);
 	} else {
-		content.vector_transforms_iter_mut().enumerate().for_each(apply);
+		content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate().for_each(apply);
 	}
 
 	content
