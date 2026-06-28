@@ -339,6 +339,27 @@ impl ColorPickerMessageHandler {
 					self.snapshot_old();
 				}
 			}
+			SpectrumInputUpdate::InsertDuplicate { index, position } => {
+				let source = index as usize;
+				let Some(insert_index) = gradient.duplicate_stop(source, position) else { return };
+				// The dragged stop (the duplication source) stays active. Its index shifts up if the frozen copy landed at or before it.
+				let dragged_index = if insert_index <= source { source + 1 } else { source };
+				self.active_marker_index = Some(dragged_index as u32);
+				self.active_marker_is_midpoint = false;
+			}
+			SpectrumInputUpdate::RemoveDuplicate { index } => {
+				let anchor = index as usize;
+				if anchor >= gradient.position.len() || gradient.position.len() <= 2 {
+					return;
+				}
+				gradient.remove(anchor);
+				// Keep the dragged stop active. Its index shifts down if the removed copy came before it.
+				if let Some(active) = self.active_marker_index
+					&& (anchor as u32) < active
+				{
+					self.active_marker_index = Some(active - 1);
+				}
+			}
 			SpectrumInputUpdate::DeleteMarker { index } => {
 				// Enforce minimum stop count. The gradient editor needs at least 2 stops to remain meaningful.
 				if gradient.position.len() <= 2 || (index as usize) >= gradient.position.len() {

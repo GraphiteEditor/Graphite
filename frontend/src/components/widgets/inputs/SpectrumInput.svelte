@@ -36,6 +36,10 @@
 	let activeMarkerIsMidpointRestore = false;
 	// Tracks whether a midpoint drag has actually moved by at least one frame, to distinguish click-to-select from drag.
 	let midpointDragged = false;
+	// Mirrors whether Alt is currently held during the drag (the desired state).
+	let duplicateRequested = false;
+	// Mirrors whether a frozen copy currently exists in the gradient (the materialized state).
+	let duplicateActive = false;
 
 	function emit(intent: SpectrumInputUpdate) {
 		dispatch("update", intent);
@@ -68,6 +72,9 @@
 			activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 			dragRestorePosition = markers[index].position;
 			dragInsertedMarker = false;
+			// Only offer duplication where new stops are allowed. Don't materialize yet: wait for the first move so an Alt-click without a drag leaves no stray copy.
+			duplicateRequested = allowInsert && e.altKey;
+			duplicateActive = false;
 			setActive(index, false);
 			addEvents();
 			return;
@@ -118,7 +125,9 @@
 		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 		dragRestorePosition = position;
 		dragInsertedMarker = true;
-		// Don't dispatch an `ActiveMarker` here — the Rust handler already updates the active marker in response to `InsertMarker` and a duplicate `ActiveMarker` would race the layout update.
+		duplicateRequested = allowInsert && e.altKey;
+		duplicateActive = false;
+		// Don't dispatch an `ActiveMarker` here. The Rust handler already updates the active marker in response to `InsertMarker` and a duplicate `ActiveMarker` would race the layout update.
 		activeMarkerIndex = insertIndex;
 		activeMarkerIsMidpoint = false;
 		addEvents();
@@ -134,10 +143,54 @@
 		else if (allowDelete) emit({ DeleteMarker: { index: activeMarkerIndex } });
 	}
 
+	// Locate the frozen copy left by a duplicate: the non-dragged marker sitting at the drag's start position.
+	function findDuplicateAnchorIndex(): number | undefined {
+		if (dragRestorePosition === undefined) return undefined;
+
+		let best: number | undefined = undefined;
+		let bestDistance = Infinity;
+
+		markers.forEach((marker, index) => {
+			if (index === activeMarkerIndex) return;
+
+			const distance = Math.abs(marker.position - (dragRestorePosition || 0));
+			if (distance < bestDistance) {
+				bestDistance = distance;
+				best = index;
+			}
+		});
+
+		return best;
+	}
+
+	// Bring the materialized duplicate state in line with whether Alt is currently held, inserting or removing the frozen copy.
+	function reconcileDuplicate() {
+		if (!allowInsert || activeMarkerIndex === undefined || activeMarkerIsMidpoint) return;
+
+		if (duplicateRequested && !duplicateActive) {
+			if (dragRestorePosition === undefined) return;
+			// Drop a frozen copy at the drag's start position. The dragged marker stays active and becomes the duplicate being moved.
+			emit({ InsertDuplicate: { index: activeMarkerIndex, position: dragRestorePosition } });
+			duplicateActive = true;
+		} else if (!duplicateRequested && duplicateActive) {
+			// Remove the frozen copy so only the dragged marker remains, as if it had been dragged all along.
+			const anchor = findDuplicateAnchorIndex();
+			if (anchor !== undefined) emit({ RemoveDuplicate: { index: anchor } });
+			duplicateActive = false;
+		}
+	}
+
 	function moveActiveMarker(e: PointerEvent) {
 		if (disabled || activeMarkerIndex === undefined) return;
 		if (e.buttons === 0) {
 			stopDrag();
+			return;
+		}
+
+		// Insert/remove the frozen copy before moving so the structural change and the move don't race on a stale active index.
+		// Skip this frame's move after reconciling. The next move runs once Rust has reported the dragged marker's new index.
+		if (duplicateRequested !== duplicateActive) {
+			reconcileDuplicate();
 			return;
 		}
 
@@ -173,12 +226,20 @@
 	function abortDrag() {
 		if (disabled || activeMarkerIndex === undefined) return;
 
-		// Restore the dragged value, or delete the marker if it was inserted as part of this drag.
+		const dragged = activeMarkerIndex;
+		const anchor = duplicateActive ? findDuplicateAnchorIndex() : undefined;
+
 		if (dragInsertedMarker) {
-			emit({ DeleteMarker: { index: activeMarkerIndex } });
+			// The dragged marker was created by this drag, so delete it (and any frozen copy, adjusting its index for that removal).
+			emit({ DeleteMarker: { index: dragged } });
+			if (anchor !== undefined) emit({ DeleteMarker: { index: anchor - (dragged < anchor ? 1 : 0) } });
+		} else if (anchor !== undefined) {
+			// A duplicated pre-existing marker: the frozen copy already sits at the start position, so deleting the dragged copy restores the original.
+			emit({ DeleteMarker: { index: dragged } });
 		} else if (dragRestorePosition !== undefined) {
-			if (activeMarkerIsMidpoint) emit({ MoveMidpoint: { index: activeMarkerIndex, position: dragRestorePosition } });
-			else emit({ MoveMarker: { index: activeMarkerIndex, position: dragRestorePosition } });
+			// Plain drag: return the marker (or midpoint) to where it began.
+			if (activeMarkerIsMidpoint) emit({ MoveMidpoint: { index: dragged, position: dragRestorePosition } });
+			else emit({ MoveMarker: { index: dragged, position: dragRestorePosition } });
 		}
 
 		setActive(activeMarkerIndexRestore, activeMarkerIsMidpointRestore);
@@ -192,6 +253,8 @@
 		activeMarkerIndexRestore = undefined;
 		activeMarkerIsMidpointRestore = false;
 		midpointDragged = false;
+		duplicateRequested = false;
+		duplicateActive = false;
 		dispatch("dragging", false);
 	}
 
@@ -214,6 +277,21 @@
 			const element = markerTrackElement?.div();
 			if (element) preventEscapeClosingParentFloatingMenu(element);
 			abortDrag();
+			return;
+		}
+
+		// Pressing Alt mid-drag duplicates the marker, leaving a frozen copy where the drag began.
+		if (e.key === "Alt" && allowInsert && !activeMarkerIsMidpoint && !duplicateRequested) {
+			duplicateRequested = true;
+			reconcileDuplicate();
+		}
+	}
+
+	function onKeyUp(e: KeyboardEvent) {
+		// Releasing Alt mid-drag removes the frozen copy, as if the marker had been dragged all along.
+		if (e.key === "Alt" && duplicateRequested) {
+			duplicateRequested = false;
+			reconcileDuplicate();
 		}
 	}
 
@@ -222,6 +300,7 @@
 		document.addEventListener("pointerup", onPointerUp);
 		document.addEventListener("mousedown", onMouseDown);
 		document.addEventListener("keydown", onKeyDown);
+		document.addEventListener("keyup", onKeyUp);
 	}
 
 	function removeEvents() {
@@ -229,6 +308,7 @@
 		document.removeEventListener("pointerup", onPointerUp);
 		document.removeEventListener("mousedown", onMouseDown);
 		document.removeEventListener("keydown", onKeyDown);
+		document.removeEventListener("keyup", onKeyUp);
 	}
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
