@@ -19,6 +19,7 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -30,7 +31,7 @@ use vector_types::vector::misc::{
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::vector::{FillId, PointId, RegionDomain, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
@@ -1107,6 +1108,170 @@ async fn points_to_polyline(_: impl Ctx, mut points: List<Vector>, #[default(tru
 	}
 
 	points
+}
+
+/// Applies Lloyd's relaxation to the anchor points of each input element, moving every point to the center of its Voronoi
+/// cell. Repeating spreads clustered points into a more even (centroidal) distribution. Feed the result into the Voronoi or
+/// Delaunay node for more uniform cells or triangles, or use it to even out any point cloud.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn relax_points(
+	_: impl Ctx,
+	mut source: List<Vector>,
+	/// The number of relaxation steps to apply. A fractional value runs the whole steps and then blends partway toward one
+	/// more step, so the amount of relaxation can be animated smoothly.
+	#[default(1.)]
+	iterations: Length,
+) -> List<Vector> {
+	for vector in source.iter_element_values_mut() {
+		let relaxed = crate::voronoi::relax_sites(vector.point_domain.positions(), iterations);
+		for ((_, position), new_position) in vector.point_domain.positions_mut().zip(relaxed) {
+			*position = new_position;
+		}
+	}
+
+	source
+}
+
+/// Builds a Voronoi diagram from the anchor points of each input element. Each point claims the region of space closest
+/// to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the input
+/// points so the diagram stays finite.
+///
+/// When `connect_cells` is disabled, every cell becomes its own closed, fillable subpath. When enabled, the
+/// cells share their common points and segments, forming a single connected mesh with no fillable regions (like the Grid
+/// node's connectivity).
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+async fn voronoi_cells(_: impl Ctx, mut source: List<Vector>, connect_cells: bool) -> List<Vector> {
+	for vector in source.iter_element_values_mut() {
+		let sites = vector.point_domain.positions().to_vec();
+		let cells = crate::voronoi::voronoi_cells(&sites);
+		if cells.is_empty() {
+			continue;
+		}
+		replace_with_polygons(vector, cells, connect_cells);
+	}
+
+	source
+}
+
+/// Builds a Delaunay triangulation connecting the anchor points of each input element. It is the geometric dual of the
+/// Voronoi diagram: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
+///
+/// When `connect cells` is disabled, every triangle becomes its own closed, fillable subpath. When enabled,
+/// the triangles share their common points and segments, forming a single connected mesh with no fillable regions (like the
+/// Grid node's connectivity).
+#[node_macro::node(category("Vector"), path(core_types::vector))]
+async fn triangulate(_: impl Ctx, mut source: List<Vector>, connect_cells: bool) -> List<Vector> {
+	for vector in source.iter_element_values_mut() {
+		let sites = vector.point_domain.positions().to_vec();
+		let triangles = crate::voronoi::delaunay_triangles(&sites);
+		if triangles.is_empty() {
+			continue;
+		}
+		// `delaunator` emits triangle vertices clockwise; reverse to `[a, c, b]` so triangles wind counter-clockwise to
+		// match the Voronoi cells and the rest of the framework's fill winding.
+		let polygons = triangles.iter().map(|&[a, b, c]| vec![sites[a], sites[c], sites[b]]).collect();
+		replace_with_polygons(vector, polygons, connect_cells);
+	}
+
+	source
+}
+
+/// Replaces a vector's geometry (points, segments, and regions) with the given closed polygons, preserving its style.
+///
+/// Without `connect_cells`, each polygon becomes its own closed subpath with a fillable region. With it, coincident
+/// vertices are welded and each shared edge is emitted once, producing a connected mesh with no regions.
+pub(crate) fn replace_with_polygons(vector: &mut Vector, polygons: Vec<Vec<DVec2>>, connect_cells: bool) {
+	let mut point_domain = PointDomain::new();
+	let mut segment_domain = SegmentDomain::new();
+	let mut region_domain = RegionDomain::new();
+	let mut next_point = PointId::ZERO;
+	let mut next_segment = SegmentId::ZERO;
+	let mut next_region = RegionId::ZERO;
+
+	if !connect_cells {
+		for polygon in &polygons {
+			if polygon.len() < 3 {
+				continue;
+			}
+
+			let base = point_domain.ids().len();
+			for &position in polygon {
+				point_domain.push(next_point.next_id(), position);
+			}
+
+			let count = polygon.len();
+			let mut first_segment = None;
+			let mut last_segment = None;
+			for i in 0..count {
+				let start = base + i;
+				let end = base + (i + 1) % count;
+				let id = next_segment.next_id();
+				first_segment.get_or_insert(id);
+				last_segment = Some(id);
+				segment_domain.push(id, start, end, BezierHandles::Linear, StrokeId::ZERO);
+			}
+
+			if let (Some(first), Some(last)) = (first_segment, last_segment) {
+				region_domain.push(next_region.next_id(), first..=last, FillId::ZERO);
+			}
+		}
+	} else {
+		// Weld vertices that fall in the same quantization cell so adjacent polygons share points, and emit each
+		// undirected edge only once so adjacent polygons share segments.
+		let tolerance = mesh_weld_tolerance(&polygons);
+		let mut vertex_lookup: HashMap<(i64, i64), usize> = HashMap::new();
+		let mut seen_edges: HashSet<(usize, usize)> = HashSet::new();
+
+		for polygon in &polygons {
+			if polygon.len() < 2 {
+				continue;
+			}
+
+			let indices: Vec<usize> = polygon
+				.iter()
+				.map(|&position| {
+					let key = ((position.x / tolerance).round() as i64, (position.y / tolerance).round() as i64);
+					*vertex_lookup.entry(key).or_insert_with(|| {
+						let index = point_domain.ids().len();
+						point_domain.push(next_point.next_id(), position);
+						index
+					})
+				})
+				.collect();
+
+			let count = indices.len();
+			for i in 0..count {
+				let start = indices[i];
+				let end = indices[(i + 1) % count];
+				if start == end {
+					continue;
+				}
+				let edge = if start < end { (start, end) } else { (end, start) };
+				if seen_edges.insert(edge) {
+					segment_domain.push(next_segment.next_id(), start, end, BezierHandles::Linear, StrokeId::ZERO);
+				}
+			}
+		}
+	}
+
+	vector.point_domain = point_domain;
+	vector.segment_domain = segment_domain;
+	vector.region_domain = region_domain;
+}
+
+/// The distance below which two mesh vertices are welded into one, scaled to the diagram's size so it tracks coordinate magnitude.
+fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
+	let mut min = DVec2::splat(f64::MAX);
+	let mut max = DVec2::splat(f64::MIN);
+	for polygon in polygons {
+		for &position in polygon {
+			min = min.min(position);
+			max = max.max(position);
+		}
+	}
+
+	let diagonal = (max - min).length();
+	if diagonal.is_finite() && diagonal > 0. { diagonal * 1e-6 } else { 1e-6 }
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
@@ -3066,6 +3231,149 @@ mod test {
 		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
 		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
+	}
+
+	fn vector_node_from_points(points: &[DVec2]) -> List<Vector> {
+		let mut vector = Vector::default();
+		let mut next_point = PointId::ZERO;
+		for &position in points {
+			vector.point_domain.push(next_point.next_id(), position);
+		}
+		List::new_from_element(vector)
+	}
+
+	const SQUARE_WITH_CENTER: [DVec2; 5] = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(10., 10.), DVec2::new(0., 10.), DVec2::new(5., 5.)];
+
+	#[tokio::test]
+	async fn offset_path_does_not_duplicate_closing_anchors() {
+		// Offsetting closed triangles must not leave each subpath with a redundant start/end anchor (a Kurbo offset
+		// contour returns to approximately, not exactly, its start; that near-coincident point must close, not duplicate).
+		let delaunay = super::triangulate((), vector_node_from_points(&SQUARE_WITH_CENTER), false).await;
+		let offset = super::offset_path((), delaunay, 0.5, StrokeJoin::Miter, 4.).await;
+		let result = offset.element(0).unwrap();
+
+		let mut subpaths = 0;
+		for (group, closed) in result.stroke_manipulator_groups() {
+			subpaths += 1;
+			assert!(closed, "offset of a closed triangle should stay closed");
+			let first = group.first().unwrap().anchor;
+			let last = group.last().unwrap().anchor;
+			assert!(first.distance(last) > 1e-6, "closed subpath has a duplicated start/end anchor: {first:?} ~= {last:?}");
+		}
+		assert!(subpaths > 0);
+	}
+
+	#[tokio::test]
+	async fn delaunay_disconnected_cells_make_one_region_per_triangle() {
+		let result = super::triangulate((), vector_node_from_points(&SQUARE_WITH_CENTER), false).await;
+		let vector = result.element(0).unwrap();
+		// The square plus its center tessellates into four triangles, each its own closed subpath.
+		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.segment_domain.ids().len(), 4 * 3);
+		assert_eq!(vector.point_domain.ids().len(), 4 * 3);
+	}
+
+	#[tokio::test]
+	async fn delaunay_and_voronoi_cells_share_winding() {
+		fn signed_area(anchors: &[DVec2]) -> f64 {
+			(0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.
+		}
+		fn subpath_winding_signs(vector: &Vector) -> Vec<f64> {
+			vector
+				.stroke_manipulator_groups()
+				.map(|(group, _)| signed_area(&group.iter().map(|g| g.anchor).collect::<Vec<_>>()).signum())
+				.collect()
+		}
+
+		// The Rectangle and Ellipse generators define the framework's fill winding convention; each is built from these
+		// subpath constructors (`Subpath::new_rectangle` / `Subpath::new_ellipse`), so their winding is the source of truth.
+		use vector_types::subpath::Subpath;
+		let rectangle = Vector::from_subpath(Subpath::new_rectangle(DVec2::new(-50., -50.), DVec2::new(50., 50.)));
+		let ellipse = Vector::from_subpath(Subpath::new_ellipse(DVec2::new(-50., -25.), DVec2::new(50., 25.)));
+		let expected = subpath_winding_signs(&rectangle)[0];
+		assert_eq!(subpath_winding_signs(&ellipse)[0], expected, "Rectangle and Ellipse should agree on winding");
+
+		// Delaunay and Voronoi must emit subpaths that wind the same way as those generators.
+		let delaunay = super::triangulate((), vector_node_from_points(&SQUARE_WITH_CENTER), false).await;
+		let voronoi = super::voronoi_cells((), vector_node_from_points(&SQUARE_WITH_CENTER), false).await;
+		for sign in subpath_winding_signs(delaunay.element(0).unwrap()) {
+			assert_eq!(sign, expected, "Delaunay subpath winding should match the Rectangle/Ellipse generators");
+		}
+		for sign in subpath_winding_signs(voronoi.element(0).unwrap()) {
+			assert_eq!(sign, expected, "Voronoi subpath winding should match the Rectangle/Ellipse generators");
+		}
+	}
+
+	#[tokio::test]
+	async fn delaunay_shared_mesh_welds_points_and_shares_edges() {
+		let result = super::triangulate((), vector_node_from_points(&SQUARE_WITH_CENTER), true).await;
+		let vector = result.element(0).unwrap();
+		// The connected mesh reuses the five input points and shares edges, with no fillable regions.
+		assert_eq!(vector.region_domain.ids().len(), 0);
+		assert_eq!(vector.point_domain.ids().len(), 5);
+		// Four hull edges plus four spokes to the center, each emitted once.
+		assert_eq!(vector.segment_domain.ids().len(), 8);
+	}
+
+	#[tokio::test]
+	async fn voronoi_disconnected_cells_make_a_region_per_cell() {
+		let result = super::voronoi_cells((), vector_node_from_points(&SQUARE_WITH_CENTER), false).await;
+		let vector = result.element(0).unwrap();
+		let regions = vector.region_domain.ids().len();
+		assert!(regions > 0, "expected at least one Voronoi region");
+		// Every region is a closed subpath, so segments and points come in matched per-region loops.
+		assert_eq!(vector.segment_domain.ids().len(), vector.point_domain.ids().len());
+
+		// Clipping to the convex hull keeps all cell vertices within the input bounds.
+		for &position in vector.point_domain.positions() {
+			assert!(position.x >= -1e-6 && position.x <= 10. + 1e-6);
+			assert!(position.y >= -1e-6 && position.y <= 10. + 1e-6);
+		}
+	}
+
+	#[tokio::test]
+	async fn voronoi_shared_mesh_has_no_regions() {
+		let result = super::voronoi_cells((), vector_node_from_points(&SQUARE_WITH_CENTER), true).await;
+		let vector = result.element(0).unwrap();
+		assert_eq!(vector.region_domain.ids().len(), 0);
+		assert!(vector.segment_domain.ids().len() > 0);
+	}
+
+	#[tokio::test]
+	async fn voronoi_leaves_degenerate_input_untouched() {
+		// Two points cannot form a diagram, so the element passes through unchanged.
+		let points = [DVec2::new(0., 0.), DVec2::new(1., 1.)];
+		let result = super::voronoi_cells((), vector_node_from_points(&points), false).await;
+		let vector = result.element(0).unwrap();
+		assert_eq!(vector.point_domain.ids().len(), 2);
+		assert_eq!(vector.segment_domain.ids().len(), 0);
+	}
+
+	#[tokio::test]
+	async fn relax_points_redistributes_anchors() {
+		// Four hull corners plus two off-center interior points.
+		let points = [
+			DVec2::new(0., 0.),
+			DVec2::new(10., 0.),
+			DVec2::new(10., 10.),
+			DVec2::new(0., 10.),
+			DVec2::new(3., 4.),
+			DVec2::new(7., 5.),
+		];
+		let result = super::relax_points((), vector_node_from_points(&points), 2.).await;
+		let vector = result.element(0).unwrap();
+
+		// Relaxation preserves the point count but repositions the interior anchors within the hull.
+		assert_eq!(vector.point_domain.ids().len(), points.len());
+		assert_ne!(vector.point_domain.positions(), &points[..]);
+		// The convex-hull corners are pinned.
+		for i in 0..4 {
+			assert_eq!(vector.point_domain.positions()[i], points[i], "hull corner {i} should be pinned");
+		}
+		for &point in vector.point_domain.positions() {
+			assert!(point.x >= -1e-6 && point.x <= 10. + 1e-6);
+			assert!(point.y >= -1e-6 && point.y <= 10. + 1e-6);
+		}
 	}
 
 	#[tokio::test]
