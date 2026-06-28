@@ -292,8 +292,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let node_template = document_node_type.default_node_template();
+				let mut node_template = document_node_type.default_node_template();
 				self.context_menu = None;
+
+				// A freshly added Text node carries no font, so give it the default font (registered like the Text tool does)
+				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) {
+					let font_resource_id = graph_craft::application_io::resource::ResourceId::new();
+					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
+						*font_input = NodeInput::value(TaggedValue::Resource(font_resource_id), false);
+					}
+					responses.add(DocumentMessage::Resource(ResourceMessage::AddFont {
+						resource_id: font_resource_id,
+						font: graphene_std::text::Font::default(),
+					}));
+				}
 
 				if add_transaction {
 					responses.add(DocumentMessage::AddTransaction);
@@ -838,11 +850,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
 						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
 
+						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
+						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
+
+						// Right-clicking an unselected node selects just it, so selection-based actions like Merge Selected Nodes target it
+						if !is_clicked_selected {
+							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+						}
+
 						// Determine which layers the Lock/Unlock action would affect:
 						// - If the right-clicked node is in the selection, it affects all selected layers
 						// - If the right-clicked node is not in the selection, it affects just the right-clicked node
-						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
-						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
 						let affected_layer_ids = if is_clicked_selected {
 							selected_nodes.map(|selected| selected.selected_nodes().copied().filter(|id| network_interface.is_layer(id, selection_network_path)).collect())
 						} else {

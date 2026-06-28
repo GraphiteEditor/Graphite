@@ -32,6 +32,12 @@ impl Resource {
 	}
 }
 
+impl Default for Resource {
+	fn default() -> Self {
+		Self::empty()
+	}
+}
+
 impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
 	fn from(val: &Resource) -> Self {
 		val.inner.clone()
@@ -229,7 +235,10 @@ pub trait LoadResource: Send + Sync {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_>;
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub type ResourceFuture<'a> = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'a>>;
+#[cfg(target_family = "wasm")]
+pub type ResourceFuture<'a> = Pin<Box<dyn Future<Output = Option<Resource>> + 'a>>;
 
 pub trait ResourceStorage: LoadResource {
 	fn store(&self, data: &[u8]) -> ResourceHash;

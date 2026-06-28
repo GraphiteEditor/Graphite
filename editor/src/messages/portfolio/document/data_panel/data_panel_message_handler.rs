@@ -336,6 +336,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(list) => list.identifier(),
 			Self::Color(list) => list.identifier(),
 			Self::Gradient(list) => list.identifier(),
+			Self::Text(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -350,6 +351,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
 			Self::Color(list) => list.layout_with_breadcrumb(data),
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
+			Self::Text(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }
@@ -420,6 +422,10 @@ impl TableItemLayout for Vector {
 						table_rows.push(vec![
 							TextLabel::new("Fill Gradient End").narrow(true).widget_instance(),
 							TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_instance(),
+						]);
+						table_rows.push(vec![
+							TextLabel::new("Fill Gradient Transform").narrow(true).widget_instance(),
+							TextLabel::new(format_transform_matrix(gradient.transform)).narrow(true).widget_instance(),
 						]);
 					}
 				}

@@ -1,12 +1,11 @@
-use std::sync::Arc;
 use wgpu::{Adapter, Backends, Device, Features, Instance, Queue};
 
 #[derive(Debug, Clone)]
 pub struct Context {
-	pub device: Arc<Device>,
-	pub queue: Arc<Queue>,
-	pub instance: Arc<Instance>,
-	pub adapter: Arc<Adapter>,
+	pub device: Device,
+	pub queue: Queue,
+	pub instance: Instance,
+	pub adapter: Adapter,
 }
 
 impl Context {
@@ -19,12 +18,14 @@ impl Context {
 pub struct ContextBuilder {
 	backends: Backends,
 	features: Features,
+	selection: Option<usize>,
 }
 impl ContextBuilder {
 	pub fn new() -> Self {
 		Self {
 			backends: Backends::all(),
 			features: Features::empty(),
+			selection: None,
 		}
 	}
 	pub fn with_backends(mut self, backends: Backends) -> Self {
@@ -35,21 +36,34 @@ impl ContextBuilder {
 		self.features = features;
 		self
 	}
+	pub fn with_selection(mut self, index: usize) -> Self {
+		self.selection = Some(index);
+		self
+	}
 }
 #[cfg(not(target_family = "wasm"))]
 impl ContextBuilder {
 	pub async fn build(self) -> Option<Context> {
-		self.build_with_adapter_selection_inner(None::<fn(&[Adapter]) -> Option<usize>>).await
-	}
-	pub async fn build_with_adapter_selection<S>(self, select: S) -> Option<Context>
-	where
-		S: Fn(&[Adapter]) -> Option<usize>,
-	{
-		self.build_with_adapter_selection_inner(Some(select)).await
+		let instance = self.build_instance();
+		let mut adapters = enumerate_sorted(&instance, self.backends).await;
+
+		if let Some(index) = self.selection
+			&& index >= adapters.len()
+		{
+			let selected_adapter = adapters.remove(index);
+			adapters.insert(0, selected_adapter);
+		}
+
+		for adapter in adapters {
+			if let Some((device, queue)) = self.request_device(&adapter).await {
+				return Some(Context { device, queue, adapter, instance });
+			}
+		}
+		None
 	}
 	pub async fn available_adapters_fmt(&self) -> impl std::fmt::Display {
 		let instance = self.build_instance();
-		fmt::AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends).await)
+		fmt::AvailableAdaptersFormatter(enumerate_sorted(&instance, self.backends).await)
 	}
 }
 #[cfg(target_family = "wasm")]
@@ -58,12 +72,7 @@ impl ContextBuilder {
 		let instance = self.build_instance();
 		let adapter = self.request_adapter(&instance).await?;
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context {
-			device: Arc::new(device),
-			queue: Arc::new(queue),
-			adapter: Arc::new(adapter),
-			instance: Arc::new(instance),
-		})
+		Some(Context { device, queue, adapter, instance })
 	}
 }
 impl ContextBuilder {
@@ -73,6 +82,7 @@ impl ContextBuilder {
 			..wgpu::InstanceDescriptor::new_without_display_handle()
 		})
 	}
+	#[cfg(target_family = "wasm")]
 	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {
 		let request_adapter_options = wgpu::RequestAdapterOptions {
 			power_preference: wgpu::PowerPreference::HighPerformance,
@@ -94,43 +104,35 @@ impl ContextBuilder {
 	}
 }
 #[cfg(not(target_family = "wasm"))]
-impl ContextBuilder {
-	async fn build_with_adapter_selection_inner<S>(self, select: Option<S>) -> Option<Context>
-	where
-		S: Fn(&[Adapter]) -> Option<usize>,
-	{
-		let instance = self.build_instance();
-
-		let selected_adapter = if let Some(select) = select {
-			self.select_adapter(&instance, select).await
-		} else if cfg!(target_os = "windows") {
-			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12))
-				.await
-		} else {
-			None
-		};
-
-		let adapter = if let Some(adapter) = selected_adapter { adapter } else { self.request_adapter(&instance).await? };
-
-		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context {
-			device: Arc::new(device),
-			queue: Arc::new(queue),
-			adapter: Arc::new(adapter),
-			instance: Arc::new(instance),
-		})
-	}
-	async fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
-	where
-		S: Fn(&[Adapter]) -> Option<usize>,
-	{
-		let mut adapters = instance.enumerate_adapters(self.backends).await;
-		let selected_index = select(&adapters)?;
-		if selected_index >= adapters.len() {
-			return None;
+async fn enumerate_sorted(instance: &Instance, backends: Backends) -> Vec<Adapter> {
+	let mut adapters = instance.enumerate_adapters(backends).await;
+	adapters.sort_by_key(adapter_priority);
+	adapters
+}
+#[cfg(not(target_family = "wasm"))]
+fn adapter_priority(adapter: &Adapter) -> (u8, u8) {
+	let info = adapter.get_info();
+	let backend = if cfg!(target_os = "linux") {
+		match info.backend {
+			wgpu::Backend::Vulkan => 0,
+			_ => 1,
 		}
-		Some(adapters.remove(selected_index))
-	}
+	} else if cfg!(target_os = "windows") {
+		match info.backend {
+			wgpu::Backend::Dx12 => 0,
+			_ => 1,
+		}
+	} else {
+		0
+	};
+	let device_type = match info.device_type {
+		wgpu::DeviceType::DiscreteGpu => 0,
+		wgpu::DeviceType::IntegratedGpu => 1,
+		wgpu::DeviceType::VirtualGpu => 2,
+		wgpu::DeviceType::Cpu => 3,
+		wgpu::DeviceType::Other => 4,
+	};
+	(backend, device_type)
 }
 #[cfg(not(target_family = "wasm"))]
 mod fmt {

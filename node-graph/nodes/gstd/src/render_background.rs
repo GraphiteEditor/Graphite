@@ -1,7 +1,135 @@
-use glam::{Affine2, Vec2};
+use core_types::ExtractVarArgs;
+use core_types::color::Linear;
+use core_types::transform::Footprint;
+use core_types::uuid::generate_uuid;
+use core_types::{Ctx, ExtractFootprint};
+use glam::{Affine2, UVec2, Vec2};
+use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use rendering::{RenderParams, SvgRender, SvgRenderOutput};
+use std::fmt::Write;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
+use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
-pub struct BackgroundCompositor {
+#[node_macro::node(category(""))]
+async fn render_background<'a: 'n>(
+	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
+	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
+	data: RenderOutput,
+) -> RenderOutput {
+	let footprint = ctx.footprint();
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
+
+	if !render_params.to_canvas() || render_params.viewport_zoom <= 0.0 {
+		return data;
+	}
+
+	let RenderOutput { data: foreground_data, metadata } = data;
+	let mut render_params = render_params.clone();
+	render_params.footprint = *footprint;
+
+	let data = match foreground_data {
+		RenderOutputType::Texture(foreground_texture) => {
+			let doc_to_screen = (glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * render_params.footprint.transform).as_affine2();
+			let blended = pipeline
+				.run::<CompositeBackground>(&CompositeBackgroundArgs {
+					foreground: foreground_texture.as_ref(),
+					backgrounds: &metadata.backgrounds,
+					document_to_screen: doc_to_screen,
+					zoom: render_params.viewport_zoom.to_f32(),
+				})
+				.await;
+
+			RenderOutputType::Texture(blended.into())
+		}
+		RenderOutputType::Svg {
+			svg: foreground_svg,
+			image_data: foreground_images,
+		} => {
+			let mut render = SvgRender::new();
+
+			if render_params.viewport_zoom > 0. {
+				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
+					let checker_id = format!("{checker_id_prefix}-{}", generate_uuid());
+					let cell_size = 8. / render_params.viewport_zoom;
+					let pattern_size = cell_size * 2.;
+
+					write!(
+						&mut render.svg_defs,
+						r##"<pattern id="{checker_id}" x="{}" y="{}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#ffffff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#cccccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#cccccc" /></pattern>"##,
+						pattern_origin.x,
+						pattern_origin.y,
+					)
+					.unwrap();
+
+					render.leaf_tag("rect", |attributes| {
+						attributes.push("x", rect.x0.to_string());
+						attributes.push("y", rect.y0.to_string());
+						attributes.push("width", rect.width().to_string());
+						attributes.push("height", rect.height().to_string());
+						attributes.push("fill", format!("url(#{checker_id})"));
+					});
+				};
+
+				if metadata.backgrounds.is_empty() {
+					if render_params.scale > 0. {
+						let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
+						let logical_footprint = Footprint {
+							resolution: logical_resolution.round().as_uvec2().max(glam::UVec2::ONE),
+							..render_params.footprint
+						};
+						let bounds = logical_footprint.viewport_bounds_in_local_space();
+						let min = bounds.start.floor();
+						let max = bounds.end.ceil();
+
+						if min.is_finite() && max.is_finite() {
+							let rect = vello::kurbo::Rect::new(min.x, min.y, max.x, max.y);
+							draw_checkerboard(&mut render, rect, glam::DVec2::ZERO, "checkered-viewport");
+						}
+					}
+				} else {
+					for background in &metadata.backgrounds {
+						let [a, b] = [background.location, background.location + background.dimensions];
+						let rect = vello::kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+						draw_checkerboard(&mut render, rect, glam::DVec2::new(rect.x0, rect.y0), "checkered-artboard");
+					}
+				}
+			}
+
+			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
+			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+
+			let background = SvgRenderOutput::from(render);
+			assert!(background.svg_defs.is_empty());
+
+			let svg = format!("{}{}", background.svg, foreground_svg);
+			let image_data = foreground_images;
+
+			RenderOutputType::Svg { svg, image_data }
+		}
+		_ => unreachable!("Render background node received unsupported render output type"),
+	};
+
+	RenderOutput { data, metadata }
+}
+
+#[node_macro::node(category(""), inject_scope)]
+async fn composite_background_pipeline<'a: 'n>(
+	_ctx: impl Ctx,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[data] pipeline: WgpuPipelineCache,
+) -> WgpuPipelineCache {
+	if let Some(executor) = executor {
+		executor.pipeline_init::<CompositeBackground>(pipeline);
+	}
+	pipeline.clone()
+}
+
+pub struct CompositeBackground {
 	checker_rect_pipeline: wgpu::RenderPipeline,
 	checker_viewport_pipeline: wgpu::RenderPipeline,
 	fullscreen_pipeline: wgpu::RenderPipeline,
@@ -10,12 +138,23 @@ pub struct BackgroundCompositor {
 	sampler: wgpu::Sampler,
 }
 
-impl BackgroundCompositor {
-	pub fn new(device: &wgpu::Device) -> Self {
+pub struct CompositeBackgroundArgs<'a> {
+	foreground: &'a wgpu::Texture,
+	backgrounds: &'a [rendering::Background],
+	document_to_screen: Affine2,
+	zoom: f32,
+}
+
+impl AsyncWgpuPipeline for CompositeBackground {
+	type Args<'a> = CompositeBackgroundArgs<'a>;
+	type Out = Arc<wgpu::Texture>;
+
+	fn create(executor: &WgpuExecutor) -> Self {
+		let device = &executor.context().device;
 		let format = wgpu::TextureFormat::Rgba8Unorm;
-		let checker_rect_shader = device.create_shader_module(wgpu::include_wgsl!("checker_rect.wgsl"));
-		let checker_viewport_shader = device.create_shader_module(wgpu::include_wgsl!("checker_viewport.wgsl"));
-		let fullscreen_shader = device.create_shader_module(wgpu::include_wgsl!("fullscreen.wgsl"));
+		let checker_rect_shader = device.create_shader_module(wgpu::include_wgsl!("render_background_checker_rect.wgsl"));
+		let checker_viewport_shader = device.create_shader_module(wgpu::include_wgsl!("render_background_checker_viewport.wgsl"));
+		let fullscreen_shader = device.create_shader_module(wgpu::include_wgsl!("render_background_fullscreen.wgsl"));
 
 		let checker_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("background_checker_bind_group_layout"),
@@ -189,13 +328,23 @@ impl BackgroundCompositor {
 		}
 	}
 
-	pub fn composite(&self, context: &crate::WgpuContext, foreground: &wgpu::Texture, output: &wgpu::Texture, backgrounds: &[rendering::Background], document_to_screen: Affine2, zoom: f32) {
+	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
+		let &CompositeBackgroundArgs {
+			foreground,
+			backgrounds,
+			document_to_screen,
+			zoom,
+		} = args;
+
+		let foreground_size = foreground.size();
+		let output = executor.request_texture(UVec2::new(foreground_size.width, foreground_size.height)).await;
+
 		if zoom <= 0. {
-			return;
+			return output;
 		}
 
-		let device = &context.device;
-		let queue = &context.queue;
+		let device = &executor.context().device;
+		let queue = &executor.context().queue;
 
 		let checker_size_doc = 8. / zoom;
 		let screen_to_document = document_to_screen.inverse();
@@ -285,8 +434,12 @@ impl BackgroundCompositor {
 		}
 
 		queue.submit(std::iter::once(encoder.finish()));
-	}
 
+		output
+	}
+}
+
+impl CompositeBackground {
 	fn create_checker_bind_group(&self, device: &wgpu::Device, uniforms: CompositeUniforms) -> wgpu::BindGroup {
 		let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("background_checker_uniforms"),

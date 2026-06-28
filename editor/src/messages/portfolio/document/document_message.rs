@@ -110,7 +110,7 @@ pub enum DocumentMessage {
 		delta_x: f64,
 		delta_y: f64,
 		resize: Key,
-		resize_opposite_corner: Key,
+		resize_opposite: Key,
 	},
 	PasteImage {
 		name: Option<String>,

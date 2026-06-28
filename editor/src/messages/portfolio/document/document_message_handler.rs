@@ -24,6 +24,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
+use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -123,6 +124,11 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
+	// TODO: Eventually remove this document upgrade code
+	/// Set when a freshly-opened document still has legacy bounding-box-relative gradients; the deferred gradient
+	/// migration converts them to absolute after the first graph run (when geometry bounds are available) and clears this.
+	#[serde(skip)]
+	pub(crate) pending_gradient_migration: bool,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -180,6 +186,8 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
+			// TODO: Eventually remove this document upgrade code
+			pending_gradient_migration: false,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
@@ -573,7 +581,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.context_menu = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 				}
-				// Exit one level up if inside a nested network
+				// Go back up one level in the breadcrumb path if we're in a subgraph
 				else if !self.breadcrumb_network_path.is_empty() {
 					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
 				}
@@ -689,10 +697,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::BlendSelectedLayers => {
-				self.handle_group_selected_layers(GroupFolderType::Blend, responses);
+				self.group_selected_layers(GroupFolderType::Blend, responses);
 			}
 			DocumentMessage::MorphSelectedLayers => {
-				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
+				self.group_selected_layers(GroupFolderType::Morph, responses);
 			}
 			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
 				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
@@ -713,10 +721,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.handle_expand_fill_stroke_on_selected_layers(responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
-				self.handle_group_selected_layers(group_folder_type, responses);
+				self.group_selected_layers(group_folder_type, responses);
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
-				self.handle_move_selected_layers_to(parent, insert_index, responses);
+				self.move_selected_layers_to(parent, insert_index, responses);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -739,9 +747,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				delta_x,
 				delta_y,
 				resize,
-				resize_opposite_corner,
+				resize_opposite,
 			} => {
-				self.handle_nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
+				let resize = ipp.keyboard.key(resize);
+				let resize_opposite = ipp.keyboard.key(resize_opposite);
+				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
@@ -2441,9 +2451,7 @@ impl DocumentMessageHandler {
 		folder_id
 	}
 
-	/// Helper method for GroupSelectedLayers message.
-	/// Handles grouping layers in both artboard and non-artboard workflows.
-	fn handle_group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
+	fn group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::AddTransaction);
 
 		let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
@@ -2585,9 +2593,7 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Helper method for MoveSelectedLayersTo message.
-	/// Handles moving selected layers to a new parent with proper transform preservation.
-	fn handle_move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
+	fn move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
 		if !self.selection_network_path.is_empty() {
 			log::error!("Moving selected layers is only supported for the Document Network");
 			return;
@@ -2681,39 +2687,37 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 	}
 
-	/// Helper method for NudgeSelectedLayers message.
-	/// Handles keyboard nudging of selected layers with optional resize mode.
-	#[allow(clippy::too_many_arguments)]
-	fn handle_nudge_selected_layers(
-		&mut self,
-		delta_x: f64,
-		delta_y: f64,
-		resize: Key,
-		resize_opposite_corner: Key,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		responses: &mut VecDeque<Message>,
-	) {
-		responses.add(DocumentMessage::AddTransaction);
-
-		let resize = ipp.keyboard.key(resize);
-		let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-
+	fn nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, resize: bool, resize_opposite: bool, responses: &mut VecDeque<Message>) {
 		let can_move = |layer| {
 			let selected = self.network_interface.selected_nodes();
 			selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
 		};
 
-		// Nudge translation without resizing
-		if !resize {
-			let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
-			responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
+		if resize {
+			let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
+			// Combine only finite bounds (a non-finite box would poison the scale), bailing before opening a transaction if none remain
+			let Some([min, max]) = layers
+				.iter()
+				.filter_map(|&layer| self.metadata().bounding_box_document(layer))
+				.filter(|[min, max]| min.is_finite() && max.is_finite())
+				.reduce(Quad::combine_bounds)
+			else {
+				return;
+			};
 
-			for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+			let resized = nudge_resize_bounds(min, max, DVec2::new(delta_x, delta_y), self.document_ptz.tilt(), resize_opposite);
+
+			// Express the document-space scale in viewport space so it composes with each layer like the rest of the transform pipeline
+			let document_to_viewport = self.metadata().document_to_viewport;
+			let transform = document_to_viewport * resized.transform * document_to_viewport.inverse();
+
+			responses.add(DocumentMessage::AddTransaction);
+
+			for layer in layers {
 				responses.add(GraphOperationMessage::TransformChange {
 					layer,
 					transform,
-					transform_in: TransformIn::Local,
+					transform_in: TransformIn::Viewport,
 					skip_rerender: false,
 				});
 			}
@@ -2721,52 +2725,15 @@ impl DocumentMessageHandler {
 			return;
 		}
 
-		let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
-		let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
+		responses.add(DocumentMessage::AddTransaction);
 
-		// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
-		let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
-		let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
-			0 => (delta_x, delta_y, false, false),
-			1 => (delta_y, -delta_x, false, true),
-			2 => (-delta_x, -delta_y, true, true),
-			3 => (-delta_y, delta_x, true, false),
-			_ => unreachable!(),
-		};
-
-		let size = existing_bottom_right - existing_top_left;
-		// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
-		// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
-		let size = size.max(DVec2::ONE);
-		let enlargement = DVec2::new(
-			if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
-			if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
-		);
-		let enlargement_factor = (enlargement + size) / size;
-
-		let position = DVec2::new(
-			existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
-			existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
-		);
-		let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
-		if !pivot.x.is_finite() {
-			pivot.x = 0.;
-		}
-		if !pivot.y.is_finite() {
-			pivot.y = 0.;
-		}
-		let scale = DAffine2::from_scale(enlargement_factor);
-		let pivot = DAffine2::from_translation(pivot);
-		let transformation = pivot * scale * pivot.inverse();
-		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
 		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-			let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-			let original_transform = self.metadata().upstream_transform(layer.to_node());
-			let new = to.inverse() * transformation * to * original_transform;
-			responses.add(GraphOperationMessage::TransformSet {
+			responses.add(GraphOperationMessage::TransformChange {
 				layer,
-				transform: new,
+				transform,
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
@@ -3948,6 +3915,37 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
 		assert!(true, "Application didn't crash after folder move operation");
 	}
+
+	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.
+	// Inspecting it via the Data panel (which splices in a monitor node) must not leave a dangling reference that crashes compilation.
+	#[tokio::test]
+	async fn merge_selected_nodes_while_inspecting_does_not_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let node_a = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		let node_b = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_a, node_b] }).await;
+		editor.handle_message(NodeGraphMessage::MergeSelectedNodes).await;
+
+		let merged = editor.active_document().network_interface.selected_nodes_in_nested_network(&[]).unwrap().0.clone();
+		assert_eq!(merged.len(), 1, "merge should leave one encapsulating node selected");
+
+		// Simulate the Data panel inspecting the merged node, which compiles the graph with a monitor node spliced in
+		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO)
+			.unwrap();
+		editor.runtime.run().await;
+
+		let mut messages = VecDeque::new();
+		editor.editor.poll_node_graph_evaluation(&mut messages).unwrap();
+	}
+
 	#[tokio::test]
 	async fn test_moving_folder_with_children() {
 		let mut editor = EditorTestUtils::create();

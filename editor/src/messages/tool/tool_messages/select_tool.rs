@@ -512,7 +512,6 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	drag_start_center: ViewportPosition,
 }
 
 impl SelectToolData {
@@ -527,6 +526,15 @@ impl SelectToolData {
 				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 			}
 		}
+	}
+
+	/// The center of the combined viewport-space bounding box of the layers currently being dragged.
+	fn dragging_layers_center(&self, document: &DocumentMessageHandler) -> Option<ViewportPosition> {
+		self.layers_dragging
+			.iter()
+			.filter_map(|&layer| document.metadata().bounding_box_viewport(layer).map(Rect::from_box))
+			.reduce(Rect::combine_bounds)
+			.map(|bounds| bounds.center())
 	}
 
 	pub fn selection_quad(&self) -> Quad {
@@ -1021,7 +1029,18 @@ impl Fsm for SelectToolFsmState {
 						let angle = -mouse_position.angle_to(DVec2::X);
 						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-						let origin = tool_data.drag_start_center;
+						// Anchor the guide to the dragged layers' center at the moment the drag began. It's computed live (rather than
+						// snapshotted at drag start) so it stays correct as the layers move and the viewport auto-pans: their current
+						// center minus the drag displacement recovers the start center in the present viewport frame. Sourcing it from
+						// the layers being dragged (not the prior selection's pivot) is what keeps it on the layer actually grabbed.
+						let origin = if matches!(self, Self::Dragging { .. }) {
+							tool_data
+								.dragging_layers_center(document)
+								.map(|center| center - (tool_data.drag_current - tool_data.drag_start))
+								.unwrap_or_else(|| tool_data.pivot_gizmo().position(document))
+						} else {
+							tool_data.pivot_gizmo().position(document)
+						};
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X);
@@ -1131,8 +1150,6 @@ impl Fsm for SelectToolFsmState {
 
 				let position = tool_data.pivot_gizmo().position(document);
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(position));
-
-				tool_data.drag_start_center = position;
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -1282,12 +1299,22 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
-				let mouse_delta = match axis {
-					Axis::X => mouse_delta.project_onto(e0),
-					Axis::Y => mouse_delta.project_onto(e0.perp()),
-					Axis::None => mouse_delta,
+				// Constrain the drag to the selection's local axis (not the world axis) so a rotated object's arrows track the mouse one-to-one
+				let axis_constraint = match axis {
+					Axis::X => e0,
+					Axis::Y => e0.perp(),
+					Axis::None => DVec2::ZERO,
 				};
+
+				let mouse_delta = snap_drag(
+					start,
+					current,
+					tool_data.axis_align,
+					axis_constraint,
+					snap_data,
+					&mut tool_data.snap_manager,
+					&tool_data.snap_candidates,
+				);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer in document.network_interface.shallowest_unique_layers(&[]) {

@@ -1,22 +1,15 @@
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::uuid::generate_uuid;
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
-use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::value::RenderOutput;
-pub use graph_craft::document::value::RenderOutputType;
-use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
+use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
-use std::fmt::Write;
 use std::sync::Arc;
 use vector_types::GradientStops;
-use wgpu_executor::RenderContext;
-
-// Re-export render_output_cache from render_cache module
-pub use crate::render_cache::render_output_cache;
+use wgpu_executor::{RenderContext, WgpuExecutor};
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
@@ -39,6 +32,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<GradientStops>,
+		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 ) -> RenderIntermediate {
@@ -80,7 +74,11 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderIntermediate) -> RenderOutput {
+async fn render<'a: 'n>(
+	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	data: RenderIntermediate,
+) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -109,9 +107,6 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
-			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
-				unreachable!("Attempted to render with Vello when no GPU executor is available");
-			};
 			let (scene, context) = data.as_ref();
 			let scale = render_params.scale;
 			let physical_resolution = render_params.footprint.resolution;
@@ -138,114 +133,14 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				}
 			}
 
-			let texture = exec
+			let texture = executor
+				.expect("GPU executor not available")
 				.render_vello_scene(&transformed_scene, physical_resolution, context, None)
 				.await
 				.expect("Failed to render Vello scene");
 			RenderOutputType::Texture(texture.into())
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
-	};
-
-	RenderOutput { data, metadata }
-}
-
-#[node_macro::node(category(""))]
-async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderOutput) -> RenderOutput {
-	let footprint = ctx.footprint();
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
-
-	if !render_params.to_canvas() {
-		return data;
-	}
-
-	let RenderOutput { data: foreground_data, metadata } = data;
-	let mut render_params = render_params.clone();
-	render_params.footprint = *footprint;
-
-	let data = match foreground_data {
-		RenderOutputType::Texture(foreground_texture) => {
-			if let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() {
-				let doc_to_screen = (glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * render_params.footprint.transform).as_affine2();
-				let blended = exec
-					.composite_background(foreground_texture.as_ref(), &metadata.backgrounds, doc_to_screen, render_params.viewport_zoom as f32)
-					.await;
-
-				RenderOutputType::Texture(blended.into())
-			} else {
-				RenderOutputType::Texture(foreground_texture)
-			}
-		}
-		RenderOutputType::Svg {
-			svg: foreground_svg,
-			image_data: foreground_images,
-		} => {
-			let mut render = SvgRender::new();
-
-			if render_params.viewport_zoom > 0. {
-				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
-					let checker_id = format!("{checker_id_prefix}-{}", generate_uuid());
-					let cell_size = 8. / render_params.viewport_zoom;
-					let pattern_size = cell_size * 2.;
-
-					write!(
-						&mut render.svg_defs,
-						r##"<pattern id="{checker_id}" x="{}" y="{}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#ffffff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#cccccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#cccccc" /></pattern>"##,
-						pattern_origin.x,
-						pattern_origin.y,
-					)
-					.unwrap();
-
-					render.leaf_tag("rect", |attributes| {
-						attributes.push("x", rect.x0.to_string());
-						attributes.push("y", rect.y0.to_string());
-						attributes.push("width", rect.width().to_string());
-						attributes.push("height", rect.height().to_string());
-						attributes.push("fill", format!("url(#{checker_id})"));
-					});
-				};
-
-				if metadata.backgrounds.is_empty() {
-					if render_params.scale > 0. {
-						let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
-						let logical_footprint = Footprint {
-							resolution: logical_resolution.round().as_uvec2().max(glam::UVec2::ONE),
-							..render_params.footprint
-						};
-						let bounds = logical_footprint.viewport_bounds_in_local_space();
-						let min = bounds.start.floor();
-						let max = bounds.end.ceil();
-
-						if min.is_finite() && max.is_finite() {
-							let rect = vello::kurbo::Rect::new(min.x, min.y, max.x, max.y);
-							draw_checkerboard(&mut render, rect, glam::DVec2::ZERO, "checkered-viewport");
-						}
-					}
-				} else {
-					for background in &metadata.backgrounds {
-						let [a, b] = [background.location, background.location + background.dimensions];
-						let rect = vello::kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-						draw_checkerboard(&mut render, rect, glam::DVec2::new(rect.x0, rect.y0), "checkered-artboard");
-					}
-				}
-			}
-
-			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
-			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
-
-			let background = SvgRenderOutput::from(render);
-			assert!(background.svg_defs.is_empty());
-
-			let svg = format!("{}{}", background.svg, foreground_svg);
-			let image_data = foreground_images;
-
-			RenderOutputType::Svg { svg, image_data }
-		}
-		_ => unreachable!("Render background node received unsupported render output type"),
 	};
 
 	RenderOutput { data, metadata }

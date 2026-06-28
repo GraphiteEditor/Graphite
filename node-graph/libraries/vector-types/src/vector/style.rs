@@ -153,6 +153,9 @@ impl From<List<GradientStops>> for Fill {
 			spread_method,
 			start: transform.transform_point2(DVec2::ZERO),
 			end: transform.transform_point2(DVec2::X),
+			// TODO: Eventually remove this document upgrade code
+			absolute: true,
+			transform: DAffine2::IDENTITY,
 		})
 	}
 }
@@ -666,6 +669,10 @@ impl PathStyle {
 	/// ```
 	pub fn fill(&self) -> &Fill {
 		&self.fill
+	}
+
+	pub fn fill_mut(&mut self) -> &mut Fill {
+		&mut self.fill
 	}
 
 	/// Get the current path's [Stroke].

@@ -1,6 +1,5 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -10,7 +9,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
@@ -117,6 +115,8 @@ impl Grid {
 
 		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
 
+		let dimensions = dimensions / viewport_zoom(document);
+
 		// Set dimensions/spacing
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, SpacingInput::<f64>::INDEX),
@@ -132,12 +132,7 @@ impl Grid {
 		}
 
 		// Set transform
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., translation),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
-		});
+		responses.add(window_aligned_transform_set(document, layer, translation, DVec2::ONE));
 	}
 }
 

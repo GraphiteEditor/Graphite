@@ -1,6 +1,8 @@
 use std::path::PathBuf;
-use std::process;
 
+pub mod branding;
+pub mod cmd;
+pub mod frontend;
 pub mod requirements;
 
 pub enum Action {
@@ -65,70 +67,33 @@ impl Task {
 	}
 }
 
-pub fn run(command: &str) -> Result<(), Error> {
-	run_from(command, None)
+pub fn workspace_dir() -> PathBuf {
+	PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
 }
 
-pub fn npm_run_in_frontend_dir(args: &str) -> Result<(), Error> {
-	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
-	let frontend_dir = workspace_dir.join("frontend");
-	let npm = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
-	run_from(&format!("{npm} run {args}"), Some(&frontend_dir))
+pub fn target_dir() -> PathBuf {
+	match std::env::var_os("CARGO_TARGET_DIR") {
+		Some(custom_dir) => workspace_dir().join(custom_dir),
+		None => workspace_dir().join("target"),
+	}
 }
 
-pub fn open_url(url: &str) -> Result<(), Error> {
-	#[cfg(target_os = "windows")]
-	let mut cmd = process::Command::new("cmd");
-	#[cfg(target_os = "windows")]
-	cmd.args(["/c", "start", url]);
-
-	#[cfg(target_os = "macos")]
-	let mut cmd = process::Command::new("open");
-	#[cfg(target_os = "macos")]
-	cmd.arg(url);
-
-	#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-	let mut cmd = process::Command::new("xdg-open");
-	#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-	cmd.arg(url);
-
-	let command_str = format!("{:?}", cmd);
-	let exit_code = cmd
-		.spawn()
-		.map_err(|e| Error::Io(e, format!("Failed to spawn command '{command_str}'")))?
-		.wait()
-		.map_err(|e| Error::Io(e, format!("Failed to wait for command '{command_str}'")))?;
-	if !exit_code.success() {
-		return Err(Error::Command(command_str, exit_code));
-	}
-	Ok(())
+pub fn install_dir() -> PathBuf {
+	target_dir().join("cargo-run")
 }
 
-fn run_from(command: &str, dir: Option<&PathBuf>) -> Result<(), Error> {
-	let command = command.split_whitespace().collect::<Vec<_>>();
-	let mut cmd = process::Command::new(command[0]);
-	if command.len() > 1 {
-		cmd.args(&command[1..]);
-	}
-	if let Some(dir) = dir {
-		cmd.current_dir(dir);
-	}
-	let exit_code = cmd
-		.spawn()
-		.map_err(|e| Error::Io(e, format!("Failed to spawn command '{}'", command.join(" "))))?
-		.wait()
-		.map_err(|e| Error::Io(e, format!("Failed to wait for command '{}'", command.join(" "))))?;
-	if !exit_code.success() {
-		return Err(Error::Command(command.join(" "), exit_code));
-	}
-	Ok(())
+pub fn bin_dir() -> PathBuf {
+	install_dir().join("bin")
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+	#[error("One or more requirements were not met")]
+	RequirementsNotMet,
+
 	#[error("{1}: {0}")]
 	Io(#[source] std::io::Error, String),
-
-	#[error("Command '{0}' exited with code {1}")]
-	Command(String, process::ExitStatus),
+	/// Used by the duct-based `cmd` module; folds in `Command` once call sites are migrated.
+	#[error("{0}")]
+	Command(#[source] std::io::Error),
 }

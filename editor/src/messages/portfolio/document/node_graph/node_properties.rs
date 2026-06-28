@@ -856,8 +856,13 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		return (vec![], None);
 	};
 
-	if let Some(TaggedValue::Resource(resource_id)) = input.as_non_exposed_value() {
-		let font = fonts.id_font(resources, *resource_id).unwrap_or_default();
+	// A freshly added node carries the empty-resource `TypeDefault` placeholder until a font is chosen
+	let font = match input.as_non_exposed_value() {
+		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
+		Some(TaggedValue::TypeDefault(_)) => Font::default(),
+		_ => return (first_widgets, second_widgets),
+	};
+	{
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
@@ -2276,6 +2281,14 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	} else {
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 		for input_index in 1..number_of_inputs {
+			// Hide inputs that are connected to a scope
+			if let Some(NodeInput::Scope(_)) = context
+				.network_interface
+				.input_from_connector(&InputConnector::node(node_id, input_index), context.selection_network_path)
+			{
+				continue;
+			}
+
 			let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
 				let Some(implementation) = context.network_interface.implementation(&node_id, context.selection_network_path) else {
 					log::error!("Could not get implementation for node {node_id}");

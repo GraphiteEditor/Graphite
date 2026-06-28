@@ -1,7 +1,7 @@
 //! Xz-compressed tarball archive codec.
 
 use crate::archive::{Archive, ArchiveWriter, MAX_DECOMPRESSED_SIZE, checked_entry_size};
-use crate::{Container, ContainerError, Result, validate_path};
+use crate::{AsyncContainer, ContainerError, Result, validate_path};
 use lzma_rust2::{XzOptions, XzReader, XzWriter as InnerXzWriter};
 use std::io::{Read, Seek, Write};
 
@@ -23,7 +23,7 @@ impl Archive for Xz {
 		})
 	}
 
-	fn open<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
+	fn open<R: Read + Seek, C: AsyncContainer>(source: R, dest: &mut C) -> Result<()> {
 		// `take` bounds how many bytes we decompress from the xz stream, but each tar entry's declared
 		// size is fed to `write_sized`, which pre-allocates from it before reading. Cap the cumulative
 		// declared size too so a header claiming a huge size can't trigger a giant allocation up front.
@@ -46,7 +46,7 @@ impl Archive for Xz {
 
 			let size = checked_entry_size(&mut total_size, entry.size())?;
 
-			dest.write_sized(&path, size, &mut |buffer| {
+			dest.write_sized_non_blocking(&path, size, &mut |buffer| {
 				entry.read_exact(buffer).map_err(ContainerError::Io)?;
 				Ok(())
 			})?;
@@ -57,6 +57,8 @@ impl Archive for Xz {
 }
 
 impl<W: Write + Seek> ArchiveWriter for XzWriter<W> {
+	type Sink = W;
+
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<()> {
 		validate_path(path)?;
 		let tar = self.tar.as_mut().ok_or_else(|| ContainerError::Codec("XzWriter already finished".into()))?;
@@ -69,21 +71,14 @@ impl<W: Write + Seek> ArchiveWriter for XzWriter<W> {
 		Ok(())
 	}
 
-	fn finish(mut self) -> Result<()> {
-		self.finish_inner()?;
-		Ok(())
+	fn finish_into(mut self) -> Result<W> {
+		self.finish_inner()
 	}
 }
 
 impl<W: Write + Seek> XzWriter<W> {
-	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
-	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
-	pub fn finish_into(mut self) -> Result<W> {
-		self.finish_inner()
-	}
-
 	/// Unwind the layered writers in order (flush the tar trailer, then finish xz) and hand back the
-	/// innermost sink. Shared by `finish` and `finish_into`.
+	/// innermost sink.
 	fn finish_inner(&mut self) -> Result<W> {
 		let mut tar = self.tar.take().ok_or_else(|| ContainerError::Codec("XzWriter already finished".into()))?;
 		tar.finish()?;

@@ -1,5 +1,4 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -9,6 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 	sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
@@ -309,16 +309,7 @@ impl Fsm for FreehandToolFsmState {
 
 				// Position the layer at the initial mouse position via Transform
 				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						GraphOperationMessage::TransformSet {
-							layer,
-							transform: DAffine2::from_translation(input.mouse.position),
-							transform_in: TransformIn::Viewport,
-							skip_rerender: false,
-						}
-						.into(),
-						NodeGraphMessage::RunDocumentGraph.into(),
-					],
+					messages: vec![translation_transform_set(document, layer, input.mouse.position), NodeGraphMessage::RunDocumentGraph.into()],
 				});
 
 				FreehandToolFsmState::Drawing
@@ -337,7 +328,7 @@ impl Fsm for FreehandToolFsmState {
 						tool_data.new_layer_viewport_start = None;
 					}
 					let position = if let Some(start) = tool_data.new_layer_viewport_start {
-						input.mouse.position - start
+						document.metadata().document_to_viewport.inverse().transform_vector2(input.mouse.position - start)
 					} else {
 						transform.inverse().transform_point2(input.mouse.position)
 					};

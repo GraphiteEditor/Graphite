@@ -952,7 +952,6 @@
 				&.faded:hover {
 					z-index: 2;
 					opacity: 1;
-					-webkit-user-select: text;
 					user-select: text;
 					transition:
 						opacity 0.2s,

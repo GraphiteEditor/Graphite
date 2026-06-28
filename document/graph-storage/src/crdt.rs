@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
 	pub id: Rev,
-	pub parents: Vec<Rev>,
+	/// Primary parent; `None` for the root delta.
+	pub parent: Option<Rev>,
 	pub author: PeerId,
 	pub timestamp: TimeStamp,
 	pub kind: RegistryDelta,
@@ -24,17 +25,46 @@ pub struct Delta {
 }
 
 impl Delta {
-	pub fn new(parents: Vec<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: RegistryDelta) -> Self {
-		let id = compute_rev(&parents, author, timestamp, &kind);
+	pub fn new(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: RegistryDelta) -> Self {
+		let id = compute_rev(parent, author, timestamp, &kind);
 		Self {
 			id,
-			parents,
+			parent,
 			author,
 			timestamp,
 			kind,
 			reverse,
 			attributes: Attributes::default(),
 		}
+	}
+
+	/// Build a merge delta joining `tips` into one node. See [`RegistryDelta::Merge`] for the semantics.
+	pub fn merge(tips: impl IntoIterator<Item = Rev>, author: PeerId, timestamp: TimeStamp) -> Self {
+		let mut parents: Vec<Rev> = tips.into_iter().collect();
+		parents.sort_unstable();
+		parents.dedup();
+		let parent = parents.first().copied();
+		let extra_parents = parents.split_first().map(|(_, rest)| rest.to_vec()).unwrap_or_default();
+		let kind = RegistryDelta::Merge { extra_parents };
+		let id = compute_rev(parent, author, timestamp, &kind);
+		Self {
+			id,
+			parent,
+			author,
+			timestamp,
+			reverse: kind.clone(),
+			kind,
+			attributes: Attributes::default(),
+		}
+	}
+
+	/// Every parent: the primary `parent` (absent for the root) plus a merge's `extra_parents`.
+	pub fn all_parents(&self) -> impl Iterator<Item = Rev> + '_ {
+		let extras = match &self.kind {
+			RegistryDelta::Merge { extra_parents } => extra_parents.as_slice(),
+			_ => &[],
+		};
+		self.parent.into_iter().chain(extras.iter().copied())
 	}
 
 	/// Mark this delta as the last op of a user interaction, so the undo cursor treats it as a checkpoint.
@@ -47,9 +77,9 @@ impl Delta {
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
-	/// via `new`; differs only if `id` was tampered with or the hash derivation changed.
+	/// via `new`/`merge`; differs only if `id` was tampered with or the hash derivation changed.
 	pub fn recomputed_id(&self) -> Rev {
-		compute_rev(&self.parents, self.author, self.timestamp, &self.kind)
+		compute_rev(self.parent, self.author, self.timestamp, &self.kind)
 	}
 
 	/// Whether `id` matches the recomputed content hash. `Delta` deserializes without checking this
@@ -147,6 +177,13 @@ pub enum RegistryDelta {
 	},
 	ChangeDocumentAttribute {
 		delta: AttributeDelta,
+	},
+	/// Joins divergent history tips into one shared node. A registry no-op on replay (it only collapses
+	/// tips so `head` stays a single `Rev`); the joined tips are `Delta::parent` (the lowest `Rev`) plus
+	/// these `extra_parents` (sorted). Identity is the parent set alone, so two peers merging the same
+	/// tips mint the identical delta and it dedups.
+	Merge {
+		extra_parents: Vec<Rev>,
 	},
 	// Allow for future delta types without a model change
 	Other(serde_json::Value),

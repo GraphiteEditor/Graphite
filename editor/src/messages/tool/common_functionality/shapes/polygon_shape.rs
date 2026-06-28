@@ -1,6 +1,5 @@
 use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
 use super::*;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -12,7 +11,6 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, polygon_outline};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
@@ -132,15 +130,17 @@ impl Polygon {
 			let dimensions = (start - end).abs();
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
-			let mut scale = DVec2::ONE;
+			let mut aspect = DVec2::ONE;
 			let radius;
 			if dimensions.x > dimensions.y {
-				scale.x = dimensions.x / dimensions.y;
+				aspect.x = dimensions.x / dimensions.y;
 				radius = dimensions.y / 2.;
 			} else {
-				scale.y = dimensions.y / dimensions.x;
+				aspect.y = dimensions.y / dimensions.x;
 				radius = dimensions.x / 2.;
 			}
+
+			let radius = radius / viewport_zoom(document);
 
 			let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) else {
 				return;
@@ -151,12 +151,7 @@ impl Polygon {
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
-			responses.add(GraphOperationMessage::TransformSet {
-				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-				transform_in: TransformIn::Viewport,
-				skip_rerender: false,
-			});
+			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), aspect));
 		}
 	}
 

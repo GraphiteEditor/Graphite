@@ -2,11 +2,12 @@
 extern crate log;
 
 use graph_craft::Type;
-use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
 use graph_craft::{ProtoNodeIdentifier, concrete};
+use graphene_std::platform_application_io::ResourceHash;
 use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
@@ -19,9 +20,9 @@ pub struct Preprocessor {
 }
 
 impl Preprocessor {
-	pub fn preprocess(&self, network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
+	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
-		self.replace_resource_inputs(network, resources)?;
+		self.replace_resource_inputs(network, resolve_resource)?;
 		self.expand_network(network);
 		Ok(())
 	}
@@ -41,13 +42,13 @@ impl Preprocessor {
 	}
 
 	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
+	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
 		let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
 			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				self.replace_resource_inputs(nested, resources)?;
+				self.replace_resource_inputs(nested, resolve_resource)?;
 				continue;
 			}
 
@@ -59,7 +60,7 @@ impl Preprocessor {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
 				let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
 
-				let Some(hash) = resources.hash(&resource_id) else {
+				let Some(hash) = resolve_resource(resource_id) else {
 					return Err(PreprocessorError::ResourceNotFound(resource_id));
 				};
 

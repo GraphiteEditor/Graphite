@@ -1,12 +1,10 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
@@ -36,20 +34,17 @@ impl Ellipse {
 				return;
 			};
 
+			let radius = ((start - end) / 2. / viewport_zoom(document)).abs();
+
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
-				input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
+				input: NodeInput::value(TaggedValue::F64(radius.x), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 2),
-				input: NodeInput::value(TaggedValue::F64(((start.y - end.y) / 2.).abs()), false),
+				input: NodeInput::value(TaggedValue::F64(radius.y), false),
 			});
-			responses.add(GraphOperationMessage::TransformSet {
-				layer,
-				transform: DAffine2::from_translation(start.midpoint(end)),
-				transform_in: TransformIn::Viewport,
-				skip_rerender: false,
-			});
+			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));
 		}
 	}
 }
