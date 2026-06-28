@@ -171,7 +171,9 @@ where
 			true
 		};
 
-		if run_steps(expressions) {
+		// Skip the follow-up if the sequence was killed (e.g. the watcher superseded this build with a newer
+		// one) so a cancelled build never triggers the destructive heal; the replacement build heals if needed.
+		if run_steps(expressions) && !worker_killed.load(Ordering::SeqCst) {
 			let extra = follow_up();
 			if !extra.is_empty() {
 				run_steps(extra);

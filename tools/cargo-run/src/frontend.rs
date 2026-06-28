@@ -50,7 +50,8 @@ pub fn build_wasm(release: bool, native: bool) -> Result<(), Error> {
 /// so this marker in the generated glue is what lets us notice the breakage and auto-recover.
 pub fn wasm_build_is_corrupt() -> bool {
 	let glue = frontend_dir().join("wrapper").join("pkg").join(format!("{OUT_NAME}.js"));
-	std::fs::read_to_string(glue).is_ok_and(|js| js.contains("from \"env\""))
+	// wasm-bindgen currently emits double quotes; match single quotes too so a quote-style change can't hide the marker.
+	std::fs::read_to_string(glue).is_ok_and(|js| js.contains("from \"env\"") || js.contains("from 'env'"))
 }
 
 /// If the just-finished wasm build is corrupt (see [`wasm_build_is_corrupt`]), wipes the wasm target triple's
