@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use super::style::{PathStyle, Stroke};
+use super::style::{PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 pub use super::vector_attributes::*;
 use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
 use crate::vector::click_target::{ClickTargetType, FreePoint};
@@ -52,6 +52,23 @@ impl graphene_hash::CacheHash for Vector {
 		self.region_domain.cache_hash(state);
 		self.style.cache_hash(state);
 		self.colinear_manipulators.cache_hash(state);
+	}
+}
+
+impl core_types::ops::FromAnchorPosition for Vector {
+	fn from_anchor_position(position: DVec2) -> Self {
+		let mut point_domain = PointDomain::new();
+		point_domain.push(PointId::generate(), position);
+
+		Self { point_domain, ..Default::default() }
+	}
+}
+
+// Identity item conversion so `List<Vector>` satisfies the blanket `Convert<List<U>, ()> for List<T>`, letting its
+// auto-inserted input wrapper be a `ConvertNode` (which also accepts a `DVec2` anchor position) rather than an `IntoNode`.
+impl core_types::ops::ListConvert<Vector> for Vector {
+	fn convert_item(self) -> Vector {
+		self
 	}
 }
 
@@ -158,6 +175,11 @@ impl Vector {
 			match target_type.borrow() {
 				ClickTargetType::Subpath(subpath) => vector.append_subpath(subpath, preserve_id),
 				ClickTargetType::FreePoint(point) => vector.append_free_point(point, preserve_id),
+				ClickTargetType::CompoundPath(subpaths) => {
+					for subpath in subpaths {
+						vector.append_subpath(subpath, preserve_id);
+					}
+				}
 			}
 		}
 
@@ -207,6 +229,77 @@ impl Vector {
 				bezpath.bounding_box()
 			})
 			.reduce(combine)
+	}
+
+	/// Tight bounding box in the supplied transform space, including the actual rendered stroke geometry
+	/// (caps, joins, miter extensions, dashes). Runs `kurbo::stroke` on each subpath and unions the
+	/// resulting fills' bounding boxes.
+	///
+	/// Kurbo doesn't natively support stroke alignment — that's a renderer-side compositing trick that
+	/// only applies to closed paths. For closed paths with non-Center align, we use the `effective_width`
+	/// identity (`Inside` = 0, `Outside` = 2×weight): the renderer masks half of a centered double-width
+	/// stroke, so its AABB matches the unmasked centered stroke's. For open paths the renderer always
+	/// draws a centered `weight`-wide stroke regardless of the align attribute, so we mirror that here.
+	pub fn stroke_inclusive_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		let path_bounds = self.bounding_box_with_transform(transform);
+
+		let Some(stroke) = self.style.stroke() else { return path_bounds };
+		// Stroke alignment is only honored by the renderer when every subpath is closed; open paths fall
+		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
+		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezier_paths().all(|p| p.closed());
+		let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
+		// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
+		if kurbo_width <= 0. {
+			return path_bounds;
+		}
+
+		let join = match stroke.join {
+			StrokeJoin::Miter => kurbo::Join::Miter,
+			StrokeJoin::Bevel => kurbo::Join::Bevel,
+			StrokeJoin::Round => kurbo::Join::Round,
+		};
+		let cap = match stroke.cap {
+			StrokeCap::Butt => kurbo::Cap::Butt,
+			StrokeCap::Round => kurbo::Cap::Round,
+			StrokeCap::Square => kurbo::Cap::Square,
+		};
+
+		let stroke_style = kurbo::Stroke::new(kurbo_width)
+			.with_caps(cap)
+			.with_join(join)
+			.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
+			.with_miter_limit(stroke.join_miter_limit);
+		let stroke_options = kurbo::StrokeOpts::default();
+		// Same tolerance as `solidify_stroke` — balanced between performance and curve accuracy
+		const STROKE_TOLERANCE: f64 = 0.25;
+
+		let stroke_local = Affine::new(stroke.transform.to_cols_array());
+		let stroke_local_inverse = (stroke.transform.matrix2.determinant() != 0.).then(|| Affine::new(stroke.transform.inverse().to_cols_array()));
+		let final_transform = Affine::new(transform.to_cols_array());
+
+		let stroke_bounds = self
+			.stroke_bezpath_iter()
+			.map(|mut bezpath| {
+				// Match `solidify_stroke`'s pre/post-stroke transform pair so non-uniform `stroke.transform`
+				// (e.g. resisting layer scale) is applied while kurbo strokes, then undone before placing the
+				// stroked geometry back in the vector's local space
+				bezpath.apply_affine(stroke_local);
+				let mut stroked = kurbo::stroke(bezpath, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+				if let Some(inverse) = stroke_local_inverse {
+					stroked.apply_affine(inverse);
+				}
+				stroked.apply_affine(final_transform);
+				stroked.bounding_box()
+			})
+			.reduce(|a, b| a.union(b))
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]);
+
+		// Union with the path bounds in case a degenerate subpath (e.g. a single point) produced no stroke geometry
+		match (path_bounds, stroke_bounds) {
+			(Some([min_a, max_a]), Some([min_b, max_b])) => Some([min_a.min(min_b), max_a.max(max_b)]),
+			(Some(b), None) | (None, Some(b)) => Some(b),
+			(None, None) => None,
+		}
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
@@ -480,7 +573,7 @@ impl RenderComplexity for Vector {
 	}
 }
 
-// Note: BoundingBox for Table<Vector> is handled by blanket impl in gcore
+// Note: BoundingBox for List<Vector> is handled by blanket impl in gcore
 
 #[cfg(test)]
 mod tests {
@@ -542,5 +635,18 @@ mod tests {
 
 		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
 		assert_subpath_eq(&generated, &[curve, circle]);
+	}
+
+	// Verifies the `DVec2 -> List<Vector>` conversion that replaced the former "Vec2 to Point" node yields a path
+	// with exactly one anchor point at the given position and no segments
+	#[test]
+	fn anchor_position_builds_single_point_path() {
+		use core_types::ops::FromAnchorPosition;
+
+		let vector = Vector::from_anchor_position(DVec2::new(3., 4.));
+
+		assert_eq!(vector.point_domain.positions(), [DVec2::new(3., 4.)]);
+		assert_eq!(vector.point_domain.ids().len(), 1);
+		assert!(vector.segment_domain.ids().is_empty());
 	}
 }

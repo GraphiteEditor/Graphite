@@ -166,7 +166,7 @@ The latest major update is out now! See what the team has been cooking up recent
 <div class="block video-container">
 <div>
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="Vl5BA4g3QXM" loading="lazy" src="https://static.graphite.art/content/index/video-september-025-update.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="September Update - Graphite, the Open Source 2D Graphics Suite" />
+	<img data-youtube-embed="U3E-sWo2H_M" loading="lazy" src="https://static.graphite.art/content/index/video-may-2026-update.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="May Update - Graphite, the Open Source 2D Graphics Suite" />
 </div>
 </div>
 </div>

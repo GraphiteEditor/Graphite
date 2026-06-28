@@ -11,7 +11,7 @@ pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
 pub use graphic_nodes;
-pub use graphic_types::{Graphic, Vector};
+pub use graphic_types::{Artboard, Graphic, Vector};
 pub use math_nodes;
 pub use path_bool_nodes;
 pub use raster_nodes;
@@ -32,7 +32,7 @@ pub mod vector {
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
 	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
-	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap};
+	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder
 	pub use vector_types::vector::HandleExt;

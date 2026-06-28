@@ -30,7 +30,7 @@ serde = { workspace = true }
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
 criterion = { workspace = true }
-iai-callgrind = { workspace = true }
+gungraun = { workspace = true }
 preprocessor = { workspace = true }
 
 # Benchmarks
@@ -47,13 +47,13 @@ name = "run_cached"
 harness = false
 
 [[bench]]
-name = "update_executor_iai"
+name = "update_executor_gungraun"
 harness = false
 
 [[bench]]
-name = "run_once_iai"
+name = "run_once_gungraun"
 harness = false
 
 [[bench]]
-name = "run_cached_iai"
+name = "run_cached_gungraun"
 harness = false

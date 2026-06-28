@@ -6,15 +6,19 @@ use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Caches the output of a given node called with a specific input.
+/// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
-/// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
-///
-/// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
-///
-/// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
-#[node_macro::node(category(""), path(graphene_core::memo), skip_impl)]
-async fn memo<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
+/// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
+#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
+async fn memoize<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, content: impl Node<I, Output = T>) -> T {
+	// Caches the output of a given node called with a specific input.
+	//
+	// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
+	//
+	// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
+	//
+	// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
+
 	let mut hasher = DefaultHasher::new();
 	input.cache_hash(&mut hasher);
 	let hash = hasher.finish();
@@ -23,23 +27,23 @@ async fn memo<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data
 		return data;
 	}
 
-	let value = node.eval(input).await;
+	let value = content.eval(input).await;
 	*cache.lock().unwrap() = Some((hash, value.clone()));
 	value
 }
 
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
 
-/// Caches the output of the last graph evaluation for introspection.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), skip_impl)]
+/// The Monitor node is used by the editor to access the data flowing through it.
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
 async fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 	input: I,
 	#[allow(clippy::type_complexity)]
 	#[data]
 	io: MonitorValue<I, T>,
-	node: impl Node<I, Output = T>,
+	content: impl Node<I, Output = T>,
 ) -> T {
-	let output = node.eval(input.clone()).await;
+	let output = content.eval(input.clone()).await;
 	*io.lock().unwrap() = Some(Arc::new(IORecord { input, output: output.clone() }));
 	output
 }

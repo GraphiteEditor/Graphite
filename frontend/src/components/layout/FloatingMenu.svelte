@@ -336,7 +336,7 @@
 
 		// HOVER TRANSFER
 		// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
-		hoverTransfer(self, ownSpawner, targetSpawner);
+		if (strayCloses) hoverTransfer(self, ownSpawner, targetSpawner);
 
 		// POINTER STRAY
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)

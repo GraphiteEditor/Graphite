@@ -68,9 +68,9 @@ impl ContextBuilder {
 }
 impl ContextBuilder {
 	fn build_instance(&self) -> Instance {
-		Instance::new(&wgpu::InstanceDescriptor {
+		Instance::new(wgpu::InstanceDescriptor {
 			backends: self.backends,
-			..Default::default()
+			..wgpu::InstanceDescriptor::new_without_display_handle()
 		})
 	}
 	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {

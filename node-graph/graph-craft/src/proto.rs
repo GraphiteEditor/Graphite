@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-#[derive(Debug, Default, PartialEq, Clone, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, PartialEq, Clone, Eq, serde::Serialize, serde::Deserialize)]
 /// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
 	// TODO: remove this since it seems to be unused?
@@ -90,7 +90,7 @@ impl PartialEq for ConstructionArgs {
 				use std::hash::Hasher;
 				let hash = |input: &Self| {
 					let mut hasher = rustc_hash::FxHasher::default();
-					input.hash(&mut hasher);
+					input.cache_hash(&mut hasher);
 					hasher.finish()
 				};
 				hash(self) == hash(other)
@@ -99,8 +99,8 @@ impl PartialEq for ConstructionArgs {
 	}
 }
 
-impl Hash for ConstructionArgs {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl CacheHash for ConstructionArgs {
+	fn cache_hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		core::mem::discriminant(self).hash(state);
 		match self {
 			Self::Nodes(nodes) => {
@@ -108,7 +108,7 @@ impl Hash for ConstructionArgs {
 					node.hash(state);
 				}
 			}
-			Self::Value(value) => value.hash(state),
+			Self::Value(value) => value.cache_hash(state),
 			Self::Inline(inline) => inline.hash(state),
 		}
 	}
@@ -124,7 +124,7 @@ impl ConstructionArgs {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
 /// At different stages in the compilation process, this struct will be transformed into a reduced (more restricted) form acting as a subset of its original form, but that restricted form is still valid in the earlier stage in the compilation process before it was transformed.
 pub struct ProtoNode {
@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: graphene_core::ops::identity::IDENTIFIER,
+			identifier: graphene_core::ops::passthrough::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
@@ -157,7 +157,7 @@ impl ProtoNode {
 		let mut hasher = rustc_hash::FxHasher::default();
 
 		self.identifier.as_str().hash(&mut hasher);
-		self.construction_args.hash(&mut hasher);
+		self.construction_args.cache_hash(&mut hasher);
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
@@ -317,14 +317,14 @@ impl ProtoNetwork {
 			p.push(NodeId(10))
 		}
 
-		let memo_node_id = NodeId(self.nodes.len() as u64);
+		let memoize_node_id = NodeId(self.nodes.len() as u64);
 
 		self.nodes.push((
-			memo_node_id,
+			memoize_node_id,
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![node_id]),
 				call_argument: concrete!(Context),
-				identifier: graphene_core::memo::memo::IDENTIFIER,
+				identifier: graphene_core::memo::memoize::IDENTIFIER,
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -352,7 +352,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
+				construction_args: ConstructionArgs::Nodes(vec![memoize_node_id, nullification_value_node_id]),
 				call_argument: concrete!(Context),
 				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
 				original_location: OriginalLocation {
@@ -951,7 +951,7 @@ mod test {
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
 		assert_eq!(
 			ids,
-			vec![NodeId(12189222519765806511), NodeId(15012204941197567462), NodeId(15525229164021892418), NodeId(1252248957706694248)]
+			vec![NodeId(12815475172301479638), NodeId(13251389748338817266), NodeId(7166921994790432021), NodeId(15318519137317483318)]
 		);
 	}
 

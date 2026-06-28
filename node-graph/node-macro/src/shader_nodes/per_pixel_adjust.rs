@@ -186,7 +186,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let wgpu_executor = self.crate_ident.wgpu_executor()?;
 
 		// adapt fields for gpu node
-		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#raster_types::Raster<#raster_types::GPU>>);
+		let raster_gpu: Type = parse_quote!(#gcore::list::List<#raster_types::Raster<#raster_types::GPU>>);
 		let mut fields = self
 			.parsed
 			.fields
@@ -233,7 +233,7 @@ impl PerPixelAdjustCodegen<'_> {
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(&'a WgpuExecutor),
 				exposed: true,
-				value_source: ParsedValueSource::Scope(LitStr::new("wgpu-executor", Span::call_site())),
+				value_source: ParsedValueSource::Scope(parse_quote!("wgpu-executor")),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,

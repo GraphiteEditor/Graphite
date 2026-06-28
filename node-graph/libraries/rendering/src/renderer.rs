@@ -1,30 +1,31 @@
-use crate::render_ext::RenderExt;
-use crate::to_peniko::BlendModeExt;
+use crate::render_ext::{PaintTarget, RenderExt};
+use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
+use core_types::color::SRGBA8;
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY,
-	ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
+	ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::Graphic;
-use graphic_types::Vector;
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
-use kurbo::{Affine, Cap, Join, Shape};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::{Artboard, Graphic, Vector};
+use kurbo::{Affine, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -218,6 +219,8 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+	/// Are we rendering for a pattern content
+	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
@@ -233,8 +236,12 @@ impl RenderParams {
 		Self { alignment_parent_transform, ..*self }
 	}
 
+	pub fn for_pattern(&self) -> Self {
+		Self { inside_pattern: true, ..*self }
+	}
+
 	pub fn to_canvas(&self) -> bool {
-		!self.for_export && !self.thumbnail && !self.for_mask
+		!self.for_export && !self.thumbnail && !self.for_mask && !self.inside_pattern
 	}
 }
 
@@ -251,10 +258,22 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
-fn max_scale(transform: DAffine2) -> f64 {
-	let sx = transform.x_axis.length_squared();
-	let sy = transform.y_axis.length_squared();
-	(sx + sy).sqrt()
+/// `(max, min)` factors by which a unit vector is stretched under `transform`'s linear part — the
+/// principal and minor singular values, equal to the semi-axes of the ellipse a unit circle maps to.
+/// Equivalent to `(max(sx, sy), min(sx, sy))` for axis-aligned scales, but accounts for shear.
+fn singular_values(transform: DAffine2) -> (f64, f64) {
+	let m = transform.matrix2;
+	let a = m.x_axis.x;
+	let b = m.x_axis.y;
+	let c = m.y_axis.x;
+	let d = m.y_axis.y;
+	// Eigenvalues of MᵀM via the closed form for a 2×2, both are non-negative
+	let trace = a * a + b * b + c * c + d * d;
+	let det = a * d - b * c;
+	let discriminant = (trace * trace - 4. * det * det).max(0.).sqrt();
+	let largest_eigenvalue = (trace + discriminant) * 0.5;
+	let smallest_eigenvalue = ((trace - discriminant) * 0.5).max(0.);
+	(largest_eigenvalue.sqrt(), smallest_eigenvalue.sqrt())
 }
 
 pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
@@ -262,19 +281,20 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 
 	let alpha = bg.a();
 
-	// Un-premultiply, then convert to gamma sRGB
-	let srgb = if alpha > f32::EPSILON {
-		Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb()
+	// Un-premultiply, then encode to gamma sRGB to do the composite in display space.
+	let (gamma_r, gamma_g, gamma_b) = if alpha > f32::EPSILON {
+		let [r, g, b, _] = Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb_channels();
+		(r, g, b)
 	} else {
-		Color::TRANSPARENT
+		(0., 0., 0.)
 	};
 
-	// Composite over black in sRGB space, then convert back to linear for luminance
-	let composited = Color::from_rgbaf32_unchecked(srgb.r() * alpha, srgb.g() * alpha, srgb.b() * alpha, 1.).to_linear_srgb();
+	// Composite over black in sRGB space (premultiplied by alpha), then decode to linear for the luminance test.
+	let composited = Color::from_gamma_srgb_channels(gamma_r * alpha, gamma_g * alpha, gamma_b * alpha, 1.);
 
 	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
 
-	if composited.luminance_srgb() > threshold { Color::BLACK } else { Color::WHITE }
+	if composited.luminance_rec_709() > threshold { Color::BLACK } else { Color::WHITE }
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -300,7 +320,7 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 	};
 
 	let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-	let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+	let outline_color_peniko = SRGBA8::from(outline_color).to_peniko_color();
 
 	(outline_stroke, outline_color_peniko)
 }
@@ -316,6 +336,103 @@ fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_p
 	scene.stroke(&outline_stroke, Affine::IDENTITY, outline_color_peniko, None, &outline_path);
 }
 
+/// Emits an SVG `<path>` element with the resolved fill attribute corresponding to the given fill_graphic.
+#[allow(clippy::too_many_arguments)]
+fn emit_svg_fill_path(
+	render: &mut SvgRender,
+	d: String,
+	fill_graphic_list: Option<&List<Graphic>>,
+	item_transform: DAffine2,
+	element_transform: DAffine2,
+	applied_stroke_transform: DAffine2,
+	bounds_matrix: DAffine2,
+	transformed_bounds_matrix: DAffine2,
+	render_params: &RenderParams,
+) {
+	render.leaf_tag("path", |attributes| {
+		attributes.push("d", d);
+		let matrix = format_transform_matrix(element_transform);
+		if !matrix.is_empty() {
+			attributes.push(ATTR_TRANSFORM, matrix);
+		}
+		let defs = &mut attributes.0.svg_defs;
+		let fill_attribute = fill_graphic_list
+			.map(|list| {
+				list.render(
+					defs,
+					item_transform,
+					element_transform,
+					applied_stroke_transform,
+					bounds_matrix,
+					transformed_bounds_matrix,
+					render_params,
+					PaintTarget::Fill,
+				)
+			})
+			.unwrap_or_else(|| r#" fill="none""#.to_string());
+		attributes.push_val(fill_attribute);
+	});
+}
+
+fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<peniko::Brush> {
+	let stops = gradient_list.element(0)?;
+
+	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
+	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+
+	let mut peniko_stops = peniko::ColorStops::new();
+	for (position, color, _) in stops.interpolated_samples() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: position as f32,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+		});
+	}
+
+	let bounds = parent_vector.nonzero_bounding_box();
+	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+	let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+		parent_transform.inverse()
+	} else {
+		Default::default()
+	};
+	let mod_points = inverse_parent_transform * multiplied_transform * bound_transform * gradient_transform;
+
+	let start = mod_points.transform_point2(DVec2::ZERO);
+	let end = mod_points.transform_point2(DVec2::X);
+
+	let brush = peniko::Brush::Gradient(peniko::Gradient {
+		kind: match gradient_type {
+			GradientType::Linear => peniko::LinearGradientPosition {
+				start: to_point(start),
+				end: to_point(end),
+			}
+			.into(),
+			GradientType::Radial => {
+				let radius = start.distance(end);
+				peniko::RadialGradientPosition {
+					start_center: to_point(start),
+					start_radius: 0.,
+					end_center: to_point(start),
+					end_radius: radius as f32,
+				}
+				.into()
+			}
+		},
+		extend: match spread_method {
+			GradientSpreadMethod::Pad => peniko::Extend::Pad,
+			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+		},
+		stops: peniko_stops,
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+		..Default::default()
+	});
+
+	Some(brush)
+}
+
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
 // This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
 #[derive(Debug, Default, Clone, PartialEq, DynAny)]
@@ -325,8 +442,22 @@ pub struct RenderMetadata {
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
+	/// nodes with an `editor:click_target` override still outline the precise geometry.
+	pub outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	/// Per-layer text frame from row 0's `editor:text_frame` attribute.
+	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
+	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
+	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read paint
+	/// information that lives on the list rather than on `PathStyle.fill`.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read
+	/// stroke paint information that lives on the list rather than on `Stroke.color`.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -346,16 +477,24 @@ impl RenderMetadata {
 			local_transforms,
 			first_element_source_id,
 			click_targets,
+			outlines,
+			text_frames,
 			clip_targets,
 			vector_data,
+			fill_attributes,
+			stroke_attributes,
 			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
 		local_transforms.extend(other.local_transforms.iter());
 		first_element_source_id.extend(other.first_element_source_id.iter());
 		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		outlines.extend(other.outlines.iter().map(|(k, v)| (*k, v.clone())));
+		text_frames.extend(other.text_frames.iter());
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
+		fill_attributes.extend(other.fill_attributes.iter().map(|(id, data)| (*id, data.clone())));
+		stroke_attributes.extend(other.stroke_attributes.iter().map(|(id, data)| (*id, data.clone())));
 
 		// TODO: Find a better non O(n^2) way to merge backgrounds
 		for background in &other.backgrounds {
@@ -381,6 +520,11 @@ pub trait Render: BoundingBox + RenderComplexity {
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 
+	/// Like `add_upstream_click_targets` but for visual outlines. `List<Vector>` overrides this to ignore `editor:click_target` so outlines reflect the actual geometry.
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		self.add_upstream_click_targets(outlines);
+	}
+
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
 
@@ -397,23 +541,23 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_svg(render, render_params),
-			Graphic::Vector(table) => table.render_svg(render, render_params),
-			Graphic::RasterCPU(table) => table.render_svg(render, render_params),
+			Graphic::Graphic(list) => list.render_svg(render, render_params),
+			Graphic::Vector(list) => list.render_svg(render, render_params),
+			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
 			Graphic::RasterGPU(_) => (),
-			Graphic::Color(table) => table.render_svg(render, render_params),
-			Graphic::Gradient(table) => table.render_svg(render, render_params),
+			Graphic::Color(list) => list.render_svg(render, render_params),
+			Graphic::Gradient(list) => list.render_svg(render, render_params),
 		}
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterCPU(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPU(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Color(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
+			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -423,89 +567,100 @@ impl Render for Graphic {
 				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::Vector(table) => {
+				Graphic::Vector(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						let layer_path: Table<NodeId> = table.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+					if !list.is_empty() {
+						let layer_path: List<NodeId> = list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
-						let transform: DAffine2 = table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
 						metadata.first_element_source_id.insert(element_id, layer);
 						metadata.local_transforms.insert(element_id, transform);
 					}
 				}
-				Graphic::RasterCPU(table) => {
+				Graphic::RasterCPU(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::RasterGPU(table) => {
+				Graphic::RasterGPU(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Color(table) => {
+				Graphic::Color(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Gradient(table) => {
+				Graphic::Gradient(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
 			}
 		}
 
 		match self {
-			Graphic::Graphic(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Vector(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterCPU(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterGPU(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Color(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Gradient(table) => table.collect_metadata(metadata, footprint, element_id),
+			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			Graphic::Graphic(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Vector(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::RasterCPU(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::RasterGPU(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Color(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Gradient(table) => table.add_upstream_click_targets(click_targets),
+			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
+		}
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		match self {
+			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::Graphic(table) => table.contains_artboard(),
-			Graphic::Vector(table) => table.contains_artboard(),
-			Graphic::RasterCPU(table) => table.contains_artboard(),
-			Graphic::RasterGPU(table) => table.contains_artboard(),
-			Graphic::Color(table) => table.contains_artboard(),
-			Graphic::Gradient(table) => table.contains_artboard(),
+			Graphic::Graphic(list) => list.contains_artboard(),
+			Graphic::Vector(list) => list.contains_artboard(),
+			Graphic::RasterCPU(list) => list.contains_artboard(),
+			Graphic::RasterGPU(list) => list.contains_artboard(),
+			Graphic::Color(list) => list.contains_artboard(),
+			Graphic::Gradient(list) => list.contains_artboard(),
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::Graphic(table) => table.new_ids_from_hash(reference),
-			Graphic::Vector(table) => table.new_ids_from_hash(reference),
+			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
+			Graphic::Vector(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
@@ -514,19 +669,19 @@ impl Render for Graphic {
 	}
 }
 
-/// Reads the artboard metadata for the row at `index` from a `Table<Table<Graphic>>` of artboards.
-fn read_artboard_attributes(table: &Table<Table<Graphic>>, index: usize) -> (DVec2, DVec2, Color, bool) {
-	let location: DVec2 = table.attribute_cloned_or_default(ATTR_LOCATION, index);
-	let dimensions: DVec2 = table.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
-	let background: Color = table.attribute_cloned_or_default(ATTR_BACKGROUND, index);
-	let clip: bool = table.attribute_cloned_or_default(ATTR_CLIP, index);
+/// Reads the artboard metadata for the item at `index` from a `List<Artboard>`.
+fn read_artboard_attributes(list: &List<Artboard>, index: usize) -> (DVec2, DVec2, Color, bool) {
+	let location: DVec2 = list.attribute_cloned_or_default(ATTR_LOCATION, index);
+	let dimensions: DVec2 = list.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
+	let background: Color = list.attribute_cloned_or_default(ATTR_BACKGROUND, index);
+	let clip: bool = list.attribute_cloned_or_default(ATTR_CLIP, index);
 	(location, dimensions, background, clip)
 }
 
-impl Render for Table<Table<Graphic>> {
+impl Render for List<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
-			let Some(content) = self.element(index) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
 			let x = location.x.min(location.x + dimensions.x);
@@ -536,7 +691,7 @@ impl Render for Table<Table<Graphic>> {
 
 			// Background
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", background.to_rgb_hex_srgb_from_gamma()));
+				attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
 				if background.a() < 1. {
 					attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -584,7 +739,7 @@ impl Render for Table<Table<Graphic>> {
 		use vello::peniko;
 
 		for index in 0..self.len() {
-			let Some(content) = self.element(index) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
 			let [a, b] = [location, location + dimensions];
@@ -592,7 +747,7 @@ impl Render for Table<Table<Graphic>> {
 
 			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
 
-			let color = peniko::Color::new([background.r(), background.g(), background.b(), background.a()]);
+			let color = SRGBA8::from(background).to_peniko_color();
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
 			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
 			scene.pop_layer();
@@ -614,10 +769,10 @@ impl Render for Table<Table<Graphic>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let Some(content) = self.element(index) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
@@ -651,7 +806,7 @@ impl Render for Table<Table<Graphic>> {
 	}
 }
 
-impl Render for Table<Graphic> {
+impl Render for List<Graphic> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut mask_state = None;
 
@@ -712,8 +867,8 @@ impl Render for Table<Graphic> {
 		let mut mask_element_and_transform = None;
 
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let transform = transform * row_transform;
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform = transform * item_transform;
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
@@ -788,13 +943,13 @@ impl Render for Table<Graphic> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
 			let mut footprint = footprint;
-			footprint.transform *= row_transform;
+			footprint.transform *= item_transform;
 
 			if let Some(element_id) = layer {
 				element.collect_metadata(metadata, footprint, Some(element_id));
@@ -806,37 +961,63 @@ impl Render for Table<Graphic> {
 
 		if let Some(element_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
+			let mut all_upstream_outlines = Vec::new();
 
 			for index in 0..self.len() {
-				let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let element = self.element(index).unwrap();
+
 				let mut new_click_targets = Vec::new();
 				element.add_upstream_click_targets(&mut new_click_targets);
 
 				for click_target in new_click_targets.iter_mut() {
-					click_target.apply_transform(row_transform)
+					click_target.apply_transform(item_transform)
 				}
 
 				all_upstream_click_targets.extend(new_click_targets);
+
+				let mut new_outlines = Vec::new();
+				element.add_upstream_outline_targets(&mut new_outlines);
+				for outline in new_outlines.iter_mut() {
+					outline.apply_transform(item_transform)
+				}
+				all_upstream_outlines.extend(new_outlines);
 			}
 
 			metadata.click_targets.insert(element_id, all_upstream_click_targets.into_iter().map(|x| x.into()).collect());
+			metadata.outlines.insert(element_id, all_upstream_outlines.into_iter().map(|x| x.into()).collect());
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
 			let mut new_click_targets = Vec::new();
 
 			element.add_upstream_click_targets(&mut new_click_targets);
 
 			for click_target in new_click_targets.iter_mut() {
-				click_target.apply_transform(row_transform)
+				click_target.apply_transform(item_transform)
 			}
 
 			click_targets.extend(new_click_targets);
+		}
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		for index in 0..self.len() {
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let element = self.element(index).unwrap();
+			let mut new_outlines = Vec::new();
+
+			element.add_upstream_outline_targets(&mut new_outlines);
+
+			for outline in new_outlines.iter_mut() {
+				outline.apply_transform(item_transform)
+			}
+
+			outlines.extend(new_outlines);
 		}
 	}
 
@@ -845,35 +1026,36 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>(ATTR_EDITOR_LAYER_PATH);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
 			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
 	}
 }
 
-impl Render for Table<Vector> {
+impl Render for List<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
-			let multiplied_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let clipping_mask_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
+			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+			let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
+			let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
 
 			let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 			let transformed_bounds_matrix = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
+			let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
 			let mut path = String::new();
 
@@ -888,32 +1070,35 @@ impl Render for Table<Vector> {
 				MaskType::Mask
 			};
 
+			let fill_graphic_list = fill_graphic_list_at(self, index);
+			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
+
+			let stroke_graphic_list = stroke_graphic_list_at(self, index);
+			let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
+
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
-			let can_use_paint_order = !(vector.style.fill().is_none() || !vector.style.fill().is_opaque() || mask_type == MaskType::Clip);
+			let can_draw_aligned_stroke = path_is_closed
+				&& vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+				&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
+			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+			let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
+			let use_face_fill = vector.use_face_fill();
 
 			if needs_separate_alignment_fill && !wants_stroke_below {
-				render.leaf_tag("path", |attributes| {
-					attributes.push("d", path.clone());
-					let matrix = format_transform_matrix(element_transform);
-					if !matrix.is_empty() {
-						attributes.push(ATTR_TRANSFORM, matrix);
-					}
-					let mut style = vector.style.clone();
-					style.clear_stroke();
-					let fill_and_stroke = style.render(
-						&mut attributes.0.svg_defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						render_params,
-					);
-					attributes.push_val(fill_and_stroke);
-				});
+				emit_svg_fill_path(
+					render,
+					path.clone(),
+					fill_graphic_list.as_deref(),
+					item_transform,
+					element_transform,
+					applied_stroke_transform,
+					bounds_matrix,
+					transformed_bounds_matrix,
+					render_params,
+				);
 			}
 
 			let push_id = needs_separate_alignment_fill.then_some({
@@ -923,42 +1108,29 @@ impl Render for Table<Vector> {
 				cloned_vector.style.clear_stroke();
 				cloned_vector.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_row = Table::new_from_row(
-					TableRow::new_from_element(cloned_vector)
-						.with_attribute(ATTR_TRANSFORM, multiplied_transform)
-						.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
-						.with_attribute(ATTR_OPACITY, opacity_attr)
-						.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
-						.with_attribute(ATTR_CLIPPING_MASK, clipping_mask_attr),
-				);
+				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
+				// The wrapping SVG group (above) handles the user-set opacity.
+				let vector_item = List::new_from_item(Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform));
 
-				(id, mask_type, vector_row)
+				(id, mask_type, vector_item)
 			});
 
-			let use_face_fill = vector.use_face_fill();
 			if use_face_fill {
 				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-
 					let face_d = face_path.to_svg();
-					render.leaf_tag("path", |attributes| {
-						attributes.push("d", face_d.clone());
-						let matrix = format_transform_matrix(element_transform);
-						if !matrix.is_empty() {
-							attributes.push(ATTR_TRANSFORM, matrix);
-						}
-						let mut style = vector.style.clone();
-						style.clear_stroke();
-						let fill_only = style.render(
-							&mut attributes.0.svg_defs,
-							element_transform,
-							applied_stroke_transform,
-							bounds_matrix,
-							transformed_bounds_matrix,
-							render_params,
-						);
-						attributes.push_val(fill_only);
-					});
+
+					emit_svg_fill_path(
+						render,
+						face_d,
+						fill_graphic_list.as_deref(),
+						item_transform,
+						element_transform,
+						applied_stroke_transform,
+						bounds_matrix,
+						transformed_bounds_matrix,
+						render_params,
+					);
 				}
 			}
 
@@ -970,12 +1142,14 @@ impl Render for Table<Vector> {
 				}
 
 				let defs = &mut attributes.0.svg_defs;
-				if let Some((ref id, mask_type, ref vector_row)) = push_id {
+				if let Some((ref id, mask_type, ref vector_item)) = push_id {
 					let mut svg = SvgRender::new();
-					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
+					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
-					let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
-					let quad = Quad::from_box(transformed_bounds).inflate(weight);
+					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
+					let (largest_scale, _) = singular_values(applied_stroke_transform);
+					let inflation = stroke.max_aabb_inflation(true) * largest_scale;
+					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
 
@@ -996,20 +1170,84 @@ impl Render for Table<Vector> {
 
 				let mut render_params = render_params.clone();
 				render_params.aligned_strokes = can_draw_aligned_stroke;
-				render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
+				render_params.override_paint_order = override_paint_order;
 
-				let mut style = vector.style.clone();
-				if needs_separate_alignment_fill || use_face_fill {
-					style.clear_fill();
-				}
+				let stroke_shape_attribute = vector
+					.style
+					.stroke()
+					.map(|stroke| {
+						if stroke_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
+							stroke.render(
+								defs,
+								item_transform,
+								element_transform,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								&render_params,
+								PaintTarget::Stroke,
+							)
+						} else {
+							String::new()
+						}
+					})
+					.unwrap_or_default();
 
-				let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
+				// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
+				let stroke_visible = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+				let stroke_attribute = if stroke_visible {
+					stroke_graphic_list
+						.as_deref()
+						.map(|list| {
+							// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
+							// Only clipping-based paints need the stroke-inclusive bbox.
+							let paint_bounds = match list.element(0) {
+								Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
+								_ => stroke_bounds_matrix,
+							};
+							list.render(
+								defs,
+								item_transform,
+								element_transform,
+								applied_stroke_transform,
+								paint_bounds,
+								transformed_bounds_matrix,
+								&render_params,
+								PaintTarget::Stroke,
+							)
+						})
+						.unwrap_or_else(|| r#" stroke="none""#.to_string())
+				} else {
+					String::new()
+				};
+
+				let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
+					r#" fill="none""#.to_string()
+				} else {
+					fill_graphic_list
+						.as_deref()
+						.map(|list| {
+							list.render(
+								defs,
+								item_transform,
+								element_transform,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								&render_params,
+								PaintTarget::Fill,
+							)
+						})
+						.unwrap_or_else(|| r#" fill="none""#.to_string())
+				};
 
 				if let Some((id, mask_type, _)) = push_id {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
-				attributes.push_val(fill_and_stroke);
+				attributes.push_val(fill_attribute);
+				attributes.push_val(stroke_shape_attribute);
+				attributes.push_val(stroke_attribute);
 
 				if vector.is_branching() && !use_face_fill {
 					attributes.push("fill-rule", "evenodd");
@@ -1027,41 +1265,31 @@ impl Render for Table<Vector> {
 
 			// When splitting passes and stroke is below, draw the fill after the stroke.
 			if needs_separate_alignment_fill && wants_stroke_below {
-				render.leaf_tag("path", |attributes| {
-					attributes.push("d", path);
-					let matrix = format_transform_matrix(element_transform);
-					if !matrix.is_empty() {
-						attributes.push(ATTR_TRANSFORM, matrix);
-					}
-					let mut style = vector.style.clone();
-					style.clear_stroke();
-					let fill_and_stroke = style.render(
-						&mut attributes.0.svg_defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						render_params,
-					);
-					attributes.push_val(fill_and_stroke);
-				});
+				emit_svg_fill_path(
+					render,
+					path.clone(),
+					fill_graphic_list.as_deref(),
+					item_transform,
+					element_transform,
+					applied_stroke_transform,
+					bounds_matrix,
+					transformed_bounds_matrix,
+					render_params,
+				);
 			}
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
-
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			use graphic_types::vector_types::vector;
 
 			let Some(element) = self.element(index) else { continue };
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let clip_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
-			let multiplied_transform = parent_transform * row_transform;
+			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
@@ -1086,6 +1314,9 @@ impl Render for Table<Vector> {
 				}
 			}
 
+			let fill_graphic_list = fill_graphic_list_at(self, index);
+			let stroke_graphic_list = stroke_graphic_list_at(self, index);
+
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
@@ -1093,11 +1324,23 @@ impl Render for Table<Vector> {
 			};
 			let mut layer = false;
 
+			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
+			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
+			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
+			let stroke = element.style.stroke();
+			let can_draw_aligned_stroke = !is_stroke_fully_transparent_at(self, index)
+				&& stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered())
+				&& element.stroke_bezier_paths().all(|p| p.closed());
+
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				layer = true;
-				let weight = element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
+				// `max_aabb_inflation` is in `applied_stroke_transform`-space; `layer_bounds` is path-local and `push_layer` re-applies `multiplied_transform`.
+				// Divide by the smaller axial scale to cover the stroke in both axes after Vello's transform. Skip on a degenerate transform.
+				let (_, smallest_scale) = singular_values(applied_stroke_transform);
+				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
+				let inflate_amount = if smallest_scale > 0. { stroke_inflation / smallest_scale } else { 0. };
+				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
 					peniko::Fill::NonZero,
@@ -1108,81 +1351,46 @@ impl Render for Table<Vector> {
 				);
 			}
 
-			let can_draw_aligned_stroke =
-				element.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && element.stroke_bezier_paths().all(|path| path.closed());
-
 			let use_layer = can_draw_aligned_stroke;
-			let wants_stroke_below = element.style.stroke().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
+			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
-			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match element.style.fill() {
-				Fill::Solid(color) => {
-					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
-				}
-				Fill::Gradient(gradient) => {
-					let mut stops = peniko::ColorStops::new();
-					for (position, color, _) in gradient.stops.interpolated_samples() {
-						stops.push(peniko::ColorStop {
-							offset: position as f32,
-							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
-						});
-					}
+			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
+				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
 
-					let bounds = element.nonzero_bounding_box();
-					let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+				for paint_index in 0..fill_graphic.len() {
+					let Some(paint) = fill_graphic.element(paint_index) else { continue };
+					match paint {
+						Graphic::Color(list) => {
+							let Some(color) = list.element(0) else { continue };
 
-					let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
-						parent_transform.inverse()
-					} else {
-						Default::default()
+							let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
+						}
+						Graphic::Gradient(list) => {
+							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+								continue;
+							};
+
+							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+								element_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
+						}
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) => {
+							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
+							paint.render_to_vello(scene, multiplied_transform, context, render_params);
+							scene.pop_layer();
+						}
 					};
-					let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
-
-					let start = mod_points.transform_point2(gradient.start);
-					let end = mod_points.transform_point2(gradient.end);
-
-					let fill = peniko::Brush::Gradient(peniko::Gradient {
-						kind: match gradient.gradient_type {
-							GradientType::Linear => peniko::LinearGradientPosition {
-								start: to_point(start),
-								end: to_point(end),
-							}
-							.into(),
-							GradientType::Radial => {
-								let radius = start.distance(end);
-								peniko::RadialGradientPosition {
-									start_center: to_point(start),
-									start_radius: 0.,
-									end_center: to_point(start),
-									end_radius: radius as f32,
-								}
-								.into()
-							}
-						},
-						extend: match gradient.spread_method {
-							GradientSpreadMethod::Pad => peniko::Extend::Pad,
-							GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-							GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
-						},
-						stops,
-						interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
-						..Default::default()
-					});
-					let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
-						element_transform.inverse()
-					} else {
-						Default::default()
-					};
-					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
-				Fill::None => {}
 			};
 
 			// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
 			let use_face_fill = element.use_face_fill();
-			let do_fill = |scene: &mut Scene| {
+			let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
 				if use_face_fill {
 					for mut face_path in element.construct_faces().filter(|face| face.area() >= 0.) {
 						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
@@ -1190,21 +1398,24 @@ impl Render for Table<Vector> {
 						for element in face_path {
 							kurbo_path.push(element);
 						}
-						do_fill_path(scene, &kurbo_path, peniko::Fill::NonZero);
+						do_fill_path(scene, context, &kurbo_path, peniko::Fill::NonZero);
 					}
 				} else if element.is_branching() {
-					do_fill_path(scene, &path, peniko::Fill::EvenOdd);
+					do_fill_path(scene, context, &path, peniko::Fill::EvenOdd);
 				} else {
-					do_fill_path(scene, &path, peniko::Fill::NonZero);
+					do_fill_path(scene, context, &path, peniko::Fill::NonZero);
 				}
 			};
 
-			let do_stroke = |scene: &mut Scene, width_scale: f64| {
-				if let Some(stroke) = element.style.stroke() {
-					let color = match stroke.color {
-						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-						None => peniko::Color::TRANSPARENT,
+			let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
+				let Some(stroke_graphic_list) = stroke_graphic_list.as_deref() else { return };
+				let Some(stroke) = element.style.stroke() else { return };
+
+				for paint_index in 0..stroke_graphic_list.len() {
+					let Some(stroke_graphic) = stroke_graphic_list.element(paint_index) else {
+						continue;
 					};
+
 					let cap = match stroke.cap {
 						StrokeCap::Butt => Cap::Butt,
 						StrokeCap::Round => Cap::Round,
@@ -1226,9 +1437,38 @@ impl Render for Table<Vector> {
 						dash_offset: stroke.dash_offset,
 					};
 
-					if stroke.width > 0. {
-						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
-					}
+					if stroke.width <= 0. {
+						continue;
+					};
+
+					match stroke_graphic {
+						Graphic::Color(list) => {
+							let Some(color) = list.element(0) else { continue };
+							let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+
+							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
+						}
+						Graphic::Gradient(list) => {
+							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+								continue;
+							};
+							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+								element_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+
+							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+						}
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) => {
+							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
+
+							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
+							stroke_graphic.render_to_vello(scene, multiplied_transform, context, render_params);
+							scene.pop_layer();
+						}
+					};
 				}
 			};
 
@@ -1245,18 +1485,15 @@ impl Render for Table<Vector> {
 						cloned_element.style.clear_stroke();
 						cloned_element.style.set_fill(Fill::solid(Color::BLACK));
 
-						let vector_table = Table::new_from_row(
-							TableRow::new_from_element(cloned_element)
-								.with_attribute(ATTR_TRANSFORM, row_transform)
-								.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
-								.with_attribute(ATTR_OPACITY, opacity_attr)
-								.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
-								.with_attribute(ATTR_CLIPPING_MASK, clip_attr),
-						);
+						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
+						// The outer opacity/blend layer (above) handles the user-set opacity.
+						let vector_list = List::new_from_item(Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let weight = element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-						let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
+						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
+						let inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(true));
+						let (largest_scale, _) = singular_values(applied_stroke_transform);
+						let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
@@ -1268,24 +1505,24 @@ impl Render for Table<Vector> {
 
 						if wants_stroke_below {
 							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+							vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-							do_stroke(scene, 2.);
+							do_stroke(scene, 2., context);
 
 							scene.pop_layer();
 							scene.pop_layer();
 
-							do_fill(scene);
+							do_fill(scene, context);
 						} else {
 							// Fill first (unclipped), then stroke (clipped) above
-							do_fill(scene);
+							do_fill(scene, context);
 
 							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+							vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-							do_stroke(scene, 2.);
+							do_stroke(scene, 2., context);
 
 							scene.pop_layer();
 							scene.pop_layer();
@@ -1304,8 +1541,8 @@ impl Render for Table<Vector> {
 
 						for operation in &order {
 							match operation {
-								Op::Fill => do_fill(scene),
-								Op::Stroke => do_stroke(scene, 1.),
+								Op::Fill => do_fill(scene, context),
+								Op::Stroke => do_stroke(scene, 1., context),
 							}
 						}
 					}
@@ -1320,10 +1557,26 @@ impl Render for Table<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+		// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
+		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
+		let item_zero_transform: DAffine2 = if !self.is_empty() {
+			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
+		} else {
+			DAffine2::IDENTITY
+		};
+		let item_zero_inverse = if item_zero_transform.matrix2.determinant() != 0. {
+			item_zero_transform.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
+		let mut accumulated_outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
+
 		for index in 0..self.len() {
-			let Some(vector) = self.element(index) else { continue };
+			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -1332,87 +1585,83 @@ impl Render for Table<Vector> {
 				// normally provides but skipped due to the None element_id.
 				if caller_element_id.is_none() {
 					metadata.upstream_footprints.entry(element_id).or_insert(footprint);
-					metadata.local_transforms.entry(element_id).or_insert(transform);
+					metadata.local_transforms.entry(element_id).or_insert(item_zero_transform);
 				}
 
-				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-				let filled = vector.style.fill() != &Fill::None;
-				let fill = |mut subpath: Subpath<_>| {
-					if filled {
-						subpath.set_closed(true);
+				// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes)
+				let click_target_vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
+
+				let item_relative_transform = item_zero_inverse * transform;
+
+				let mut click_targets_unwrapped = Vec::new();
+				extend_targets_from_vector(&mut click_targets_unwrapped, self, index, click_target_vector, item_relative_transform);
+				accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
+
+				// Outlines always use source geometry so the visual outline reflects actual letterforms
+				let mut outlines_unwrapped = Vec::new();
+				extend_targets_from_vector(&mut outlines_unwrapped, self, index, source, item_relative_transform);
+				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
+
+				// Source geometry (not the click-target override) so editing tools work on letterforms.
+				// Recorded together with `vector_data` from the same (first) row so `style` stays consistent with the paint.
+				// Only item 0 is recorded since editing tools can only target a single item currently.
+				// If that row has no paint attribute, none is recorded and consumers fall back to `style`.
+				if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
+					e.insert(Arc::new(source.clone()));
+
+					if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
+						metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.into_owned()));
 					}
-					subpath
-				};
-
-				// For free-floating anchors, we need to add a click target for each
-				let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
-					if !vector.any_connected(point_id) {
-						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-						let point = FreePoint::new(point_id, anchor);
-
-						Some(ClickTarget::new_with_free_point(point).into())
-					} else {
-						None
+					if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
+						metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.into_owned()));
 					}
-				});
+				}
 
-				let click_targets = vector
-					.stroke_bezier_paths()
-					.map(fill)
-					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width).into())
-					.chain(single_anchors_targets)
-					.collect::<Vec<_>>();
-
-				metadata.click_targets.entry(element_id).or_insert(click_targets);
-				// Store the full vector data including segment IDs for accurate segment modification
-				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
+				// Surface `editor:text_frame` for the Text tool's drag cage
+				if let Some(&frame) = self.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index) {
+					metadata.text_frames.entry(element_id).or_insert(frame);
+				}
 			}
 
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
 			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
 				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
 			}
 		}
+
+		// Overwrite with the full accumulated set (not just item 0's contribution)
+		for (element_id, targets) in accumulated_click_targets {
+			metadata.click_targets.insert(element_id, targets);
+		}
+		for (element_id, targets) in accumulated_outlines {
+			metadata.outlines.insert(element_id, targets);
+		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let Some(vector) = self.element(index) else { continue };
+			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
-			let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-			let filled = vector.style.fill() != &Fill::None;
-			let fill = |mut subpath: Subpath<_>| {
-				if filled {
-					subpath.set_closed(true);
-				}
-				subpath
-			};
-			click_targets.extend(vector.stroke_bezier_paths().map(fill).map(|subpath| {
-				let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
-				click_target.apply_transform(transform);
-				click_target
-			}));
+			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
+			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
 
-			// For free-floating anchors, we need to add a click target for each
-			let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
-				if vector.any_connected(point_id) {
-					return None;
-				}
+			extend_targets_from_vector(click_targets, self, index, vector, transform);
+		}
+	}
 
-				let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-				let point = FreePoint::new(point_id, anchor);
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		// Source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms
+		for index in 0..self.len() {
+			let Some(source) = self.element(index) else { continue };
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
-				let mut click_target = ClickTarget::new_with_free_point(point);
-				click_target.apply_transform(transform);
-				Some(click_target)
-			});
-			click_targets.extend(single_anchors_targets);
+			extend_targets_from_vector(outlines, self, index, source, transform);
 		}
 	}
 
@@ -1423,7 +1672,61 @@ impl Render for Table<Vector> {
 	}
 }
 
-impl Render for Table<Raster<CPU>> {
+/// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
+/// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
+	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL) {
+		graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
+	} else if let Some(vector) = vector_list.element(index) {
+		!matches!(vector.style.fill(), Fill::None)
+	} else {
+		false
+	};
+
+	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
+	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
+
+	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
+	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
+	let stroke_width = geometry.style.stroke().map_or(0., |stroke| {
+		if stroke.align.is_not_centered() && all_subpaths_closed {
+			stroke.weight * 2.
+		} else {
+			stroke.weight
+		}
+	});
+
+	if filled {
+		for subpath in &mut subpaths {
+			subpath.set_closed(true);
+		}
+	}
+
+	if !subpaths.is_empty() {
+		let mut click_target = ClickTarget::new_with_compound_path(subpaths, stroke_width);
+		click_target.apply_transform(transform);
+		targets.push(click_target);
+	}
+
+	for click_target in extend_free_point_targets(geometry, transform) {
+		targets.push(click_target);
+	}
+}
+
+fn extend_free_point_targets(vector: &Vector, transform: DAffine2) -> impl Iterator<Item = ClickTarget> + '_ {
+	vector.point_domain.ids().iter().filter_map(move |&point_id| {
+		if vector.any_connected(point_id) {
+			return None;
+		}
+
+		let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
+		let mut click_target = ClickTarget::new_with_free_point(FreePoint::new(point_id, anchor));
+		click_target.apply_transform(transform);
+		Some(click_target)
+	})
+}
+
+impl Render for List<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(image) = self.element(index) else { continue };
@@ -1445,11 +1748,9 @@ impl Render for Table<Raster<CPU>> {
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
-						let mut transform_values = transform.to_scale_angle_translation();
 						let size = DVec2::new(image.width as f64, image.height as f64);
-						transform_values.0 /= size;
 
-						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
+						let matrix = transform * DAffine2::from_scale(1. / size);
 						let matrix = format_transform_matrix(matrix);
 						if !matrix.is_empty() {
 							attributes.push(ATTR_TRANSFORM, matrix);
@@ -1572,7 +1873,7 @@ impl Render for Table<Raster<CPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
+		// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 		if !self.is_empty() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 			metadata.local_transforms.insert(element_id, transform);
@@ -1583,7 +1884,7 @@ impl Render for Table<Raster<CPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1598,7 +1899,7 @@ impl Render for Table<Raster<CPU>> {
 
 static LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
-impl Render for Table<Raster<GPU>> {
+impl Render for List<Raster<GPU>> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}
@@ -1667,7 +1968,7 @@ impl Render for Table<Raster<GPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
+		// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 		if !self.is_empty() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 			metadata.local_transforms.insert(element_id, transform);
@@ -1678,7 +1979,7 @@ impl Render for Table<Raster<GPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1697,7 +1998,7 @@ impl Render for Table<Raster<GPU>> {
 // For SVG, this is is achived by creating a truly giant rectangle.
 // For Vello, we create a layer with a placeholder transform which we
 // later replace with the current viewport transform before each render.
-impl Render for Table<Color> {
+impl Render for List<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for (index, color) in self.iter_element_values().enumerate() {
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
@@ -1710,7 +2011,7 @@ impl Render for Table<Color> {
 				const MAX: f64 = 1e7;
 				attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 
-				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+				attributes.push("fill", format!("#{}", SRGBA8::from(*color).to_rgb_hex()));
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -1737,7 +2038,7 @@ impl Render for Table<Color> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+			let vello_color = SRGBA8::from(*color).to_peniko_color();
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
@@ -1757,7 +2058,7 @@ impl Render for Table<Color> {
 	}
 }
 
-impl Render for Table<GradientStops> {
+impl Render for List<GradientStops> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
 		// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
@@ -1794,7 +2095,7 @@ impl Render for Table<GradientStops> {
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in gradient.interpolated_samples() {
-					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
+					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, SRGBA8::from(color).to_rgb_hex());
 					if color.a() < 1. {
 						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
 					}
@@ -1876,7 +2177,7 @@ impl Render for Table<GradientStops> {
 			for (position, color, _) in gradient.interpolated_samples() {
 				stops.push(peniko::ColorStop {
 					offset: position as f32,
-					color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+					color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
 				})
 			}
 
@@ -1916,7 +2217,7 @@ impl Render for Table<GradientStops> {
 			let mut layer = false;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				// See implementation in `Table<Color>` for more detail
+				// See implementation in `List<Color>` for more detail
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}

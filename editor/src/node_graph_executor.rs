@@ -6,9 +6,9 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::RenderMetadata;
-use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
@@ -94,10 +94,6 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
-	}
-
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
 		self.runtime_io
 			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
@@ -112,8 +108,14 @@ impl NodeGraphExecutor {
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
+		let resources = document.resources.registry.clone();
+
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+				network,
+				resources,
+				node_to_inspect: Vec::new(),
+			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
@@ -127,8 +129,10 @@ impl NodeGraphExecutor {
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 
+			let resources = document.resources.registry.clone();
+
 			self.runtime_io
-				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
 
@@ -236,6 +240,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+		let resources = document.resources.registry.clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
 			graphene_std::application_io::ExportFormat::Svg
@@ -243,10 +248,12 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
+		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
+		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -275,7 +282,11 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+				network,
+				resources,
+				node_to_inspect: Vec::new(),
+			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((
@@ -309,6 +320,7 @@ impl NodeGraphExecutor {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -355,6 +367,7 @@ impl NodeGraphExecutor {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 
 							log::trace!("{e}");
@@ -394,7 +407,21 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Send to frontend
+				// Convert each linear-light `Image<Color>` into the JS-boundary `Image<SRGBA8>` form (gamma byte channels) before dispatching.
+				let image_data = image_data
+					.into_iter()
+					.map(|(id, image)| {
+						(
+							id,
+							graphene_std::raster::Image {
+								width: image.width,
+								height: image.height,
+								data: image.data.iter().map(|&c| SRGBA8::from(c)).collect(),
+								base64_string: image.base64_string,
+							},
+						)
+					})
+					.collect();
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
@@ -415,8 +442,12 @@ impl NodeGraphExecutor {
 			local_transforms,
 			first_element_source_id,
 			click_targets,
+			outlines,
+			text_frames,
 			clip_targets,
 			vector_data,
+			fill_attributes,
+			stroke_attributes,
 			backgrounds: _,
 		} = render_output.metadata;
 
@@ -427,8 +458,12 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateOutlines { outlines });
+		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
+		responses.add(DocumentMessage::UpdateFillAttributes { fill_attributes });
+		responses.add(DocumentMessage::UpdateStrokeAttributes { stroke_attributes });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

@@ -22,7 +22,7 @@ impl core::fmt::Display for WidgetId {
 
 macro_rules! define_layout_target {
 	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
-		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 		#[repr(u8)]
 		pub enum LayoutTarget {
@@ -44,6 +44,10 @@ macro_rules! define_layout_target {
 	};
 }
 define_layout_target!(
+	/// Left column of the color picker popover, containing the visual H/S/V/A sliders and (optionally) the gradient editor.
+	ColorPickerPickersAndGradient,
+	/// Right column of the color picker popover, containing the new/old color comparison swatch, hex/RGB/HSV/alpha numeric inputs, and color preset buttons.
+	ColorPickerDetails,
 	/// The Data panel visualizes the output data flowing through the selected node in the graph.
 	DataPanel,
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
@@ -424,7 +428,6 @@ impl LayoutGroup {
 			let val = match &mut *widget.widget {
 				Widget::CheckboxInput(x) => &mut x.tooltip_description,
 				Widget::ColorInput(x) => &mut x.tooltip_description,
-				Widget::CurveInput(x) => &mut x.tooltip_description,
 				Widget::DropdownInput(x) => &mut x.tooltip_description,
 				Widget::IconButton(x) => &mut x.tooltip_description,
 				Widget::IconLabel(x) => &mut x.tooltip_description,
@@ -443,7 +446,11 @@ impl LayoutGroup {
 				| Widget::ShortcutLabel(_)
 				| Widget::WorkingColorsInput(_)
 				| Widget::NodeCatalog(_)
-				| Widget::ParameterExposeButton(_) => continue,
+				| Widget::ParameterExposeButton(_)
+				| Widget::ColorComparisonInput(_)
+				| Widget::ColorPresetsInput(_)
+				| Widget::SpectrumInput(_)
+				| Widget::VisualColorPickersInput(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&description);
@@ -661,6 +668,7 @@ impl Diffable for WidgetInstance {
 				&& button1.tooltip_description == button2.tooltip_description
 				&& button1.tooltip_shortcut == button2.tooltip_shortcut
 				&& button1.popover_min_width == button2.popover_min_width
+				&& button1.popover_layout.0.len() == button2.popover_layout.0.len()
 			{
 				// Only the popover layout differs, diff it recursively
 				for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
@@ -758,8 +766,9 @@ impl<T> Default for WidgetCallback<T> {
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
+	ColorComparisonInput(ColorComparisonInput),
 	ColorInput(ColorInput),
-	CurveInput(CurveInput),
+	ColorPresetsInput(ColorPresetsInput),
 	DropdownInput(DropdownInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
@@ -773,10 +782,12 @@ pub enum Widget {
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
+	SpectrumInput(SpectrumInput),
 	TextAreaInput(TextAreaInput),
 	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
+	VisualColorPickersInput(VisualColorPickersInput),
 	WorkingColorsInput(WorkingColorsInput),
 }
 
@@ -826,7 +837,6 @@ impl DiffUpdate {
 				Widget::ShortcutLabel(widget) => widget.shortcut.as_mut(),
 				Widget::IconLabel(_)
 				| Widget::ImageLabel(_)
-				| Widget::CurveInput(_)
 				| Widget::NodeCatalog(_)
 				| Widget::ReferencePointInput(_)
 				| Widget::RadioInput(_)
@@ -834,7 +844,11 @@ impl DiffUpdate {
 				| Widget::TextAreaInput(_)
 				| Widget::TextInput(_)
 				| Widget::TextLabel(_)
-				| Widget::WorkingColorsInput(_) => None,
+				| Widget::WorkingColorsInput(_)
+				| Widget::ColorComparisonInput(_)
+				| Widget::ColorPresetsInput(_)
+				| Widget::SpectrumInput(_)
+				| Widget::VisualColorPickersInput(_) => None,
 			};
 
 			// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`

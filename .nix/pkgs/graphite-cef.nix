@@ -1,10 +1,10 @@
 { pkgs, ... }:
 
 let
-  version = "147.0.10+gd58e84d+chromium-147.0.7727.118";
+  version = "147.0.14+g76d2442+chromium-147.0.7727.138";
   hashes = {
-    aarch64-linux = "sha256-kaRijMDacPcoeCcS31zmRSNOvgozx+uq2M34mD28bu4=";
-		x86_64-linux = "sha256-CHzPofBDhCniDZEpOxXK4I7p57SYjMAY1HVo3Vna0e8=";
+    aarch64-linux = "sha256-Gy2Xs1NHwmIr+buzoqDso1QJVkKlA/UMXytHjNGqpNk=";
+		x86_64-linux = "sha256-os7wAFJ+mVK65HCikvEjhMeQUj2ty7y+6Ad0OlOcbeA=";
   };
 
   selectSystem =

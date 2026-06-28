@@ -3,12 +3,13 @@ use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
+use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_resource::Resource;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use raster_types::Image;
@@ -30,7 +31,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
+pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: List<Raster<CPU>>) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.filter_map(|row| {
@@ -88,7 +89,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 			attributes.insert(ATTR_TRANSFORM, new_transform);
 
-			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
+			Some(Item::from_parts(Raster::new_cpu(image), attributes))
 		})
 		.collect()
 }
@@ -97,11 +98,11 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 pub fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
-	#[expose] red: Table<Raster<CPU>>,
-	#[expose] green: Table<Raster<CPU>>,
-	#[expose] blue: Table<Raster<CPU>>,
-	#[expose] alpha: Table<Raster<CPU>>,
-) -> Table<Raster<CPU>> {
+	#[expose] red: List<Raster<CPU>>,
+	#[expose] green: List<Raster<CPU>>,
+	#[expose] blue: List<Raster<CPU>>,
+	#[expose] alpha: List<Raster<CPU>>,
+) -> List<Raster<CPU>> {
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
 	let red = red.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
 	let green = green.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
@@ -169,7 +170,7 @@ pub fn combine_channels(
 				}
 			}
 
-			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
+			Some(Item::from_parts(Raster::new_cpu(image), attributes))
 		})
 		.collect()
 }
@@ -178,11 +179,11 @@ pub fn combine_channels(
 pub fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: Table<Raster<CPU>>,
+	image: List<Raster<CPU>>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: Table<Raster<CPU>>,
-) -> Table<Raster<CPU>> {
+	stencil: List<Raster<CPU>>,
+) -> List<Raster<CPU>> {
 	// TODO: Figure out what it means to support multiple stencil items?
 	let Some(stencil) = stencil.into_iter().next() else {
 		// No stencil provided so we return the original image
@@ -226,7 +227,7 @@ pub fn mask(
 }
 
 #[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DAffine2) -> Table<Raster<CPU>> {
+pub fn extend_image_to_bounds(_: impl Ctx, image: List<Raster<CPU>>, bounds: DAffine2) -> List<Raster<CPU>> {
 	image
 		.into_iter()
 		.map(|mut row| {
@@ -240,7 +241,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 			let image_data = &row.element().data;
 			let (image_width, image_height) = (row.element().width, row.element().height);
 			if image_width == 0 || image_height == 0 {
-				return empty_image((), bounds, Table::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
+				return empty_image((), bounds, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -274,46 +275,79 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Table<Raster<CPU>> {
+pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let color = color.element(0).copied().unwrap_or(Color::WHITE);
 	let image = Image::new(width, height, color);
 
-	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
-	result_table.set_attribute(ATTR_TRANSFORM, 0, transform);
+	let mut result_list = List::new_from_element(Raster::new_cpu(image));
+	result_list.set_attribute(ATTR_TRANSFORM, 0, transform);
 
-	// Callers of empty_image can safely unwrap on returned `Table`
-	result_table
+	// Callers of empty_image can safely unwrap on returned `List`
+	result_list
 }
 
 #[node_macro::node(category(""))]
-pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> Table<Raster<CPU>> {
-	Table::new_from_element(Raster::new_cpu(image))
+pub fn image<'a: 'n>(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
+	let image_data = resource.as_ref();
+
+	let Some(image) = ::image::load_from_memory(image_data).ok() else {
+		return List::new();
+	};
+	let image = image.to_rgba32f();
+	let image = Image {
+		data: image
+			.chunks(4)
+			.map(|pixel| {
+				let alpha = pixel[3];
+				Color::from_gamma_srgb_channels(pixel[0] * alpha, pixel[1] * alpha, pixel[2] * alpha, alpha)
+			})
+			.collect(),
+		width: image.width(),
+		height: image.height(),
+		..Default::default()
+	};
+	List::new_from_element(Raster::new_cpu(image))
 }
 
+/// Generates customizable procedural noise patterns.
 #[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
-	clip: bool,
+	#[default(true)] clip: bool,
 	seed: u32,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
+	#[default(10.)]
 	scale: f64,
-	noise_type: NoiseType,
-	domain_warp_type: DomainWarpType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: NoiseType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: DomainWarpType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
+	#[default(100.)]
 	domain_warp_amplitude: f64,
-	fractal_type: FractalType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: FractalType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
+	#[default(3)]
 	fractal_octaves: u32,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
+	#[default(2.)]
 	fractal_lacunarity: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
+	#[default(0.5)]
 	fractal_gain: f64,
-	fractal_weighted_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
+	#[default(2.)]
 	fractal_ping_pong_strength: f64,
-	cellular_distance_function: CellularDistanceFunction,
-	cellular_return_type: CellularReturnType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: CellularDistanceFunction,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: CellularReturnType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
+	#[default(1.)]
 	cellular_jitter: f64,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -331,7 +365,7 @@ pub fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Table::new();
+		return List::new();
 	}
 
 	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -377,7 +411,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
+			return List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -435,11 +469,11 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
+pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -451,7 +485,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Table::new();
+		return List::new();
 	}
 
 	let scale = footprint.scale();
@@ -473,8 +507,8 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 		}
 	}
 
-	Table::new_from_row(
-		TableRow::new_from_element(Raster::new_cpu(Image {
+	List::new_from_item(
+		Item::new_from_element(Raster::new_cpu(Image {
 			width,
 			height,
 			data,

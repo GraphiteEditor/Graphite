@@ -1,12 +1,12 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::table::Table;
+use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Graphic, Vector};
+use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Filters out what should be unused components of the context based on the specified requirements.
@@ -26,17 +26,20 @@ async fn context_modification<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Table<String>,
-		Context -> Table<NodeId>,
-		Context -> Table<f64>,
-		Context -> Table<u8>,
-		Context -> Table<Vector>,
-		Context -> Table<Graphic>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<Table<Graphic>>,
-		Context -> Table<GradientStops>,
+		Context -> List<String>,
+		Context -> List<NodeId>,
+		Context -> List<f64>,
+		Context -> List<u8>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Artboard>,
+		Context -> List<GradientStops>,
+		Context -> AttributeDyn,
+		Context -> AttributeValueDyn,
+		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.

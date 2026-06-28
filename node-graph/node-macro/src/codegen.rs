@@ -74,11 +74,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 
 	// Combined struct type parameters: data field generic idents (T, U, ...) + node generics (Node0, Node1, ...)
-	// For struct type instantiation: MemoNode<T, Node0>
+	// For struct type instantiation: MemoizeNode<T, Node0>
 	let struct_type_params: Vec<Ident> = data_field_generic_idents.iter().cloned().chain(node_generics.iter().cloned()).collect();
 
 	// Combined struct generic parameters with bounds for struct definition
-	// struct MemoNode<T: Clone, Node0>
+	// struct MemoizeNode<T: Clone, Node0>
 	let struct_generic_params: Vec<TokenStream2> = data_field_generics.iter().map(|gp| quote!(#gp)).chain(node_generics.iter().map(|id| quote!(#id))).collect();
 	let input_ident = &input.pat_ident;
 
@@ -172,7 +172,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						quote!(RegistryValueSource::Default(stringify!(#data)))
 					}
 				}
-				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
+				ParsedValueSource::Scope(data) => {
+					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data {
+						quote!(RegistryValueSource::Scope(#data))
+					} else {
+						quote!(RegistryValueSource::Scope(#data.as_static_str()))
+					}
+				}
 				_ => quote!(RegistryValueSource::None),
 			},
 			_ => quote!(RegistryValueSource::None),
@@ -402,6 +408,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
+	let inject_scope_flag = attributes.inject_scope;
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
@@ -500,6 +507,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					properties: #properties,
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
+					inject_scope: #inject_scope_flag,
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -622,8 +630,22 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 }
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
+	// On native, `register_node` and `register_metadata` run automatically via `#[ctor]`.
+	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
+	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
+	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
+	let register_node_call = if parsed.attributes.skip_impl { quote!() } else { quote!(register_node();) };
+	let wasm_shim = quote! {
+		#[cfg(target_family = "wasm")]
+		#[unsafe(no_mangle)]
+		extern "C" fn #registry_name() {
+			#register_node_call
+			register_metadata();
+		}
+	};
+
 	if parsed.attributes.skip_impl {
-		return Ok(quote!());
+		return Ok(wasm_shim);
 	}
 
 	let mut constructors = Vec::new();
@@ -708,8 +730,6 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			)
 		));
 	}
-	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-
 	let native = quote! {
 	#[cfg_attr(not(target_family = "wasm"), ctor)]
 	fn register_node() {
@@ -728,13 +748,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	Ok(quote! {
 		#native
-
-		#[cfg(target_family = "wasm")]
-		#[unsafe(no_mangle)]
-		extern "C" fn #registry_name() {
-			register_node();
-			register_metadata();
-		}
+		#wasm_shim
 	})
 }
 

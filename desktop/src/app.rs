@@ -2,6 +2,7 @@ use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -14,15 +15,15 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
 use crate::cef;
-use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
+use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
-use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -32,6 +33,7 @@ pub(crate) struct App {
 	window_size: PhysicalSize<u32>,
 	window_maximized: bool,
 	window_fullscreen: bool,
+	window_pending_drag: bool,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	ui_scale: f64,
@@ -45,9 +47,8 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
-	cli: Cli,
+	launch_documents: Option<Vec<PathBuf>>,
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
@@ -58,6 +59,7 @@ impl App {
 		Window::init();
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
 		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
@@ -65,7 +67,7 @@ impl App {
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
 		preferences: Preferences,
-		cli: Cli,
+		launch_documents: Vec<PathBuf>,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
 		ctrlc::set_handler(move || {
@@ -91,7 +93,14 @@ impl App {
 			}
 		});
 
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
+		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
+
+		// Wake the winit event loop when an editor future completes.
+		let wake_scheduler = app_event_scheduler.clone();
+		let wake = Arc::new(move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
+		});
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,
@@ -101,6 +110,7 @@ impl App {
 			window_size: PhysicalSize { width: 0, height: 0 },
 			window_maximized: false,
 			window_fullscreen: false,
+			window_pending_drag: false,
 			pointer_position: Default::default(),
 			pointer_lock_position: Default::default(),
 			ui_scale: 1.,
@@ -115,7 +125,7 @@ impl App {
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			preferences,
-			cli,
+			launch_documents: Some(launch_documents),
 			startup_time: None,
 			exiting,
 			exit_reason: ExitReason::Shutdown,
@@ -197,7 +207,7 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
+			DesktopFrontendMessage::OpenFileDialog { title, filters, multiple, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
@@ -205,13 +215,21 @@ impl App {
 						dialog = dialog.add_filter(filter.name, &filter.extensions);
 					}
 
-					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
+					let handles = if multiple {
+						futures::executor::block_on(dialog.pick_files()).unwrap_or_default()
+					} else {
+						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
+					};
 
-					if let Some(path) = futures::executor::block_on(show_dialog)
-						&& let Ok(content) = fs::read(&path)
-					{
-						let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
-						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+					for handle in handles {
+						let path = handle.path().to_path_buf();
+						match fs::read(&path) {
+							Ok(content) => {
+								let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
+								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+							}
+							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
+						}
 					}
 				});
 			}
@@ -262,8 +280,8 @@ impl App {
 					let viewport_offset_y = y / window_size.height as f64;
 					render_state.set_viewport_offset([viewport_offset_x as f32, viewport_offset_y as f32]);
 
-					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
-					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
+					let viewport_scale_x = if width != 0. { window_size.width as f64 / width } else { 1. };
+					let viewport_scale_y = if height != 0. { window_size.height as f64 / height } else { 1. };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
 			}
@@ -307,22 +325,11 @@ impl App {
 				responses.push(message);
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
-				if self.cli.files.is_empty() {
+				let Some(launch_documents) = std::mem::take(&mut self.launch_documents) else {
+					tracing::error!("OpenLaunchDocuments should only be sent once");
 					return;
-				}
-				let app_event_scheduler = self.app_event_scheduler.clone();
-				let launch_documents = std::mem::take(&mut self.cli.files);
-				let _ = thread::spawn(move || {
-					for path in launch_documents {
-						tracing::info!("Opening file from command line: {}", path.display());
-						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
-							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
-						}
-					}
-				});
+				};
+				self.app_event_scheduler.schedule(AppEvent::OpenFiles(launch_documents));
 			}
 			DesktopFrontendMessage::UpdateMenu { entries } => {
 				if let Some(window) = &self.window {
@@ -366,8 +373,11 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::WindowDrag => {
+				self.window_pending_drag = true;
+			}
+			DesktopFrontendMessage::WindowFocus => {
 				if let Some(window) = &self.window {
-					window.start_drag();
+					window.focus();
 				}
 			}
 			DesktopFrontendMessage::WindowHide => {
@@ -475,6 +485,29 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			AppEvent::OpenFiles(paths) => {
+				// Accumulate launch documents until OpenLaunchDocuments message is received
+				if let Some(launch_documents) = &mut self.launch_documents {
+					launch_documents.extend(paths);
+					return;
+				}
+
+				if paths.is_empty() {
+					return;
+				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let _ = thread::spawn(move || {
+					for path in paths {
+						tracing::info!("Opening file: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
+			}
 			#[cfg(target_os = "macos")]
 			AppEvent::MenuEvent { id } => {
 				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
@@ -500,8 +533,6 @@ impl ApplicationHandler for App {
 		}
 
 		self.resize();
-
-		self.desktop_wrapper.init(self.wgpu_context.clone());
 
 		self.startup_time = Some(Instant::now());
 	}
@@ -557,20 +588,16 @@ impl ApplicationHandler for App {
 						Err(RenderError::OutdatedUITextureError) => {
 							self.cef_context.notify_view_info_changed();
 						}
-						Err(RenderError::SurfaceError(wgpu::SurfaceError::Lost)) => {
+						Err(RenderError::SurfaceLost) => {
 							tracing::warn!("lost surface");
 						}
-						Err(RenderError::SurfaceError(wgpu::SurfaceError::OutOfMemory)) => {
-							tracing::error!("GPU out of memory");
-							self.exit(None);
-						}
-						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
+						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
 					let _ = self.start_render_sender.try_send(());
 				}
 
 				if !self.cef_init_successful
-					&& !self.cli.disable_ui_acceleration
+					&& !self.preferences.disable_ui_acceleration
 					&& self.web_communication_initialized
 					&& let Some(startup_time) = self.startup_time
 					&& startup_time.elapsed() > Duration::from_secs(3)
@@ -624,6 +651,21 @@ impl ApplicationHandler for App {
 				if self.pointer_lock_position.is_none() =>
 			{
 				self.pointer_position = position;
+
+				if self.window_pending_drag {
+					self.window_pending_drag = false;
+					if let Some(window) = &self.window {
+						window.start_drag();
+					}
+				}
+			}
+
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(MouseButton::Left),
+				state: ElementState::Released,
+				..
+			} => {
+				self.window_pending_drag = false;
 			}
 
 			_ => {}

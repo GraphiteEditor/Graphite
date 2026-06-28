@@ -11,7 +11,7 @@ use crate::consts::{
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -20,8 +20,8 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::utility_types::{CachedData, PanelType};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -29,17 +29,19 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::wgpu_available;
+use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::style::{Fill, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -50,7 +52,6 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub cached_data: &'a CachedData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -58,6 +59,8 @@ pub struct DocumentMessageContext<'a> {
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
+	pub fonts: &'a FontsMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -84,6 +87,9 @@ pub struct DocumentMessageHandler {
 	//
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
+	/// Resources embedded in the document.
+	#[serde(default, skip_serializing_if = "ResourceMessageHandler::is_empty")]
+	pub resources: ResourceMessageHandler,
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
@@ -159,6 +165,7 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network_interface: default_document_network_interface(),
+			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -191,7 +198,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			cached_data,
 			executor,
 			viewport,
 			current_tool,
@@ -199,6 +205,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
+			resource_storage,
+			fonts,
 		} = context;
 
 		match message {
@@ -225,11 +233,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {
+					executor,
 					network_interface: &mut self.network_interface,
+					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					executor,
-					cached_data,
+					fonts,
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
@@ -272,6 +281,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::Resource(message) => {
+				let context = ResourceMessageContext { document_id, fonts };
+				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				let axis = match axis {
@@ -436,34 +449,85 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
 				});
 
-				for layer in layers.into_iter().rev() {
-					let Some(parent) = layer.parent(self.metadata()) else { continue };
+				for original_layer in layers.into_iter().rev() {
+					let Some(parent) = original_layer.parent(self.metadata()) else { continue };
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![original_layer.to_node()]), parent);
 
-					// Copy the layer
-					let mut copy_ids = HashMap::new();
-					let node_id = layer.to_node();
-					copy_ids.insert(node_id, NodeId(0));
-
-					self.network_interface
-						.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
-						.enumerate()
-						.for_each(|(index, node_id)| {
-							copy_ids.insert(node_id, NodeId((index + 1) as u64));
-						});
-
-					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
-
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
-
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-
-					let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
-					let layer = LayerNodeIdentifier::new_unchecked(layer_id);
-					new_dragging.push(layer);
-					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
-					responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+					let Some(new_layer) = self.duplicate_layer(original_layer, responses) else { continue };
+					new_dragging.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index,
+					});
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
+				if !self.selection_network_path.is_empty() {
+					log::error!("Duplicating selected layers is only supported for the document network");
+					return;
+				}
+
+				// Mirror the placement constraints enforced when moving layers so a copy can't land somewhere a move couldn't
+				let any_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
+					return;
+				}
+
+				let selected_any_non_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
+					return;
+				}
+
+				let layers_to_duplicate = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				if layers_to_duplicate.is_empty() {
+					return;
+				}
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				let mut new_layers = Vec::new();
+				for layer in layers_to_duplicate {
+					let Some(new_layer) = self.duplicate_layer(layer, responses) else { continue };
+
+					// Insert each copy one slot below the previous so the duplicates keep their original top-to-bottom order
+					let placement_index = insert_index + new_layers.len();
+					new_layers.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index: placement_index,
+					});
+
+					// Compensate the local transform so a copy dropped into a differently-transformed parent stays put in world space
+					if layer.parent(self.metadata()) != Some(parent) {
+						let layer_world_transform = self.network_interface.document_metadata().transform_to_viewport(layer);
+						let undo_parent_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: new_layer,
+							transform: undo_parent_transform * layer_world_transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					}
+				}
+
+				let nodes = new_layers.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -629,6 +693,24 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::MorphSelectedLayers => {
 				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
+			}
+			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
+				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
+				// queued after AddTransaction (which prepends StartTransaction/CommitTransaction to the queue).
+				// All mutations currently target the root document network, so guard against being invoked from inside a nested network.
+				if !self.selection_network_path.is_empty() {
+					log::error!("Expanding fill/stroke is only supported for the document network");
+					return;
+				}
+				if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_none() {
+					return;
+				}
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction);
+			}
+			DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction => {
+				// Mutates the network directly, so it must be queued to run after `AddTransaction` has snapshotted the document
+				self.handle_expand_fill_stroke_on_selected_layers(responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.handle_group_selected_layers(group_folder_type, responses);
@@ -838,12 +920,31 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				let ruler_spacing = ruler_interval * ruler_scale;
 
+				// Compute the selection bounding box as 4 viewport-space corners preserving orientation
+				let selection_quad = if !self.graph_view_overlay_open {
+					self.network_interface
+						.selected_nodes()
+						.0
+						.iter()
+						.filter(|node| self.network_interface.is_layer(node, &[]))
+						.filter_map(|layer| self.metadata().bounding_box_document(LayerNodeIdentifier::new(*layer, &self.network_interface)))
+						.reduce(Quad::combine_bounds)
+						.map(|[min, max]| {
+							let corners = [DVec2::new(min.x, min.y), DVec2::new(max.x, min.y), DVec2::new(max.x, max.y), DVec2::new(min.x, max.y)];
+							corners.map(|c| document_to_viewport.transform_point2(c).into())
+						})
+				} else {
+					None
+				};
+
 				responses.add(FrontendMessage::UpdateDocumentRulers {
 					origin: ruler_origin.into(),
 					spacing: ruler_spacing,
 					interval: ruler_interval,
 					visible: self.rulers_visible,
 					tilt: if self.graph_view_overlay_open { 0. } else { current_ptz.tilt() },
+					flip: !self.graph_view_overlay_open && current_ptz.flip,
+					selection_quad,
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
@@ -874,19 +975,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
-
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				responses.add(FrontendMessage::TriggerSaveDocument {
-					document_id,
-					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path,
-					folder,
-					content: self.serialize_document().into_bytes().into(),
+				let mut document = self.clone();
+				let resources_load_handle = resource_storage.resources();
+
+				responses.add(async move {
+					document.resources.collect_garbage(document.used_resources(false).as_ref());
+					document.resources.embed_resources(resources_load_handle).await;
+
+					let content = document.serialize_document().into_bytes().into();
+
+					Message::Frontend(FrontendMessage::TriggerSaveDocument {
+						document_id,
+						name,
+						path,
+						folder,
+						content,
+					})
 				});
 			}
 			DocumentMessage::SavedDocument { path } => {
@@ -1251,6 +1362,31 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
 			}
+			DocumentMessage::UpdateOutlines { outlines } => {
+				let layer_outlines = outlines
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, outlines)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, outlines)
+						})
+					})
+					.collect();
+				self.network_interface.update_outlines(layer_outlines);
+			}
+			DocumentMessage::UpdateTextFrames { text_frames } => {
+				let layer_text_frames = text_frames
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter(|&(node_id, _)| self.network_interface.is_layer(&node_id, &[]))
+					.map(|(node_id, frame)| {
+						let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+						(layer, frame)
+					})
+					.collect();
+				self.network_interface.update_text_frames(layer_text_frames);
+			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}
@@ -1267,6 +1403,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					})
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
+			}
+			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_fill_attributes = fill_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_fill_attributes(layer_fill_attributes);
+			}
+			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_stroke_attributes = stroke_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1604,6 +1768,11 @@ impl DocumentMessageHandler {
 					subpath.apply_transform(layer_transform);
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
+				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
+					let mut subpath = subpath.clone();
+					subpath.apply_transform(layer_transform);
+					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
@@ -2128,6 +2297,30 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
+	/// Copies `layer` together with its full upstream node chain, queueing the new nodes with freshly minted IDs.
+	/// Returns the new layer's identifier; the caller places it into the stack with a `MoveLayerToStack` response.
+	fn duplicate_layer(&mut self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
+		let mut copy_ids = HashMap::new();
+		copy_ids.insert(layer.to_node(), NodeId(0));
+		self.network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+			.enumerate()
+			.for_each(|(index, node_id)| {
+				copy_ids.insert(node_id, NodeId((index + 1) as u64));
+			});
+
+		let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+		let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+		let Some(&new_layer_id) = new_ids.get(&NodeId(0)) else {
+			log::error!("Could not duplicate layer because its root node copy is missing");
+			return None;
+		};
+		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+
+		Some(LayerNodeIdentifier::new_unchecked(new_layer_id))
+	}
+
 	pub fn group_layers(
 		responses: &mut VecDeque<Message>,
 		insert_index: usize,
@@ -2299,6 +2492,99 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// For each selected layer, splits its fill and stroke into two stacked layers connected
+	/// to a shared `Solidify Stroke` node via two `Index Elements` nodes (indices 0 and 1).
+	/// Layers with only a stroke get just a `Solidify Stroke` added.
+	/// Layers with only a fill, or neither, are left untouched.
+	fn handle_expand_fill_stroke_on_selected_layers(&mut self, responses: &mut VecDeque<Message>) {
+		let selected_layers: Vec<LayerNodeIdentifier> = self.network_interface.selected_nodes().selected_layers(self.metadata()).collect();
+		if selected_layers.is_empty() {
+			return;
+		}
+
+		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
+		let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
+
+		let mut resulting_layers: Vec<NodeId> = Vec::new();
+
+		for layer in selected_layers {
+			let style = self.network_interface.document_metadata().layer_vector_data.get(&layer).map(|arc| arc.style.clone());
+			let Some(style) = style else {
+				resulting_layers.push(layer.to_node());
+				continue;
+			};
+
+			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
+			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
+
+			let has_fill = if let Some(list) = fill_graphic_list {
+				list.element(0).is_some()
+			} else {
+				!matches!(style.fill, Fill::None)
+			};
+			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
+			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
+			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no attribute is present.
+			let stroke_visible = if let Some(list) = stroke_graphic_list {
+				list.element(0).is_some_and(|g| !g.is_fully_transparent())
+			} else {
+				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
+			};
+			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+
+			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
+			if !has_stroke {
+				resulting_layers.push(layer.to_node());
+				continue;
+			}
+
+			let solidify_id = NodeId::new();
+			self.network_interface.insert_node(solidify_id, solidify_stroke_definition.default_node_template(), &[]);
+			self.network_interface.move_node_to_chain_start(&solidify_id, layer, &[], false);
+
+			if has_fill && has_stroke {
+				let (existing_index, new_index) = (0_f64, 1_f64);
+
+				let existing_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_id = NodeId::new();
+				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
+				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
+
+				let parent = layer.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+				let insert_index = parent.children(self.metadata()).position(|c| c == layer).unwrap_or(0);
+
+				let new_layer_id = NodeId::new();
+				let new_layer = ModifyInputsContext::new(&mut self.network_interface, responses).create_layer(new_layer_id);
+				self.network_interface.move_layer_to_stack(new_layer, parent, insert_index, &[]);
+
+				// Copy the original layer's stored name so the new layer shares it
+				let original_name = self
+					.network_interface
+					.node_metadata(&layer.to_node(), &[])
+					.map(|m| m.persistent_metadata.display_name.clone())
+					.unwrap_or_default();
+				if !original_name.is_empty() {
+					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
+				}
+
+				let new_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_id = NodeId::new();
+				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
+				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
+
+				self.network_interface.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node(new_index_id, 0), &[]);
+
+				resulting_layers.push(layer.to_node());
+				resulting_layers.push(new_layer.to_node());
+			} else {
+				resulting_layers.push(layer.to_node());
+			}
+		}
+
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: resulting_layers });
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
 	/// Helper method for MoveSelectedLayersTo message.
 	/// Handles moving selected layers to a new parent with proper transform preservation.
 	fn handle_move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
@@ -2376,7 +2662,7 @@ impl DocumentMessageHandler {
 			});
 
 			if layer_to_move.parent(self.metadata()) != Some(parent) {
-				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty `Table<Vector>` item.
+				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty `List<Vector>` item.
 				// TODO: See #2688 for this issue.
 				let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 				let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
@@ -2397,6 +2683,7 @@ impl DocumentMessageHandler {
 
 	/// Helper method for NudgeSelectedLayers message.
 	/// Handles keyboard nudging of selected layers with optional resize mode.
+	#[allow(clippy::too_many_arguments)]
 	fn handle_nudge_selected_layers(
 		&mut self,
 		delta_x: f64,
@@ -2483,23 +2770,6 @@ impl DocumentMessageHandler {
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
-		}
-	}
-
-	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
-		let mut fonts_to_load = HashSet::new();
-
-		for (_, node, _) in self.document_network().recursive_nodes() {
-			for input in &node.inputs {
-				if let Some(TaggedValue::Font(font)) = input.as_value() {
-					fonts_to_load.insert(font.clone());
-				}
-			}
-		}
-
-		for font in fonts_to_load {
-			responses.add(PortfolioMessage::LoadFontData { font });
 		}
 	}
 
@@ -3139,17 +3409,23 @@ impl DocumentMessageHandler {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
+				.on_drag_drop(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
 				.disabled(!has_selection)
 				.widget_instance(),
 			IconButton::new("NewLayer", 24)
 				.tooltip_label("New Layer")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.on_drag_drop(|_| DocumentMessage::DuplicateSelectedLayers.into())
 				.widget_instance(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.on_drag_drop(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
@@ -3289,12 +3565,27 @@ impl DocumentMessageHandler {
 	pub fn graph_view_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
 	}
+
+	pub fn garbage_collect_resources(&mut self) {
+		let used_resources = self.used_resources(true);
+		self.resources.collect_garbage(&used_resources);
+	}
+
+	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
+		let mut resources = HashSet::new();
+		self.network_interface.collect_used_resources(&mut resources);
+		if include_history {
+			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+		}
+		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
+	}
 }
 
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::TypeDefault(descriptor!(graphene_std::list::List<graphene_std::Artboard>)), -1, "", &[]);
 	network_interface
 }
 

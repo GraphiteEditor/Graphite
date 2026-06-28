@@ -36,6 +36,10 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowDrag);
 			}
+			AppWindowMessage::Focus => {
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::WindowFocus);
+			}
 			AppWindowMessage::Hide => {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowHide);

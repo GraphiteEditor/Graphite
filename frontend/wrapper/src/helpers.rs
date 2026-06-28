@@ -6,8 +6,8 @@ use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER};
 use editor::application::Editor;
 use editor::messages::input_mapper::utility_types::input_keyboard::Key;
 use editor::messages::prelude::*;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
-use graphene_std::raster::color::Color;
 use js_sys::{Object, Reflect};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -108,6 +108,17 @@ pub(crate) async fn poll_node_graph_evaluation() {
 	});
 }
 
+/// Web wake callback: queues a microtask that dispatches [`FutureMessage::Wake`].
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+pub(crate) fn async_wake_callback() -> Wake {
+	use std::sync::Arc;
+	Arc::new(|| {
+		wasm_bindgen_futures::spawn_local(async {
+			wrapper(|wrapper| wrapper.dispatch(FutureMessage::Wake));
+		});
+	})
+}
+
 pub(crate) fn auto_save_all_documents() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -119,7 +130,7 @@ pub(crate) fn auto_save_all_documents() {
 	});
 }
 
-pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
+pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<SRGBA8>)]) {
 	let window = match window() {
 		Some(window) => window,
 		None => {
@@ -167,11 +178,12 @@ pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) 
 			.expect("2d context was not found")
 			.dyn_into::<CanvasRenderingContext2d>()
 			.expect("Failed to cast context to CanvasRenderingContext2d");
-		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
-		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
+		// `SRGBA8` is `#[repr(C)]` of four `u8`s, so the data buffer is already the byte format the canvas expects
+		let u8_data: &[u8] = bytemuck::cast_slice(&image.data);
+		let clamped_u8_data = wasm_bindgen::Clamped(u8_data);
 		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
 			Ok(image_data_obj) => {
-				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
+				if context.put_image_data(&image_data_obj, 0, 0).is_err() {
 					error!("Failed to put image data on canvas for id: {placeholder_id}");
 				}
 			}

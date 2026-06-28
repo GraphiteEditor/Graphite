@@ -1,15 +1,12 @@
 <script lang="ts">
-	import { getContext } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import type { PortfolioStore } from "/src/stores/portfolio";
-
-	const portfolio = getContext<PortfolioStore>("portfolio");
+	import { propertiesPanelLayout } from "/src/stores/portfolio";
 </script>
 
 <LayoutCol class="properties">
 	<LayoutCol class="sections" scrollableY={true}>
-		<WidgetLayout layout={$portfolio.propertiesPanelLayout} layoutTarget="PropertiesPanel" />
+		<WidgetLayout layout={$propertiesPanelLayout} layoutTarget="PropertiesPanel" />
 	</LayoutCol>
 </LayoutCol>
 

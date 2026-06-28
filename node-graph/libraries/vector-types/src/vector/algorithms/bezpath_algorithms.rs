@@ -214,16 +214,16 @@ pub fn pathseg_find_tvalues_for_x(segment: PathSeg, x: f64) -> impl Iterator<Ite
 			if a.abs() > MAX_ABSOLUTE_DIFFERENCE { [Some(-b / a), None, None] } else { [None; 3] }
 		}
 		PathSeg::Quad(QuadBez { p0, p1, p2 }) => {
-			let a = p2.x - 2.0 * p1.x + p0.x;
-			let b = 2.0 * (p1.x - p0.x);
+			let a = p2.x - 2. * p1.x + p0.x;
+			let b = 2. * (p1.x - p0.x);
 			let c = p0.x - x;
 			let r = solve_quadratic(c, b, a);
 			[r.first().copied(), r.get(1).copied(), None]
 		}
 		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => {
-			let a = p3.x - 3.0 * p2.x + 3.0 * p1.x - p0.x;
-			let b = 3.0 * (p2.x - 2.0 * p1.x + p0.x);
-			let c = 3.0 * (p1.x - p0.x);
+			let a = p3.x - 3. * p2.x + 3. * p1.x - p0.x;
+			let b = 3. * (p2.x - 2. * p1.x + p0.x);
+			let c = 3. * (p1.x - p0.x);
 			let d = p0.x - x;
 			let r = solve_cubic(d, c, b, a);
 			[r.first().copied(), r.get(1).copied(), r.get(2).copied()]

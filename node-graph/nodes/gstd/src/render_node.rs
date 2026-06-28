@@ -1,14 +1,14 @@
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::generate_uuid;
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
-pub use graph_craft::application_io::*;
+use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::{Graphic, Vector};
+use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
 use std::sync::Arc;
@@ -33,12 +33,12 @@ pub struct RenderIntermediate {
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
-		Context -> Table<Table<Graphic>>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
+		Context -> List<Artboard>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 ) -> RenderIntermediate {

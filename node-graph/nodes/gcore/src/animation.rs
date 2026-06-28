@@ -1,9 +1,9 @@
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Graphic, Vector};
+use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 const DAY: f64 = 1000. * 3600. * 24.;
@@ -73,15 +73,15 @@ async fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Table<Vector>,
-		Context -> Table<Graphic>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<Table<Graphic>>,
-		Context -> Table<GradientStops>,
-		Context -> Table<String>,
-		Context -> Table<f64>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Artboard>,
+		Context -> List<GradientStops>,
+		Context -> List<String>,
+		Context -> List<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
@@ -113,15 +113,15 @@ async fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Table<Vector>,
-		Context -> Table<Graphic>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<Table<Graphic>>,
-		Context -> Table<GradientStops>,
-		Context -> Table<String>,
-		Context -> Table<f64>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Artboard>,
+		Context -> List<GradientStops>,
+		Context -> List<String>,
+		Context -> List<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,

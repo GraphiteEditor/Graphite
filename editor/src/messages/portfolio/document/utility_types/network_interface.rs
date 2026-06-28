@@ -20,13 +20,16 @@ use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::ContextDependencies;
+use graphene_std::Graphic;
+use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use kurbo::BezPath;
 use memo_network::MemoNetwork;
@@ -508,6 +511,10 @@ impl NodeNetworkInterface {
 				position
 			}
 		})
+	}
+
+	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceId>) {
+		collect_network_resources(self.document_network(), target);
 	}
 
 	pub fn frontend_imports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
@@ -1222,6 +1229,34 @@ impl NodeNetworkInterface {
 		Some(transformed.bounding_box())
 	}
 
+	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
+	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
+	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.document_metadata
+			.all_layers()
+			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| {
+				if !self.is_artboard(&layer.to_node(), &[])
+					&& let Some(artboard_node_identifier) = layer
+						.ancestors(self.document_metadata())
+						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
+					&& let Some(clip_input) = artboard.inputs.get(5)
+					&& let NodeInput::Value { tagged_value, .. } = clip_input
+					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
+				{
+					return Some(Quad::clip(
+						self.document_metadata.bounding_box_document_with_stroke(layer).unwrap_or_default(),
+						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
+					));
+				}
+				self.document_metadata.bounding_box_document_with_stroke(layer)
+			})
+			// Skip any layer bounds containing NaN to avoid poisoning the combined result
+			.filter(|[min, max]| min.is_finite() && max.is_finite())
+			.reduce(Quad::combine_bounds)
+	}
+
 	/// Calculates the selected layer bounds in document space
 	pub fn selected_bounds_document_space(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
@@ -1232,6 +1267,20 @@ impl NodeNetworkInterface {
 			.selected_layers(&self.document_metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the selected layer bounds in document space, expanding vector layer bounds to include the
+	/// rendered stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
+	pub fn selected_bounds_document_space_with_stroke(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
+			log::error!("Could not get selected nodes in selected_bounds_document_space_with_stroke");
+			return None;
+		};
+		selected_nodes
+			.selected_layers(&self.document_metadata)
+			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke(layer))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -3149,8 +3198,8 @@ impl NodeNetworkInterface {
 		let nodes = network_metadata
 			.persistent_metadata
 			.node_metadata
-			.iter()
-			.filter_map(|(node_id, _)| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
+			.keys()
+			.filter_map(|node_id| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
 			.collect::<Vec<_>>();
 		let layer_widths = nodes
 			.iter()
@@ -3190,6 +3239,39 @@ impl NodeNetworkInterface {
 		}
 
 		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+	}
+
+	/// The vector geometry an upstream Path node would surface for editing.
+	/// This is the result of `compute_modified_vector`, but only if a visible 'Path' node is actually upstream.
+	/// Useful for tool overlays and snap target collection usages that want to match the Path tool's view
+	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer) and otherwise do nothing.
+	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
+		self.compute_modified_vector(layer)
+	}
+
+	/// Outline targets for the Select tool's hover/selection overlay, mirroring the Path tool's view.
+	/// Returns `Some` when an upstream Path node exists so the outline matches what the Path tool edits
+	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); returns `None` otherwise so the
+	/// caller can fall back to the layer's recorded `outlines`/`click_targets`.
+	pub fn path_aware_outline_targets(&self, layer: LayerNodeIdentifier) -> Option<Vec<ClickTargetType>> {
+		let vector = self.upstream_path_node_vector(layer)?;
+
+		let mut targets = Vec::new();
+		let subpaths: Vec<Subpath<PointId>> = vector.stroke_bezier_paths().collect();
+		if !subpaths.is_empty() {
+			targets.push(ClickTargetType::CompoundPath(subpaths));
+		}
+
+		for &point_id in vector.point_domain.ids() {
+			if !vector.any_connected(point_id) {
+				let position = vector.point_domain.position_from_id(point_id).unwrap_or_default();
+				targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
+			}
+		}
+
+		Some(targets)
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3276,6 +3358,8 @@ impl NodeNetworkInterface {
 		self.document_metadata.local_transforms.retain(|node, _| nodes.contains(node));
 		self.document_metadata.vector_modify.retain(|node, _| nodes.contains(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.outlines.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.text_frames.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
 
 	/// Update the cached transforms of the layers
@@ -3294,6 +3378,17 @@ impl NodeNetworkInterface {
 		self.document_metadata.click_targets = new_click_targets;
 	}
 
+	/// Update the cached source-geometry outline targets of the layers
+	pub fn update_outlines(&mut self, new_outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
+		self.document_metadata.outlines = new_outlines;
+	}
+
+	/// Update the cached per-layer 'Text' node text frames in row-local space (as `DAffine2`
+	/// mapping the unit square onto the frame).
+	pub fn update_text_frames(&mut self, new_text_frames: HashMap<LayerNodeIdentifier, DAffine2>) {
+		self.document_metadata.text_frames = new_text_frames;
+	}
+
 	/// Update the cached clip targets of the layers
 	pub fn update_clip_targets(&mut self, new_clip_targets: HashSet<NodeId>) {
 		self.document_metadata.clip_targets = new_clip_targets;
@@ -3307,6 +3402,16 @@ impl NodeNetworkInterface {
 	/// Update the layer vector data (for layers without Path nodes)
 	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
+	}
+
+	/// Update the per-layer `ATTR_FILL` snapshot.
+	pub fn update_fill_attributes(&mut self, new_layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
+		self.document_metadata.layer_fill_attributes = new_layer_fill_attributes;
+	}
+
+	/// Update the per-layer `ATTR_STROKE` snapshot.
+	pub fn update_stroke_attributes(&mut self, new_layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
+		self.document_metadata.layer_stroke_attributes = new_layer_stroke_attributes;
 	}
 }
 
@@ -5818,6 +5923,46 @@ impl NodeNetworkInterface {
 		self.create_wire(&upstream_output, &InputConnector::node(*node_id, insert_node_input_index), network_path);
 	}
 
+	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
+	/// new node's primary (index 0) input, and the new node feeds `input_connector`.
+	///
+	/// When the wire is part of a layer's encapsulated primary chain, `set_input` chain-positions the new node
+	/// automatically. On an unencapsulated secondary-input branch (e.g. a 'Fill' node's fill input) chain positioning
+	/// doesn't apply, so the node would otherwise land at the graph origin; instead it's placed on the displaced
+	/// upstream node's spot and that whole branch is shifted left (in absolute graph space) to make room.
+	pub fn insert_node_before_input(&mut self, node_id: &NodeId, input_connector: &InputConnector, network_path: &[NodeId]) {
+		let feeder = self.upstream_output_connector(input_connector, network_path).and_then(|output| output.node_id());
+
+		let Some(current_input) = self.input_from_connector(input_connector, network_path).cloned() else {
+			log::error!("Could not get input in insert_node_before_input");
+			return;
+		};
+
+		if self.input_from_connector(&InputConnector::node(*node_id, 0), network_path).is_none() {
+			return;
+		}
+
+		self.set_input(&InputConnector::node(*node_id, 0), current_input, network_path);
+		self.set_input(input_connector, NodeInput::node(*node_id, 0), network_path);
+
+		// If `set_input` chain-positioned the node (it joined a layer chain), there's nothing more to do.
+		if !self.is_absolute(node_id, network_path) {
+			return;
+		}
+
+		// Otherwise place the node where the displaced feeder was, then shift the feeder's branch left to make room.
+		let Some(feeder) = feeder else { return };
+		let Some(node_position) = self.position(node_id, network_path) else { return };
+		let Some(feeder_position) = self.position(&feeder, network_path) else { return };
+
+		self.shift_node(node_id, feeder_position - node_position, network_path);
+		// Deduplicate, since `UpstreamFlow` can yield a shared node more than once and we must shift each node only once.
+		let upstream_nodes: HashSet<NodeId> = self.upstream_flow_back_from_nodes(vec![feeder], network_path, FlowType::UpstreamFlow).collect();
+		for upstream_node in &upstream_nodes {
+			self.shift_node(upstream_node, IVec2::new(-NODE_CHAIN_WIDTH, 0), network_path);
+		}
+	}
+
 	/// Moves a node to the start of a layer chain (feeding into the secondary input of the layer).
 	/// When `import` is true, uses lightweight wiring that skips `is_acyclic` checks and per-node cache invalidation.
 	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId], import: bool) {
@@ -6354,6 +6499,7 @@ pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
 	/// Each instance of the input node needs to store its own data, since it can lose the reference to its
 	/// node definition if the node signature is modified by the user. For example adding/removing/renaming an import/export of a network node.
+	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap_as_sorted_object")]
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
@@ -6678,6 +6824,21 @@ pub enum TransactionStatus {
 	Modified,
 	#[default]
 	Finished,
+}
+
+fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
+	for node in network.nodes.values() {
+		for input in &node.inputs {
+			if let NodeInput::Value { tagged_value, .. } = input
+				&& let TaggedValue::Resource(id) = &**tagged_value
+			{
+				out.insert(*id);
+			}
+		}
+		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+			collect_network_resources(nested, out);
+		}
+	}
 }
 
 #[cfg(test)]

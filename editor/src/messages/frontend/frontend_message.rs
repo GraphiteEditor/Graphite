@@ -13,9 +13,9 @@ use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
-use graphene_std::raster::color::Color;
-use graphene_std::text::{Font, TextAlign};
+use graphene_std::vector::style::FillChoiceUI;
 use std::path::PathBuf;
 
 #[cfg(not(target_family = "wasm"))]
@@ -50,7 +50,9 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
-		align: TextAlign,
+		align: String,
+		#[serde(rename = "alignLast")]
+		align_last: String,
 	},
 	DisplayEditableTextboxUpdateFontData {
 		#[serde(rename = "fontData")]
@@ -108,11 +110,6 @@ pub enum FrontendMessage {
 		name: String,
 		filename: String,
 	},
-	TriggerFontCatalogLoad,
-	TriggerFontDataLoad {
-		font: Font,
-		url: String,
-	},
 	TriggerPersistenceReadState,
 	TriggerPersistenceReadDocument {
 		#[serde(rename = "documentId")]
@@ -164,9 +161,17 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateGradientStopColorPickerPosition {
-		color: Color, // TODO: Color (without `none`) -> Color (with `none`)
+		color: SRGBA8, // TODO: Color (without `none`) -> Color (with `none`)
 		position: (f64, f64),
 	},
+	/// The Rust color picker handler picked a new color/gradient. The frontend `<ColorPicker />` forwards this as its `colorOrGradient` event.
+	ColorPickerColorChanged {
+		value: FillChoiceUI,
+	},
+	/// The Rust color picker handler is starting an undo transaction. The frontend `<ColorPicker />` forwards this as its `startHistoryTransaction` event.
+	ColorPickerStartHistoryTransaction,
+	/// The Rust color picker handler is committing the in-flight undo transaction. The frontend `<ColorPicker />` forwards this as its `commitHistoryTransaction` event.
+	ColorPickerCommitHistoryTransaction,
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
 		imports: Vec<Option<FrontendGraphOutput>>,
@@ -230,7 +235,7 @@ pub enum FrontendMessage {
 		svg: String,
 	},
 	UpdateImageData {
-		image_data: Vec<(u64, Image<Color>)>,
+		image_data: Vec<(u64, Image<SRGBA8>)>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
@@ -245,6 +250,9 @@ pub enum FrontendMessage {
 		interval: f64,
 		visible: bool,
 		tilt: f64,
+		flip: bool,
+		#[serde(rename = "selectionQuad")]
+		selection_quad: Option<[(f64, f64); 4]>,
 	},
 	UpdateDocumentScrollbars {
 		position: (f64, f64),
@@ -347,6 +355,8 @@ pub enum FrontendMessage {
 	WindowDrag,
 	#[cfg(not(target_family = "wasm"))]
 	WindowHide,
+	#[cfg(not(target_family = "wasm"))]
+	WindowFocus,
 	#[cfg(not(target_family = "wasm"))]
 	WindowHideOthers,
 	#[cfg(not(target_family = "wasm"))]

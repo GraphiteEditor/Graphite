@@ -214,7 +214,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let mid_point = (network_interface.get_output_center(&output_connector, breadcrumb_network_path).unwrap()
 						+ network_interface.get_input_center(&input_connector, breadcrumb_network_path).unwrap())
 						/ 2.;
-					let node_template = Box::new(resolve_proto_node_type(graphene_core::ops::identity::IDENTIFIER).unwrap().default_node_template());
+					let Some(passthrough_definition) = resolve_proto_node_type(graphene_core::ops::passthrough::IDENTIFIER) else {
+						log::error!("Could not resolve passthrough node when wiring an export to an import");
+						return;
+					};
+					let node_template = Box::new(passthrough_definition.default_node_template());
 
 					let node_id = NodeId::new();
 					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
@@ -351,7 +355,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
+				// Detect stroke/fill proto nodes among the doomed nodes before they're gone so the tool control bars can re-sync
+				let stroke = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+				let fill = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+				let any_fill_or_stroke_deleted = node_ids.iter().any(|node_id| {
+					network_interface
+						.reference(node_id, selection_network_path)
+						.is_some_and(|reference| reference == stroke || reference == fill)
+				});
 				network_interface.delete_nodes(node_ids, delete_children, selection_network_path);
+				if any_fill_or_stroke_deleted {
+					responses.add(PenToolMessage::SelectionChanged);
+					responses.add(FreehandToolMessage::SelectionChanged);
+					responses.add(SplineToolMessage::SelectionChanged);
+					responses.add(ShapeToolMessage::SelectionChanged);
+					responses.add(TextToolMessage::SelectionChanged);
+				}
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
@@ -857,6 +876,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					self.context_menu = Some(ContextMenuInformation {
 						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2().into(),
+						node_creation_coordinates: node_graph_point.as_ivec2().into(),
 						context_menu_data,
 					});
 
@@ -1296,6 +1316,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: (point + node_graph_shift).as_ivec2().into(),
+							node_creation_coordinates: point.as_ivec2().into(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -1538,7 +1559,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// Only disconnect inputs to non selected nodes
 						if network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
-							.is_some_and(|connector| connector.node_id().map_or(true, |node_id| !all_selected_nodes.contains(&node_id)))
+							.is_some_and(|connector| connector.node_id().is_none_or(|node_id| !all_selected_nodes.contains(&node_id)))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}
@@ -1723,7 +1744,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
+				use graphene_std::vector::generator_nodes::*;
+
 				let is_fill = matches!(value, TaggedValue::Fill(_));
+				let reference = network_interface.reference(&node_id, selection_network_path);
+				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
+				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
+				let is_fill_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER));
+				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
+					[regular_polygon::IDENTIFIER, star::IDENTIFIER, arc::IDENTIFIER, spiral::IDENTIFIER, grid::IDENTIFIER, arrow::IDENTIFIER]
+						.into_iter()
+						.any(|id| *r == DefinitionIdentifier::ProtoNode(id))
+				});
+
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
@@ -1732,6 +1765,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(PropertiesPanelMessage::Refresh);
 				if is_fill {
 					responses.add(OverlaysMessage::Draw);
+				}
+				if is_stroke_node || is_fill_node || is_shape_generator_node || is_text_node {
+					responses.add(PenToolMessage::SelectionChanged);
+					responses.add(FreehandToolMessage::SelectionChanged);
+					responses.add(SplineToolMessage::SelectionChanged);
+					responses.add(ShapeToolMessage::SelectionChanged);
+					responses.add(TextToolMessage::SelectionChanged);
 				}
 				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);

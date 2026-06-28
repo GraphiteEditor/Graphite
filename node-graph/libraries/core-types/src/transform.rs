@@ -31,7 +31,7 @@ pub trait Transform {
 	/// - `skew`: the horizontal shear coefficient (the raw matrix value, not an angle)
 	///
 	/// The original transform can be reconstructed as:
-	/// ```
+	/// ```ignore
 	/// DAffine2::from_scale_angle_translation(scale, rotation, translation) * DAffine2::from_cols_array(&[1., 0., skew, 1., 0., 0.])
 	/// ```
 	#[inline(always)]
@@ -234,6 +234,6 @@ impl ApplyTransform for DVec2 {
 		*self = modification.transform_point2(*self);
 	}
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
-		*self = modification.inverse().transform_point2(*self);
+		*self = modification.transform_point2(*self);
 	}
 }

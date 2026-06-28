@@ -6,16 +6,15 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
-use graphene_std::Context;
-use graphene_std::Graphic;
 use graphene_std::blending::BlendMode;
+use graphene_std::color::SRGBA8;
 use graphene_std::gradient::GradientStops;
+use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
-use graphene_std::table::Table;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
+use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -157,7 +156,7 @@ struct LayoutData<'a> {
 	desired_path: &'a mut Vec<PathStep>,
 	network_interface: &'a NodeNetworkInterface,
 	/// The `network_path` to use when resolving a `NodeId` against the network interface.
-	/// Defaults to root (`&[]`); `Table<NodeId>` rendering temporarily sets it to the path's prefix so nested
+	/// Defaults to root (`&[]`); `List<NodeId>` rendering temporarily sets it to the path's prefix so nested
 	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
 	node_lookup_network_path: Vec<NodeId>,
 	breadcrumbs: Vec<String>,
@@ -177,22 +176,27 @@ macro_rules! generate_layout_downcast {
 }
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `Table<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
-	// `Table` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<NodeId>>>() {
+	// `List<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
+	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<NodeId>>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
-		Table<Table<Graphic>>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<String>,
-		Table<f64>,
-		Table<u8>,
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+		List<f64>,
+		List<u8>,
+		List<bool>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 		GradientStops,
 		f64,
 		u32,
@@ -202,6 +206,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Option<f64>,
 		DVec2,
 		DAffine2,
+		BlendMode,
+		GradientType,
+		GradientSpreadMethod,
 	])
 }
 
@@ -214,14 +221,14 @@ fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::row(error)]
 }
 
-trait TableRowLayout {
+trait TableItemLayout {
 	fn type_name() -> &'static str;
 	fn identifier(&self) -> String;
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		data.breadcrumbs.push(self.identifier());
 		self.value_page(data)
 	}
-	/// Renders this value as a single inline widget inside an item of a Table.
+	/// Renders this value as a single inline widget inside an item of a `List`.
 	/// `target` is the [`PathStep`] to push when the widget is clicked to drill into the value.
 	/// `data` provides shared context (notably `network_interface`) for types whose label or content
 	/// depends on lookup beyond their own value (e.g. `NodeId` resolving a node's display name).
@@ -239,9 +246,9 @@ trait TableRowLayout {
 	}
 }
 
-impl<T: TableRowLayout> TableRowLayout for Table<T> {
+impl<T: TableItemLayout> TableItemLayout for List<T> {
 	fn type_name() -> &'static str {
-		"Table"
+		"List"
 	}
 	fn identifier(&self) -> String {
 		format!("{}[] ({} item{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
@@ -301,18 +308,34 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	}
 }
 
-impl TableRowLayout for Graphic {
+impl TableItemLayout for Artboard {
+	fn type_name() -> &'static str {
+		"Artboard"
+	}
+	fn identifier(&self) -> String {
+		self.as_graphic_list().identifier()
+	}
+	// Don't put a breadcrumb for Artboard
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.as_graphic_list().layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for Graphic {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::Graphic(table) => table.identifier(),
-			Self::Vector(table) => table.identifier(),
-			Self::RasterCPU(table) => table.identifier(),
-			Self::RasterGPU(table) => table.identifier(),
-			Self::Color(table) => table.identifier(),
-			Self::Gradient(table) => table.identifier(),
+			Self::Graphic(list) => list.identifier(),
+			Self::Vector(list) => list.identifier(),
+			Self::RasterCPU(list) => list.identifier(),
+			Self::RasterGPU(list) => list.identifier(),
+			Self::Color(list) => list.identifier(),
+			Self::Gradient(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -321,17 +344,17 @@ impl TableRowLayout for Graphic {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::Graphic(table) => table.layout_with_breadcrumb(data),
-			Self::Vector(table) => table.layout_with_breadcrumb(data),
-			Self::RasterCPU(table) => table.layout_with_breadcrumb(data),
-			Self::RasterGPU(table) => table.layout_with_breadcrumb(data),
-			Self::Color(table) => table.layout_with_breadcrumb(data),
-			Self::Gradient(table) => table.layout_with_breadcrumb(data),
+			Self::Graphic(list) => list.layout_with_breadcrumb(data),
+			Self::Vector(list) => list.layout_with_breadcrumb(data),
+			Self::RasterCPU(list) => list.layout_with_breadcrumb(data),
+			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
+			Self::Color(list) => list.layout_with_breadcrumb(data),
+			Self::Gradient(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }
 
-impl TableRowLayout for Vector {
+impl TableItemLayout for Vector {
 	fn type_name() -> &'static str {
 		"Vector"
 	}
@@ -363,11 +386,15 @@ impl TableRowLayout for Vector {
 				match self.style.fill.clone() {
 					Fill::None => table_rows.push(vec![
 						TextLabel::new("Fill").narrow(true).widget_instance(),
-						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
+						ColorInput::new(FillChoiceUI::None)
+							.disabled(true)
+							.menu_direction(Some(MenuDirection::Top))
+							.narrow(true)
+							.widget_instance(),
 					]),
 					Fill::Solid(color) => table_rows.push(vec![
 						TextLabel::new("Fill").narrow(true).widget_instance(),
-						ColorInput::new(FillChoice::Solid(color))
+						ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(color)))
 							.disabled(true)
 							.menu_direction(Some(MenuDirection::Top))
 							.narrow(true)
@@ -376,7 +403,7 @@ impl TableRowLayout for Vector {
 					Fill::Gradient(gradient) => {
 						table_rows.push(vec![
 							TextLabel::new("Fill").narrow(true).widget_instance(),
-							ColorInput::new(FillChoice::Gradient(gradient.stops))
+							ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(gradient.stops)))
 								.disabled(true)
 								.menu_direction(Some(MenuDirection::Top))
 								.narrow(true)
@@ -401,7 +428,11 @@ impl TableRowLayout for Vector {
 					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
 					table_rows.push(vec![
 						TextLabel::new("Stroke").narrow(true).widget_instance(),
-						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
+						ColorInput::new(FillChoiceUI::from(&color))
+							.disabled(true)
+							.menu_direction(Some(MenuDirection::Top))
+							.narrow(true)
+							.widget_instance(),
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
@@ -490,7 +521,7 @@ impl TableRowLayout for Vector {
 	}
 }
 
-impl TableRowLayout for Raster<CPU> {
+impl TableItemLayout for Raster<CPU> {
 	fn type_name() -> &'static str {
 		"Raster"
 	}
@@ -521,7 +552,7 @@ impl TableRowLayout for Raster<CPU> {
 	}
 }
 
-impl TableRowLayout for Raster<GPU> {
+impl TableItemLayout for Raster<GPU> {
 	fn type_name() -> &'static str {
 		"Raster"
 	}
@@ -534,15 +565,15 @@ impl TableRowLayout for Raster<GPU> {
 	}
 }
 
-impl TableRowLayout for Color {
+impl TableItemLayout for Color {
 	fn type_name() -> &'static str {
 		"Color"
 	}
 	fn identifier(&self) -> String {
-		format!("Color (#{})", self.to_gamma_srgb().to_rgba_hex_srgb())
+		format!("Color (#{})", SRGBA8::from(*self).to_rgba_hex())
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		ColorInput::new(FillChoice::Solid(*self))
+		ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(*self)))
 			.disabled(true)
 			.menu_direction(Some(MenuDirection::Top))
 			.narrow(true)
@@ -554,7 +585,7 @@ impl TableRowLayout for Color {
 	}
 }
 
-impl TableRowLayout for GradientStops {
+impl TableItemLayout for GradientStops {
 	fn type_name() -> &'static str {
 		"Gradient"
 	}
@@ -562,7 +593,7 @@ impl TableRowLayout for GradientStops {
 		format!("Gradient ({} stops)", self.len())
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		ColorInput::new(FillChoice::Gradient(self.clone()))
+		ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(self.clone())))
 			.menu_direction(Some(MenuDirection::Top))
 			.disabled(true)
 			.narrow(true)
@@ -574,7 +605,7 @@ impl TableRowLayout for GradientStops {
 	}
 }
 
-impl TableRowLayout for f64 {
+impl TableItemLayout for f64 {
 	fn type_name() -> &'static str {
 		"Number (f64)"
 	}
@@ -589,7 +620,7 @@ impl TableRowLayout for f64 {
 	}
 }
 
-impl TableRowLayout for u8 {
+impl TableItemLayout for u8 {
 	fn type_name() -> &'static str {
 		"Byte"
 	}
@@ -602,7 +633,7 @@ impl TableRowLayout for u8 {
 	}
 }
 
-impl TableRowLayout for u32 {
+impl TableItemLayout for u32 {
 	fn type_name() -> &'static str {
 		"Number (u32)"
 	}
@@ -617,7 +648,7 @@ impl TableRowLayout for u32 {
 	}
 }
 
-impl TableRowLayout for u64 {
+impl TableItemLayout for u64 {
 	fn type_name() -> &'static str {
 		"Number (u64)"
 	}
@@ -633,7 +664,7 @@ impl TableRowLayout for u64 {
 	}
 }
 
-impl TableRowLayout for bool {
+impl TableItemLayout for bool {
 	fn type_name() -> &'static str {
 		"Bool"
 	}
@@ -648,7 +679,7 @@ impl TableRowLayout for bool {
 	}
 }
 
-impl TableRowLayout for String {
+impl TableItemLayout for String {
 	fn type_name() -> &'static str {
 		"String"
 	}
@@ -667,7 +698,7 @@ impl TableRowLayout for String {
 	}
 }
 
-impl TableRowLayout for Option<f64> {
+impl TableItemLayout for Option<f64> {
 	fn type_name() -> &'static str {
 		"Option<f64>"
 	}
@@ -682,7 +713,7 @@ impl TableRowLayout for Option<f64> {
 	}
 }
 
-impl TableRowLayout for DVec2 {
+impl TableItemLayout for DVec2 {
 	fn type_name() -> &'static str {
 		"Vec2"
 	}
@@ -697,7 +728,7 @@ impl TableRowLayout for DVec2 {
 	}
 }
 
-impl TableRowLayout for Vec2 {
+impl TableItemLayout for Vec2 {
 	fn type_name() -> &'static str {
 		"Vec2"
 	}
@@ -712,7 +743,7 @@ impl TableRowLayout for Vec2 {
 	}
 }
 
-impl TableRowLayout for DAffine2 {
+impl TableItemLayout for DAffine2 {
 	fn type_name() -> &'static str {
 		"Transform"
 	}
@@ -727,7 +758,7 @@ impl TableRowLayout for DAffine2 {
 	}
 }
 
-impl TableRowLayout for Affine2 {
+impl TableItemLayout for Affine2 {
 	fn type_name() -> &'static str {
 		"Transform"
 	}
@@ -737,6 +768,51 @@ impl TableRowLayout for Affine2 {
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
 		TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableItemLayout for BlendMode {
+	fn type_name() -> &'static str {
+		"BlendMode"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableItemLayout for GradientType {
+	fn type_name() -> &'static str {
+		"GradientType"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableItemLayout for GradientSpreadMethod {
+	fn type_name() -> &'static str {
+		"GradientSpreadMethod"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
@@ -753,7 +829,7 @@ fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterfa
 	}
 }
 
-impl TableRowLayout for NodeId {
+impl TableItemLayout for NodeId {
 	fn type_name() -> &'static str {
 		"NodeId"
 	}
@@ -767,7 +843,7 @@ impl TableRowLayout for NodeId {
 	}
 	// The value's label resolves the node's display name via the network interface so the button reads as the name shown
 	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
-	// `Table<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
+	// `List<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
 	// signals layer-vs-node kind. Falls back to "Node {id}" with no icon if the lookup misses.
 	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
 		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
@@ -865,23 +941,23 @@ impl TableRowLayout for NodeId {
 	}
 }
 
-/// Invokes another macro with the full list of `TableRowLayout`-implementing types whose values may appear
+/// Invokes another macro with the full list of `TableItemLayout`-implementing types whose values may appear
 /// as attribute values. Both the value-rendering and drilldown-navigation dispatchers iterate this list,
 /// so adding a new attribute-displayable type is a single edit here.
-macro_rules! known_table_row_types {
+macro_rules! known_item_types {
 	($apply:ident) => {
 		$apply!(
-			Table<Table<Graphic>>,
-			Table<Graphic>,
-			Table<Vector>,
-			Table<Raster<CPU>>,
-			Table<Raster<GPU>>,
-			Table<Color>,
-			Table<GradientStops>,
-			Table<String>,
-			Table<NodeId>,
-			Table<f64>,
-			Table<u8>,
+			List<Artboard>,
+			List<Graphic>,
+			List<Vector>,
+			List<Raster<CPU>>,
+			List<Raster<GPU>>,
+			List<Color>,
+			List<GradientStops>,
+			List<String>,
+			List<NodeId>,
+			List<f64>,
+			List<u8>,
 			GradientStops,
 			Color,
 			NodeId,
@@ -900,22 +976,26 @@ macro_rules! known_table_row_types {
 			Raster<CPU>,
 			Raster<GPU>,
 			Graphic,
+			Artboard,
 		);
 	};
 }
 
 /// Uses `Display` instead of `Debug` for attribute types that have a nicer human-readable format.
 fn display_value_override(any: &dyn Any) -> Option<String> {
+	if let Some(value) = any.downcast_ref::<DVec2>() {
+		return Some(format_dvec2(*value));
+	}
 	if let Some(value) = any.downcast_ref::<BlendMode>() {
 		return Some(value.to_string());
 	}
 	None
 }
 
-/// Type-dispatched widget for displaying an attribute value in a `Table<T>` item.
-/// Delegates to [`TableRowLayout::value_widget`] so the same widget code is shared between
-/// element-column rendering and attribute-column rendering. Returns `None` for unrecognized types so the
-/// caller can fall back to a debug-formatted [`TextLabel`].
+/// Type-dispatched widget for displaying an attribute value in a `List<T>` item.
+/// Delegates to [`TableItemLayout::value_widget`] so the same widget code is shared between
+/// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
+/// types so the caller can fall back to a debug-formatted [`TextLabel`].
 fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
@@ -926,16 +1006,16 @@ fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> 
 			)*
 		};
 	}
-	known_table_row_types!(check);
+	known_item_types!(check);
 	None
 }
 
-/// Renders a `Table<NodeId>` as a path: the standard table view, but each item's `NodeId` value is resolved
+/// Renders a `List<NodeId>` as a path: the standard table view, but each item's `NodeId` value is resolved
 /// against the network path made up of all preceding items. So for a path `[outer, middle, leaf]`, item 0
 /// resolves at root, item 1 resolves at `[outer]`, and item 2 resolves at `[outer, middle]` — letting deeply
 /// nested layers display each step's correct name. Drilling into an item drops into that node's value page
 /// using the same prefix as `network_path`.
-fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut LayoutData) -> Vec<LayoutGroup> {
+fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut LayoutData) -> Vec<LayoutGroup> {
 	data.breadcrumbs.push(path.identifier());
 
 	if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
@@ -970,12 +1050,12 @@ fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut La
 }
 
 /// Type-dispatched recursion into an attribute value for the Data panel breadcrumb navigation.
-/// Mirrors [`dispatch_value_widget`] but routes to [`TableRowLayout::layout_with_breadcrumb`].
+/// Mirrors [`dispatch_value_widget`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
-	// resolves against the prefix made up of preceding items. Handled before the generic `Table<T>` blanket impl.
-	if let Some(path) = any.downcast_ref::<Table<NodeId>>() {
+	// `List<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
+	// resolves against the prefix made up of preceding items. Handled before the generic `List<T>` blanket impl.
+	if let Some(path) = any.downcast_ref::<List<NodeId>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
 	}
 	macro_rules! check {
@@ -987,7 +1067,7 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 			)*
 		};
 	}
-	known_table_row_types!(check);
+	known_item_types!(check);
 	None
 }
 

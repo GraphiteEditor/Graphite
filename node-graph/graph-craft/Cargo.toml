@@ -50,19 +50,33 @@ wasm-bindgen = { workspace = true, optional = true }
 
 # Workspace dependencies
 [target.'cfg(target_family = "wasm")'.dependencies]
-web-sys = { workspace = true, features = ["Navigator", "Gpu"] }
+web-sys = { workspace = true, features = [
+	"Navigator",
+	"DomException",
+	"Window",
+	"StorageManager",
+	"FileSystemDirectoryHandle",
+	"FileSystemFileHandle",
+	"FileSystemGetFileOptions",
+	"FileSystemGetDirectoryOptions",
+	"FileSystemWritableFileStream",
+	"WritableStream",
+	"Blob",
+] }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 winit = { workspace = true }
+mmap-io = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
-iai-callgrind = { workspace = true }
+gungraun = { workspace = true }
 
 # Benchmarks
 [[bench]]
@@ -70,5 +84,5 @@ name = "compile_demo_art_criterion"
 harness = false
 
 [[bench]]
-name = "compile_demo_art_iai"
+name = "compile_demo_art_gungraun"
 harness = false

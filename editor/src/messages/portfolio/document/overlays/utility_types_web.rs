@@ -986,6 +986,7 @@ impl OverlayContext {
 				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 			}
 			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+			ClickTargetType::CompoundPath(compound) => subpaths.extend(compound.iter().cloned()),
 		});
 
 		if !subpaths.is_empty() {
@@ -1039,7 +1040,7 @@ impl OverlayContext {
 		}
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
+		pattern_context.put_image_data(&image_data, 0, 0).unwrap();
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 
 		self.push_path(subpaths, transform);

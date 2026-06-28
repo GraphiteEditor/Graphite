@@ -32,29 +32,44 @@ export function downloadFile(filename: string, content: Uint8Array) {
 export async function upload(accept: string, textOrData: "text"): Promise<UploadResult<string>>;
 export async function upload(accept: string, textOrData: "data"): Promise<UploadResult<Uint8Array>>;
 export async function upload(accept: string, textOrData: "both"): Promise<UploadResult<{ text: string; data: Uint8Array }>>;
-export async function upload(accept: string, textOrData: "text" | "data" | "both"): Promise<UploadResult<string | Uint8Array | { text: string; data: Uint8Array }>> {
+export async function upload(accept: string, textOrData: "data", multiple: true): Promise<UploadResult<Uint8Array>[]>;
+export async function upload(
+	accept: string,
+	textOrData: "text" | "data" | "both",
+	multiple = false,
+): Promise<UploadResult<string | Uint8Array | { text: string; data: Uint8Array }> | UploadResult<Uint8Array>[]> {
 	return new Promise((resolve) => {
 		const element = document.createElement("input");
 		element.type = "file";
 		element.accept = accept;
+		element.multiple = multiple;
 
 		element.addEventListener(
 			"change",
 			async () => {
-				if (element.files?.length) {
-					const file = element.files[0];
+				if (!element.files?.length) return;
 
-					const filename = file.name;
-					const type = file.type;
-					const content =
-						textOrData === "text"
-							? await file.text()
-							: textOrData === "data"
-								? new Uint8Array(await file.arrayBuffer())
-								: { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) };
-
-					resolve({ filename, type, content });
+				// The `multiple: true` overload constrains `textOrData` to "data", so we know each file produces a Uint8Array
+				if (multiple) {
+					const results = await Promise.all(
+						Array.from(element.files).map(async (file) => ({
+							filename: file.name,
+							type: file.type,
+							content: new Uint8Array(await file.arrayBuffer()),
+						})),
+					);
+					resolve(results);
+					return;
 				}
+
+				const file = element.files[0];
+				const content =
+					textOrData === "text"
+						? await file.text()
+						: textOrData === "data"
+							? new Uint8Array(await file.arrayBuffer())
+							: { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) };
+				resolve({ filename: file.name, type: file.type, content });
 			},
 			{ capture: false, once: true },
 		);

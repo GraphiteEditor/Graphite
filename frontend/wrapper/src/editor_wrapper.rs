@@ -9,22 +9,25 @@ use crate::EDITOR;
 #[cfg(not(feature = "native"))]
 use crate::helpers::poll_node_graph_evaluation;
 use crate::helpers::{auto_save_all_documents, calculate_hash, render_image_data_to_canvases, request_animation_frame, set_timeout, translate_key, wrapper};
-use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
+use crate::{EDITOR_HAS_CRASHED, Error, FRONTEND_READY, MESSAGE_BUFFER};
 #[cfg(not(feature = "native"))]
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Editor, Environment, Host, Platform};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
+use editor::messages::portfolio::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::color::SRGBA8;
 use graphene_std::graphene_hash::CacheHashWrapper;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::GradientStops;
+use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -50,7 +53,10 @@ impl EditorWrapper {
 		self.send_frontend_message_to_js(message);
 	}
 
+	#[cfg(any(feature = "native", target_family = "wasm"))]
 	fn initialize_wrapper(frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use crate::{EDITOR_WRAPPER, PANIC_DIALOG_MESSAGE_CALLBACK};
+
 		let panic_callback = frontend_message_handler_callback.clone();
 		let editor_wrapper = EditorWrapper { frontend_message_handler_callback };
 		if EDITOR_WRAPPER.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor_wrapper.clone()))).is_none() {
@@ -67,22 +73,31 @@ impl EditorWrapper {
 	// Editor wrapper machinery
 	// ========================
 
-	#[cfg(not(feature = "native"))]
-	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
-		let editor = Editor::new(
-			Environment {
-				platform: Platform::Web,
-				host: match platform.as_str() {
-					"Linux" => Host::Linux,
-					"Mac" => Host::Mac,
-					"Windows" => Host::Windows,
-					_ => unreachable!(),
-				},
-			},
-			uuid_random_seed,
-		);
+	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use graph_craft::application_io::PlatformApplicationIo;
+		use graph_craft::application_io::resource::*;
 
-		if EDITOR.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+		let host = match platform.as_str() {
+			"Linux" => Host::Linux,
+			"Mac" => Host::Mac,
+			"Windows" => Host::Windows,
+			_ => unreachable!(),
+		};
+
+		let storage: std::sync::Arc<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
+			Ok(storage) => std::sync::Arc::new(storage),
+			Err(error) => {
+				log::error!("Failed to open OPFS resource storage, falling back to in-memory: {error:?}");
+				std::sync::Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new())
+			}
+		};
+
+		let application_io = PlatformApplicationIo::new().await;
+		let wake = crate::helpers::async_wake_callback();
+		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, application_io, wake);
+
+		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
 
@@ -320,52 +335,58 @@ impl EditorWrapper {
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
 	#[wasm_bindgen(js_name = widgetValueUpdate)]
-	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+	pub fn widget_value_update(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)
 	}
 
 	/// Commit the value of a given UI widget to the history
 	#[wasm_bindgen(js_name = widgetValueCommit)]
-	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_commit(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		self.widget_value_commit_helper(layout_target, widget_id, value)
 	}
 
 	/// Update the value of a given UI widget, and commit it to the history
 	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
-	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
-		self.widget_value_commit_helper(layout_target.clone(), widget_id, value.clone())?;
+	pub fn widget_value_commit_and_update(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target, widget_id, value.clone())?;
 		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)?;
+		// Close out a transaction that the widget's `on_commit` opened (if any), so a single click on widgets like the
+		// NumberInput's increment buttons collapses into one history step instead of leaving the transaction in `Modified`
+		self.dispatch(DocumentMessage::EndTransaction);
 		Ok(())
 	}
 
-	pub fn widget_value_update_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+	/// Fire a widget's drag-drop action (e.g. when a draggable item is dropped on a button)
+	#[wasm_bindgen(js_name = widgetValueDragDrop)]
+	pub fn widget_value_drag_drop(&self, layout_target: LayoutTarget, widget_id: u64) {
 		let widget_id = WidgetId(widget_id);
-		match (from_value(layout_target), from_value(value)) {
-			(Ok(layout_target), Ok(value)) => {
-				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
-				self.dispatch(message);
-
-				if resend_widget {
-					let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
-					self.dispatch(resend_message);
-				}
-
-				Ok(())
-			}
-			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
-		}
+		self.dispatch(LayoutMessage::WidgetValueDragDrop { layout_target, widget_id });
 	}
 
-	pub fn widget_value_commit_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
+	#[wasm_bindgen(js_name = endTransaction)]
+	pub fn end_transaction(&self) {
+		self.dispatch(DocumentMessage::EndTransaction);
+	}
+
+	pub fn widget_value_update_helper(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
-		match (from_value(layout_target), from_value(value)) {
-			(Ok(layout_target), Ok(value)) => {
-				let message = LayoutMessage::WidgetValueCommit { layout_target, widget_id, value };
-				self.dispatch(message);
-				Ok(())
-			}
-			(target, val) => Err(Error::new(&format!("Could not commit UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
+		let value: serde_json::Value = from_value(value).map_err(|e| Error::new(&format!("Could not update UI: {e}")))?;
+		let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
+		self.dispatch(message);
+		if resend_widget {
+			let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
+			self.dispatch(resend_message);
 		}
+		Ok(())
+	}
+
+	pub fn widget_value_commit_helper(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		let value: serde_json::Value = from_value(value).map_err(|e| Error::new(&format!("Could not commit UI: {e}")))?;
+		let message = LayoutMessage::WidgetValueCommit { layout_target, widget_id, value };
+		self.dispatch(message);
+		Ok(())
 	}
 
 	#[wasm_bindgen(js_name = loadPreferences)]
@@ -381,14 +402,8 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = loadPersistedState)]
-	pub fn load_persisted_state(&self, state: JsValue) {
-		let Ok(state) = serde_wasm_bindgen::from_value(state) else {
-			log::error!("Failed to deserialize persisted state");
-			return;
-		};
-
-		let message = PersistentStateMessage::LoadState { state };
-		self.dispatch(message);
+	pub fn load_persisted_state(&self, state: editor::messages::frontend::utility_types::PersistedState) {
+		self.dispatch(PersistentStateMessage::LoadState { state });
 	}
 
 	#[wasm_bindgen(js_name = loadDocumentContent)]
@@ -486,9 +501,7 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = splitPanelGroup)]
-	pub fn split_panel_group(&self, target_group: u64, direction: String, tabs: JsValue, active_tab_index: usize) {
-		let direction: DockingSplitDirection = serde_wasm_bindgen::from_value(JsValue::from_str(&direction)).unwrap();
-		let tabs: Vec<PanelType> = serde_wasm_bindgen::from_value(tabs).unwrap();
+	pub fn split_panel_group(&self, target_group: u64, direction: DockingSplitDirection, tabs: Vec<PanelType>, active_tab_index: usize) {
 		let message = PortfolioMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
@@ -499,9 +512,8 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = setPanelGroupSizes)]
-	pub fn set_panel_group_sizes(&self, split_path: JsValue, sizes: JsValue) {
-		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
-		let sizes: Vec<f64> = serde_wasm_bindgen::from_value(sizes).unwrap();
+	pub fn set_panel_group_sizes(&self, split_path: Vec<u32>, sizes: Vec<f64>) {
+		let split_path = split_path.into_iter().map(|i| i as usize).collect();
 		let message = PortfolioMessage::SetPanelGroupSizes { split_path, sizes };
 		self.dispatch(message);
 	}
@@ -635,26 +647,6 @@ impl EditorWrapper {
 		Ok(())
 	}
 
-	/// The font catalog has been loaded
-	#[wasm_bindgen(js_name = onFontCatalogLoad)]
-	pub fn on_font_catalog_load(&self, catalog: JsValue) -> Result<(), JsValue> {
-		// Deserializing from TS type: `{ name: string; styles: { weight: number, italic: boolean, url: string }[] }[]`
-		let families = serde_wasm_bindgen::from_value::<Vec<FontCatalogFamily>>(catalog)?;
-		let message = PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(families) };
-		self.dispatch(message);
-
-		Ok(())
-	}
-
-	/// A font has been downloaded
-	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, data: Vec<u8>) -> Result<(), JsValue> {
-		let message = PortfolioMessage::FontLoaded { font_family, font_style, data };
-		self.dispatch(message);
-
-		Ok(())
-	}
-
 	/// Dialog got dismissed
 	#[wasm_bindgen(js_name = onDialogDismiss)]
 	pub fn on_dialog_dismiss(&self) {
@@ -671,46 +663,41 @@ impl EditorWrapper {
 		Ok(())
 	}
 
-	/// Update primary color with values on a scale from 0 to 1.
+	/// Update primary color from sRGB bytes (the wire format at the JS boundary).
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
-	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let Some(primary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
-			return Err(Error::new("Invalid color").into());
-		};
-
-		let message = ToolMessage::SelectWorkingColor {
-			color: primary_color.to_linear_srgb(),
+	pub fn update_primary_color(&self, color: SRGBA8) {
+		self.dispatch(ToolMessage::SelectWorkingColor {
+			color: Color::from(color),
 			primary: true,
-		};
-		self.dispatch(message);
-
-		Ok(())
+		});
 	}
 
-	/// Update secondary color with values on a scale from 0 to 1.
+	/// Update secondary color from sRGB bytes (the wire format at the JS boundary).
 	#[wasm_bindgen(js_name = updateSecondaryColor)]
-	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let Some(secondary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
-			return Err(Error::new("Invalid color").into());
-		};
-
-		let message = ToolMessage::SelectWorkingColor {
-			color: secondary_color.to_linear_srgb(),
+	pub fn update_secondary_color(&self, color: SRGBA8) {
+		self.dispatch(ToolMessage::SelectWorkingColor {
+			color: Color::from(color),
 			primary: false,
-		};
-		self.dispatch(message);
-
-		Ok(())
+		});
 	}
 
-	/// Update the color of the currently-edited gradient stop
+	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
+	#[wasm_bindgen(js_name = openColorPicker)]
+	pub fn open_color_picker(&self, initial_value: FillChoiceUI, allow_none: bool, disabled: bool) {
+		let initial_value = FillChoice::from(&initial_value);
+		self.dispatch(ColorPickerMessage::Open { initial_value, allow_none, disabled });
+	}
+
+	/// Tell the Rust color picker handler that the popover is closing.
+	#[wasm_bindgen(js_name = closeColorPicker)]
+	pub fn close_color_picker(&self) {
+		self.dispatch(ColorPickerMessage::Close);
+	}
+
+	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
 	#[wasm_bindgen(js_name = updateGradientStopColor)]
-	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
-			return Err(Error::new("Invalid color").into());
-		};
-		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
-		Ok(())
+	pub fn update_gradient_stop_color(&self, color: SRGBA8) {
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: Color::from(color) });
 	}
 
 	/// Start a new undo transaction for gradient stop color editing
@@ -764,6 +751,18 @@ impl EditorWrapper {
 
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
+			insert_index: insert_index.unwrap_or_default(),
+		};
+		self.dispatch(message);
+	}
+
+	/// Duplicate the selected layers, placing the copies within the given folder at the given index.
+	/// If the folder is `None`, they are inserted into the document root.
+	/// If the insert index is `None`, they are inserted at the start of the folder.
+	#[wasm_bindgen(js_name = duplicateLayerInTree)]
+	pub fn duplicate_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let message = DocumentMessage::DuplicateSelectedLayersTo {
+			parent: insert_parent_id.map(NodeId).map(LayerNodeIdentifier::new_unchecked).unwrap_or_default(),
 			insert_index: insert_index.unwrap_or_default(),
 		};
 		self.dispatch(message);
@@ -998,27 +997,4 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 		return None;
 	};
 	Some(real)
-}
-
-#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
-pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
-	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
-	GradientStops { position, midpoint, color }
-		.interpolated_samples()
-		.into_iter()
-		.map(|(position, color, _)| {
-			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
-			let percent = ((position * 100.) * 1e2).round() / 1e2;
-			format!("#{hex} {percent}%")
-		})
-		.collect::<Vec<_>>()
-		.join(", ")
-}
-
-#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
-pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> JsValue {
-	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
-	let color = GradientStops { position, midpoint, color }.evaluate(t);
-
-	serde_wasm_bindgen::to_value(&color).unwrap()
 }

@@ -3,9 +3,12 @@ mod portfolio_message_handler;
 
 pub mod document;
 pub mod document_migration;
+pub mod fonts;
 pub mod persistent_state;
 pub mod utility_types;
 
+#[doc(inline)]
+pub use fonts::{FontsMessage, FontsMessageContext, FontsMessageHandler};
 #[doc(inline)]
 pub use persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 #[doc(inline)]

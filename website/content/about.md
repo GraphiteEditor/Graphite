@@ -108,13 +108,13 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 ---
 
-<div class="diptych">
+<div class="triptych">
 
 <div class="block" id="keavon">
 
 <img src="https://static.graphite.art/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
-## Keavon Chambers <span class="handle">(@Keavon)</span> <img src="https://static.graphite.art/icons/flags/us.png" class="flag" title="American" />
+## Keavon Chambers<br /><span class="handle">(@Keavon)</span> <img src="https://static.graphite.art/icons/flags/us.png" class="flag" title="American" />
 
 ***Founder, UI & product design, frontend, editor systems***
 
@@ -125,38 +125,22 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 
 <img src="https://static.graphite.art/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
-## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <img src="https://static.graphite.art/icons/flags/de.png" class="flag" title="German" />
+## Dennis Kobert<br /><span class="handle">(@TrueDoctor)</span> <img src="https://static.graphite.art/icons/flags/de.png" class="flag" title="German" />
 
 ***Graphene node engine, research, architecture***
 
 Dennis is a mix between a mathematician and a mad scientist. While still enjoying the art of photography and image editing (which drew him to the project early on), he thrives when challenged with designing complex systems and pushing boundaries. His method of building generalized solutions wrapped in elegant layers of abstraction led to his creation of the Graphene engine.
 
 </div>
-
-</div>
-<div class="diptych">
-
 <div class="block" id="timon">
 
 <img src="https://static.graphite.art/content/about/core-team-photo-timon-schelling.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Timon Schelling" />
 
-## Timon Schelling <span class="handle">(@timon-schelling)</span> <img src="https://static.graphite.art/icons/flags/de.png" class="flag" title="German" />
+## Timon Schelling<br /><span class="handle">(@timon-schelling)</span> <img src="https://static.graphite.art/icons/flags/de.png" class="flag" title="German" />
 
 ***Desktop application engineering***
 
 Timon believes open source tools are essential to grant digital artists freedom in access, creativity, and expression. He builds and maintains Graphite's native desktop app, ensuring its polish, reliability, and cross-platform consistency. Drawn to Graphite by its vision of procedural, nondestructive, expansive 2D art tools, he works to make that vision usable by as many people as possible.
-
-</div>
-
-<div class="block" id="adam">
-
-<img src="https://static.graphite.art/content/about/core-team-photo-adam-gerhant.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Adam Gerhant" />
-
-## Adam Gerhant <span class="handle">(@pendapia)</span> <img src="https://static.graphite.art/icons/flags/us.png" class="flag" title="American" />
-
-***Editor node graph tooling***
-
-Adam is a pragmatic problem solver with a talent for simplifying complexity. He is responsible for various architectural decisions which provide future proof integrations between the Graphene engine and editor. His work has greatly improved the performance, stability and code quality of the project, while also setting the stage for additional features.
 
 </div>
 

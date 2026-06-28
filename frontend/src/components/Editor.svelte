@@ -2,13 +2,13 @@
 	import { onMount, onDestroy, setContext } from "svelte";
 	import MainWindow from "/src/components/window/MainWindow.svelte";
 	import { createClipboardManager, destroyClipboardManager } from "/src/managers/clipboard";
-	import { createFontsManager, destroyFontsManager } from "/src/managers/fonts";
 	import { createHyperlinkManager, destroyHyperlinkManager } from "/src/managers/hyperlink";
 	import { createInputManager, destroyInputManager } from "/src/managers/input";
 	import { createLocalizationManager, destroyLocalizationManager } from "/src/managers/localization";
 	import { createPanicManager, destroyPanicManager } from "/src/managers/panic";
 	import { createPersistenceManager, destroyPersistenceManager } from "/src/managers/persistence";
 	import { createAppWindowStore, destroyAppWindowStore } from "/src/stores/app-window";
+	import { createColorPickerStore, destroyColorPickerStore } from "/src/stores/color-picker";
 	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
 	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
 	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
@@ -32,6 +32,7 @@
 		nodeGraph: createNodeGraphStore(subscriptions),
 		portfolio: createPortfolioStore(subscriptions, editor),
 		appWindow: createAppWindowStore(subscriptions),
+		colorPicker: createColorPickerStore(subscriptions),
 	};
 	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
 
@@ -41,7 +42,6 @@
 		createLocalizationManager(subscriptions, editor);
 		createPanicManager(subscriptions);
 		createPersistenceManager(subscriptions, editor, stores.portfolio);
-		createFontsManager(subscriptions, editor);
 		createInputManager(subscriptions, editor, stores.dialog, stores.portfolio, stores.document);
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
@@ -61,6 +61,7 @@
 		destroyNodeGraphStore();
 		destroyPortfolioStore();
 		destroyAppWindowStore();
+		destroyColorPickerStore();
 
 		// Managers
 		destroyClipboardManager();
@@ -68,7 +69,6 @@
 		destroyLocalizationManager();
 		destroyPanicManager();
 		destroyPersistenceManager();
-		destroyFontsManager();
 		destroyInputManager();
 	});
 </script>
@@ -143,6 +143,8 @@
 		--color-data-typography-dim: #955252;
 		--color-data-invalid: #d6536e; // Same as --color-error-red
 		--color-data-invalid-dim: #a7324a;
+
+		--color-overlay-blue: #00a8ff;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;
@@ -323,7 +325,7 @@
 	.icon-button,
 	.text-button,
 	.popover-button,
-	.color-button > button,
+	.color-input > button,
 	.color-picker .preset-color,
 	.working-colors-input .swatch > button,
 	.radio-input button,

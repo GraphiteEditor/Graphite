@@ -1,6 +1,6 @@
 use core_types::context::Ctx;
+use core_types::list::List;
 use core_types::registry::types::Percentage;
-use core_types::table::Table;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use raster_types::Image;
@@ -8,7 +8,7 @@ use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percentage) -> Table<Raster<CPU>> {
+async fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentage) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {
@@ -49,7 +49,7 @@ const TX: f32 = 0.1;
 // Paper: <https://www.researchgate.net/publication/220182411_Single_Image_Haze_Removal_Using_Dark_Channel_Prior>
 // TODO: Make this algorithm work with negative strength values
 fn dehaze_image(image: DynamicImage, strength: f64) -> DynamicImage {
-	// TODO: Break out this pair of steps into its own node, with a memoize node which caches the pair of outputs, so the strength can be adjusted without recomputing these two steps.
+	// TODO: Break out this pair of steps into its own node, with a Memoize node which caches the pair of outputs, so the strength can be adjusted without recomputing these two steps.
 	let dark_channel = compute_dark_channel(&image);
 	let atmospheric_light = estimate_atmospheric_light(&image, &dark_channel);
 

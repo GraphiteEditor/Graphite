@@ -4,13 +4,13 @@ pub mod bounds;
 pub mod consts;
 pub mod context;
 pub mod generic;
+pub mod list;
 pub mod math;
 pub mod memo;
 pub mod misc;
 pub mod ops;
 pub mod registry;
 pub mod render_complexity;
-pub mod table;
 pub mod transform;
 pub mod uuid;
 pub mod value;
@@ -23,6 +23,10 @@ pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use graphene_hash;
 pub use graphene_hash::CacheHash;
+pub use list::{
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_END,
+	ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_START, ATTR_TRANSFORM, ATTR_TYPE,
+};
 pub use memo::MemoHash;
 pub use no_std_types::AsU32;
 pub use no_std_types::blending;
@@ -33,10 +37,6 @@ pub use num_traits;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
-pub use table::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_END, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_NAME,
-	ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_START, ATTR_TRANSFORM, ATTR_TYPE,
-};
 #[cfg(feature = "wasm")]
 pub use tsify;
 pub use types::Cow;

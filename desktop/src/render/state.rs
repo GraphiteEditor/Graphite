@@ -120,7 +120,7 @@ impl RenderState {
 
 		let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Render Pipeline Layout"),
-			bind_group_layouts: &[&texture_bind_group_layout],
+			bind_group_layouts: &[Some(&texture_bind_group_layout)],
 			immediate_size: size_of::<Immediates>() as u32,
 		});
 
@@ -174,8 +174,8 @@ impl RenderState {
 			sampler,
 			desired_width: size.width,
 			desired_height: size.height,
-			viewport_scale: [1.0, 1.0],
-			viewport_offset: [0.0, 0.0],
+			viewport_scale: [1., 1.],
+			viewport_offset: [0., 0.],
 			viewport_texture: None,
 			overlays_texture: None,
 			ui_texture: None,
@@ -262,7 +262,17 @@ impl RenderState {
 			self.render_overlays(scene);
 		}
 
-		let output = self.surface.get_current_texture().map_err(RenderError::SurfaceError)?;
+		let (output, suboptimal) = match self.surface.get_current_texture() {
+			wgpu::CurrentSurfaceTexture::Success(t) => (t, false),
+			// wgpu reports the swapchain no longer matches the underlying surface; present this frame and reconfigure after present, since `Surface::configure` panics while an acquired `SurfaceTexture` is still alive
+			wgpu::CurrentSurfaceTexture::Suboptimal(t) => (t, true),
+			// Window is minimized or behind another window: skip the frame silently and try again once it becomes visible
+			wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
+			wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
+			wgpu::CurrentSurfaceTexture::Outdated => return Err(RenderError::SurfaceOutdated),
+			wgpu::CurrentSurfaceTexture::Timeout => return Err(RenderError::SurfaceTimeout),
+			wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
+		};
 
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -308,6 +318,10 @@ impl RenderState {
 		window.pre_present_notify();
 		output.present();
 
+		if suboptimal {
+			self.surface.configure(&self.context.device, &self.config);
+		}
+
 		if ui_scale.is_some() {
 			return Err(RenderError::OutdatedUITextureError);
 		}
@@ -349,9 +363,13 @@ impl RenderState {
 	}
 }
 
+#[derive(Debug)]
 pub(crate) enum RenderError {
 	OutdatedUITextureError,
-	SurfaceError(wgpu::SurfaceError),
+	SurfaceLost,
+	SurfaceOutdated,
+	SurfaceTimeout,
+	SurfaceValidation,
 }
 
 #[repr(C)]

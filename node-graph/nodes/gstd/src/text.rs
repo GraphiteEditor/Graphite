@@ -1,22 +1,21 @@
-use core_types::{Ctx, table::Table};
-use graph_craft::application_io::PlatformEditorApi;
+use core_types::Ctx;
+use core_types::list::List;
+use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
 
 /// Draws a text string as vector geometry with a choice of font and styling.
 #[node_macro::node(category("Text"))]
-fn text<'i: 'n>(
+fn text(
 	_: impl Ctx,
-	/// The Graphite editor's source for global font resources.
-	#[scope("editor-api")]
-	editor_resources: &'i PlatformEditorApi,
+	_primary: (),
 	/// The text content to be drawn.
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	#[default("Lorem ipsum")]
 	text: String,
-	/// The typeface used to draw the text.
+	/// The loaded font file used to draw the text. The editor resolves the chosen typeface to these bytes via the resource system.
 	#[widget(ParsedWidgetOverride::Custom = "text_font")]
-	font: Font,
+	font: Resource,
 	/// The font size used to draw the text.
 	#[unit(" px")]
 	#[default(24.)]
@@ -59,9 +58,9 @@ fn text<'i: 'n>(
 	/// To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
-	/// Whether to split every letterform into its own vector path element. Otherwise, a single compound path is produced.
-	separate_glyph_elements: bool,
-) -> Table<Vector> {
+	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
+	separate_glyphs: bool,
+) -> List<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size: size,
 		line_height_ratio: line_height,
@@ -72,5 +71,5 @@ fn text<'i: 'n>(
 		align,
 	};
 
-	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyph_elements)
+	to_path(&text, &font, typesetting, separate_glyphs)
 }

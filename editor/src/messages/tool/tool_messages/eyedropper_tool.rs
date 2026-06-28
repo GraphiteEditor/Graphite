@@ -1,6 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::frontend::utility_types::EyedropperPreviewImage;
 use crate::messages::tool::utility_types::DocumentToolData;
+use graphene_std::color::SRGBA8;
 use graphene_std::vector::style::RenderMode;
 
 #[derive(Default, ExtractField)]
@@ -233,8 +234,8 @@ fn update_cursor_preview_common(
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
 		image,
 		mouse_position: Some(input.mouse.position.into()),
-		primary_color: "#".to_string() + global_tool_data.primary_color.to_rgb_hex_srgb().as_str(),
-		secondary_color: "#".to_string() + global_tool_data.secondary_color.to_rgb_hex_srgb().as_str(),
+		primary_color: SRGBA8::from(global_tool_data.primary_color).to_css_hex(),
+		secondary_color: SRGBA8::from(global_tool_data.secondary_color).to_css_hex(),
 		set_color_choice,
 	});
 }

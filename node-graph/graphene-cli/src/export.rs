@@ -82,6 +82,7 @@ pub async fn export_document(
 				// Encode and write raster image when buffer is already provided
 				write_raster_image(output_path, file_type, data, width, height, transparent)?;
 			}
+			#[cfg(target_family = "wasm")]
 			other => {
 				return Err(format!("Unexpected render output type: {:?}. Expected Texture, Buffer for raster export or Svg for SVG export.", other).into());
 			}
@@ -145,7 +146,7 @@ impl AnimationParams {
 
 	/// Get the frame delay in centiseconds (GIF uses 10ms units)
 	pub fn frame_delay_centiseconds(&self) -> u16 {
-		((100.0 / self.fps).round() as u16).max(1)
+		((100. / self.fps).round() as u16).max(1)
 	}
 }
 

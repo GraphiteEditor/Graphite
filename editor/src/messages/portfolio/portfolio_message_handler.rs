@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::{CachedData, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
+use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
@@ -26,15 +26,16 @@ use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::BezierHandles;
-use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::vec;
 
 #[derive(ExtractField)]
@@ -46,16 +47,27 @@ pub struct PortfolioMessageContext<'a> {
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	unloaded_documents: HashMap<DocumentId, DocumentInfo>,
+	/// Pairs of `(info, raw serialized content)` for autosaved documents that failed to deserialize.
+	/// The info entries are folded back into `persisted_state_snapshot` so their on-disk autosave files survive garbage collection.
+	// TODO: Eventually remove this document upgrade code
+	failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
+	/// In-flight count of autosaved-document loads from the initial startup batch; the batched failure dialog fires when this hits 0.
+	// TODO: Eventually remove this document upgrade code
+	pending_initial_autosave_loads: usize,
+	/// Background eager loads whose trailing `SelectDocument` should be suppressed to keep focus on the user's active doc.
+	// TODO: Eventually remove this document upgrade code
+	pending_eager_loads: HashSet<DocumentId>,
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
-	pub cached_data: CachedData,
+	pub fonts: FontsMessageHandler,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
@@ -74,6 +86,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
+			resource_storage,
 		} = context;
 
 		match message {
@@ -85,11 +98,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						cached_data: &self.cached_data,
+						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
 						viewport,
+						resource_storage,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -102,6 +116,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					persisted_state: self.persisted_state_snapshot(),
 				};
 				self.persistent_state.process_message(message, responses, context);
+			}
+			PortfolioMessage::Fonts(message) => {
+				let context = FontsMessageContext { resource_storage };
+				self.fonts.process_message(message, responses, context);
 			}
 
 			// Messages
@@ -154,11 +172,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						cached_data: &self.cached_data,
+						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
 						viewport,
+						resource_storage,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -183,6 +202,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
 					}
 				}
+
+				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let Some(document) = self.document(document_id) else { return };
@@ -190,6 +211,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_id,
 					document: document.serialize_document(),
 				});
+				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
 				if let Some(document_id) = self.active_document_id {
@@ -368,86 +390,41 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
-			PortfolioMessage::FontCatalogLoaded { catalog } => {
-				self.cached_data.font_catalog = catalog;
-
-				if let Some(document_id) = self.active_document_id {
-					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
-				}
-
-				// Load the default font
-				let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
-				responses.add(PortfolioMessage::LoadFontData { font });
-			}
-			PortfolioMessage::LoadFontData { font } => {
-				if let Some(style) = self.cached_data.font_catalog.find_font_style_in_catalog(&font) {
-					let font = Font::new(font.font_family, style.to_named_style());
-
-					if !self.cached_data.font_cache.loaded_font(&font) {
-						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
-					}
-				}
-			}
-			PortfolioMessage::FontLoaded { font_family, font_style, data } => {
-				let font = Font::new(font_family, font_style);
-				self.cached_data.font_cache.insert(font, data);
-				self.executor.update_font_cache(self.cached_data.font_cache.clone());
-
-				for document_id in self.document_ids.iter() {
-					let node_to_inspect = self.node_to_inspect();
-
-					let Some(document) = self.documents.get_mut(document_id) else {
-						if self.unloaded_documents.contains_key(document_id) {
-							continue;
-						}
-						log::error!("Tried to render non-existent document");
-						continue;
-					};
-
-					let document_to_viewport = document
-						.navigation_handler
-						.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
-					let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-
-					let scale = viewport.scale();
-					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
-					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
-
-					// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
-					// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
-					#[cfg(not(target_family = "wasm"))]
-					responses.add_front(FrontendMessage::UpdateViewportHolePunch {
-						active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
-					});
-
-					if let Ok(message) = self
-						.executor
-						.submit_node_graph_evaluation(document, *document_id, physical_resolution, scale, timing_information, node_to_inspect, true, pointer_position)
-					{
-						responses.add_front(message);
-					}
-				}
-
-				if self.active_document_mut().is_some() {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
-				if current_tool == &ToolType::Text {
-					responses.add(TextToolMessage::RefreshEditingFontData);
-				}
-			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::LoadDocumentResources { document_id } => {
-				let catalog = &self.cached_data.font_catalog;
-
-				if catalog.0.is_empty() {
-					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+			PortfolioMessage::GarbageCollectResources => {
+				if !self.persistent_state.loaded() {
+					// We don't know what can be safely garbage collected
 					return;
 				}
 
-				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.load_layer_resources(responses);
+				let mut used_resources = HashSet::new();
+				for (id, info) in self.unloaded_documents.iter() {
+					if let Some(resources) = &info.resources {
+						used_resources.extend(resources.iter());
+					} else {
+						responses.add(PersistentStateMessage::ReadDocument { document_id: *id });
+						return;
+					}
 				}
+				for document in self.documents.values_mut() {
+					document.garbage_collect_resources();
+					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
+				}
+				used_resources.extend(self.fonts.used_resources());
+				responses.add(ResourceStorageMessage::GarbageCollect {
+					used: Vec::from_iter(used_resources).into_boxed_slice(),
+				});
+			}
+			PortfolioMessage::ResolveResources => {
+				for document_id in self.document_ids.iter().copied().collect::<Vec<_>>() {
+					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
+				}
+			}
+			PortfolioMessage::ResolveDocumentResources { document_id } => {
+				responses.add(PortfolioMessage::DocumentPassMessage {
+					document_id,
+					message: DocumentMessage::Resource(ResourceMessage::ResolveAll),
+				});
 			}
 			PortfolioMessage::LoadPersistedState { state } => {
 				if let Some(layout) = state.workspace_layout {
@@ -468,11 +445,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					workspace_layout: _,
 				} = state;
 
+				// TODO: Eventually remove this document upgrade code
+				let mut newly_unloaded_ids = Vec::new();
+
 				for info in documents {
 					if !self.document_ids.contains(&info.id) {
 						self.document_ids.push_back(info.id);
 					}
-					if !self.documents.contains_key(&info.id) {
+					if !self.documents.contains_key(&info.id) && !self.unloaded_documents.contains_key(&info.id) {
+						// TODO: Eventually remove this document upgrade code
+						newly_unloaded_ids.push(info.id);
+
 						self.unloaded_documents.insert(info.id, info);
 					}
 				}
@@ -480,8 +463,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 				let select_document_id = current_document.filter(|id| self.document_ids.contains(id)).or_else(|| self.document_ids.front().copied());
+
+				// Eagerly load every autosaved doc on startup so deserialization failures can be reported in one batched dialog at the end.
+				// The active doc's read is deferred to the `SelectDocument` below, but is still counted.
+				// TODO: Eventually remove this document upgrade code
+				self.pending_initial_autosave_loads = self.pending_initial_autosave_loads.saturating_add(newly_unloaded_ids.len());
+
+				// TODO: Eventually remove this document upgrade code
+				for document_id in &newly_unloaded_ids {
+					if Some(*document_id) != select_document_id {
+						self.pending_eager_loads.insert(*document_id);
+						responses.add(PersistentStateMessage::ReadDocument { document_id: *document_id });
+					}
+				}
+
 				if let Some(document_id) = select_document_id {
 					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
+				// TODO: Eventually remove this document upgrade code
+				else if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+					responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
 				}
 			}
 			PortfolioMessage::LoadDocumentContent {
@@ -501,7 +502,85 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_is_saved: info.is_saved,
 					document_serialized_content,
 				});
-				responses.add(PortfolioMessage::SelectDocument { document_id });
+
+				// Suppress auto-select for startup eager loads to keep focus on the user's active doc
+				// TODO: Eventually remove this document upgrade code
+				// TODO: (But keep the inner logic unconditionally, just remove the condition)
+				if !self.pending_eager_loads.remove(&document_id) {
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
+			}
+			// TODO: Eventually remove this document upgrade code
+			PortfolioMessage::ShowFailedToLoadDocumentsDialog => {
+				if self.failed_to_load_documents.is_empty() {
+					return;
+				}
+				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| display_name_with_fallback(info)).collect();
+				let dialog = simple_dialogs::FailedToLoadDocumentsDialog { failed_document_names };
+				dialog.send_dialog_to_frontend(responses);
+			}
+			// TODO: Eventually remove this document upgrade code
+			PortfolioMessage::DiscardFailedToLoadDocuments => {
+				let failed = std::mem::take(&mut self.failed_to_load_documents);
+				for document_id in failed.keys() {
+					self.document_ids.retain(|id| id != document_id);
+					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
+				}
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(PersistentStateMessage::WriteState);
+			}
+			// TODO: Eventually remove this document upgrade code
+			PortfolioMessage::DownloadFailedToLoadDocuments => {
+				if self.failed_to_load_documents.is_empty() {
+					return;
+				}
+
+				let mut used_names: HashMap<String, u32> = HashMap::new();
+				let files: Vec<(String, Vec<u8>)> = self
+					.failed_to_load_documents
+					.values()
+					.map(|(info, content)| {
+						let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
+						let base = format!("{stem}.{FILE_EXTENSION}");
+						let unique = match used_names.get(&base).copied() {
+							None => {
+								used_names.insert(base.clone(), 1);
+								base
+							}
+							Some(n) => {
+								used_names.insert(base.clone(), n + 1);
+								format!("{stem} ({n}).{FILE_EXTENSION}")
+							}
+						};
+						(unique, content.as_bytes().to_vec())
+					})
+					.collect();
+
+				const FOLDER_NAME: &str = "Graphite Recovered Documents";
+
+				if files.len() == 1 {
+					let (filename, content) = files.into_iter().next().expect("just checked there's one entry");
+					responses.add(FrontendMessage::TriggerSaveFile {
+						name: filename,
+						folder: None,
+						content: serde_bytes::ByteBuf::from(content),
+					});
+				} else {
+					match build_recovery_zip(&files) {
+						Ok(zip_bytes) => responses.add(FrontendMessage::TriggerSaveFile {
+							name: format!("{FOLDER_NAME}.zip"),
+							folder: None,
+							content: serde_bytes::ByteBuf::from(zip_bytes),
+						}),
+						Err(e) => {
+							log::error!("Failed to build recovery zip: {e}");
+							responses.add(DialogMessage::DisplayDialogError {
+								title: "Failed to download".to_string(),
+								description: format!("Could not bundle the failed documents for download.\n\n{e}"),
+							});
+						}
+					}
+				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
@@ -736,6 +815,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let reset_node_definitions_on_open = reset_node_definitions_on_open || document_migration_reset_node_definition(&document_serialized_content);
 				// Upgrade the document being opened with string replacements on the original JSON
 				let document_serialized_content = document_migration_string_preprocessing(document_serialized_content);
+				// Upgrade resources from being referend by hash to beeing referened by ID
+				let (document_serialized_content, resource_hash_to_id_migration_map) = document_migration_replace_resources_referenced_by_hash(document_serialized_content);
 
 				// Deserialize the document
 				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content);
@@ -744,11 +825,37 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut document = match document {
 					Ok(document) => document,
 					Err(e) => {
-						if !document_is_auto_saved {
-							responses.add(DialogMessage::DisplayDialogError {
-								title: "Failed to open document".to_string(),
-								description: e.to_string(),
-							});
+						log::error!("{e}");
+						// TODO: Eventually remove this document upgrade code
+						// TODO: (Only the `if` branch, the `else` branch's manual-open dialog stays)
+						if document_is_auto_saved {
+							let name = document_name.unwrap_or_default();
+							let info = DocumentInfo {
+								id: document_id,
+								name,
+								resources: None,
+								path: document_path,
+								is_saved: document_is_saved,
+							};
+							self.document_ids.retain(|id| id != &document_id);
+							self.failed_to_load_documents.insert(document_id, (info, document_serialized_content));
+
+							if self.active_document_id == Some(document_id) {
+								self.active_document_id = None;
+								if let Some(next_id) = self.document_ids.front().copied() {
+									responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
+								}
+							}
+
+							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+							self.tick_autosave_load_progress(responses, true);
+						} else {
+							let name = document_name
+								.filter(|n| !n.trim().is_empty())
+								.or_else(|| document_path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()))
+								.unwrap_or_default();
+							let dialog = simple_dialogs::FailedToOpenDocumentDialog { document_name: name };
+							dialog.send_dialog_to_frontend(responses);
 						}
 
 						return;
@@ -757,6 +864,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Upgrade the document's nodes to be compatible with the latest version
 				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
+
+				// Load the document's embedded resources into the resource storage
+				std::mem::take(&mut document.resources.embedded).into_iter().for_each(|(hash, resource)| {
+					let data: Arc<[u8]> = Arc::from(resource.as_ref());
+					if ResourceHash::from(data.as_ref()) != hash {
+						log::error!("Resource hash mismatch for resource with hash {hash}");
+						return;
+					}
+					responses.add(ResourceStorageMessage::Store { data });
+
+					// TODO: Eventually remove this document upgrade code
+					// Register any resources that were previously referenced by hash
+					if let Some(id) = resource_hash_to_id_migration_map.get(&hash)
+						&& !document.resources.registry.contains(id)
+					{
+						document.resources.registry.resolve(id, hash);
+						document.resources.registry.push_source_back(id, DataSource::Embedded);
+					}
+				});
 
 				// Ensure each node has the metadata for its inputs
 				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
@@ -819,6 +945,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, responses);
+
+				responses.add(AppWindowMessage::Focus);
+
+				// TODO: Eventually remove this document upgrade code
+				if document_is_auto_saved {
+					self.tick_autosave_load_progress(responses, false);
+				}
 			}
 			PortfolioMessage::OpenImage { name, image } => {
 				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
@@ -942,7 +1075,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								added_nodes = true;
 							}
 
-							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							all_new_ids.extend(new_ids.values().cloned());
@@ -997,13 +1129,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 
 						// Add default fill and stroke to the layer
-						let fill_color = Color::WHITE;
-						let stroke_color = Color::BLACK;
-
-						let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
 						responses.add(GraphOperationMessage::FillSet { layer, fill });
 
-						let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+						let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
 						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 
 						// Create new point ids and add those into the existing Vector path
@@ -1289,7 +1418,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC4").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC5").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
@@ -1430,7 +1559,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				if !document.is_loaded {
 					document.is_loaded = true;
-					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
 				}
@@ -1475,6 +1604,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					log::error!("Tried to render non-existent document {:?}", document_id);
 					return;
 				};
+
+				// Skip rendering while any resource is still unresolved — the preprocessor would otherwise fail with
+				// `ResourceNotFound`. `ResourceMessage::Resolved` queues `RunDocumentGraph` once each id resolves,
+				// so the render fires automatically once the registry is complete.
+				if document.resources.registry.unresolved().next().is_some() {
+					return;
+				}
 
 				let document_to_viewport = document
 					.navigation_handler
@@ -1731,7 +1867,13 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn persisted_state_snapshot(&self) -> PersistedState {
-		let documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+		let mut documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+
+		// Keep failed-to-load docs referenced in `state.documents` so their autosave files survive `garbage_collect_document_files`
+		// TODO: Eventually remove this document upgrade code
+		for (info, _) in self.failed_to_load_documents.values() {
+			documents.push(info.clone());
+		}
 
 		PersistedState {
 			documents,
@@ -1772,6 +1914,18 @@ impl PortfolioMessageHandler {
 		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
 			_ => format!("{DEFAULT_DOCUMENT_NAME} {new_doc_title_num}"),
+		}
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	fn tick_autosave_load_progress(&mut self, responses: &mut VecDeque<Message>, failed: bool) {
+		if self.pending_initial_autosave_loads > 0 {
+			self.pending_initial_autosave_loads -= 1;
+			if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+				responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
+			}
+		} else if failed {
+			responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
 		}
 	}
 
@@ -1870,6 +2024,7 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
+				resources: Some(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()).collect::<Vec<_>>().into_boxed_slice()),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()
@@ -1933,6 +2088,7 @@ impl PortfolioMessageHandler {
 		} else {
 			// Panel is not present, restore it to its default position in the layout tree
 			self.workspace_panel_layout.restore_panel(panel_type);
+			self.workspace_panel_layout.prune();
 			self.refresh_panel_content(panel_type, responses);
 		}
 
@@ -1981,4 +2137,77 @@ impl PortfolioMessageHandler {
 			}
 		}
 	}
+}
+
+// TODO: Eventually remove this document upgrade code
+fn display_name_with_fallback(info: &DocumentInfo) -> String {
+	if info.name.trim().is_empty() {
+		format!("Untitled Document ({:x})", info.id.0)
+	} else {
+		info.name.clone()
+	}
+}
+
+/// Returns `None` if the name has no safe filename characters left or matches a Windows reserved device name, so callers fall back to an ID-based stem.
+// TODO: Eventually remove this document upgrade code
+fn sanitize_filename_stem(name: &str) -> Option<String> {
+	let replaced: String = name
+		.chars()
+		.map(|c| {
+			if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+				'_'
+			} else {
+				c
+			}
+		})
+		.collect();
+
+	// Trim dots to avoid `.` / `..` resolving against the parent directory, and to dodge Windows' trailing-dot/space quirks
+	let trimmed = replaced.trim().trim_matches('.').trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+
+	// Windows rejects these regardless of extension; superscript digits are normalized equivalently by some path APIs
+	let first_segment = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
+	if matches!(
+		first_segment.as_str(),
+		"CON"
+			| "PRN" | "AUX"
+			| "NUL" | "COM1"
+			| "COM2" | "COM3"
+			| "COM4" | "COM5"
+			| "COM6" | "COM7"
+			| "COM8" | "COM9"
+			| "COM¹" | "COM²"
+			| "COM³" | "LPT1"
+			| "LPT2" | "LPT3"
+			| "LPT4" | "LPT5"
+			| "LPT6" | "LPT7"
+			| "LPT8" | "LPT9"
+			| "LPT¹" | "LPT²"
+			| "LPT³"
+	) {
+		return None;
+	}
+
+	Some(trimmed.to_string())
+}
+
+// TODO: Eventually remove this document upgrade code
+fn build_recovery_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+	use std::io::{Cursor, Write};
+	use zip::write::{SimpleFileOptions, ZipWriter};
+
+	let mut buffer = Cursor::new(Vec::<u8>::new());
+	let mut writer = ZipWriter::new(&mut buffer);
+	let options: SimpleFileOptions = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).unix_permissions(0o644);
+
+	for (filename, content) in entries {
+		writer.start_file(filename, options).map_err(|e| format!("start_file: {e}"))?;
+		writer.write_all(content).map_err(|e| format!("write_all: {e}"))?;
+	}
+
+	writer.finish().map_err(|e| format!("finish: {e}"))?;
+	Ok(buffer.into_inner())
 }

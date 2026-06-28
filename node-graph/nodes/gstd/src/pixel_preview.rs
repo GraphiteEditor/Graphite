@@ -46,7 +46,7 @@ pub async fn pixel_preview<'a: 'n>(
 	let upstream_resolution = upstream_size.as_uvec2().max(UVec2::ONE);
 
 	let upstream_footprint = Footprint {
-		transform: DAffine2::from_scale(DVec2::splat(1.0 / physical_scale)) * DAffine2::from_translation(-upstream_min),
+		transform: DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * DAffine2::from_translation(-upstream_min),
 		resolution: upstream_resolution,
 		quality: footprint.quality,
 	};

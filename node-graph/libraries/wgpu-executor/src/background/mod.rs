@@ -33,13 +33,13 @@ impl BackgroundCompositor {
 
 		let checker_rect_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("background_checker_rect_pipeline_layout"),
-			bind_group_layouts: &[&checker_bind_group_layout],
+			bind_group_layouts: &[Some(&checker_bind_group_layout)],
 			immediate_size: 0,
 		});
 
 		let checker_viewport_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("background_checker_viewport_pipeline_layout"),
-			bind_group_layouts: &[&checker_bind_group_layout],
+			bind_group_layouts: &[Some(&checker_bind_group_layout)],
 			immediate_size: 0,
 		});
 
@@ -67,7 +67,7 @@ impl BackgroundCompositor {
 
 		let fullscreen_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("background_fullscreen_pipeline_layout"),
-			bind_group_layouts: &[&fullscreen_bind_group_layout],
+			bind_group_layouts: &[Some(&fullscreen_bind_group_layout)],
 			immediate_size: 0,
 		});
 
@@ -86,7 +86,7 @@ impl BackgroundCompositor {
 				compilation_options: Default::default(),
 				targets: &[Some(wgpu::ColorTargetState {
 					format,
-					blend: None,
+					blend: Some(wgpu::BlendState::ALPHA_BLENDING),
 					write_mask: wgpu::ColorWrites::ALL,
 				})],
 			}),
@@ -190,14 +190,14 @@ impl BackgroundCompositor {
 	}
 
 	pub fn composite(&self, context: &crate::WgpuContext, foreground: &wgpu::Texture, output: &wgpu::Texture, backgrounds: &[rendering::Background], document_to_screen: Affine2, zoom: f32) {
-		if zoom <= 0.0 {
+		if zoom <= 0. {
 			return;
 		}
 
 		let device = &context.device;
 		let queue = &context.queue;
 
-		let checker_size_doc = 8.0 / zoom;
+		let checker_size_doc = 8. / zoom;
 		let screen_to_document = document_to_screen.inverse();
 		let viewport_size = output.size();
 		let viewport_size = Vec2::new(viewport_size.width as f32, viewport_size.height as f32);
