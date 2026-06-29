@@ -8,7 +8,7 @@ use std::thread::JoinHandle;
 pub use duct::{Expression, cmd};
 
 pub mod prelude {
-	pub use super::{Expression, ExpressionExt, Sequence, TerminalColor, cmd, sequence, sequence_then, supervise, utils};
+	pub use super::{Expression, ExpressionExt, Sequence, TerminalColor, cmd, sequence, supervise, utils};
 }
 
 pub trait ExpressionExt {
@@ -119,17 +119,6 @@ impl TerminalColor {
 }
 
 pub fn sequence<I: IntoIterator<Item = Expression>>(expressions: I) -> Sequence {
-	sequence_then(expressions, Vec::new)
-}
-
-/// Like [`sequence`], but once the steps complete successfully, `follow_up` is called and any steps it
-/// returns are run as part of the same (still killable) sequence. This lets a build append a clean-and-rebuild
-/// when it detects its own corrupt output, without spawning a detached job that could race a fresh build.
-pub fn sequence_then<I, F>(expressions: I, follow_up: F) -> Sequence
-where
-	I: IntoIterator<Item = Expression>,
-	F: FnOnce() -> Vec<Expression> + Send + 'static,
-{
 	let expressions: Vec<Expression> = expressions.into_iter().collect();
 	let current: Arc<Mutex<Option<Arc<Handle>>>> = Arc::new(Mutex::new(None));
 	let killed = Arc::new(AtomicBool::new(false));
@@ -137,46 +126,33 @@ where
 	let worker_current = Arc::clone(&current);
 	let worker_killed = Arc::clone(&killed);
 	let worker = std::thread::spawn(move || {
-		// Runs every step, returning `false` if it was killed or a step failed to start/complete.
-		let run_steps = |steps: Vec<Expression>| -> bool {
-			for expr in steps {
-				if worker_killed.load(Ordering::SeqCst) {
-					return false;
-				}
-				let handle = match expr.start() {
-					Ok(h) => Arc::new(h),
-					Err(e) => {
-						eprintln!("sequence: failed to start step: {e}");
-						return false;
-					}
-				};
-				{
-					let mut slot = worker_current.lock().unwrap();
-					if worker_killed.load(Ordering::SeqCst) {
-						let _ = handle.kill();
-						return false;
-					}
-					*slot = Some(Arc::clone(&handle));
-				}
-				let result = handle.wait().map(|_| ());
-				worker_current.lock().unwrap().take();
-				if worker_killed.load(Ordering::SeqCst) {
-					return false;
-				}
-				if let Err(e) = result {
-					eprintln!("sequence: step failed: {e}");
-					return false;
-				}
+		for expr in expressions {
+			if worker_killed.load(Ordering::SeqCst) {
+				return;
 			}
-			true
-		};
-
-		// Skip the follow-up if the sequence was killed (e.g. the watcher superseded this build with a newer
-		// one) so a cancelled build never triggers the destructive heal; the replacement build heals if needed.
-		if run_steps(expressions) && !worker_killed.load(Ordering::SeqCst) {
-			let extra = follow_up();
-			if !extra.is_empty() {
-				run_steps(extra);
+			let handle = match expr.start() {
+				Ok(h) => Arc::new(h),
+				Err(e) => {
+					eprintln!("sequence: failed to start step: {e}");
+					return;
+				}
+			};
+			{
+				let mut slot = worker_current.lock().unwrap();
+				if worker_killed.load(Ordering::SeqCst) {
+					let _ = handle.kill();
+					return;
+				}
+				*slot = Some(Arc::clone(&handle));
+			}
+			let result = handle.wait().map(|_| ());
+			worker_current.lock().unwrap().take();
+			if worker_killed.load(Ordering::SeqCst) {
+				return;
+			}
+			if let Err(e) = result {
+				eprintln!("sequence: step failed: {e}");
+				return;
 			}
 		}
 	});
