@@ -14,8 +14,7 @@ use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
-use graphene_std::renderer::Quad;
-use graphene_std::renderer::usvg_utils::{convert_usvg_path, extract_usvg_fill, extract_usvg_stroke, usvg_transform};
+use graphene_std::renderer::usvg_utils::{extract_usvg_node, ParsedSvgNode, ParsedSvgPath};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
@@ -810,6 +809,9 @@ impl<'a> ModifyInputsContext<'a> {
 
 /// Import a usvg node as the root of an SVG import operation.
 ///
+/// Phase 1: Parse the usvg tree into a `ParsedSvgNode` tree (pure data, no graphite dependencies).
+/// Phase 2: Walk the parsed tree and build graphite layers.
+///
 /// The root layer uses the full `move_layer_to_stack` (with push/collision logic) to correctly
 /// interact with any existing layers in the parent stack. All descendant layers use a lightweight
 /// O(n) import path that skips collision detection and instead calculates positions directly from
@@ -822,6 +824,42 @@ pub fn import_usvg_node(
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 ) {
+	// Phase 1: parse usvg tree into intermediate representation (pure, no ModifyInputsContext)
+	let parsed = extract_usvg_node(node, graphite_gradient_stops);
+
+	// Phase 2: build graphite layers from parsed tree
+	import_parsed_svg_root(modify_inputs, parsed, id, parent, insert_index);
+}
+
+/// Handle a leaf parsed SVG node (Path, Image, Text). Returns 0 (no subtree extent).
+fn import_parsed_svg_leaf(modify_inputs: &mut ModifyInputsContext, node: ParsedSvgNode, layer: LayerNodeIdentifier) -> u32 {
+	match node {
+		ParsedSvgNode::Path(path) => {
+			import_parsed_svg_path(modify_inputs, *path, layer);
+			0
+		}
+		ParsedSvgNode::Image { .. } => {
+			warn!("Skip SVG image node");
+			0
+		}
+		ParsedSvgNode::Text(text) => {
+			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
+			modify_inputs.insert_text(text.text, font, TypesettingConfig::default(), layer);
+			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			0
+		}
+		ParsedSvgNode::Group(_) => unreachable!("import_parsed_svg_leaf called on Group"),
+	}
+}
+
+/// Phase 2 root handler: build graphite layers for a parsed SVG root node.
+fn import_parsed_svg_root(
+	modify_inputs: &mut ModifyInputsContext,
+	node: ParsedSvgNode,
+	id: NodeId,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+) {
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -831,7 +869,7 @@ pub fn import_usvg_node(
 	}
 
 	match node {
-		usvg::Node::Group(group) => {
+		ParsedSvgNode::Group(group) => {
 			// Collect child extents for O(n) position calculation
 			let mut child_extents_svg_order: Vec<u32> = Vec::new();
 			let mut group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>> = HashMap::new();
@@ -840,8 +878,8 @@ pub fn import_usvg_node(
 			// during wiring since we're building a known tree structure where cycles are impossible
 			modify_inputs.import = true;
 
-			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
+			for child in group.children {
+				let extent = import_parsed_svg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, &mut group_extents_map);
 				child_extents_svg_order.push(extent);
 			}
 
@@ -859,32 +897,21 @@ pub fn import_usvg_node(
 			modify_inputs.network_interface.unload_all_nodes_click_targets(&[]);
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
-		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
-		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
-		}
-		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
-		}
+		_ => { import_parsed_svg_leaf(modify_inputs, node, layer); }
 	}
 }
 
-/// Recursively import a usvg node as a descendant of the root import layer.
+/// Recursively build graphite layers for a parsed SVG node as a descendant of the root import layer.
 /// Uses lightweight wiring (no push/collision) and returns the subtree extent for position calculation.
 ///
 /// The subtree extent represents the additional vertical grid units that this node's descendants
 /// occupy below the node's position. This is used to calculate correct y_offsets between siblings.
-pub fn import_usvg_node_inner(
+fn import_parsed_svg_node_inner(
 	modify_inputs: &mut ModifyInputsContext,
-	node: &usvg::Node,
+	node: ParsedSvgNode,
 	id: NodeId,
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
-	graphite_gradient_stops: &HashMap<String, GradientStops>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
 ) -> u32 {
 	let layer = modify_inputs.create_layer(id);
@@ -892,10 +919,10 @@ pub fn import_usvg_node_inner(
 	modify_inputs.layer_node = Some(layer);
 
 	match node {
-		usvg::Node::Group(group) => {
+		ParsedSvgNode::Group(group) => {
 			let mut child_extents: Vec<u32> = Vec::new();
-			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
+			for child in group.children {
+				let extent = import_parsed_svg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, group_extents_map);
 				child_extents.push(extent);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -909,20 +936,26 @@ pub fn import_usvg_node_inner(
 			group_extents_map.insert(layer, child_extents);
 			total_extent
 		}
-		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
-			0
+		_ => import_parsed_svg_leaf(modify_inputs, node, layer),
+	}
+}
+
+/// Apply a parsed SVG path to a graphite layer: insert vector geometry, transform, fill, stroke.
+fn import_parsed_svg_path(modify_inputs: &mut ModifyInputsContext, path: ParsedSvgPath, layer: LayerNodeIdentifier) {
+	let has_transform = path.transform != DAffine2::IDENTITY;
+	modify_inputs.insert_vector(path.subpaths, layer, has_transform, path.fill.is_some(), path.stroke.is_some());
+
+	if has_transform {
+		if let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
+			transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, path.transform);
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
-			0
-		}
-		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
-			0
-		}
+	}
+
+	if let Some(fill) = path.fill {
+		modify_inputs.fill_set(fill);
+	}
+	if let Some(stroke) = path.stroke {
+		modify_inputs.stroke_set(stroke);
 	}
 }
 
@@ -984,41 +1017,6 @@ pub fn set_import_child_positions(
 	}
 }
 
-/// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
-///
-pub fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, GradientStops>) {
-	let subpaths = convert_usvg_path(path);
-
-	let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
-
-	// Skip creating a Transform node entirely when the SVG-native transform is identity.
-	let node_transform = usvg_transform(node.abs_transform());
-	let has_transform = node_transform != DAffine2::IDENTITY;
-	modify_inputs.insert_vector(subpaths, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
-	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
-		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, node_transform);
-	}
-
-	if let Some(fill) = path.fill() {
-		let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		apply_usvg_fill(fill, modify_inputs, bounds_transform, graphite_gradient_stops);
-	}
-	if let Some(stroke) = path.stroke() {
-		apply_usvg_stroke(stroke, modify_inputs, node_transform);
-	}
-}
-
-pub fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) {
-	if let Some(fill) = extract_usvg_fill(fill, bounds_transform, graphite_gradient_stops) {
-		modify_inputs.fill_set(fill);
-	}
-}
-
-pub fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
-	if let Some(stroke) = extract_usvg_stroke(stroke, transform) {
-		modify_inputs.stroke_set(stroke)
-	}
-}
 
 /// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
 /// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint

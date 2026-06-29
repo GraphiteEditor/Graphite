@@ -156,8 +156,6 @@ pub enum ParsedSvgNode {
 pub struct ParsedSvgGroup {
 	pub children: Vec<ParsedSvgNode>,
 	pub transform: DAffine2,
-	// pub child_extents_svg_order: Vec<u32>,
-	// pub group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>>,
 }
 
 pub struct ParsedSvgPath {
@@ -293,41 +291,8 @@ pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient
 pub fn extract_usvg_node(node: &usvg::Node, graphite_gradient_stops: &HashMap<String, GradientStops>) -> ParsedSvgNode {
 	match node {
 		usvg::Node::Group(group) => {
-			// let mut child_extents_svg_order: Vec<u32> = Vec::new();
-			// let mut group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>> = HashMap::new();
-
-			// let get_child_extents = |group: &Box<Group>, group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>>| {
-			// 	let mut child_extents: Vec<u32> = Vec::new();
-			// 	for child in group.children() {
-			// 		let extent = get_child_extend();
-			// 		child_extents.push(extent);
-			// 	}
-
-			// 	let n = child_extents.len();
-			// 	let total_extent = if n == 0 {
-			// 		0
-			// 	} else {
-			// 		(2 * STACK_VERTICAL_GAP as u32) * n as u32 - STACK_VERTICAL_GAP as u32 + child_extents.iter().sum::<u32>()
-			// 	};
-			// 	group_extents_map.insert(layer, child_extents);
-			// 	total_extent
-			// };
 			let group = Box::new(ParsedSvgGroup {
-				children: group
-					.children()
-					.iter()
-					.map(|child| {
-						let child = extract_usvg_node(child, graphite_gradient_stops);
-						// match child {
-						// 	ParsedSvgNode::Group(parsed_group) => {
-						// 		parsed_group.extent = get_child_extents(group, group_extents_map);
-						// 		child_extents_svg_order.push(parsed_group.extent);
-						// 	}
-						// 	_ => {}
-						// }
-						child
-					})
-					.collect(),
+				children: group.children().iter().map(|child| extract_usvg_node(child, graphite_gradient_stops)).collect(),
 				transform: usvg_transform(node.abs_transform()),
 			});
 
