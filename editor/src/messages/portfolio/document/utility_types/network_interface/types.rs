@@ -736,7 +736,7 @@ pub struct DocumentNodeClickTargets {
 
 #[derive(Debug, Clone)]
 pub enum NodeTypeClickTargets {
-	Layer(LayerClickTargets),
+	Layer(Box<LayerClickTargets>),
 	Node, // No transient click targets are stored exclusively for nodes
 }
 
