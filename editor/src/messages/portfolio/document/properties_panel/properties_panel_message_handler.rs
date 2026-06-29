@@ -15,6 +15,7 @@ pub struct PropertiesPanelMessageContext<'a> {
 	pub document_name: &'a str,
 	pub fonts: &'a FontsMessageHandler,
 	pub properties_panel_open: bool,
+	pub properties_panel_collapsed_sections: &'a [NodeId],
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -31,6 +32,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			document_name,
 			fonts,
 			properties_panel_open,
+			properties_panel_collapsed_sections,
 		} = context;
 
 		match message {
@@ -54,6 +56,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					selection_network_path,
 					document_name,
 					fonts,
+					properties_panel_collapsed_sections,
 				};
 				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
 

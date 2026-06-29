@@ -94,6 +94,9 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
+	/// Tracks which nodes have their section collapsed in the Properties panel, keyed by node ID.
+	#[serde(default)]
+	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	pub commit_hash: String,
@@ -173,6 +176,7 @@ impl Default for DocumentMessageHandler {
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
+			properties_panel_collapsed_sections: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -248,6 +252,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_name: self.name.as_str(),
 					fonts,
 					properties_panel_open,
+					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -271,6 +276,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
 						collapsed: &mut self.collapsed,
+						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
@@ -1362,6 +1368,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
+				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
+					self.properties_panel_collapsed_sections.remove(index);
+				} else {
+					self.properties_panel_collapsed_sections.push(node_id);
+				}
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
