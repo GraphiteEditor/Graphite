@@ -58,7 +58,7 @@ pub fn build_wasm_steps(release: bool, native: bool) -> Vec<Expression> {
 			.args_if(native, ["--no-default-features", "--features", "native"])
 			.dir(workspace_dir())
 			.before_spawn(|_| {
-				if is_build_corupted() {
+				if is_build_corrupted() {
 					clean_wasm();
 				}
 				Ok(())
@@ -88,7 +88,7 @@ pub fn clean_wasm() -> bool {
 	true
 }
 
-pub fn is_build_corupted() -> bool {
+pub fn is_build_corrupted() -> bool {
 	let Ok(js) = std::fs::read_to_string(wasm_glue_path()) else {
 		return false;
 	};
