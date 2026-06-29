@@ -1,10 +1,10 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, AnyAttributeValue, AttributeValueDyn, Item, ItemAttributeValues, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, AnyAttributeValue, AttributeValueDyn, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
@@ -12,7 +12,6 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use vector_types::GradientStops;
 pub use vector_types::Vector;
-use vector_types::vector::style::Fill;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
@@ -192,24 +191,6 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 	output
 }
 
-/// Converts a `Fill` enum into the `List<Graphic>` representation used as paint storage.
-/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
-pub fn fill_to_graphic_list(fill: &Fill) -> Option<List<Graphic>> {
-	match fill {
-		Fill::None => None,
-		Fill::Solid(color) => Some(List::new_from_element((*color).into())),
-		Fill::Gradient(gradient) => {
-			let gradient_item = Item::new_from_element(gradient.stops.clone())
-				.with_attribute(ATTR_TRANSFORM, gradient.transform * gradient.to_transform())
-				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
-				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method);
-			let gradient_list = List::new_from_item(gradient_item);
-
-			Some(List::new_from_element(Graphic::Gradient(gradient_list)))
-		}
-	}
-}
-
 /// Whether a normalized paint graphic list actually carries renderable paint.
 /// A 0-item list, or a list whose first graphic is empty, is treated as no paint.
 pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
@@ -255,10 +236,7 @@ pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool 
 /// `style.fill` when the attribute is absent or empty.
 /// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
 pub fn fill_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
-	graphic_list_at(list, index, ATTR_FILL).or_else(|| {
-		let vector = list.element(index)?;
-		fill_to_graphic_list(vector.style.fill()).map(Cow::Owned)
-	})
+	graphic_list_at(list, index, ATTR_FILL)
 }
 
 /// Look up the stroke paint graphics from the attribute for a vector item.
@@ -274,12 +252,7 @@ pub fn is_fill_opaque_at(list: &List<Vector>, index: usize) -> bool {
 	if let Some(graphic_list) = graphic_list_at(list, index, ATTR_FILL) {
 		return graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque());
 	}
-	let Some(vector) = list.element(index) else { return false };
-	match vector.style.fill() {
-		Fill::None => false,
-		Fill::Solid(color) => color.is_opaque(),
-		Fill::Gradient(gradient) => gradient.stops.iter().all(|stop| stop.color.is_opaque()),
-	}
+	false
 }
 
 /// Check whether the fill paint for a vector item is fully transparent, falling back to
@@ -290,12 +263,7 @@ pub fn is_fill_fully_transparent_at(list: &List<Vector>, index: usize) -> bool {
 	if let Some(graphic_list) = graphic_list_at(list, index, ATTR_FILL) {
 		return graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent());
 	}
-	let Some(vector) = list.element(index) else { return false };
-	match vector.style.fill() {
-		Fill::None => true,
-		Fill::Solid(color) => color.a() == 0.,
-		Fill::Gradient(gradient) => gradient.stops.iter().all(|stop| stop.color.a() == 0.),
-	}
+	true
 }
 
 /// Check whether the stroke paint for a vector item is fully opaque.
@@ -631,7 +599,7 @@ impl Graphic {
 
 				let fill_opaque_or_absent = match graphic_list_at(vector, index, ATTR_FILL) {
 					Some(graphic_list) => graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()),
-					None => element.style.fill().is_opaque(),
+					None => true,
 				};
 
 				let stroke_invisible_or_transparent = element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
@@ -870,6 +838,7 @@ mod tests {
 
 #[cfg(test)]
 mod graphic_is_opaque_tests {
+	use core_types::ATTR_SPREAD_METHOD;
 	use vector_types::{GradientSpreadMethod, GradientStop};
 
 	use super::*;

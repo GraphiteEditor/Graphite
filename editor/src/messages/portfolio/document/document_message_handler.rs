@@ -33,7 +33,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{TaggedValue, legacy};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::graphic::is_paint_present;
 use graphene_std::math::quad::Quad;
@@ -43,7 +43,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::{Gradient, RenderMode};
+use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -129,7 +129,7 @@ pub struct DocumentMessageHandler {
 	/// Fill nodes whose legacy bounding-box-relative gradient was decomposed into the value model, but whose transform still
 	/// needs the bounding box baked in. The deferred migration bakes them after the first graph run (when bounds are available) and clears this.
 	#[serde(skip)]
-	pub(crate) pending_gradient_bbox_bake: Vec<(NodeId, Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(NodeId, legacy::Gradient)>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,

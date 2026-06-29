@@ -35,7 +35,7 @@ unsafe impl StaticType for Vector {
 impl Default for Vector {
 	fn default() -> Self {
 		Self {
-			style: PathStyle::new(Some(Stroke::new(0.)), super::style::Fill::None),
+			style: PathStyle::new(Some(Stroke::new(0.))),
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),

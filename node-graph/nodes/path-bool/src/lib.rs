@@ -16,7 +16,6 @@ use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
 use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 pub use vector_types::vector::misc::BooleanOperation;
-use vector_types::vector::style::Fill;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
@@ -148,16 +147,10 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
 		let copy_from = vector.element(index).unwrap();
-		let mut element = Vector {
+		let element = Vector {
 			style: copy_from.style.clone(),
 			..Default::default()
 		};
-		// Legacy Fill fallback: An absolute gradient lives in the geometry's space, so bake the same transform into it to track the baked points
-		if let Fill::Gradient(gradient) = element.style.fill_mut()
-			&& gradient.absolute
-		{
-			gradient.transform = copy_from_transform * gradient.transform;
-		}
 		Item::from_parts(element, attributes)
 	} else {
 		Item::<Vector>::default()
