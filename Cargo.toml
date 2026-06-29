@@ -214,8 +214,8 @@ gungraun = { version = "0.18" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "148"
-cef-dll-sys = "148"
+cef = "149"
+cef-dll-sys = "149"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -257,5 +257,5 @@ debug = true
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
-cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
+cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
+cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
