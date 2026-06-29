@@ -35,7 +35,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{TaggedValue, legacy};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::graphic::is_paint_present;
 use graphene_std::math::quad::Quad;
@@ -45,7 +45,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::{Fill, Gradient, RenderMode};
+use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -125,7 +125,7 @@ pub struct DocumentMessageHandler {
 	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
 	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, legacy::Gradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -2772,12 +2772,7 @@ impl DocumentMessageHandler {
 			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
 			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
 
-			// `ATTR_FILL` is the source of truth when set; fall back to the legacy `style.fill` only when no attribute is present
-			let has_fill = if let Some(list) = fill_graphic_list {
-				is_paint_present(list)
-			} else {
-				!matches!(style.fill, Fill::None)
-			};
+			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke; `ATTR_STROKE` is the source of truth for visibility.
 			let stroke_visible = if let Some(list) = stroke_graphic_list {
@@ -4016,7 +4011,7 @@ mod document_message_handler_tests {
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
 		let document = DocumentMessageHandler {
-			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), Gradient::default())],
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), legacy::Gradient::default())],
 			..Default::default()
 		};
 

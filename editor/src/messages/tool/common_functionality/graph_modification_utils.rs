@@ -14,7 +14,7 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
+use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
 use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
@@ -330,8 +330,8 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 }
 
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<GradientStops>`
-/// layer this is the layer's incoming footprint transform; for the legacy `Fill::Gradient` path it composes the layer's
-/// viewport transform with the [0,1]² → bounding-box mapping.
+/// layer this is the layer's incoming footprint transform; for a Fill-owned gradient value it composes the layer's viewport
+/// transform with the [0,1]² → bounding-box mapping.
 pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
@@ -663,32 +663,6 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		transform_is_value: transform_input.is_some(),
 	})
 }
-
-// TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated
-/// Returns the `Fill` value from a layer's upstream Fill node.
-pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
-	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-
-	match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
-		&TaggedValue::Color(color) => Some(color.map_or(Fill::None, Fill::Solid)),
-		TaggedValue::Gradient(_) => {
-			let gradient = read_fill_node_gradient(fill_node, || network_interface.document_metadata().nonzero_bounding_box(layer))?;
-			Some(Fill::Gradient(Gradient {
-				stops: gradient.stops,
-				gradient_type: gradient.gradient_type,
-				spread_method: gradient.spread_method,
-				start: gradient.transform.transform_point2(DVec2::ZERO),
-				end: gradient.transform.transform_point2(DVec2::X),
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			}))
-		}
-		_ => None,
-	}
-}
-
 /// Returns the stroke color from a layer's upstream Stroke node.
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
 	let color_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
@@ -718,10 +692,21 @@ pub struct SelectedStrokeState {
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
 	let selected_nodes = document.network_interface.selected_nodes();
 	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
-		if get_fill_id(layer, &document.network_interface).is_none() {
+		let Some(fill_node_id) = get_fill_id(layer, &document.network_interface) else {
 			return (false, FillChoice::None);
-		}
-		let fill_choice = get_fill_value(layer, &document.network_interface).map_or(FillChoice::None, FillChoice::from);
+		};
+
+		let fill_choice = (|| {
+			let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
+
+			match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
+				&TaggedValue::Color(color) => Some(color.map_or(FillChoice::None, FillChoice::Solid)),
+				TaggedValue::Gradient(stops) => Some(FillChoice::Gradient(stops.clone())),
+				_ => None,
+			}
+		})()
+		.unwrap_or(FillChoice::None);
+
 		(true, fill_choice)
 	});
 
