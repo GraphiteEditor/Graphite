@@ -173,7 +173,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 				ParsedValueSource::Scope(data) => {
-					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data {
+					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
 						quote!(RegistryValueSource::Scope(#data))
 					} else {
 						quote!(RegistryValueSource::Scope(#data.as_static_str()))
