@@ -179,16 +179,23 @@
 		if (!allowInsert || activeMarkerIndex === undefined || activeMarkerIsMidpoint) return false;
 
 		if (duplicateRequested && !duplicateActive) {
-			if (dragRestorePosition === undefined) return false;
 			// Drop a frozen copy at the drag's start position. The dragged marker stays active and becomes the duplicate being moved.
+
+			if (dragRestorePosition === undefined) return false;
+
 			emit({ InsertDuplicate: { index: activeMarkerIndex, position: dragRestorePosition } });
 			duplicateActive = true;
+
 			return true;
 		} else if (!duplicateRequested && duplicateActive) {
 			// Remove the frozen copy so only the dragged marker remains, as if it had been dragged all along.
+
 			const anchor = findDuplicateAnchorIndex();
-			if (anchor !== undefined) emit({ RemoveDuplicate: { index: anchor } });
+			if (anchor === undefined) return false;
+
+			emit({ RemoveDuplicate: { index: anchor } });
 			duplicateActive = false;
+
 			return true;
 		}
 
