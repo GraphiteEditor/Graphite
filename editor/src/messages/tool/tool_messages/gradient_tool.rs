@@ -17,7 +17,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::style::{
-	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box,
+	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation,
 };
 
 #[derive(Default, ExtractField)]
@@ -2017,29 +2017,78 @@ mod test_gradient {
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::List;
-	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
+	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 	use graphene_std::{Graphic, NodeInputDecleration};
 
 	use super::gradient_space_transform;
 
-	async fn get_gradients_from_fill(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
+	struct ResolvedGradient {
+		stops: GradientStops,
+		spread_method: GradientSpreadMethod,
+		transform: DAffine2,
+	}
+
+	impl ResolvedGradient {
+		fn new(stops: GradientStops, appearance: super::GradientAppearance) -> Self {
+			Self {
+				stops,
+				spread_method: appearance.spread_method,
+				transform: appearance.transform,
+			}
+		}
+
+		fn start(&self) -> DVec2 {
+			self.transform.transform_point2(DVec2::ZERO)
+		}
+
+		fn end(&self) -> DVec2 {
+			self.transform.transform_point2(DVec2::X)
+		}
+	}
+
+	fn transform_from_line(start: DVec2, end: DVec2) -> DAffine2 {
+		build_transform_with_y_preservation(DAffine2::IDENTITY, start, end)
+	}
+
+	async fn get_gradients_from_fill(editor: &mut EditorTestUtils) -> Vec<(ResolvedGradient, DAffine2)> {
 		let document = editor.active_document();
 		document
 			.metadata()
 			.all_layers()
 			.filter_map(|layer| {
 				// Only read Fill-owned gradient values, not chains
-				get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
+				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
+				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let gradient = super::get_gradient(layer, &document.network_interface)?;
+				let stops = match fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
+					TaggedValue::Gradient(stops) => stops.clone(),
+					_ => return None,
+				};
+
+				let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+					_ => GradientSpreadMethod::default(),
+				};
+
+				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+					Some(&TaggedValue::OptionalDAffine2(Some(value))) => value,
+					_ => DAffine2::IDENTITY,
+				};
+
+				let gradient = ResolvedGradient {
+					stops,
+					spread_method,
+					transform: local_transform,
+				};
+
 				let transform = gradient_space_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
 	}
 
-	async fn get_gradients_from_chain(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
+	async fn get_gradients_from_chain(editor: &mut EditorTestUtils) -> Vec<(ResolvedGradient, DAffine2)> {
 		let document = editor.active_document();
 		document
 			.metadata()
@@ -2048,21 +2097,22 @@ mod test_gradient {
 				// Only read actual gradient chains, not Fill-owned gradient values
 				get_upstream_gradient_value_node_id(layer, &document.network_interface)?;
 
-				let gradient = super::resolve_gradient(layer, &document.network_interface)?;
+				let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface)?;
+				let gradient = ResolvedGradient::new(gradient, appearance);
 				let transform = gradient_space_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
 	}
 
-	async fn get_gradient_from_fill(editor: &mut EditorTestUtils) -> (Gradient, DAffine2) {
+	async fn get_gradient_from_fill(editor: &mut EditorTestUtils) -> (ResolvedGradient, DAffine2) {
 		let gradients = get_gradients_from_fill(editor).await;
 		assert_eq!(gradients.len(), 1, "Expected 1 gradient fill, found {}", gradients.len());
 
 		gradients.into_iter().next().unwrap()
 	}
 
-	async fn get_gradient_from_chain(editor: &mut EditorTestUtils) -> (Gradient, DAffine2) {
+	async fn get_gradient_from_chain(editor: &mut EditorTestUtils) -> (ResolvedGradient, DAffine2) {
 		let gradients = get_gradients_from_chain(editor).await;
 		assert_eq!(gradients.len(), 1, "Expected 1 gradient chain, found {}", gradients.len());
 		gradients.into_iter().next().unwrap()
@@ -2189,8 +2239,8 @@ mod test_gradient {
 		// Gradient goes from primary color to secondary color
 		let stops = gradient.stops.iter().map(|stop| (stop.position, SRGBA8::from(stop.color))).collect::<Vec<_>>();
 		assert_eq!(stops, vec![(0., SRGBA8::from(Color::GREEN)), (1., SRGBA8::from(Color::BLUE))]);
-		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
-		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+		assert!(transform.transform_point2(gradient.start()).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end()).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
 
 	#[tokio::test]
@@ -2204,8 +2254,8 @@ mod test_gradient {
 		let (gradient, transform) = get_gradient_from_chain(&mut editor).await;
 
 		// Gradient line is updated while existing stops are preserved
-		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
-		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+		assert!(transform.transform_point2(gradient.start()).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end()).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
 
 	#[tokio::test]
@@ -2224,13 +2274,13 @@ mod test_gradient {
 
 		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
-		assert!(transform.transform_point2(gradient.start).abs_diff_eq(start, 1e-10));
+		assert!(transform.transform_point2(gradient.start()).abs_diff_eq(start, 1e-10));
 
 		// 15 degrees from horizontal
 		let angle = f64::to_radians(15.);
 		let direction = DVec2::new(angle.cos(), angle.sin());
 		let expected = start + direction * (end - start).length();
-		assert!(transform.transform_point2(gradient.end).abs_diff_eq(expected, 1e-10));
+		assert!(transform.transform_point2(gradient.end()).abs_diff_eq(expected, 1e-10));
 	}
 
 	#[tokio::test]
@@ -2267,8 +2317,8 @@ mod test_gradient {
 
 		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
-		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
-		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+		assert!(transform.transform_point2(gradient.start()).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end()).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
 
 	#[tokio::test]
@@ -2331,8 +2381,8 @@ mod test_gradient {
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		// Verify initial gradient endpoints in viewport space
-		let initial_start = transform.transform_point2(initial_gradient.start);
-		let initial_end = transform.transform_point2(initial_gradient.end);
+		let initial_start = transform.transform_point2(initial_gradient.start());
+		let initial_end = transform.transform_point2(initial_gradient.end());
 		assert!(initial_start.abs_diff_eq(DVec2::new(0., 0.), 1e-10));
 		assert!(initial_end.abs_diff_eq(DVec2::new(100., 0.), 1e-10));
 
@@ -2360,11 +2410,11 @@ mod test_gradient {
 		let (updated_gradient, transform) = get_gradient_from_fill(&mut editor).await;
 
 		// Verify the start point hasn't changed
-		let updated_start = transform.transform_point2(updated_gradient.start);
+		let updated_start = transform.transform_point2(updated_gradient.start());
 		assert!(updated_start.abs_diff_eq(DVec2::new(0., 0.), 1e-10));
 
 		// Verify the end point has been updated to the new position
-		let updated_end = transform.transform_point2(updated_gradient.end);
+		let updated_end = transform.transform_point2(updated_gradient.end());
 		assert!(updated_end.abs_diff_eq(DVec2::new(100., 50.), 1e-10), "Expected end point at (100, 50), got {updated_end:?}");
 	}
 
@@ -2622,10 +2672,9 @@ mod test_gradient {
 		]);
 		editor.handle_message(GraphOperationMessage::GradientStopsSet { layer, stops }).await;
 		editor
-			.handle_message(GraphOperationMessage::GradientLineSet {
+			.handle_message(GraphOperationMessage::GradientTransformSet {
 				layer,
-				start: initial_start,
-				end: initial_end,
+				transform: transform_from_line(initial_start, initial_end),
 			})
 			.await;
 
@@ -2633,9 +2682,10 @@ mod test_gradient {
 
 		let document = editor.active_document();
 		let space_transform = gradient_space_transform(layer, document);
-		let gradient = super::resolve_gradient(layer, &document.network_interface).unwrap();
-		let viewport_start = space_transform.transform_point2(gradient.start);
-		let viewport_end = space_transform.transform_point2(gradient.end);
+		let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface).unwrap();
+		let gradient = ResolvedGradient::new(gradient, appearance);
+		let viewport_start = space_transform.transform_point2(gradient.start());
+		let viewport_end = space_transform.transform_point2(gradient.end());
 
 		// Drag target of the end point, move 80px down
 		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
@@ -2656,10 +2706,11 @@ mod test_gradient {
 
 		// Verify if the gradient position is updated correctly
 		let document = editor.active_document();
-		let updated = super::resolve_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
+		let (updated, appearance, _) = super::resolve_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
+		let updated = ResolvedGradient::new(updated, appearance);
 		let updated_space_transform = gradient_space_transform(layer, document);
-		let updated_viewport_start = updated_space_transform.transform_point2(updated.start);
-		let updated_viewport_end = updated_space_transform.transform_point2(updated.end);
+		let updated_viewport_start = updated_space_transform.transform_point2(updated.start());
+		let updated_viewport_end = updated_space_transform.transform_point2(updated.end());
 
 		assert!(
 			updated_viewport_start.abs_diff_eq(viewport_start, 1.),
@@ -2699,10 +2750,9 @@ mod test_gradient {
 		let initial_end = DVec2::new(200., 50.);
 		editor.handle_message(GraphOperationMessage::GradientStopsSet { layer, stops: original_stops.clone() }).await;
 		editor
-			.handle_message(GraphOperationMessage::GradientLineSet {
+			.handle_message(GraphOperationMessage::GradientTransformSet {
 				layer,
-				start: initial_start,
-				end: initial_end,
+				transform: transform_from_line(initial_start, initial_end),
 			})
 			.await;
 
@@ -2710,8 +2760,9 @@ mod test_gradient {
 
 		let document = editor.active_document();
 		let space_transform = gradient_space_transform(layer, document);
-		let gradient = super::resolve_gradient(layer, &document.network_interface).unwrap();
-		let viewport_end = space_transform.transform_point2(gradient.end);
+		let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface).unwrap();
+		let gradient = ResolvedGradient::new(gradient, appearance);
+		let viewport_end = space_transform.transform_point2(gradient.end());
 
 		// Drag the end point 80px down
 		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
@@ -2732,7 +2783,8 @@ mod test_gradient {
 
 		// Verify stops are preserved after dragging
 		let document = editor.active_document();
-		let updated = super::resolve_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
+		let (updated, appearance, _) = super::resolve_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
+		let updated = ResolvedGradient::new(updated, appearance);
 
 		assert_eq!(updated.stops.len(), 3, "Stop count should be preserved");
 		assert_stops_at_positions(&updated.stops.position, &[0., 0.5, 1.], 1e-10);
