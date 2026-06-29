@@ -55,7 +55,7 @@ window_clipboard = "0.5"
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.58.0", features = [
+windows = { version = "0.62.2", features = [
 	"Win32_Foundation",
 	"Win32_Graphics_Dwm",
 	"Win32_Graphics_Gdi",

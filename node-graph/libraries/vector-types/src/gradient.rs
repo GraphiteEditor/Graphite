@@ -274,6 +274,18 @@ impl GradientStops {
 		index
 	}
 
+	/// Insert a copy of the stop at `source_index` (same color and midpoint) at `position`, keeping the stops sorted by position.
+	/// Returns the index where the copy was inserted, or `None` if `source_index` is out of range.
+	pub fn duplicate_stop(&mut self, source_index: usize, position: f64) -> Option<usize> {
+		let color = *self.color.get(source_index)?;
+		let midpoint = *self.midpoint.get(source_index)?;
+		let index = self.position.iter().position(|p| *p > position).unwrap_or(self.position.len());
+		self.position.insert(index, position);
+		self.midpoint.insert(index, midpoint);
+		self.color.insert(index, color);
+		Some(index)
+	}
+
 	/// Reset the midpoint for the interval starting at `index` to its default `0.5`.
 	pub fn reset_midpoint(&mut self, index: usize) {
 		if let Some(midpoint) = self.midpoint.get_mut(index) {
