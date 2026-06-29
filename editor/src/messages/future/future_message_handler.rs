@@ -1,5 +1,6 @@
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use dyn_any::WasmNotSend;
@@ -82,6 +83,9 @@ pub struct FutureMessageHandler {
 	wake: Wake,
 	results_sender: UnboundedSender<Message>,
 	results_receiver: UnboundedReceiver<Message>,
+	/// Spawned futures whose result has not yet been drained. Incremented at spawn, decremented on drain,
+	/// so `0` plus an empty channel means no async work is in flight. Lets the test harness settle first.
+	in_flight: Arc<AtomicUsize>,
 }
 
 impl FutureMessageHandler {
@@ -92,6 +96,7 @@ impl FutureMessageHandler {
 			wake,
 			results_sender,
 			results_receiver,
+			in_flight: Arc::new(AtomicUsize::new(0)),
 		}
 	}
 
@@ -99,11 +104,28 @@ impl FutureMessageHandler {
 		self.wake = wake;
 	}
 
-	/// Pull every resolved async result into `out`.
+	/// Pull every resolved async result into `out`, decrementing the in-flight count per result.
 	pub fn drain_results(&mut self, out: &mut VecDeque<Message>) {
 		while let Ok(Some(message)) = self.results_receiver.try_next() {
+			self.in_flight.fetch_sub(1, Ordering::AcqRel);
 			out.push_back(message);
 		}
+	}
+
+	/// Whether any spawned future has not yet had its result drained.
+	pub fn has_in_flight(&self) -> bool {
+		self.in_flight.load(Ordering::Acquire) != 0
+	}
+
+	/// Await the next async result, decrementing the in-flight count. `None` only if the channel closed
+	/// (sender dropped), which can't happen while the handler is alive.
+	pub async fn recv_next(&mut self) -> Option<Message> {
+		use futures::StreamExt;
+		let message = self.results_receiver.next().await;
+		if message.is_some() {
+			self.in_flight.fetch_sub(1, Ordering::AcqRel);
+		}
+		message
 	}
 }
 
@@ -124,6 +146,7 @@ impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandle
 	fn process_message(&mut self, message: FutureMessage, _responses: &mut VecDeque<Message>, _context: FutureMessageContext) {
 		match message {
 			FutureMessage::Await { future } => {
+				self.in_flight.fetch_add(1, Ordering::AcqRel);
 				self.spawner.spawn(future.into_future(), self.results_sender.clone(), self.wake.clone());
 			}
 			FutureMessage::Wake => {
