@@ -15,12 +15,15 @@
 
 	let expanded = true;
 
+	// A reorderable section is a Properties panel node section the user can drag to reorder (a layer chain's node, or a pinned node)
+	$: reorderable = layoutTarget === "PropertiesPanel" && widgetData.draggable;
+
 	const editor = getContext<EditorWrapper>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
-<LayoutCol class={`widget-section ${className}`.trim()} {classes}>
-	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
+<LayoutCol class={`widget-section ${className}`.trim()} {classes} data-properties-reorderable-section={reorderable ? "" : undefined} data-node-id={reorderable ? String(widgetData.id) : undefined}>
+	<button class="header" class:expanded data-properties-reorder-handle={reorderable ? "" : undefined} on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow"></div>
 		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton

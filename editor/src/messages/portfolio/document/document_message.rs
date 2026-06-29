@@ -103,6 +103,10 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	ReorderPropertiesSection {
+		node_id: NodeId,
+		insert_index: usize,
+	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
 	},

@@ -1054,6 +1054,35 @@ impl NodeNetworkInterface {
 		node_metadata.persistent_metadata.pinned
 	}
 
+	/// The given network's pinned nodes in display order: pinning appends, dragging rearranges, and any not yet recorded go last.
+	pub fn ordered_pinned_nodes(&self, network_path: &[NodeId]) -> Vec<NodeId> {
+		let Some(network) = self.nested_network(network_path) else { return Vec::new() };
+
+		let order = self
+			.network_metadata(network_path)
+			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
+			.unwrap_or_default();
+
+		// Follow the saved order, keeping only nodes that still exist and are still pinned
+		let mut pinned_nodes = order
+			.iter()
+			.copied()
+			.filter(|node_id| network.nodes.contains_key(node_id) && self.is_pinned(node_id, network_path))
+			.collect::<Vec<_>>();
+
+		// Append any pinned nodes missing from the saved order at the end
+		let mut unordered = network
+			.nodes
+			.keys()
+			.copied()
+			.filter(|node_id| self.is_pinned(node_id, network_path) && !order.contains(node_id))
+			.collect::<Vec<_>>();
+		unordered.sort();
+		pinned_nodes.extend(unordered);
+
+		pinned_nodes
+	}
+
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		let Some(node) = self.document_node(node_id, network_path) else {
 			log::error!("Could not get node in is_visible");
@@ -4542,6 +4571,12 @@ impl NodeNetworkInterface {
 				self.set_chain_position(&previous_chain_node, network_path);
 			}
 		}
+
+		// Prune deleted nodes from this network's pinned display order so it doesn't retain stale entries
+		if let Some(network_metadata) = self.network_metadata_mut(network_path) {
+			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| !delete_nodes.contains(node_id));
+		}
+
 		self.unload_all_nodes_bounding_box(network_path);
 		// Instead of unloaded all node click targets, just unload the nodes upstream from the deleted nodes. unload_upstream_node_click_targets will not work since the nodes have been deleted.
 		self.unload_all_nodes_click_targets(network_path);
@@ -4724,6 +4759,43 @@ impl NodeNetworkInterface {
 		};
 
 		node_metadata.persistent_metadata.pinned = pinned;
+
+		// Track the node in this network's pinned display order: append when newly pinned, prune when unpinned
+		if let Some(network_metadata) = self.network_metadata_mut(network_path) {
+			let order = &mut network_metadata.persistent_metadata.pinned_node_order;
+			if pinned {
+				if !order.contains(node_id) {
+					order.push(*node_id);
+				}
+			} else {
+				order.retain(|id| id != node_id);
+			}
+		}
+
+		self.transaction_modified();
+	}
+
+	/// Reorders a pinned node within its network's Properties panel display order so it ends up at `insert_index` among the
+	/// pinned nodes (0 being the topmost). Rebuilds the order from the list as currently shown, which also drops stale entries.
+	pub fn reorder_pinned_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
+		let shown = self.ordered_pinned_nodes(network_path);
+
+		let Some(from) = shown.iter().position(|id| *id == node_id) else { return };
+		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(shown.len().saturating_sub(1));
+		if to == from {
+			return;
+		}
+
+		let mut new_order = shown;
+		let moved = new_order.remove(from);
+		new_order.insert(to, moved);
+
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get network_metadata in reorder_pinned_node");
+			return;
+		};
+		network_metadata.persistent_metadata.pinned_node_order = new_order;
+
 		self.transaction_modified();
 	}
 
@@ -6002,6 +6074,59 @@ impl NodeNetworkInterface {
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}
+
+	/// Reorders a node within its layer's horizontal chain so it ends up at `insert_index` among the chain's nodes,
+	/// where index 0 is the node closest to the layer. The connection feeding the top (most-upstream end) of the chain
+	/// is preserved, as are each node's other (non-primary) inputs.
+	pub fn reorder_chain_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
+		let Some(layer) = self.downstream_layer_for_chain_node(&node_id, network_path) else {
+			log::error!("Could not find downstream layer for chain node {node_id} in reorder_chain_node");
+			return;
+		};
+
+		// The nodes in the layer's chain, ordered from closest-to-layer outward, stopping at the next layer
+		let chain = self
+			.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
+			.skip(1)
+			.take_while(|upstream_id| !self.is_layer(upstream_id, network_path))
+			.collect::<Vec<_>>();
+
+		let Some(from) = chain.iter().position(|id| *id == node_id) else {
+			log::error!("Node {node_id} is not part of its layer's chain in reorder_chain_node");
+			return;
+		};
+
+		// The drop gap is measured against the chain that still includes the dragged node, so shift it down by one if the node is being removed from before the gap
+		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(chain.len() - 1);
+		if to == from {
+			return;
+		}
+
+		let mut new_order = chain.clone();
+		new_order.remove(from);
+		new_order.insert(to, node_id);
+
+		// Preserve whatever feeds the most-upstream chain node (a value, an import, or an upstream layer) so it stays at the top
+		let Some(tail_input) = self.input_from_connector(&InputConnector::node(*chain.last().unwrap(), 0), network_path).cloned() else {
+			log::error!("Could not get the upstream input of the chain in reorder_chain_node");
+			return;
+		};
+
+		// Disconnect the existing internal chain wiring first so the rewiring below can't transiently form a cycle
+		for &chain_node in &chain {
+			self.disconnect_input(&InputConnector::node(chain_node, 0), network_path);
+		}
+
+		// Rewire in the new order: layer's secondary input -> new_order[0] -> ... -> new_order[last] -> preserved tail input
+		self.set_input(&InputConnector::node(layer, 1), NodeInput::node(new_order[0], 0), network_path);
+		for pair in new_order.windows(2) {
+			self.set_input(&InputConnector::node(pair[0], 0), NodeInput::node(pair[1], 0), network_path);
+		}
+		self.set_input(&InputConnector::node(*new_order.last().unwrap(), 0), tail_input, network_path);
+
+		// Re-establish chain positioning for the reordered nodes
+		self.force_set_upstream_to_chain(&new_order[0], network_path);
+	}
 }
 
 #[derive(PartialEq)]
@@ -6346,6 +6471,9 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
 	pub node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
+	/// The display order of pinned nodes in the Properties panel (shown when nothing is selected in this network), keyed by node ID.
+	#[serde(default)]
+	pub pinned_node_order: Vec<NodeId>,
 	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
 	pub previewing: Previewing,

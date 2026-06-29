@@ -94,6 +94,14 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
+	ReorderChainNode {
+		node_id: NodeId,
+		insert_index: usize,
+	},
+	ReorderPinnedNode {
+		node_id: NodeId,
+		insert_index: usize,
+	},
 	SetChainPosition {
 		node_id: NodeId,
 	},

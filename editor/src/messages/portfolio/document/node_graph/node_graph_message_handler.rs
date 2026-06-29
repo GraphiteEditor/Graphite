@@ -186,6 +186,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					on: EventMessage::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
+
 				network_interface.load_structure();
 				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
 			}
@@ -752,6 +753,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
 				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
+			}
+			NodeGraphMessage::ReorderChainNode { node_id, insert_index } => {
+				network_interface.reorder_chain_node(node_id, insert_index, selection_network_path);
+			}
+			NodeGraphMessage::ReorderPinnedNode { node_id, insert_index } => {
+				network_interface.reorder_pinned_node(node_id, insert_index, selection_network_path);
 			}
 			NodeGraphMessage::SetChainPosition { node_id } => {
 				network_interface.set_chain_position(&node_id, selection_network_path);
@@ -2525,25 +2532,18 @@ impl NodeGraphMessageHandler {
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 				])];
 
-				let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
-					warn!("No network in collate_properties");
-					return Vec::new();
-				};
-				// And if no nodes are selected, show properties for all pinned nodes
-				let pinned_node_properties = network
-					.nodes
-					.keys()
-					.cloned()
-					.collect::<Vec<_>>()
-					.iter()
-					.filter_map(|node_id| {
-						if context.network_interface.is_pinned(node_id, context.selection_network_path) {
-							Some(node_properties::generate_node_properties(*node_id, context))
-						} else {
-							None
-						}
-					})
+				// And if no nodes are selected, show properties for all pinned nodes (in the user's saved order, each draggable to reorder)
+				let mut pinned_node_properties = context
+					.network_interface
+					.ordered_pinned_nodes(context.selection_network_path)
+					.into_iter()
+					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
+				for pinned_section in pinned_node_properties.iter_mut() {
+					if let LayoutGroup::Section(section) = pinned_section {
+						section.draggable = true;
+					}
+				}
 
 				properties.extend(pinned_node_properties);
 				properties
@@ -2605,7 +2605,7 @@ impl NodeGraphMessageHandler {
 				])];
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				let node_properties = context
+				let mut node_properties = context
 					.network_interface
 					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
 					.enumerate()
@@ -2621,6 +2621,13 @@ impl NodeGraphMessageHandler {
 					.into_iter()
 					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
+
+				// Mark each node in the layer's chain (but not the layer node itself, which is first) as draggable so its section can be reordered within the chain from the Properties panel
+				for chain_node_section in node_properties.iter_mut().skip(1) {
+					if let LayoutGroup::Section(section) = chain_node_section {
+						section.draggable = true;
+					}
+				}
 
 				layer_properties.extend(node_properties);
 				layer_properties
