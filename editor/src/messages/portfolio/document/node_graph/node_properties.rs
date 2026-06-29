@@ -2778,7 +2778,10 @@ pub fn vectorize_properties(node_id: NodeId, context: &mut NodePropertiesContext
 		.for_socket(ParameterWidgetsInfo::new(node_id, HierarchicalInput::INDEX, true, context))
 		.property_row();
 	let filter_speckle = number_widget(ParameterWidgetsInfo::new(node_id, FilterSpeckleInput::INDEX, true, context), NumberInput::default().int().min(0.));
-	let color_precision = number_widget(ParameterWidgetsInfo::new(node_id, ColorPrecisionInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	let color_precision = number_widget(
+		ParameterWidgetsInfo::new(node_id, ColorPrecisionInput::INDEX, true, context),
+		NumberInput::default().int().min(0.).max(8.),
+	);
 	let layer_difference = number_widget(ParameterWidgetsInfo::new(node_id, LayerDifferenceInput::INDEX, true, context), NumberInput::default().int().min(0.));
 	let path_simplify_mode = enum_choice::<vectorize_config::PathSimplifyMode>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, PathSimplifyModeInput::INDEX, true, context))

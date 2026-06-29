@@ -14,7 +14,7 @@ use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
-use graphene_std::renderer::usvg_utils::{extract_usvg_node, ParsedSvgNode, ParsedSvgPath};
+use graphene_std::renderer::usvg_utils::{ParsedSvgNode, ParsedSvgPath, extract_usvg_node};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
@@ -853,13 +853,7 @@ fn import_parsed_svg_leaf(modify_inputs: &mut ModifyInputsContext, node: ParsedS
 }
 
 /// Phase 2 root handler: build graphite layers for a parsed SVG root node.
-fn import_parsed_svg_root(
-	modify_inputs: &mut ModifyInputsContext,
-	node: ParsedSvgNode,
-	id: NodeId,
-	parent: LayerNodeIdentifier,
-	insert_index: usize,
-) {
+fn import_parsed_svg_root(modify_inputs: &mut ModifyInputsContext, node: ParsedSvgNode, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize) {
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -897,7 +891,9 @@ fn import_parsed_svg_root(
 			modify_inputs.network_interface.unload_all_nodes_click_targets(&[]);
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
-		_ => { import_parsed_svg_leaf(modify_inputs, node, layer); }
+		_ => {
+			import_parsed_svg_leaf(modify_inputs, node, layer);
+		}
 	}
 }
 
@@ -945,10 +941,8 @@ fn import_parsed_svg_path(modify_inputs: &mut ModifyInputsContext, path: ParsedS
 	let has_transform = path.transform != DAffine2::IDENTITY;
 	modify_inputs.insert_vector(path.subpaths, layer, has_transform, path.fill.is_some(), path.stroke.is_some());
 
-	if has_transform {
-		if let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
-			transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, path.transform);
-		}
+	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
+		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, path.transform);
 	}
 
 	if let Some(fill) = path.fill {
@@ -1016,7 +1010,6 @@ pub fn set_import_child_positions(
 		current_y += 2 * STACK_VERTICAL_GAP + child_extent as i32;
 	}
 }
-
 
 /// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
 /// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint

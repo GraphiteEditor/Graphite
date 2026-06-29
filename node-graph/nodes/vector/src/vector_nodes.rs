@@ -18,11 +18,11 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use rendering::usvg_utils::extract_graphite_gradient_stops;
-use rendering::usvg_utils::{ParsedSvgNode, extract_usvg_node, extract_usvg_path};
+use rendering::usvg_utils::{ParsedSvgNode, extract_usvg_node};
 use repeat_nodes::raster_types::Bitmap;
 use std::collections::hash_map::DefaultHasher;
+use vector_types::Vector;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
-use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
@@ -33,8 +33,8 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::vector::{PathStyle, PointDomain};
 use vector_types::vectorize_config;
-use vector_types::{Subpath, Vector};
 use vtracer::{ColorImage, Config, convert};
 
 /// Implemented for types that contain vector items reachable via mutable access.
@@ -890,6 +890,34 @@ where
 	result
 }
 
+fn extract_all_paths(parsed_node: ParsedSvgNode, vectors: &mut List<Vector>) {
+	match parsed_node {
+		ParsedSvgNode::Group(group) => {
+			for child in group.children {
+				// if let ParsedSvgNode::Path(ref path) = child {
+				// 	log::debug!("Reading path (in a group) {} from a total of {}.", i, svg_tree.root().children().len());
+				// 	i += 1;
+				// }
+				extract_all_paths(child, vectors);
+			}
+		}
+		ParsedSvgNode::Path(path) => {
+			let mut child_subpaths = path.subpaths.clone();
+			child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
+			let mut vector = Vector::from_subpaths(child_subpaths, false);
+			vector.style = PathStyle {
+				fill: path.fill.unwrap_or(Fill::None),
+				stroke: path.stroke,
+			};
+
+			vectors.push(Item::new_from_element(vector));
+			// log::debug!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
+			// i += 1;
+		}
+		_ => {}
+	}
+}
+
 #[node_macro::node(category("Vector"), path(core_types::vector), properties("vectorize_properties"))]
 pub fn vectorize(
 	_ctx: impl Ctx,
@@ -906,113 +934,47 @@ pub fn vectorize(
 	#[default(45.)] splice_threshold: f64,
 	#[default(6.)] path_precision: f64,
 ) -> List<Vector> {
-	image
-		.into_iter()
-		.map(|row| {
-			// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let image_data = row.element();
-			let color_image = ColorImage {
-				width: image_data.width() as usize,
-				height: image_data.height() as usize,
-				pixels: image_data.to_flat_u8().0,
-			};
-			let config: Config = Config {
-				color_mode: color_mode.to_vtracer(),
-				hierarchical: hierarchical.to_vtracer(),
-				filter_speckle: filter_speckle as usize,
-				color_precision: color_precision as i32,
-				layer_difference: layer_difference as i32,
-				mode: path_simplify_mode.to_vtracer(),
-				corner_threshold: corner_threshold as i32,
-				length_threshold,
-				max_iterations: max_iterations as usize,
-				splice_threshold: splice_threshold as i32,
-				path_precision: Some(path_precision as u32),
-			};
-			let vectorized_image = convert(color_image, config).expect("failed to obtain an SvgFile from vtracer.");
-			let image_svg = vectorized_image.to_string();
-			let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
-				Ok(t) => t,
-				Err(e) => {
-					// TODO: use proper error statements
-					panic!("Failed to create a usvg tree:\n{e}");
-				}
-			};
-			// log::debug!("vectorized_image: {}", image_svg);
-
-			let mut subpaths: Vec<Subpath<PointId>> = vec![];
-			let graphite_gradient_stops = extract_graphite_gradient_stops(&image_svg);
-			// let mut i = 1;
-			for child in svg_tree.root().children() {
-				match child {
-					usvg::Node::Path(path) => {
-						let parsed_path = extract_usvg_path(child, path, &graphite_gradient_stops);
-						let mut child_subpaths = parsed_path.subpaths.clone();
-						child_subpaths.iter_mut().for_each(|s| s.apply_transform(parsed_path.transform));
-						subpaths.extend(child_subpaths);
-
-						// log::debug!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
-						// i += 1;
-					}
-					usvg::Node::Group(_) => {
-						let parsed_node = extract_usvg_node(child, &graphite_gradient_stops);
-						let parsed_group = if let ParsedSvgNode::Group(group) = parsed_node {
-							group
-						} else {
-							panic!("Must return a SVG group.");
-						};
-
-						for child in parsed_group.children {
-							if let ParsedSvgNode::Path(path) = child {
-								let mut child_subpaths = path.subpaths.clone();
-								child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
-								subpaths.extend(child_subpaths);
-
-								// log::debug!("Reading path (in a group) {} from a total of {}.", i, svg_tree.root().children().len());
-								// i += 1;
-							}
-						}
-					}
-					_ => {}
-				}
+	image.into_iter().fold(List::new(), |mut vectors, row| {
+		// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let image_data = row.element();
+		let color_image = ColorImage {
+			width: image_data.width() as usize,
+			height: image_data.height() as usize,
+			pixels: image_data.to_flat_u8().0,
+		};
+		let config: Config = Config {
+			color_mode: color_mode.to_vtracer(),
+			hierarchical: hierarchical.to_vtracer(),
+			filter_speckle: filter_speckle as usize,
+			color_precision: color_precision as i32,
+			layer_difference: layer_difference as i32,
+			mode: path_simplify_mode.to_vtracer(),
+			corner_threshold: corner_threshold as i32,
+			length_threshold,
+			max_iterations: max_iterations as usize,
+			splice_threshold: splice_threshold as i32,
+			path_precision: Some(path_precision as u32),
+		};
+		let vectorized_image = convert(color_image, config).expect("failed to obtain an SvgFile from vtracer.");
+		let image_svg = vectorized_image.to_string();
+		let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
+			Ok(t) => t,
+			Err(e) => {
+				// TODO: use proper error statements
+				panic!("Failed to create a usvg tree:\n{e}");
 			}
+		};
+		// log::debug!("vectorized_image: {}", image_svg);
 
-			/*
-			let mut path = BezPath::new();
-			for subpath in vectorized_image.paths.iter() {
-				let svg_path = subpath.to_string();
-				println!("svg_path: {}", svg_path);
-				// TODO: use usvg instead to read from the svg path
-				let bezpath: BezPath = kurbo::BezPath::from_svg(svg_path.as_str()).expect("failed to convert SVG into BezPath.");
-
-				for curve in bezpath.segments() {
-					match curve {
-						PathSeg::Line(line) => {
-							println!("Inserting line: {:?}", line);
-							let a = transform.transform_point2(point_to_dvec2(line.p1));
-							path.line_to(kurbo::Point::new(a.x, a.y));
-						}
-						PathSeg::Quad(quad_bez) => {
-							println!("Inserting quad_bez: {:?}", quad_bez);
-							let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
-							let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
-							path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
-						}
-						PathSeg::Cubic(cubic_bez) => {
-							println!("Inserting cubic_bez: {:?}", cubic_bez);
-							let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
-							let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
-							let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
-							path.curve_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y), kurbo::Point::new(c.x, c.y));
-						}
-					}
-				}
-			}
-			*/
-			let vector = Vector::from_subpaths(subpaths, true);
-			Item::from_parts(vector, row.attributes().clone())
-		})
-		.collect::<List<Vector>>()
+		// let mut subpaths: Vec<Subpath<PointId>> = vec![];
+		let graphite_gradient_stops = extract_graphite_gradient_stops(&image_svg);
+		// let mut i = 1;
+		for child in svg_tree.root().children() {
+			let parsed_child = extract_usvg_node(child, &graphite_gradient_stops);
+			extract_all_paths(parsed_child, &mut vectors);
+		}
+		return vectors;
+	})
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
