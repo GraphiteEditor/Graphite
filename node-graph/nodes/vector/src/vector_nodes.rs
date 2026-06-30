@@ -1130,16 +1130,7 @@ async fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: St
 				bezpath.apply_affine(transform);
 
 				// Taking the existing stroke data and passing it to Kurbo to generate new paths.
-				let mut bezpath_out = offset_bezpath(
-					&bezpath,
-					-distance,
-					match join {
-						StrokeJoin::Miter => kurbo::Join::Miter,
-						StrokeJoin::Bevel => kurbo::Join::Bevel,
-						StrokeJoin::Round => kurbo::Join::Round,
-					},
-					Some(miter_limit),
-				);
+				let mut bezpath_out = offset_bezpath(&bezpath, -distance, join.to_kurbo(), Some(miter_limit));
 
 				bezpath_out.apply_affine(transform.inverse());
 
@@ -1170,16 +1161,8 @@ async fn solidify_stroke<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[
 			let mut solidified_stroke = Vector::default();
 
 			// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
-			let join = match stroke.join {
-				StrokeJoin::Miter => kurbo::Join::Miter,
-				StrokeJoin::Bevel => kurbo::Join::Bevel,
-				StrokeJoin::Round => kurbo::Join::Round,
-			};
-			let cap = match stroke.cap {
-				StrokeCap::Butt => kurbo::Cap::Butt,
-				StrokeCap::Round => kurbo::Cap::Round,
-				StrokeCap::Square => kurbo::Cap::Square,
-			};
+			let join = stroke.join.to_kurbo();
+			let cap = stroke.cap.to_kurbo();
 			let dash_offset = stroke.dash_offset;
 			let dash_pattern = stroke.dash_lengths;
 			let miter_limit = stroke.join_miter_limit;

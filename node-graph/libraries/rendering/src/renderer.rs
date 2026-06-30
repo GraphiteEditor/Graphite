@@ -26,7 +26,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
@@ -1071,6 +1071,7 @@ impl Render for List<Vector> {
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
+
 			let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
@@ -1083,6 +1084,7 @@ impl Render for List<Vector> {
 			let mut path = String::new();
 
 			for mut bezpath in vector.stroke_bezpath_iter() {
+				// Only affects layers with upstream transforms (from stroke node)
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				path.push_str(bezpath.to_svg().as_str());
 			}
@@ -1099,8 +1101,8 @@ impl Render for List<Vector> {
 			let stroke_graphic_list = stroke_graphic_list_at(self, index);
 			let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
 
-			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = path_is_closed
+			let only_closed_paths = vector.stroke_bezier_paths().all(|path| path.closed());
+			let can_draw_aligned_stroke = only_closed_paths
 				&& vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
 			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
@@ -1157,6 +1159,7 @@ impl Render for List<Vector> {
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
+				// Affects all layers regardless of upstream/downstream transforms (from the stroke node)
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push(ATTR_TRANSFORM, matrix);
@@ -1167,7 +1170,7 @@ impl Render for List<Vector> {
 					let mut svg = SvgRender::new();
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
-					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
+					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `only_closed_paths`
 					let (largest_scale, _) = singular_values(applied_stroke_transform);
 					let inflation = stroke.max_aabb_inflation(true) * largest_scale;
 					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
@@ -1316,7 +1319,7 @@ impl Render for List<Vector> {
 			let mut layer = false;
 
 			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
-			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
+			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `only_closed_paths` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = element.style.stroke();
 			let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
@@ -1407,23 +1410,13 @@ impl Render for List<Vector> {
 						continue;
 					};
 
-					let cap = match stroke.cap {
-						StrokeCap::Butt => Cap::Butt,
-						StrokeCap::Round => Cap::Round,
-						StrokeCap::Square => Cap::Square,
-					};
-					let join = match stroke.join {
-						StrokeJoin::Miter => Join::Miter,
-						StrokeJoin::Bevel => Join::Bevel,
-						StrokeJoin::Round => Join::Round,
-					};
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
-						join,
-						start_cap: cap,
-						end_cap: cap,
+						join: stroke.join.to_kurbo(),
+						start_cap: stroke.cap.to_kurbo(),
+						end_cap: stroke.cap.to_kurbo(),
 						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};

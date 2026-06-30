@@ -2,6 +2,7 @@ use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -17,9 +18,10 @@ use graphene_std::list::List;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
-use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId, Tangent, dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::style::{PaintOrder, Stroke, StrokeAlign};
+use graphene_std::vector::{HandleExt, PointId, SegmentId, Subpath, Vector, VectorModification, VectorModificationType};
+use kurbo::{Affine, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveNearest, PathSeg, Point, QuadBez, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
@@ -639,4 +641,104 @@ pub fn nudge_resize_bounds(min: DVec2, max: DVec2, delta: DVec2, tilt: f64, resi
 		max: new_max,
 		transform,
 	}
+}
+
+pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on_all: bool, stroke: Option<Stroke>, layer_to_viewport: DAffine2, mut _overlay_context: Option<OverlayContext>) -> bool {
+	let daffine2_to_affine = |transform: DAffine2| -> Affine { Affine::new(transform.to_cols_array()) };
+
+	// Note: mouse position is in viewport space and subpaths are in the stroke/element space
+	let mut is_near = false;
+
+	if let Some(stroke) = stroke {
+		let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+		let element_transform = if has_real_stroke { layer_to_viewport * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+		let applied_stroke_transform = if has_real_stroke { stroke.transform } else { layer_to_viewport };
+
+		// Apply applied stroke transform to the subpath bezpath
+		let mut subpath_bezpath = subpath.to_bezpath();
+		subpath_bezpath.apply_affine(daffine2_to_affine(applied_stroke_transform));
+
+		// Convert mouse position to element space
+		let mouse_pos_t = element_transform.inverse().transform_point2(mouse_pos);
+		let mouse_point = dvec2_to_point(mouse_pos_t);
+
+		// Select the segment with the least distance from mouse position
+		let seg = subpath_bezpath.segments().min_by_key(|seg| seg.nearest(mouse_point, DEFAULT_ACCURACY).distance_sq.sqrt() as u64);
+		if let Some(seg) = seg {
+			let nearest = seg.nearest(mouse_point, DEFAULT_ACCURACY);
+
+			// Preparing subpath bezpath to be used to check insideness
+			let test_subpath_bezpath = || {
+				let mut subpath_bezpath = subpath_bezpath.clone();
+				subpath_bezpath.apply_affine(daffine2_to_affine(element_transform));
+				if !subpath.closed() {
+					subpath_bezpath.close_path();
+				}
+				subpath_bezpath
+			};
+			let transform_seg = |transform: DAffine2| {
+				let mut bezpath_seg = seg.to_path(0.01);
+				bezpath_seg.apply_affine(daffine2_to_affine(transform));
+
+				bezpath_seg.get_seg(1).unwrap()
+			};
+
+			// Compute insideness and stroke scale while in element space
+			let (is_inside_seg, stroke_scale) = seg.tangent_at(nearest.t).try_normalize().map_or((false, 1.0), |tangent| {
+				// Transform the normal from element space to viewport space
+				let normal_dir = {
+					let subpath_bezpath = test_subpath_bezpath();
+					let seg = transform_seg(element_transform);
+					let transformed_normal = (element_transform).transform_vector2(tangent.perp());
+					let normal_end = dvec2_to_point(point_to_dvec2(seg.eval(nearest.t)) + ((stroke.weight() / 2.0) * transformed_normal));
+
+					if subpath_bezpath.contains(normal_end) { -1.0 } else { 1.0 }
+				};
+				let normal = normal_dir * tangent.perp();
+				let transformed_normal = (element_transform).transform_vector2(normal);
+
+				let seg_to_mouse = (point_to_dvec2(mouse_point) - point_to_dvec2(seg.eval(nearest.t))).normalize_or(normal);
+
+				// Draw debug transformed normal with length of stroke width
+				// if let Some(ref mut ctx) = overlay_context {
+				// 	let seg = transform_seg(element_transform);
+
+				// 	let normal_start = point_to_dvec2(seg.eval(nearest.t));
+				// 	let normal_end = normal_start + ((stroke.weight() / 2.0) * transformed_normal);
+				// 	ctx.line(normal_start, normal_end, Some("#d23434"), Some(2.0));
+				// }
+
+				(normal.dot(seg_to_mouse) <= 0.0, transformed_normal.length())
+			});
+
+			// Adjust max stroke distance based on stroke properities and insideness
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+			let mut max_stroke_distance = (stroke.weight() / 2.0) * stroke_scale;
+			match (stroke_align, stroke.paint_order, is_inside_seg) {
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove, true) => max_stroke_distance *= 2.0,
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove, false) => max_stroke_distance = -f64::INFINITY,
+				(StrokeAlign::Inside, PaintOrder::StrokeBelow, _) => max_stroke_distance = -f64::INFINITY,
+				(StrokeAlign::Center, PaintOrder::StrokeAbove, _) => {}
+				(StrokeAlign::Center, PaintOrder::StrokeBelow, true) => max_stroke_distance = -f64::INFINITY,
+				(StrokeAlign::Center, PaintOrder::StrokeBelow, false) => {}
+				// Paint order does not affect StrokeAlign::Outside
+				(StrokeAlign::Outside, _, true) => max_stroke_distance = -f64::INFINITY,
+				(StrokeAlign::Outside, _, false) => max_stroke_distance *= 2.0,
+			}
+
+			// Compute the nearest distance (subpath to mouse position in viewport space)
+			let nearest_distance = {
+				let seg = transform_seg(element_transform);
+				let mouse_point = dvec2_to_point(mouse_pos);
+
+				seg.nearest(mouse_point, 0.01).distance_sq.sqrt()
+			};
+			// log::info!("nearest_distance, max_stroke_distance: {:?}, {:?}", nearest_distance, max_stroke_distance);
+			if nearest_distance <= max_stroke_distance {
+				is_near = true;
+			}
+		}
+	}
+
+	is_near
 }

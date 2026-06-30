@@ -1,7 +1,8 @@
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	GRADIENT_MIDPOINT_DIAMOND_RADIUS, INFLATE_FACTOR, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET,
+	SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -18,13 +19,14 @@ use graphene_std::subpath::{self, Subpath};
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
+use graphene_std::vector::style::{PaintOrder, PathStyleType, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
-use kurbo::{self, BezPath, ParamCurve};
+use kurbo::{self, BezPath, ParamCurve, Shape};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
-use vello::peniko;
+use vello::peniko::{self, BlendMode};
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -47,19 +49,32 @@ pub enum GizmoEmphasis {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysType {
+	// =======
+	// General
+	// =======
 	ArtboardName,
-	CompassRose,
-	QuickMeasurement,
 	TransformMeasurement,
+	// ===========
+	// Select Tool
+	// ===========
+	QuickMeasurement,
 	TransformCage,
+	CompassRose,
+	Pivot,
+	Origin,
 	HoverOutline,
 	SelectionOutline,
 	LayerOriginCross,
-	Pivot,
-	Origin,
+	// ================
+	// Pen & Path Tools
+	// ================
 	Path,
 	Anchors,
 	Handles,
+	// =========
+	// Fill Tool
+	// =========
+	FillableIndicator,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -69,18 +84,19 @@ pub enum OverlaysType {
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
-	pub compass_rose: bool,
-	pub quick_measurement: bool,
 	pub transform_measurement: bool,
+	pub quick_measurement: bool,
 	pub transform_cage: bool,
+	pub compass_rose: bool,
+	pub pivot: bool,
+	pub origin: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub layer_origin_cross: bool,
-	pub pivot: bool,
-	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub fillable_indicator: bool,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -89,18 +105,19 @@ impl Default for OverlaysVisibilitySettings {
 		Self {
 			all: true,
 			artboard_name: true,
-			compass_rose: true,
-			quick_measurement: true,
 			transform_measurement: true,
+			quick_measurement: true,
 			transform_cage: true,
+			compass_rose: true,
+			pivot: true,
+			origin: true,
 			hover_outline: true,
 			selection_outline: true,
 			layer_origin_cross: true,
-			pivot: true,
-			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
+			fillable_indicator: true,
 		}
 	}
 }
@@ -161,6 +178,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn fillable_indicator(&self) -> bool {
+		self.all && self.fillable_indicator
 	}
 }
 
@@ -407,10 +428,9 @@ impl OverlayContext {
 		self.internal().fill_path(subpaths, transform, color);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
-	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.internal().fill_path_pattern(subpaths, transform, color);
+	/// Previews the fill on the shape's stroke/fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
+	pub fn preview_fill(&mut self, style_type: PathStyleType, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
+		self.internal().preview_fill(style_type, vector_data, color, transform, is_closed_on_all);
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -977,7 +997,7 @@ impl OverlayContextInternal {
 		path.push(bezier.as_path_el());
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
+	fn path_from_subpaths(&self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, transform: DAffine2) -> BezPath {
 		let mut path = BezPath::new();
 
 		for subpath in subpaths {
@@ -1018,7 +1038,7 @@ impl OverlayContextInternal {
 				}
 			}
 
-			if subpath.closed() {
+			if subpath.closed() && close_path {
 				path.close_path();
 			}
 		}
@@ -1041,24 +1061,14 @@ impl OverlayContextInternal {
 		}
 
 		if !subpaths.is_empty() {
-			let path = self.push_path(subpaths.iter(), transform);
+			let path = self.path_from_subpaths(subpaths.iter(), true, transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 
 			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 		}
 	}
 
-	/// Fills the area inside the path. Assumes `color` is in gamma space.
-	/// Used by the Pen tool to show the path being closed.
-	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		let path = self.push_path(subpaths, transform);
-
-		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
-	}
-
-	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
-	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	pub fn fill_canvas_pattern_image(&self, color: &str) -> peniko::ImageBrush {
 		const PATTERN_WIDTH: u32 = 4;
 		const PATTERN_HEIGHT: u32 = 4;
 
@@ -1095,10 +1105,146 @@ impl OverlayContextInternal {
 			},
 		};
 
-		let path = self.push_path(subpaths, transform);
-		let brush = peniko::Brush::Image(image);
+		image
+	}
 
-		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
+	fn path_and_winding_for_fill(&self, vector_data: &Vector, transform: DAffine2) -> (Option<BezPath>, peniko::Fill) {
+		if vector_data.use_face_fill() {
+			let subpaths: Vec<Subpath<PointId>> = {
+				let face_paths = vector_data.construct_faces().filter(|face| face.area() >= 0.);
+				let segs = |path: BezPath| path.segments().collect::<Vec<PathSeg>>();
+
+				// TODO: test if closed on face_paths holds on all cases
+				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), true)).collect()
+			};
+			let path = self.path_from_subpaths(subpaths.iter(), false, transform);
+
+			(Some(path), peniko::Fill::NonZero)
+		} else if vector_data.is_branching() {
+			(None, peniko::Fill::EvenOdd)
+		} else {
+			(None, peniko::Fill::NonZero)
+		}
+	}
+
+	/// Fills the area inside the path. Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed.
+	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		let path = self.path_from_subpaths(subpaths, true, transform);
+
+		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
+	}
+
+	/// Previews the fill on the shape's stroke/fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
+	pub fn preview_fill(&mut self, style_type: PathStyleType, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
+		let subpaths = vector_data.stroke_bezier_paths();
+
+		if let Some(stroke) = vector_data.style.stroke() {
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
+			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
+			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
+			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
+
+			// For layers with open subpaths, stroke align is ignored and set to default
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+
+			let do_fill = |ctx: &mut Self, compose_mode: Option<peniko::Compose>, stroke_scale: Option<f64>| {
+				let element_transform = Affine::new(element_transform.to_cols_array());
+				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
+				let (new_path, winding) = ctx.path_and_winding_for_fill(vector_data, applied_stroke_transform);
+				// TODO: avoid cloning the path
+				let path = new_path.unwrap_or(path.clone());
+
+				if let Some(compose_mode) = compose_mode {
+					let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
+					// TODO: find a method to rid of the extra offset factor
+					let inflation = stroke.weight() * INFLATE_FACTOR;
+					let path_bbox = path.bounding_box().inflate(inflation, inflation);
+
+					ctx.scene
+						.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
+					ctx.scene.fill(winding, element_transform, &peniko::Brush::Solid(peniko::Color::BLACK), None, &path);
+					ctx.scene.pop_layer();
+				} else {
+					ctx.scene.fill(winding, element_transform, &brush, Some(element_transform.inverse()), &path);
+				}
+			};
+			let do_stroke = |ctx: &mut Self, compose_mode: Option<peniko::Compose>, stroke_scale: Option<f64>| {
+				let element_transform = Affine::new(element_transform.to_cols_array());
+				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
+
+				if let Some(compose_mode) = compose_mode {
+					// TODO: find a method to rid of the extra offset factor
+					let inflation = stroke.weight() * INFLATE_FACTOR;
+					let path_bbox = path.bounding_box().inflate(inflation, inflation);
+
+					ctx.scene
+						.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
+					ctx.scene.stroke(&stroke.to_kurbo(), element_transform, &peniko::Brush::Solid(peniko::Color::BLACK), None, &path);
+					ctx.scene.pop_layer();
+				} else {
+					ctx.scene.stroke(&stroke.to_kurbo(), element_transform, &brush, Some(element_transform.inverse()), &path);
+				}
+			};
+
+			match style_type {
+				PathStyleType::Fill => {
+					match (stroke_align, stroke.paint_order) {
+						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+							do_fill(self, None, None);
+							do_stroke(self, Some(peniko::Compose::DestOut), Some(2.0));
+						}
+						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {
+							do_fill(self, None, None);
+						}
+						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+							do_fill(self, None, None);
+							do_stroke(self, Some(peniko::Compose::DestOut), None);
+						}
+						(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+							do_fill(self, None, None);
+						}
+						// Paint order does not affect StrokeAlign::Outside
+						(StrokeAlign::Outside, _) => {
+							do_fill(self, None, None);
+						}
+					}
+				}
+				PathStyleType::Stroke => {
+					match (stroke_align, stroke.paint_order) {
+						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+							do_stroke(self, None, Some(2.0));
+							do_fill(self, Some(peniko::Compose::DestIn), Some(2.0));
+						}
+						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
+						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+							do_stroke(self, None, None);
+						}
+						(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+							do_stroke(self, None, None);
+							do_fill(self, Some(peniko::Compose::DestOut), None);
+						}
+						// Paint order does not affect StrokeAlign::Outside
+						(StrokeAlign::Outside, _) => {
+							do_stroke(self, None, Some(2.0));
+							do_fill(self, Some(peniko::Compose::DestOut), Some(2.0));
+						}
+					}
+				}
+			}
+		} else {
+			if let PathStyleType::Fill = style_type {
+				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
+				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, transform);
+				let path = new_path.unwrap_or(self.path_from_subpaths(subpaths, false, transform));
+
+				let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
+				self.scene.fill(winding, Affine::IDENTITY, &brush, None, &path);
+			}
+		}
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

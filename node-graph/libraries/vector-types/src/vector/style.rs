@@ -312,6 +312,22 @@ impl StrokeCap {
 			StrokeCap::Square => "square",
 		}
 	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			StrokeCap::Butt => String::from("butt"),
+			StrokeCap::Round => String::from("round"),
+			StrokeCap::Square => String::from("square"),
+		}
+	}
+
+	pub fn to_kurbo(&self) -> kurbo::Cap {
+		match self {
+			StrokeCap::Butt => kurbo::Cap::Butt,
+			StrokeCap::Round => kurbo::Cap::Round,
+			StrokeCap::Square => kurbo::Cap::Square,
+		}
+	}
 }
 
 #[repr(C)]
@@ -335,6 +351,22 @@ impl StrokeJoin {
 			StrokeJoin::Bevel => "bevel",
 			StrokeJoin::Miter => "miter",
 			StrokeJoin::Round => "round",
+		}
+	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			StrokeJoin::Bevel => String::from("bevel"),
+			StrokeJoin::Miter => String::from("miter"),
+			StrokeJoin::Round => String::from("round"),
+		}
+	}
+
+	pub fn to_kurbo(&self) -> kurbo::Join {
+		match self {
+			StrokeJoin::Bevel => kurbo::Join::Bevel,
+			StrokeJoin::Miter => kurbo::Join::Miter,
+			StrokeJoin::Round => kurbo::Join::Round,
 		}
 	}
 }
@@ -425,6 +457,19 @@ impl Stroke {
 		}
 	}
 
+	/// Converts Stroke to kurbo::Stroke, lose of data is possible since some fields are non-existent in kurbo::Stroke
+	pub fn to_kurbo(&self) -> kurbo::Stroke {
+		kurbo::Stroke {
+			width: self.weight,
+			join: self.join.to_kurbo(),
+			miter_limit: self.join_miter_limit,
+			start_cap: self.cap.to_kurbo(),
+			end_cap: self.cap.to_kurbo(),
+			dash_offset: self.dash_offset,
+			..Default::default()
+		}
+	}
+
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
 			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
@@ -474,13 +519,18 @@ impl Stroke {
 	}
 
 	/// Get the effective stroke weight.
-	pub fn effective_width(&self) -> f64 {
-		self.weight
-			* match self.align {
-				StrokeAlign::Center => 1.,
-				StrokeAlign::Inside => 0.,
-				StrokeAlign::Outside => 2.,
-			}
+	///	For open paths the renderer always draws a centered `weight`-wide stroke regardless of the align attribute, so we mirror that here.
+	pub fn effective_width(&self, only_closed_paths: bool) -> f64 {
+		if only_closed_paths {
+			self.weight()
+				* match self.align {
+					StrokeAlign::Center => 1.,
+					StrokeAlign::Inside => 0.,
+					StrokeAlign::Outside => 2.,
+				}
+		} else {
+			self.weight()
+		}
 	}
 
 	/// Worst-case upper bound on the perpendicular extent (per side) of the visible stroke from the path
@@ -488,7 +538,7 @@ impl Stroke {
 	/// Used as a cheap, safe inflation amount for renderer clip rects so alignment compositing layers
 	/// don't crop the actual stroke geometry. Constant-time — no path traversal.
 	///
-	/// `path_is_closed` indicates whether every subpath of the vector being measured is closed. The renderer
+	/// `only_closed_paths` indicates whether every subpath of the vector being measured is closed. The renderer
 	/// only honors stroke alignment for fully-closed paths and falls back to drawing a Center-aligned
 	/// `weight`-wide stroke otherwise, so callers must pass `false` when any subpath is open or an
 	/// `Inside`-aligned stroke would silently get an inflation of `0` and crop at the blend layer.
@@ -497,13 +547,9 @@ impl Stroke {
 	/// to reach the miter limit at every join (most don't), and square caps are assumed to sit at 45° to
 	/// the axes (rarely the case). For an exact bound, use `Vector::stroke_inclusive_bounding_box_with_transform`
 	/// at the cost of running kurbo to compute the stroke's outline path.
-	pub fn max_aabb_inflation(&self, path_is_closed: bool) -> f64 {
+	pub fn max_aabb_inflation(&self, only_closed_paths: bool) -> f64 {
 		// Match the renderer: stroke alignment only applies to closed paths; open paths render as Center
-		let half_width = if self.align != StrokeAlign::Center && path_is_closed {
-			self.effective_width()
-		} else {
-			self.weight
-		} * 0.5;
+		let half_width = self.effective_width(only_closed_paths) * 0.5;
 		let join_factor = if self.join == StrokeJoin::Miter { self.join_miter_limit.max(1.) } else { 1. };
 		let cap_factor = if self.cap == StrokeCap::Square { core::f64::consts::SQRT_2 } else { 1. };
 		half_width * join_factor.max(cap_factor)
@@ -603,6 +649,11 @@ impl Default for Stroke {
 			paint_order: PaintOrder::default(),
 		}
 	}
+}
+
+pub enum PathStyleType {
+	Fill,
+	Stroke,
 }
 
 #[repr(C)]
