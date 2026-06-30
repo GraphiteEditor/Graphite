@@ -753,7 +753,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let resize_opposite = ipp.keyboard.key(resize_opposite);
 				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite, responses);
 			}
-			DocumentMessage::PasteImage {
+			DocumentMessage::InsertImage {
 				name,
 				image,
 				mouse,
@@ -817,7 +817,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
-			DocumentMessage::PasteSvg {
+			DocumentMessage::InsertSvg {
 				name,
 				svg,
 				mouse,

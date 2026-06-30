@@ -1,7 +1,7 @@
 use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use crate::consts::GRID_SIZE;
-use crate::messages::clipboard::utility_types::ClipboardContent;
+use crate::messages::clipboard::utility_types::ClipboardItem;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -12,9 +12,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
-};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
@@ -248,12 +246,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
 				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
 
-				let Ok(data) = serde_json::to_string(&copied_nodes) else {
-					log::error!("Failed to serialize nodes for clipboard");
-					return;
-				};
-				responses.add(ClipboardMessage::Write {
-					content: ClipboardContent::Nodes(data),
+				responses.add(ClipboardMessage::WriteItems {
+					items: vec![ClipboardItem::Nodes(copied_nodes)],
 				});
 			}
 			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
@@ -762,26 +756,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetChainPosition { node_id } => {
 				network_interface.set_chain_position(&node_id, selection_network_path);
 			}
-			NodeGraphMessage::PasteNodes { serialized_nodes } => {
-				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
-					Ok(d) => d,
-					Err(e) => {
-						warn!("Invalid node data {e:?}");
-						return;
-					}
-				};
-				if data.is_empty() {
+			NodeGraphMessage::InsertNodes { nodes } => {
+				if nodes.is_empty() {
 					return;
 				}
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+				let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+
 				let nodes: Vec<_> = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::AddNodes {
-					nodes: data,
-					new_ids: new_ids.clone(),
-				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes })
 			}
 			NodeGraphMessage::PointerDown {

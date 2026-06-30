@@ -670,7 +670,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 					}
 					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::PasteSvg {
+						responses.add(PortfolioMessage::InsertSvg {
 							name,
 							svg,
 							mouse: None,
@@ -678,7 +678,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 					}
 					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::PasteImage {
+						responses.add(PortfolioMessage::InsertImage {
 							name,
 							image,
 							mouse: None,
@@ -870,7 +870,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					name: name.clone().unwrap_or_default(),
 				});
 
-				responses.add(DocumentMessage::PasteImage {
+				responses.add(DocumentMessage::InsertImage {
 					name,
 					image,
 					mouse: None,
@@ -925,7 +925,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						})
 					});
 
-				responses.add(DocumentMessage::PasteSvg {
+				responses.add(DocumentMessage::InsertSvg {
 					name,
 					svg,
 					mouse: None,
@@ -947,7 +947,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 				});
 			}
-			PortfolioMessage::CenterPastedLayers { layers } => {
+			PortfolioMessage::CenterLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
 					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.size().into_dvec2()]); // In viewport pixel coordinates
 					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
@@ -1052,7 +1052,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::PasteImage {
+			PortfolioMessage::InsertImage {
 				name,
 				image,
 				mouse,
@@ -1061,7 +1061,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.document_ids.is_empty() {
 					responses.add(PortfolioMessage::OpenImage { name, image });
 				} else {
-					responses.add(DocumentMessage::PasteImage {
+					responses.add(DocumentMessage::InsertImage {
 						name,
 						image,
 						mouse,
@@ -1070,7 +1070,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
-			PortfolioMessage::PasteSvg {
+			PortfolioMessage::InsertSvg {
 				name,
 				svg,
 				mouse,
@@ -1079,7 +1079,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.document_ids.is_empty() {
 					responses.add(PortfolioMessage::OpenSvg { name, svg });
 				} else {
-					responses.add(DocumentMessage::PasteSvg {
+					responses.add(DocumentMessage::InsertSvg {
 						name,
 						svg,
 						mouse,

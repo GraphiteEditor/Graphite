@@ -112,7 +112,7 @@ pub enum DocumentMessage {
 		resize: Key,
 		resize_opposite: Key,
 	},
-	PasteImage {
+	InsertImage {
 		name: Option<String>,
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
@@ -121,7 +121,7 @@ pub enum DocumentMessage {
 		/// can wrap it without a content Transform node. When false, place at the cursor or viewport center.
 		place_at_origin: bool,
 	},
-	PasteSvg {
+	InsertSvg {
 		name: Option<String>,
 		svg: String,
 		mouse: Option<(f64, f64)>,

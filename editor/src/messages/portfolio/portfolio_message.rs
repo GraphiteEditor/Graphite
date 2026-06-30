@@ -106,19 +106,19 @@ pub enum PortfolioMessage {
 		name: Option<String>,
 		svg: String,
 	},
-	PasteImage {
+	InsertImage {
 		name: Option<String>,
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
-	PasteSvg {
+	InsertSvg {
 		name: Option<String>,
 		svg: String,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
-	CenterPastedLayers {
+	CenterLayers {
 		layers: Vec<LayerNodeIdentifier>,
 	},
 	PrevDocument,
