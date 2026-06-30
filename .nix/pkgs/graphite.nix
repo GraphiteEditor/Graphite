@@ -132,7 +132,10 @@ deps.crane.lib.buildPackage (
       cp target/${if dev then "debug" else "release"}/graphite $out/bin/graphite
 
       mkdir -p $out/share/applications
-      cp $src/desktop/assets/*.desktop $out/share/applications/
+      cp $src/desktop/assets/art.graphite.Graphite.desktop $out/share/applications/
+
+      mkdir -p $out/share/mime/packages
+      cp $src/desktop/assets/art.graphite.Graphite.xml $out/share/mime/packages/
 
       mkdir -p $out/share/icons/hicolor/scalable/apps
       cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/art.graphite.Graphite.svg
