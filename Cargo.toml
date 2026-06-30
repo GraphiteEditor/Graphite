@@ -187,6 +187,7 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 	"gif",
+	"webp",
 ] }
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }

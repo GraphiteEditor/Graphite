@@ -32,7 +32,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				let hash = ResourceHash::from(data.as_ref());
 				self.registry.push_source_back(&resource_id, DataSource::Embedded);
 				self.registry.resolve(&resource_id, hash);
-				responses.add(ResourceStorageMessage::Store { data });
+				// Store before any RunDocumentGraph so the image node can resolve the resource on first render
+				responses.add_front(ResourceStorageMessage::Store { data });
 			}
 			ResourceMessage::AddFont { resource_id, font } => {
 				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
@@ -69,7 +70,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					log::warn!("Resource {resource_id} already resolved");
 					return;
 				}
-
 				self.pending_resolves.insert(resource_id);
 
 				let font_catalog = fonts.font_catalog.clone();

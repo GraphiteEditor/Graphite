@@ -307,17 +307,21 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&color_value_id, layer, &[], self.import);
 	}
 
-	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) -> NodeId {
+		self.insert_encoded_image_data(image.to_png().into(), layer)
+	}
+
+	pub fn insert_encoded_image_data(&mut self, data: std::sync::Arc<[u8]>, layer: LayerNodeIdentifier) -> NodeId {
+		let resource_id = ResourceId::new();
+		// Store before any RunDocumentGraph so the image node can resolve the resource on first render
+		self.responses.add_front(ResourceMessage::StoreEmbedded { resource_id, data });
+		self.insert_image_resource(resource_id, layer)
+	}
+
+	fn insert_image_resource(&mut self, resource_id: ResourceId, layer: LayerNodeIdentifier) -> NodeId {
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
 			.default_node_template();
-
-		let resource_id = ResourceId::new();
-		self.responses.add(ResourceMessage::StoreEmbedded {
-			resource_id,
-			data: image.to_png().into(),
-		});
-
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
@@ -329,6 +333,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
+
+		transform_id
 	}
 
 	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
