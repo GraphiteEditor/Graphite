@@ -2763,24 +2763,24 @@ impl DocumentMessageHandler {
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let style = self.network_interface.document_metadata().layer_vector_data.get(&layer).map(|arc| arc.style.clone());
-			let Some(style) = style else {
+			let Some(vector_data) = self.network_interface.document_metadata().layer_vector_data.get(&layer) else {
 				resulting_layers.push(layer.to_node());
 				continue;
 			};
+			let stroke = vector_data.stroke.as_ref();
 
 			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
 			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
 
 			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
-			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
-			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke; `ATTR_STROKE` is the source of truth for visibility.
+			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
+			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
 			let stroke_visible = if let Some(list) = stroke_graphic_list {
 				list.element(0).is_some_and(|g| !g.is_fully_transparent())
 			} else {
 				false
 			};
-			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {

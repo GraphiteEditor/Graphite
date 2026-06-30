@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use super::style::{PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 pub use super::vector_attributes::*;
 use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
 use crate::vector::click_target::{ClickTargetType, FreePoint};
@@ -18,7 +18,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Vector {
-	pub style: PathStyle,
+	pub stroke: Option<Stroke>,
 
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
@@ -35,7 +35,7 @@ unsafe impl StaticType for Vector {
 impl Default for Vector {
 	fn default() -> Self {
 		Self {
-			style: PathStyle::new(Some(Stroke::new(0.))),
+			stroke: Some(Stroke::new(0.)),
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
@@ -49,7 +49,7 @@ impl graphene_hash::CacheHash for Vector {
 		self.point_domain.cache_hash(state);
 		self.segment_domain.cache_hash(state);
 		self.region_domain.cache_hash(state);
-		self.style.cache_hash(state);
+		self.stroke.cache_hash(state);
 		self.colinear_manipulators.cache_hash(state);
 	}
 }
@@ -242,7 +242,7 @@ impl Vector {
 	pub fn stroke_inclusive_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let path_bounds = self.bounding_box_with_transform(transform);
 
-		let Some(stroke) = self.style.stroke() else { return path_bounds };
+		let Some(stroke) = self.stroke.clone() else { return path_bounds };
 		// Stroke alignment is only honored by the renderer when every subpath is closed; open paths fall
 		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
 		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezier_paths().all(|p| p.closed());
@@ -531,9 +531,15 @@ impl Vector {
 		self.region_domain.concat(&additional.region_domain, transform_of_additional, &id_map);
 
 		// TODO: properly deal with fills such as gradients
-		self.style = additional.style.clone();
+		self.stroke = additional.stroke.clone();
 
 		self.colinear_manipulators.extend(additional.colinear_manipulators.iter().copied());
+	}
+
+	pub fn set_stroke_transform(&mut self, transform: DAffine2) {
+		if let Some(stroke) = &mut self.stroke {
+			stroke.transform = transform;
+		}
 	}
 }
 
@@ -548,8 +554,9 @@ impl BoundingBox for Vector {
 		}
 
 		// Include stroke by adding offset based on stroke width
-		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
-		let miter_limit = self.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
+		let stroke = self.stroke.clone();
+		let stroke_width = stroke.as_ref().map(|s| s.weight()).unwrap_or_default();
+		let miter_limit = stroke.as_ref().map(|s| s.join_miter_limit).unwrap_or(1.);
 		let scale = transform.scale_magnitudes();
 
 		// Use the full line width to account for different styles of stroke caps

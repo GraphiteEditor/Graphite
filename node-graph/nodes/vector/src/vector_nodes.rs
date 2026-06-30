@@ -143,7 +143,7 @@ where
 			if fill {
 				set_paint_attribute_at(vector_list, index, ATTR_FILL, paint.clone());
 			}
-			if stroke && vector_list.element(index).and_then(|vector| vector.style.stroke()).is_some() {
+			if stroke && vector_list.element(index).is_some_and(|vector| vector.stroke.is_some()) {
 				set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
 			}
 
@@ -342,7 +342,7 @@ where
 	content.for_each_vector_mut(|vector, transform| {
 		let mut stroke = stroke.clone();
 		stroke.transform *= transform;
-		vector.style.set_stroke(stroke);
+		vector.stroke = Some(stroke);
 	});
 
 	let paint = paint.into_graphic_list();
@@ -469,7 +469,7 @@ async fn round_corners(
 			let edge_length_limit = edge_length_limit * 0.005;
 
 			let mut result = Vector {
-				style: source.style.clone(),
+				stroke: source.stroke.clone(),
 				..Default::default()
 			};
 
@@ -848,7 +848,7 @@ async fn box_warp(_: impl Ctx, content: List<Vector>, #[expose] rectangle: List<
 				});
 			}
 
-			result.style.set_stroke_transform(DAffine2::IDENTITY);
+			result.set_stroke_transform(DAffine2::IDENTITY);
 
 			// Add this to the `List` and reset the transform since we've applied it directly to the points
 			*row.element_mut() = result;
@@ -1010,7 +1010,7 @@ async fn auto_tangents(
 			let source = source.element(index).unwrap();
 
 			let mut result = Vector {
-				style: source.style.clone(),
+				stroke: source.stroke.clone(),
 				..Default::default()
 			};
 
@@ -1160,8 +1160,8 @@ async fn bounding_box(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 				})
 				.unwrap_or_default();
 
-			result.style = vector.style.clone();
-			result.style.set_stroke_transform(DAffine2::IDENTITY);
+			result.stroke = vector.stroke.clone();
+			result.set_stroke_transform(DAffine2::IDENTITY);
 
 			*row.element_mut() = result;
 			row
@@ -1224,10 +1224,10 @@ async fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: St
 
 			let bezpaths = vector.stroke_bezpath_iter();
 			let mut result = Vector {
-				style: vector.style.clone(),
+				stroke: vector.stroke.clone(),
 				..Default::default()
 			};
-			result.style.set_stroke_transform(DAffine2::IDENTITY);
+			result.set_stroke_transform(DAffine2::IDENTITY);
 
 			// Perform operation on all subpaths in this shape.
 			for mut bezpath in bezpaths {
@@ -1273,7 +1273,7 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 		.flat_map(|(row, has_fill)| {
 			let (mut vector, attributes) = row.into_parts();
 
-			let stroke = vector.style.stroke().clone().unwrap_or_default();
+			let stroke = vector.stroke.clone().unwrap_or_default();
 			let bezpaths = vector.stroke_bezpath_iter();
 			let mut solidified_stroke = Vector::default();
 
@@ -1322,7 +1322,7 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 
 			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
 			let fill_row = has_fill.then(|| {
-				vector.style.clear_stroke();
+				vector.stroke = None;
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
 				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
@@ -1378,7 +1378,7 @@ async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 				return vec![row];
 			}
 
-			let style = row.element().style.clone();
+			let style = row.element().stroke.clone();
 			let (_, attributes) = row.into_parts();
 
 			bezpaths
@@ -1386,7 +1386,7 @@ async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 				.map(|bezpath| {
 					let mut vector = Vector::default();
 					vector.append_bezpath(bezpath);
-					vector.style = style.clone();
+					vector.stroke = style.clone();
 
 					Item::from_parts(vector, attributes.clone())
 				})
@@ -1455,7 +1455,7 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 
 		// TODO: Make this instead use the first encountered style
 		// Use the last encountered style as the output style
-		output.style = element.style.clone();
+		output.stroke = element.stroke.clone();
 
 		primary_source = Some((index, source_transform));
 	}
@@ -1521,10 +1521,10 @@ async fn sample_polyline(
 				segment_domain: Default::default(),
 				region_domain: Default::default(),
 				colinear_manipulators: Default::default(),
-				style: std::mem::take(&mut row.element_mut().style),
+				stroke: std::mem::take(&mut row.element_mut().stroke),
 			};
 			// Transfer the stroke transform from the input vector content to the result.
-			result.style.set_stroke_transform(row.attribute_cloned_or_default(ATTR_TRANSFORM));
+			result.set_stroke_transform(row.attribute_cloned_or_default(ATTR_TRANSFORM));
 
 			for local_bezpath in row.element().stroke_bezpath_iter() {
 				// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
@@ -1595,7 +1595,7 @@ async fn simplify(
 			let inverse_transform = transform.inverse();
 
 			let mut result = Vector {
-				style: std::mem::take(&mut row.element_mut().style),
+				stroke: std::mem::take(&mut row.element_mut().stroke),
 				..Default::default()
 			};
 
@@ -1691,7 +1691,7 @@ async fn decimate(
 			let inverse_transform = transform.inverse();
 
 			let mut result = Vector {
-				style: std::mem::take(&mut row.element_mut().style),
+				stroke: std::mem::take(&mut row.element_mut().stroke),
 				..Default::default()
 			};
 
@@ -1770,7 +1770,7 @@ async fn cut_path(
 
 	if let Some((row_index, bezpath)) = bezpaths.get(index).cloned() {
 		let mut result_vector = Vector {
-			style: content.element(row_index).unwrap().style.clone(),
+			stroke: content.element(row_index).unwrap().stroke.clone(),
 			..Default::default()
 		};
 
@@ -1980,8 +1980,8 @@ async fn scatter_points(
 			}
 
 			// Transfer the style from the input vector content to the result.
-			result.style = row.element().style.clone();
-			result.style.set_stroke_transform(DAffine2::IDENTITY);
+			result.stroke = row.element().stroke.clone();
+			result.set_stroke_transform(DAffine2::IDENTITY);
 
 			*row.element_mut() = result;
 			row
@@ -2622,7 +2622,7 @@ async fn morph<I: IntoGraphicList>(
 	}
 
 	let mut vector = Vector::default();
-	vector.style.stroke = match (source_element.style.stroke.as_ref(), target_element.style.stroke.as_ref()) {
+	vector.stroke = match (source_element.stroke.as_ref(), target_element.stroke.as_ref()) {
 		(Some(a), Some(b)) => Some(a.lerp(b, time)),
 		(Some(a), None) => {
 			if time < 0.5 {

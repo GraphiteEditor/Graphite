@@ -11,7 +11,7 @@ pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {
-	use vector_types::vector::{PathStyle, PointDomain, RegionDomain, SegmentDomain, misc::HandleId};
+	use vector_types::vector::{PointDomain, RegionDomain, SegmentDomain, misc::HandleId, style::Stroke};
 
 	use crate::Vector;
 
@@ -20,10 +20,15 @@ pub mod migrations {
 	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vector>, D::Error> {
 		use serde::Deserialize;
 
+		#[derive(serde::Deserialize)]
+		struct LegacyPathStyle {
+			stroke: Option<Stroke>,
+		}
+
 		/// Old documents stored a `Vector` flattened with list attributes (`transform`, `alpha_blending`, `upstream_graphic_group`); only the geometry fields are recovered.
 		#[derive(serde::Deserialize)]
 		struct OldVectorData {
-			style: PathStyle,
+			style: LegacyPathStyle,
 			colinear_manipulators: Vec<[HandleId; 2]>,
 			point_domain: PointDomain,
 			segment_domain: SegmentDomain,
@@ -48,7 +53,7 @@ pub mod migrations {
 		Ok(match VectorFormat::deserialize(deserializer)? {
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::OldVectorData(old) => Some(Vector {
-				style: old.style,
+				stroke: old.style.stroke,
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
