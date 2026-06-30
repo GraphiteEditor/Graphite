@@ -351,8 +351,8 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
 /// vertical lines we fall back to a stable tiebreaker on (x + y) so the choice doesn't flicker between equal alternatives.
 pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
-	let viewport_start = transform.transform_point2(DVec2::X);
-	let viewport_end = transform.transform_point2(DVec2::ZERO);
+	let viewport_start = transform.transform_point2(DVec2::ZERO);
+	let viewport_end = transform.transform_point2(DVec2::X);
 	if (viewport_end.x - viewport_start.x).abs() > f64::EPSILON * 1e6 {
 		viewport_end.x > viewport_start.x
 	} else {
