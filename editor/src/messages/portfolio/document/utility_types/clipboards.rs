@@ -1,4 +1,5 @@
 use super::network_interface::NodeTemplate;
+use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
 use graph_craft::document::NodeId;
 
 #[repr(u8)]
@@ -20,4 +21,14 @@ pub struct CopyBufferEntry {
 	pub visible: bool,
 	pub locked: bool,
 	pub collapsed: bool,
+	#[serde(default)]
+	pub resources: Vec<ClipboardResource>,
+}
+
+/// A snapshot of a document's resource registry entry, carried in the clipboard so a paste can re-register it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ClipboardResource {
+	pub id: ResourceId,
+	pub sources: Vec<DataSource>,
+	pub hash: Option<ResourceHash>,
 }

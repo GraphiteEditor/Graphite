@@ -14,7 +14,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
-use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, ClipboardResource, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
@@ -26,8 +26,9 @@ use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::{DataSource, ResourceHash};
-use graph_craft::document::NodeId;
+use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
@@ -319,12 +320,32 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								copy_ids.insert(node_id, NodeId((index + 1) as u64));
 							});
 
+						let nodes: Vec<_> = active_document.network_interface.copy_nodes(&copy_ids, &[]).collect();
+
+						// Snapshot the registry entries for resources these nodes reference so a cross-document paste can re-register them
+						let mut resource_ids = HashSet::new();
+						for (_, template) in &nodes {
+							collect_document_node_resources(&template.document_node, &mut resource_ids);
+						}
+						let resources = resource_ids
+							.into_iter()
+							.filter_map(|id| {
+								let info = active_document.resources.registry.info(&id)?;
+								Some(ClipboardResource {
+									id,
+									sources: info.sources.to_vec(),
+									hash: info.hash.copied(),
+								})
+							})
+							.collect();
+
 						buffer.push(CopyBufferEntry {
-							nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
+							nodes,
 							selected: active_document.network_interface.selected_nodes().selected_layers_contains(layer, active_document.metadata()),
 							visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
 							locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
+							resources,
 						});
 					}
 				};
@@ -1039,6 +1060,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			// TODO: Unused except by tests, remove?
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
+
+				let clipboard_resources: Vec<ClipboardResource> = self.copy_buffer[clipboard as usize].iter().flat_map(|entry| entry.resources.iter().cloned()).collect();
+				if let Some(document) = self.active_document_mut() {
+					register_clipboard_resources(document, &clipboard_resources);
+				}
+
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
@@ -1058,11 +1085,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
+
+				if !clipboard_resources.is_empty()
+					&& let Some(document_id) = self.active_document_id
+				{
+					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
+				}
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
-				if let Some(document) = self.active_document() {
-					let mut all_new_ids = Vec::new();
-					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
+				if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
+					let has_resources = data.iter().any(|entry| !entry.resources.is_empty());
+
+					if has_resources && let Some(document) = self.active_document_mut() {
+						register_clipboard_resources(document, data.iter().flat_map(|entry| &entry.resources));
+					}
+
+					if let Some(document) = self.active_document() {
+						let mut all_new_ids = Vec::new();
 						let parent = document.new_layer_parent(false);
 						let mut layers = Vec::new();
 
@@ -1089,6 +1128,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						responses.add(DeferMessage::AfterGraphRun {
 							messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
 						});
+					}
+
+					if has_resources && let Some(document_id) = self.active_document_id {
+						responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					}
 				}
 			}
@@ -2215,4 +2258,37 @@ fn build_recovery_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> 
 
 	writer.finish().map_err(|e| format!("finish: {e}"))?;
 	Ok(buffer.into_inner())
+}
+
+/// Recursively gathers the IDs of resources referenced by `TaggedValue::Resource` inputs within a node and its nested networks.
+fn collect_document_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
+	for input in &node.inputs {
+		if let NodeInput::Value { tagged_value, .. } = input
+			&& let TaggedValue::Resource(id) = &**tagged_value
+		{
+			out.insert(*id);
+		}
+	}
+
+	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+		for nested_node in nested.nodes.values() {
+			collect_document_node_resources(nested_node, out);
+		}
+	}
+}
+
+/// Re-registers clipboard resource snapshots into a document's registry, skipping IDs it already knows.
+fn register_clipboard_resources<'a>(document: &mut DocumentMessageHandler, resources: impl IntoIterator<Item = &'a ClipboardResource>) {
+	for resource in resources {
+		if document.resources.registry.contains(&resource.id) {
+			continue;
+		}
+
+		for source in &resource.sources {
+			document.resources.registry.push_source_back(&resource.id, source.clone());
+		}
+		if let Some(hash) = resource.hash {
+			document.resources.registry.resolve(&resource.id, hash);
+		}
+	}
 }
