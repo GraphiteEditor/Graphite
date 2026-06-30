@@ -369,9 +369,8 @@ impl Dispatcher {
 		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
 	}
 
-	/// Block until all spawned async futures have resolved and been dispatched, so no async work is in
-	/// flight. Each result is fed back through `handle_message`, which may spawn more, so loop until the
-	/// in-flight count drains. Test-only: production pumps results lazily at each `handle_message`.
+	/// Block until no async work is in flight. Each result feeds back through `handle_message`, which may
+	/// spawn more, so loop until the in-flight count drains. Test-only: production pumps results lazily.
 	pub async fn settle_async_work(&mut self) {
 		while self.message_handlers.future_message_handler.has_in_flight() {
 			let Some(message) = self.message_handlers.future_message_handler.recv_next().await else { break };

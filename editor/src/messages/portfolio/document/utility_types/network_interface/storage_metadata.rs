@@ -188,10 +188,9 @@ pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> Has
 }
 
 /// Collect the per-network, per-peer view state (node-graph nav + previewing) from `interface` into a
-/// map keyed by the stable storage [`NetworkId`](graph_storage::NetworkId). `network_ids` maps each
-/// runtime `network_path` to its id (from the `from_runtime`/`to_runtime` conversion). This is what the
-/// editor persists into `session.json` so it stays out of the CRDT/history. Networks at their default
-/// nav with no preview produce no entry.
+/// `session.json` map keyed by the stable storage [`NetworkId`](graph_storage::NetworkId), which
+/// `network_ids` resolves from each runtime `network_path`. Networks at their default nav with no preview
+/// produce no entry.
 pub fn collect_network_view_settings(
 	interface: &NodeNetworkInterface,
 	network_ids: &HashMap<Vec<NodeId>, graph_storage::NetworkId>,
@@ -205,8 +204,8 @@ pub fn collect_network_view_settings(
 		let navigation = &network_metadata.persistent_metadata.navigation_metadata;
 		let default_navigation = NavigationMetadata::default();
 
-		// Only persist nav fields that diverge from the default, so a network sitting at its default view stays
-		// out of `session.json` (the `if !settings.is_empty()` guard below then skips it entirely).
+		// Only persist nav fields that diverge from the default, so a network at its default view stays out
+		// of `session.json` (the `if !settings.is_empty()` guard below skips it entirely).
 		let mut settings = BTreeMap::new();
 		if navigation.node_graph_ptz != default_navigation.node_graph_ptz
 			&& let Ok(value) = serde_json::to_value(navigation.node_graph_ptz)

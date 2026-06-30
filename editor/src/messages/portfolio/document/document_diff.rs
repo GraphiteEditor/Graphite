@@ -1,7 +1,6 @@
-//! Human-readable pretty-printers for the dual-write soak's validation checks: registry-vs-registry
-//! and runtime-network-vs-runtime-network diffs. The validation that calls these is gated at runtime
-//! behind the `validate_storage_round_trip` preference (off by default), so these ship in release but
-//! only run when the soak is turned on.
+//! Human-readable pretty-printers for the dual-write soak's validation checks: registry-vs-registry and
+//! runtime-network-vs-runtime-network diffs. The callers are gated behind the `validate_storage_round_trip`
+//! preference, so these ship in release but only run when the soak is turned on.
 
 use std::fmt::Write;
 

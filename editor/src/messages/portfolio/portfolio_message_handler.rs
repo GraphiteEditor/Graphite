@@ -74,11 +74,10 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
 	pub workspace_panel_layout: WorkspacePanelLayout,
-	/// Parent directory that holds every document's `Gdd` working copy; a given document mounts at
-	/// `working_copy_root.join(format!("{id:x}"))`. A filesystem path on native; on web it is
-	/// converted to an OPFS directory name at the container-construction seam. `None` means no
-	/// persistent location is configured (tests, headless) — documents mount an in-memory working
-	/// copy instead, so the mount path still runs but writes nowhere durable.
+	/// Parent directory holding every document's `Gdd` working copy; a document mounts at
+	/// `working_copy_root.join(format!("{id:x}"))`. A filesystem path on native, converted to an OPFS
+	/// directory name on web. `None` (tests, headless) mounts an in-memory working copy that writes
+	/// nowhere durable.
 	working_copy_root: Option<PathBuf>,
 	/// Number of `.gdd` opens whose async build is in flight. While non-zero, resource GC is skipped:
 	/// the opening document's resources are being extracted into the cache but it isn't in `documents`
@@ -220,8 +219,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let validate = preferences.validate_storage_round_trip;
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
 
-				// The `.gdd` snapshot needs the byte store, but the legacy document and session state must autosave even
-				// without it, otherwise the autosave persists nothing.
+				// The `.gdd` snapshot needs the byte store, but the legacy document and session state must
+				// autosave even without it, or the autosave persists nothing.
 				if let Some(byte_store) = resource_storage.storage() {
 					document.commit_storage_snapshot(byte_store, validate);
 				}
@@ -405,16 +404,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 				document.set_storage(gdd);
-				// On a fresh mount, capture the current runtime state into the working copy: edits made
-				// during the mount window were skipped by `commit_storage_snapshot` (no-op while unmounted),
-				// so this initial commit brings the working copy up to date. On a reopen the working copy
-				// already holds the persisted cursor; re-committing here would stack a spurious interaction on it
-				// and make the first undo a no-op, so trust the restored cursor and skip the commit.
+				// On a fresh mount, commit the current runtime state to bring the working copy up to date:
+				// edits during the mount window were skipped (staging is a no-op while unmounted). On a reopen
+				// the persisted cursor is already current, and re-committing would stack a spurious interaction
+				// that makes the first undo a no-op, so skip it.
 				if !reopened && let Some(byte_store) = resource_storage.storage() {
 					document.commit_storage_snapshot(byte_store, preferences.validate_storage_round_trip);
 					// Seal the freshly-converted document as the base revision: the conversion is a completed
-					// import, not an in-progress interaction, so retire it into history rather than leaving it in
-					// the hot log (where it would never reach an interaction boundary on a save without edits).
+					// import, so retire it into history rather than leaving it in the hot log, where it would
+					// never reach an interaction boundary on a save without edits.
 					document.retire_storage_interaction();
 				}
 			}
@@ -451,10 +449,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
-					// Also keep resources referenced by the `.gdd` storage anywhere in history (notably proto-node
-					// declaration bytes), which the runtime resource registry doesn't track but the working copy
-					// and `.gdd` export need in the global cache. History-wide, not just the current registry:
-					// an undo drops an interaction's resources from the working registry, but redo still needs them.
+					// Also keep resources the `.gdd` storage references anywhere in history (notably proto-node
+					// declaration bytes), which the runtime registry doesn't track but the export needs. History-
+					// wide, since an undo drops an interaction's resources but redo still needs them.
 					if let Some(storage) = document.storage() {
 						used_resources.extend(storage.all_referenced_resource_hashes());
 					}

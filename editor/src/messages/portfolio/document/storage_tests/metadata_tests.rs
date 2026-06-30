@@ -48,10 +48,7 @@ fn editor_metadata_round_trip_against_demo() {
 		let expected_pinned = source.pinned(&network_path, local_id);
 		let expected_output_names = source.output_names(&network_path, local_id);
 
-		// Pull per-input metadata directly off the runtime side. We use the runtime invariant
-		// (`input_metadata.len() == inputs.len()`) as the iteration bound rather than calling the
-		// trait per index, since the trait would return `None` past the end and we want a strict
-		// slot-by-slot comparison.
+		// Use the node's input count as the slot-by-slot iteration bound for the per-input metadata checks.
 		let input_count = interface.document_node(&local_id, &network_path).map(|node| node.inputs.len()).unwrap_or(0);
 		let any_input_metadata_present = (0..input_count).any(|i| {
 			source.input_name(&network_path, local_id, i).is_some_and(|s| !s.is_empty())
@@ -93,9 +90,8 @@ fn editor_metadata_round_trip_against_demo() {
 		assert_eq!(entry.pinned, expected_pinned, "pinned mismatch for node {local_id:?} in network {network_path:?}");
 		assert_eq!(entry.output_names, expected_output_names, "output_names mismatch for node {local_id:?} in network {network_path:?}");
 
-		// Per-input metadata: the entry's `input_metadata` vec has the same length as the node's
-		// input slot count, and each slot matches the trait's per-field view (with the same
-		// "empty string ↔ None" normalization as `display_name`).
+		// Per-input metadata: the entry's `input_metadata` has one slot per input, each matching the trait's
+		// per-field view (same "empty string ↔ None" normalization as `display_name`).
 		assert_eq!(
 			entry.input_metadata.len(),
 			input_count,
@@ -139,11 +135,11 @@ fn editor_metadata_round_trip_against_demo() {
 
 	// Sanity: a real artwork should exercise at least these two shapes; otherwise the test is
 	// just iterating empty metadata and proving nothing.
-	assert!(checked_any_position, "demo artwork produced no positioned nodes — fixture is wrong or extraction is broken");
-	assert!(checked_any_layer, "demo artwork produced no layer nodes — fixture is wrong or extraction is broken");
+	assert!(checked_any_position, "demo artwork produced no positioned nodes: fixture is wrong or extraction is broken");
+	assert!(checked_any_layer, "demo artwork produced no layer nodes: fixture is wrong or extraction is broken");
 	// Demo artworks always have some custom widget overrides / input names; if not, the
 	// per-input round-trip isn't actually being exercised here.
-	assert!(checked_any_input_metadata, "demo artwork produced no per-input metadata — fixture is wrong or extraction is broken");
+	assert!(checked_any_input_metadata, "demo artwork produced no per-input metadata: fixture is wrong or extraction is broken");
 }
 
 /// Full editor-side round-trip: original interface → Registry → (NodeNetwork, Vec<entry>) →
@@ -263,7 +259,7 @@ fn editor_interface_rebuild_round_trip() {
 		}
 	}
 
-	assert!(checked_any_reference, "demo artwork produced no reference metadata — fixture is wrong or extraction is broken");
+	assert!(checked_any_reference, "demo artwork produced no reference metadata: fixture is wrong or extraction is broken");
 }
 
 /// Per-peer view settings (`ui::doc::*`) survive the `session.json` round-trip: serialize them into
