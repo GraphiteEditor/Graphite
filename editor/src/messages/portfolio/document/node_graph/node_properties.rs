@@ -2626,7 +2626,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let start = transform.transform_point2(DVec2::ZERO);
 		let end = transform.transform_point2(DVec2::X);
 		let new_transform = build_transform_with_y_preservation(transform, end, start);
-		let orientation_rightward = gradient_orientation_in_fill_node(node_id, new_transform, context).unwrap_or(true);
+		let orientation_rightward = gradient_orientation_in_fill_node(node_id, transform, context).unwrap_or(true);
 
 		let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
 			.tooltip_label("Reverse Direction")

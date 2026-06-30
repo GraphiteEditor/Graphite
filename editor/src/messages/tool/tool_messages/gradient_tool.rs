@@ -204,7 +204,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				let new_orientation = match (current_layer, &current_gradient) {
 					(Some(layer), Some((_gradient, appearance))) => {
 						let transform = gradient_space_transform(layer, context.document) * appearance.transform;
-						!graph_modification_utils::gradient_orientation_rightward(transform)
+						graph_modification_utils::gradient_orientation_rightward(transform)
 					}
 					_ => true,
 				};
