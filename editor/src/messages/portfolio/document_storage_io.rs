@@ -143,7 +143,6 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 		Err(error) => log::error!("Opening .gdd for {document_id:?}: failed to list resources: {error}"),
 	}
 
-	// The embedded legacy blob: both the soak oracle and the fallback.
 	let legacy_document = gdd
 		.read_legacy_document()
 		.await

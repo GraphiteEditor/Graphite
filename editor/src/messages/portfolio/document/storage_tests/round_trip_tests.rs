@@ -121,9 +121,8 @@ async fn recommit_after_open_is_stable() {
 	let round_trip = round_trip_through_gdd(document).await;
 
 	// Re-convert the rebuilt runtime and assert it reproduces the reopened registry. `round_trip_through_gdd`
-	// builds the `Gdd` with `PeerId(1)`, which the reopened registry inherits, so the re-conversion must
-	// use that same peer for deterministic node-ID derivation. (`ui::doc::*` settings live in session.json,
-	// not the registry, so they don't participate in this comparison.)
+	// builds the `Gdd` with `PeerId(1)`, which the reopened registry inherits, so the re-conversion must use
+	// that same peer for deterministic node-ID derivation.
 	let rebuilt_network = round_trip.rebuilt.document_network().clone();
 	let view = StorageMetadataView::new(&round_trip.rebuilt);
 	let reconverted = graph_storage::Registry::convert_from_runtime(&rebuilt_network, &view, &Default::default(), PeerId(1)).expect("re-convert from_runtime");
@@ -154,7 +153,7 @@ async fn edit_after_open_commits_cleanly() {
 		.await;
 
 	// Persist the document into a fresh Gdd and reopen it, then build a runtime document from the
-	// reopened registry — the editor's .gdd-open path.
+	// reopened registry: the editor's .gdd-open path.
 	let byte_store = HashMapResourceStorage::new();
 	let source = editor.active_document();
 	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
@@ -179,11 +178,9 @@ async fn edit_after_open_commits_cleanly() {
 		document.finalize_storage_load();
 	}
 
-	// Mirror the live sequence via the real `commit_storage_snapshot` (which uses the full document-
-	// settings view + the document's own resource registry, and runs `verify_storage_round_trip` in
-	// debug — panicking on any drift). Initial commit after open, then a deletion, then commit again.
-	// Deletion (not addition) is the trigger: it emits a `RemoveNode` whose retire/reverse is where
-	// "Target node does not exist" surfaced live.
+	// Mirror the live sequence via the real `commit_storage_snapshot`: initial commit after open, then a
+	// deletion, then commit again. Deletion (not addition) is the trigger, since it emits a `RemoveNode`
+	// whose retire/reverse is where "Target node does not exist" surfaced live.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	let layer = editor.active_document().metadata().all_layers().next().expect("at least one layer");
@@ -289,8 +286,8 @@ async fn reopen_after_undo_restores_consistent_registry() {
 	commit_interaction(&mut gdd, editor.active_document(), &byte_store).await;
 	let nodes_three: std::collections::BTreeSet<_> = gdd.registry().node_instances.keys().copied().collect();
 
-	// Undo the third interaction: in-memory registry is now the two-interaction state and head moved back, but the
-	// last retirement wrote the three-interaction registry to disk. The undo must re-snapshot it.
+	// Undo the third interaction: the in-memory registry is back at the two-interaction state, but the last
+	// retirement wrote the three-interaction registry to disk. The undo must re-snapshot it.
 	gdd.undo().expect("undo");
 	assert_eq!(gdd.registry().node_instances.keys().copied().collect::<std::collections::BTreeSet<_>>(), nodes_two);
 
@@ -492,12 +489,10 @@ async fn live_undo_new_document_draw_rect() {
 	assert_eq!(editor.active_document().network_interface.document_network(), &before_rect, "undo should restore the pre-rect network");
 }
 
-/// Pasting an image is one user action and must be one undo step. The paste handler emits a single
-/// `AddTransaction` bracketing the layer add, name set, reparent, and transform, so a single undo has
-/// to remove the whole layer. When the name set opens its own nested transaction (the historical
-/// wart), the first undo only reverts the name and leaves the layer behind, so this asserts the layer
-/// count returns to its pre-paste value after exactly one undo. Matches the `Gdd`'s one-interaction
-/// coalescing, which is the behavior the undo shadow validates against.
+/// Pasting an image is one user action and must be one undo step: the paste handler brackets the layer add,
+/// name set, reparent, and transform in a single transaction. Were the name set to open its own nested
+/// transaction (a historical wart), the first undo would revert only the name and leave the layer behind, so
+/// this asserts the layer count returns to its pre-paste value after exactly one undo.
 #[tokio::test]
 async fn paste_image_with_name_is_one_undo_step() {
 	let mut editor = EditorTestUtils::create();
@@ -530,11 +525,10 @@ async fn paste_image_with_name_is_one_undo_step() {
 	);
 }
 
-/// Pasting an image registers a resource; undoing the paste reverts the interaction's `AddResource` in the
-/// `Gdd` cursor while the runtime keeps the resource alive for legacy redo. So the cursor legitimately
-/// holds fewer resources than a fresh `from_runtime`, and the shadow must tolerate that. This drives
-/// the relaxed comparison: every resource the current network references must be present in the cursor,
-/// and any extra the runtime carries must be history-only (not referenced by the restored network).
+/// Undoing an image paste reverts the interaction's `AddResource` in the `Gdd` cursor while the runtime keeps
+/// the resource alive for legacy redo, so the cursor legitimately holds fewer resources than a fresh
+/// `from_runtime`. Drives the relaxed comparison: every resource the current network references must be in
+/// the cursor, and any extra the runtime carries must be history-only.
 #[tokio::test]
 async fn undo_image_paste_resources_subset_of_runtime() {
 	let mut editor = EditorTestUtils::create();
@@ -571,13 +565,10 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	assert!(stored.is_subset(&runtime), "cursor holds a resource the runtime dropped: stored={stored:?} runtime={runtime:?}");
 }
 
-/// Two distinct edits (draw an ellipse, then paste an image) on an *opened* document are two undo
-/// steps. Undoing twice must step the `Gdd` cursor back two interactions in lockstep with the legacy
-/// snapshot path. The document is opened with existing content (a real demo artwork), so its non-empty
-/// base is the loaded state, which is *not* a legacy undo step. The mount-time base must therefore not
-/// become an undoable `Gdd` interaction, or the cursor gains one more interaction than the legacy path has undo
-/// steps and lags by a interaction once undo reaches back toward the base. Reproduces the live "open, draw,
-/// paste image, undo twice" divergence.
+/// Two edits (draw, then paste) on an opened document are two undo steps; undoing twice must step the `Gdd`
+/// cursor back two interactions in lockstep with the legacy path. The loaded base is not itself an undo
+/// step, so the mount-time base must not become an undoable `Gdd` interaction, or the cursor lags the legacy
+/// path by one once undo reaches the base. Reproduces the live "open, draw, paste image, undo twice" divergence.
 #[tokio::test]
 async fn undo_twice_steps_cursor_two_interactions() {
 	let mut editor = EditorTestUtils::create();
@@ -609,15 +600,14 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	);
 	assert_cursor_matches_runtime(editor.active_document(), "after first undo");
 
-	// Re-stage after the undo, reproducing the live editor's post-undo graph re-evaluation. The pasted
-	// image's resource is still in the runtime cache (kept alive for redo) though its node is gone, so a
-	// naive snapshot would re-detect it as a new `AddResource` and retire it as a phantom interaction, which
-	// would knock the cursor out of lockstep on the next undo. Scoping the snapshot to network-referenced
-	// resources must keep this a no-op.
+	// Re-stage after the undo (the live editor re-evaluates the graph). The pasted image's resource is still
+	// cached for redo though its node is gone, so a naive snapshot would re-detect it as a new `AddResource`
+	// and retire a phantom interaction, knocking the cursor out of lockstep. Scoping the snapshot to
+	// network-referenced resources must keep this a no-op.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	// Second undo: removes the rectangle, back to the loaded base. The cursor must step a second interaction
-	// and land on the base, not one interaction short (paste resource resurfaced as a phantom interaction).
+	// and land on the base, not one short.
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(
 		editor.active_document().network_interface.document_network(),
@@ -626,18 +616,16 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	);
 	assert_cursor_matches_runtime(editor.active_document(), "after second undo");
 
-	// Back at the loaded base, neither path should be able to undo further: the load is not an undo step.
-	// If the `Gdd` retired the mount base as its own interaction, the cursor can still undo here while legacy
-	// cannot, which is the off-by-one that makes the cursor lag the legacy path by a interaction.
+	// Back at the loaded base, neither path can undo further: the load is not an undo step. Had the `Gdd`
+	// retired the mount base as its own interaction, the cursor could still undo here, the off-by-one.
 	let storage = editor.active_document().storage().expect("storage mounted");
 	assert!(!storage.can_undo(), "cursor must not undo past the loaded base (the load is not an undo step)");
 }
 
-/// Assert the `Gdd` cursor's stored registry matches a fresh `from_runtime` of the current interface,
-/// mirroring the live shadow check (`verify_storage_cursor_matches_runtime`): node set, network set,
-/// and per-network export wiring must agree. The runtime keeps resources alive across undo (for legacy
-/// redo) while the cursor reverts the interaction's `AddResource`, so the runtime's resource set is allowed
-/// to be a superset of the cursor's, but a resource the current network references must be present.
+/// Assert the `Gdd` cursor's stored registry matches a fresh `from_runtime` of the current interface (node
+/// set, network set, per-network export wiring), mirroring the live `verify_cursor_matches_runtime` check.
+/// The runtime's resource set may be a superset (it keeps undone resources alive for redo), but every
+/// resource the current network references must be present.
 fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 	let storage = document.storage().expect("storage mounted");
 	let peer = storage.session().peer();
@@ -676,10 +664,9 @@ async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourc
 }
 
 /// Open a real demo artwork, mount storage, edit it, and trigger autosave. The autosave runs
-/// `verify_storage_round_trip`, which panics (in debug, which tests are) on any conversion or
-/// round-trip drift — so a clean run is itself the assertion that the whole pipeline holds on real,
-/// non-synthetic document data. Also checks that committing edits grows the retired-delta history
-/// and that the editor's undo reverts the modification.
+/// `verify_storage_round_trip`, which panics in tests on any conversion or round-trip drift, so a clean run
+/// is itself the assertion that the whole pipeline holds on real document data. Also checks that committing
+/// edits grows the retired-delta history and that undo reverts the modification.
 #[tokio::test]
 async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let mut editor = EditorTestUtils::create();

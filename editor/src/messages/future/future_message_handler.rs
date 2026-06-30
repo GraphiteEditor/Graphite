@@ -9,10 +9,10 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use crate::messages::prelude::*;
 
 // Native spawns onto a multi-thread tokio runtime, so the boxed future must be `Send`. Wasm uses
-// `spawn_local` on the single JS thread, where `Send` is unavailable (OPFS/`JsFuture` are `!Send`)
-// and unnecessary. `WasmNotSend` (`Send` on native, no-op on wasm) expresses the input bound on
-// `MessageFuture::new`; the stored trait-object alias still needs a `cfg` split because `Send` is
-// an auto trait usable in a `dyn` bound while `WasmNotSend` is not.
+// `spawn_local` on the single JS thread, where `Send` is unavailable (OPFS/`JsFuture` are `!Send`) and
+// unnecessary. `WasmNotSend` (`Send` on native, no-op on wasm) expresses the `MessageFuture::new` input
+// bound; the stored `dyn` alias still needs a `cfg` split, since `Send` works in a `dyn` bound but the
+// `WasmNotSend` alias does not.
 #[cfg(not(target_family = "wasm"))]
 type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + Send + 'static>>;
 #[cfg(target_family = "wasm")]
@@ -168,10 +168,9 @@ fn default_spawner() -> Arc<dyn MessageSpawner> {
 	Arc::new(WasmSpawner)
 }
 
-/// Process-global runtime for editor async work. Held in a `LazyLock` so it lives for the lifetime
-/// of the process and is never dropped: dropping a `tokio::runtime::Runtime` blocks to join its
-/// worker threads, which panics if it happens inside an async context (e.g. a `#[tokio::test]` body
-/// or the desktop event loop). A leaked-for-process runtime sidesteps that entirely.
+/// Process-global runtime for editor async work, leaked via `LazyLock` so it is never dropped: dropping a
+/// `tokio::runtime::Runtime` blocks to join its worker threads, which panics inside an async context (e.g.
+/// a `#[tokio::test]` body or the desktop event loop).
 #[cfg(not(target_family = "wasm"))]
 static EDITOR_ASYNC_RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
 	tokio::runtime::Builder::new_multi_thread()

@@ -8,11 +8,9 @@ use graph_storage::Registry;
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, collect_network_view_settings};
 
-/// The document-derived inputs a snapshot stage needs from the live handler, gathered before the
-/// mutable cursor borrow so the staging logic can live on [`DocumentHistory`] without reaching back
-/// into document state. `network`/`view`/`registry` describe the runtime graph; `interface` resolves
-/// the per-network ids; `view_settings` and `legacy_document` are the already-serialized per-peer
-/// view map and dual-write legacy blob.
+/// Document-derived inputs for [`DocumentHistory::stage_snapshot`], gathered before the mutable cursor
+/// borrow. `network`/`view`/`registry` are the runtime graph, `interface` resolves the per-network ids,
+/// and `view_settings`/`legacy_document` are the pre-serialized per-peer view map and legacy blob.
 pub struct SnapshotInputs<'a> {
 	pub network: &'a NodeNetwork,
 	pub view: &'a StorageMetadataView<'a>,
@@ -22,14 +20,13 @@ pub struct SnapshotInputs<'a> {
 	pub legacy_document: String,
 }
 
-/// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that
-/// is becoming the authoritative history. Owns the dual-stack bookkeeping (push, trim to
-/// [`MAX_UNDO_HISTORY_LEN`](crate::consts::MAX_UNDO_HISTORY_LEN), pop, clear), the cursor's pending
-/// interaction, and the stage/retire/cursor-move/verify lifecycle, so the document handler drives
-/// history through one cohesive surface instead of poking at three loose fields.
+/// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
+/// becoming the authoritative history. Owns the dual-stack bookkeeping (push/pop/clear, trimmed to
+/// [`MAX_UNDO_HISTORY_LEN`](crate::consts::MAX_UNDO_HISTORY_LEN)) and the cursor's stage/retire/move/verify
+/// lifecycle, so the handler drives history through one surface rather than three loose fields.
 ///
-/// Not serialized: the legacy stacks are runtime-only, and the cursor shares the working-copy
-/// container by `Arc`, so a clone keeps reading the live working copy.
+/// Not serialized: the legacy stacks are runtime-only, and a clone shares the working-copy container by
+/// `Arc`, so it keeps reading the live working copy.
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Default)]
 pub struct DocumentHistory {
@@ -37,9 +34,8 @@ pub struct DocumentHistory {
 	undo: VecDeque<NodeNetworkInterface>,
 	/// Stack of document network snapshots for future history states.
 	redo: VecDeque<NodeNetworkInterface>,
-	/// Per-document `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None`
-	/// until the mount future built by `load_document` resolves (the working-copy container is
-	/// constructed asynchronously). A clone shares the same working-copy container.
+	/// The `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None` until the mount
+	/// future built by `load_document` resolves.
 	#[derivative(Debug = "ignore")]
 	storage: Option<document_format::GddV1>,
 }
@@ -87,12 +83,12 @@ impl DocumentHistory {
 
 	// ===== Gdd working-copy cursor =====
 
-	/// The `Gdd` working copy, or `None` until the mount future resolves.
+	/// The `Gdd` working copy, `None` until the mount future resolves.
 	pub fn storage(&self) -> Option<&document_format::GddV1> {
 		self.storage.as_ref()
 	}
 
-	/// Mutable access to the `Gdd` working copy, or `None` until the mount future resolves.
+	/// Mutable access to the `Gdd` working copy.
 	pub fn storage_mut(&mut self) -> Option<&mut document_format::GddV1> {
 		self.storage.as_mut()
 	}
@@ -102,10 +98,9 @@ impl DocumentHistory {
 		self.storage = storage;
 	}
 
-	/// Retire the pending staged hot ops (the current interaction) into durable Gdd history as one undo
-	/// unit. Called at each undo-step boundary (a new `StartTransaction`) and before undo/redo, so the
-	/// per-`CommitTransaction` staging coalesces into one retired interaction aligned with the legacy step.
-	/// No-op while the working copy is unmounted.
+	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
+	/// boundary (a new `StartTransaction`) and before undo/redo, so the per-`CommitTransaction` staging
+	/// coalesces into one interaction aligned with the legacy step. No-op while unmounted.
 	pub fn retire_storage_interaction(&mut self) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.retire_pending_interaction() {
@@ -114,22 +109,17 @@ impl DocumentHistory {
 	}
 
 	/// Stage the runtime snapshot into the `Gdd` working copy at each `CommitTransaction`. No-op while
-	/// the working copy is still unmounted (its container is built asynchronously on document open). The
-	/// staged hot ops are retired into durable history by [`retire_storage_interaction`](Self::retire_storage_interaction)
-	/// at undo-step boundaries. Proto-node declaration bytes are persisted into `byte_store` (the
-	/// app-global resource cache). Caller gathers [`SnapshotInputs`] from the live handler first.
-	///
-	/// When `validate` is set (the `validate_storage_round_trip` preference), the staged snapshot is
-	/// round-tripped through `graph-storage` and compared against the runtime; off by default since the
-	/// round-trip is a per-commit perf cost.
+	/// unmounted. Proto-node declaration bytes go into `byte_store` (the app-global resource cache). The
+	/// staged hot ops are retired by [`retire_storage_interaction`](Self::retire_storage_interaction) at
+	/// undo-step boundaries. `validate` (the `validate_storage_round_trip` preference) gates the per-commit
+	/// round-trip check, off by default for its perf cost.
 	pub fn stage_snapshot(&mut self, inputs: SnapshotInputs, byte_store: &dyn ResourceStorage, validate: bool) {
 		if self.storage.is_none() {
 			return;
 		}
 
-		// Per-network view state (node-graph nav + previewing) is per-peer too, so collect it (keyed by the
-		// stable `NetworkId` the storage layer resolves) for `session.json`. Computed before the mutable
-		// `storage` borrow below.
+		// Per-network view state is per-peer, so collect it (keyed by the stable `NetworkId`) for
+		// `session.json`. Computed before the mutable `storage` borrow below.
 		let network_view_settings = self
 			.storage
 			.as_ref()
@@ -138,9 +128,8 @@ impl DocumentHistory {
 
 		let storage = self.storage.as_mut().expect("checked present above");
 
-		// Stage into the working copy without retiring: a tool drag fires several `CommitTransaction`s
-		// but is one legacy undo step, so the deltas accumulate as hot ops and coalesce into one retired
-		// interaction at the next undo-step boundary (`retire_pending_interaction`).
+		// Stage without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
+		// step, so the deltas accumulate as hot ops and coalesce at the next undo-step boundary.
 		if let Err(error) = storage.stage_runtime_snapshot(inputs.network, inputs.view, inputs.registry, byte_store) {
 			log::error!("Storage snapshot staging failed: {error}");
 			return;
@@ -156,8 +145,8 @@ impl DocumentHistory {
 			log::error!("Persisting per-network view settings failed: {error}");
 		}
 
-		// Dual-write soak: embed the legacy `.graphite` bytes inside the `.gdd` working copy so the new
-		// format can be validated against (and recovered from) the old one on open.
+		// Dual-write soak: embed the legacy `.graphite` bytes so the new format can be validated against
+		// (and recovered from) the old one on open.
 		if let Err(error) = storage.store_legacy_document(inputs.legacy_document.as_bytes()) {
 			log::error!("Embedding legacy document into working copy failed: {error}");
 		}
@@ -167,11 +156,10 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Move the `Gdd` undo/redo cursor along the retired interaction chain. Flushes any open interaction
-	/// first (undo/redo operate on the retired chain), then moves the cursor and returns a clone of the
-	/// post-move `Gdd` (the container is `Arc`-shared) so a `'static` rebuild future can read the rewound
-	/// state while the live document keeps its cursor. `None` when there is nothing to move to, the cursor
-	/// is unmounted, or the move failed.
+	/// Move the `Gdd` undo/redo cursor along the retired interaction chain, flushing any open interaction
+	/// first. Returns a clone of the post-move `Gdd` (`Arc`-shared) so a `'static` rebuild future can read
+	/// the rewound state while the live document keeps its cursor. `None` when there is nothing to move to,
+	/// unmounted, or the move failed.
 	pub fn move_cursor(&mut self, undo: bool) -> Option<document_format::GddV1> {
 		self.retire_storage_interaction();
 
@@ -197,11 +185,11 @@ impl DocumentHistory {
 	}
 
 	// ===== Soak round-trip verification (runtime-gated by `validate_storage_round_trip`) =====
+	// These log drift rather than panicking, since the soak can run in release where a crash is
+	// unacceptable; tests still fail loud via the `#[cfg(test)]` panics.
 
-	/// Soak check: the stored registry should equal a fresh `from_runtime`, and a `to_runtime` of the
-	/// stored registry should equal the original network. Logs drift rather than panicking (the soak can
-	/// run in release via the preference, where a crash would be unacceptable); tests still fail loud via
-	/// the `#[cfg(test)]` panics.
+	/// Soak check: the stored registry should equal a fresh `from_runtime`, and a `to_runtime` of it should
+	/// equal the original network.
 	pub fn verify_round_trip(&self, network: &NodeNetwork, view: &StorageMetadataView, registry: &ResourceRegistry) {
 		use super::diff_networks;
 		use super::document_diff::diff_registries;
@@ -251,10 +239,9 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Soak check: after a `Gdd` cursor move, the cursor's registry should equal a fresh `from_runtime`
-	/// of the current (legacy-restored) interface. Logs drift (does not panic) so cursor bugs surface
-	/// without crashing the editor. `current_resources` are the resources the live network references
-	/// (history-only resources the cursor dropped are expected, not drift).
+	/// Soak check: after a cursor move, the cursor's registry should equal a fresh `from_runtime` of the
+	/// current (legacy-restored) interface. `current_resources` are the resources the live network
+	/// references; history-only resources the cursor dropped are expected, not drift.
 	pub fn verify_cursor_matches_runtime(&self, network: &NodeNetwork, view: &StorageMetadataView, registry: &ResourceRegistry, current_resources: &HashSet<ResourceId>) {
 		use super::document_diff::diff_registries;
 
@@ -268,15 +255,11 @@ impl DocumentHistory {
 
 		let stored = storage.registry();
 
-		// The runtime keeps resources alive while they're referenced by undo/redo history (so legacy redo
-		// can restore them), but the `Gdd` cursor reverts the interaction's `AddResource`. So a resource the
-		// runtime carries which the cursor dropped is expected, not drift, as long as it's history-only
-		// (not referenced by the current network). Drop those from the conversion before comparing.
+		// The cursor reverts the interaction's `AddResource` while the runtime keeps the resource alive for
+		// legacy redo, so a history-only resource the cursor dropped is expected. Drop those before comparing.
 		conversion.registry.resources.retain(|id, _| stored.resources.contains_key(id) || current_resources.contains(id));
 
 		if !stored.value_equal(&conversion.registry) {
-			// Logged, not panicked: any remaining drift is a real cursor or conversion bug to triage, but
-			// the shadow must not crash the live editor while we harden it toward a hard panic.
 			log::error!(
 				"undo/redo shadow: cursor registry diverged from the restored interface\n{}",
 				diff_registries(stored, &conversion.registry)

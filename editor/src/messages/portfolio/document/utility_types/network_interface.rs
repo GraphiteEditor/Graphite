@@ -3488,11 +3488,10 @@ impl NodeNetworkInterface {
 		});
 	}
 
-	/// Copy every piece of transient view and selection state from `other_interface` onto `self`, for each
-	/// network at every nesting level: navigation metadata (pan/zoom), selection undo/redo history, and the
-	/// document-to-viewport canvas camera. Used when an interface is rebuilt from storage (the `Gdd` undo/redo
-	/// cursor) and must keep the user's current view and selection rather than reset them, since the registry
-	/// models document content only. `resolved_types` is a separate runtime cache the caller handles.
+	/// Copy all transient view and selection state from `other_interface` onto `self` at every nesting level:
+	/// navigation metadata (pan/zoom), selection undo/redo history, and the document-to-viewport camera. Lets
+	/// an interface rebuilt from storage keep the user's current view rather than reset it. `resolved_types`
+	/// is a separate runtime cache the caller handles.
 	pub fn copy_all_transient_view_state(&mut self, other_interface: &NodeNetworkInterface) {
 		self.for_each_network_metadata_mut(|path, self_network_metadata| {
 			if let Some(other_network_metadata) = other_interface.network_metadata(path) {

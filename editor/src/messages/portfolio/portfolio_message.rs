@@ -42,13 +42,11 @@ pub enum PortfolioMessage {
 	DeleteDocument {
 		document_id: DocumentId,
 	},
-	/// Delivers an asynchronously-built `Gdd` working copy into its document. Emitted by the mount
-	/// future spawned in `load_document` once the working-copy container is ready. The payload is
-	/// not serializable and a clone carries no `Gdd` (`clone_to_none`); it only ever travels once,
-	/// from the mount future to the receiving handler. `reopened` is true when an existing working copy
-	/// was opened (not freshly created): the persisted cursor is trusted as-is and the mount-time
-	/// re-commit is skipped, since re-committing the legacy runtime would stack a spurious interaction on the
-	/// restored cursor and make the first undo a no-op.
+	/// Delivers an asynchronously-built `Gdd` working copy into its document, emitted by the mount future
+	/// spawned in `load_document`. The `gdd` payload is non-serializable and a clone carries none
+	/// (`clone_to_none`), so it travels exactly once. `reopened` is true when an existing working copy was
+	/// opened: the persisted cursor is trusted as-is and the mount-time re-commit is skipped, since
+	/// re-committing would stack a spurious interaction on the restored cursor and make the first undo a no-op.
 	DocumentStorageMounted {
 		document_id: DocumentId,
 		reopened: bool,
@@ -112,7 +110,7 @@ pub enum PortfolioMessage {
 		content: Vec<u8>,
 	},
 	/// Delivers a document built asynchronously from a `.gdd` archive (registry → runtime, working copy
-	/// mounted) into the portfolio. Non-serializable payload that travels once, like `DocumentStorageMounted`.
+	/// mounted) into the portfolio. Travels once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).
 	GddDocumentLoaded {
 		document_id: DocumentId,
 		document_name: Option<String>,
@@ -121,11 +119,10 @@ pub enum PortfolioMessage {
 		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
 		document: Option<Box<DocumentMessageHandler>>,
 	},
-	/// Delivers the interface rebuilt from the `Gdd` undo/redo cursor (which moved + persisted synchronously),
-	/// so the async registry rebuild can swap into the live document. `interface` is `None` if the rebuild
-	/// failed (logged at the source). `had_oracle` records whether the legacy snapshot applied synchronously,
-	/// so the swap can debug-compare the rebuild against it. Non-serializable payload that travels once, like
-	/// `GddDocumentLoaded`.
+	/// Delivers the interface rebuilt from the `Gdd` undo/redo cursor so the async rebuild can swap into the
+	/// live document. `interface` is `None` if the rebuild failed (logged at the source). `had_oracle` records
+	/// whether the legacy snapshot applied synchronously, so the swap can debug-compare against it. Travels
+	/// once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).
 	GddUndoRedoRebuilt {
 		document_id: DocumentId,
 		had_oracle: bool,
