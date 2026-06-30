@@ -10,6 +10,10 @@ pub fn frontend_dir() -> PathBuf {
 	workspace_dir().join("frontend")
 }
 
+fn wasm_glue_path() -> PathBuf {
+	frontend_dir().join("wrapper").join("pkg").join(format!("{OUT_NAME}.js"))
+}
+
 pub fn setup() -> Result<(), Error> {
 	let frontend = frontend_dir();
 	let node_modules = frontend.join("node_modules");
@@ -52,7 +56,13 @@ pub fn build_wasm_steps(release: bool, native: bool) -> Vec<Expression> {
 		cmd!("cargo", "build", "--lib", "--package", WRAPPER_CRATE, "--target", WASM_TARGET)
 			.arg_if(release, "--release")
 			.args_if(native, ["--no-default-features", "--features", "native"])
-			.dir(workspace_dir()),
+			.dir(workspace_dir())
+			.before_spawn(|_| {
+				if is_build_corrupted() {
+					clean_wasm();
+				}
+				Ok(())
+			}),
 		cmd!("wasm-bindgen", "--target", "web", "--out-name", OUT_NAME, "--out-dir", &pkg_dir, &wasm_artifact)
 			.arg_if(release, "--no-demangle")
 			.arg_if(!release, "--debug"),
@@ -64,6 +74,25 @@ pub fn build_wasm_steps(release: bool, native: bool) -> Vec<Expression> {
 	}
 
 	steps
+}
+
+pub fn clean_wasm() -> bool {
+	let wasm_target_dir = target_dir().join(WASM_TARGET);
+	eprintln!("The Wasm build emitted undefined `env` imports, a sign of corrupt incremental artifacts (typically from an interrupted build).");
+	eprintln!("Fixing by wiping `{}` and rebuilding...", wasm_target_dir.display());
+	match std::fs::remove_dir_all(&wasm_target_dir) {
+		Ok(()) => {}
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+		Err(e) => eprintln!("warning: could not fully clean `{}`: {e}", wasm_target_dir.display()),
+	}
+	true
+}
+
+pub fn is_build_corrupted() -> bool {
+	let Ok(js) = std::fs::read_to_string(wasm_glue_path()) else {
+		return false;
+	};
+	js.contains("from \"env\"") || js.contains("from 'env'")
 }
 
 pub fn vite() -> Expression {
