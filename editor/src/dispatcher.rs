@@ -89,9 +89,10 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>, working_copy_root: Option<std::path::PathBuf>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
+		s.message_handlers.portfolio_message_handler.set_working_copy_root(working_copy_root);
 		s
 	}
 
@@ -264,6 +265,7 @@ impl Dispatcher {
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
+					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;
 
 					if let Some(document) = self
 						.message_handlers
@@ -365,6 +367,15 @@ impl Dispatcher {
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
+	}
+
+	/// Block until no async work is in flight. Each result feeds back through `handle_message`, which may
+	/// spawn more, so loop until the in-flight count drains. Test-only: production pumps results lazily.
+	pub async fn settle_async_work(&mut self) {
+		while self.message_handlers.future_message_handler.has_in_flight() {
+			let Some(message) = self.message_handlers.future_message_handler.recv_next().await else { break };
+			self.handle_message(message, true);
+		}
 	}
 
 	/// Create the tree structure for logging the messages as a tree

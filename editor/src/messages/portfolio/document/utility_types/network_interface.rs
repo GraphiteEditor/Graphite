@@ -1,6 +1,7 @@
 mod deserialization;
 mod memo_network;
 mod resolved_types;
+pub mod storage_metadata;
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
@@ -3417,22 +3418,67 @@ impl NodeNetworkInterface {
 
 // Public mutable methods
 impl NodeNetworkInterface {
-	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+	/// Walk every network at every nesting level, invoking `visit` with each network's path and a mutable
+	/// reference to its metadata. Only nodes that contain a nested network are recursed into.
+	fn for_each_network_metadata_mut(&mut self, mut visit: impl FnMut(&[NodeId], &mut NodeNetworkMetadata)) {
 		let mut stack = vec![vec![]];
 		while let Some(path) = stack.pop() {
 			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
 				continue;
 			};
-			if let Some(other_network_metadata) = other_interface.network_metadata(&path) {
+
+			visit(&path, self_network_metadata);
+
+			// Only nodes that contain a nested network have metadata to recurse into, so skip leaf nodes.
+			stack.extend(
+				self_network_metadata
+					.persistent_metadata
+					.node_metadata
+					.iter()
+					.filter(|(_, node_metadata)| node_metadata.persistent_metadata.network_metadata.is_some())
+					.map(|(node_id, _)| {
+						let mut current_path: Vec<NodeId> = path.clone();
+						current_path.push(*node_id);
+						current_path
+					}),
+			);
+		}
+	}
+
+	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
 				self_network_metadata.persistent_metadata.navigation_metadata = other_network_metadata.persistent_metadata.navigation_metadata.clone();
 			}
+		});
+	}
 
-			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
-				let mut current_path: Vec<NodeId> = path.clone();
-				current_path.push(*node_id);
-				current_path
-			}));
-		}
+	/// Copy all transient view and selection state from `other_interface` onto `self` at every nesting level:
+	/// navigation metadata (pan/zoom), selection undo/redo history, and the document-to-viewport camera. Lets
+	/// an interface rebuilt from storage keep the user's current view rather than reset it. `resolved_types`
+	/// is a separate runtime cache the caller handles.
+	pub fn copy_all_transient_view_state(&mut self, other_interface: &NodeNetworkInterface) {
+		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
+				let self_persistent = &mut self_network_metadata.persistent_metadata;
+				let other_persistent = &other_network_metadata.persistent_metadata;
+				self_persistent.navigation_metadata = other_persistent.navigation_metadata.clone();
+
+				// The live preview root may name a node that the rebuilt-from-storage network no longer contains
+				// (e.g. after a storage undo), so only carry it over when the root still exists; otherwise drop it.
+				self_persistent.previewing = match other_persistent.previewing {
+					Previewing::Yes {
+						root_node_to_restore: Some(root_node),
+					} if !self_persistent.node_metadata.contains_key(&root_node.node_id) => Previewing::No,
+					previewing => previewing,
+				};
+
+				self_persistent.selection_undo_history = other_persistent.selection_undo_history.clone();
+				self_persistent.selection_redo_history = other_persistent.selection_redo_history.clone();
+			}
+		});
+
+		self.document_metadata.document_to_viewport = other_interface.document_metadata.document_to_viewport;
 	}
 
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
@@ -6711,6 +6757,9 @@ pub struct NodePersistentMetadata {
 impl NodePersistentMetadata {
 	pub fn new(position: NodePosition) -> Self {
 		Self { position }
+	}
+	pub fn position(&self) -> &NodePosition {
+		&self.position
 	}
 }
 
