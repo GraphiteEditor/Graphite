@@ -65,7 +65,7 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 ) -> List<T> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
-	let total = (count - 1) as f64;
+	let total = (count - 1).max(1) as f64;
 
 	let mut result_list = List::new();
 
