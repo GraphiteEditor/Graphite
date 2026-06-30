@@ -6712,6 +6712,10 @@ impl NodePersistentMetadata {
 	pub fn new(position: NodePosition) -> Self {
 		Self { position }
 	}
+
+	pub fn position(&self) -> &NodePosition {
+		&self.position
+	}
 }
 
 /// A layer can either be position as Absolute or in a Stack
