@@ -155,7 +155,9 @@ impl TextContext {
 		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
 		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+			path_builder.render_decoration_run(glyph_run, typesetting.underline, typesetting.overline, false, per_glyph_items);
 			path_builder.render_glyph_run(glyph_run, typesetting.letter_tilt, per_glyph_items, x_offset, space_extra);
+			path_builder.render_decoration_run(glyph_run, false, false, typesetting.strikethrough, per_glyph_items);
 		});
 
 		path_builder.finalize()
