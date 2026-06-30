@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::EditorPreferences;
-use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue, legacy};
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ExportFormat, NodeGraphUpdateMessage, RenderConfig, TimingInformation};
@@ -14,7 +14,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::Vector;
+use graphene_std::vector::{Vector, graphic_types};
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
@@ -87,7 +87,7 @@ struct ExecutionContext {
 #[derive(Debug, Clone)]
 struct GradientMigration {
 	document_id: DocumentId,
-	remaining: VecDeque<(NodeId, legacy::Gradient)>,
+	remaining: VecDeque<(NodeId, graphic_types::migrations::legacy::Gradient)>,
 	resolution: UVec2,
 	scale: f64,
 }
@@ -474,7 +474,7 @@ impl NodeGraphExecutor {
 		}
 
 		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above) until the migration finishes and clears it.
-		let remaining: VecDeque<(NodeId, legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
+		let remaining: VecDeque<(NodeId, graphic_types::migrations::legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
 		let Some((first_fill, _)) = remaining.front().cloned() else {
 			responses.add(NodeGraphMessage::RunDocumentGraph);
 			return;

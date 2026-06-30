@@ -9,12 +9,12 @@ use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
-use graph_craft::document::value::legacy;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::graphic_types;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -1587,16 +1587,16 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			Some(TaggedValue::LegacyFill(old_fill)) => {
 				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
-					legacy::Fill::None => TaggedValue::Color(None),
-					legacy::Fill::Solid(color) => TaggedValue::Color(Some(*color)),
-					legacy::Fill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
+					graphic_types::migrations::legacy::Fill::None => TaggedValue::Color(None),
+					graphic_types::migrations::legacy::Fill::Solid(color) => TaggedValue::Color(Some(*color)),
+					graphic_types::migrations::legacy::Fill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
 				};
 				document
 					.network_interface
 					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
 				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
-				if let legacy::Fill::Gradient(gradient) = old_fill {
+				if let graphic_types::migrations::legacy::Fill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
 						&InputConnector::node(*node_id, 4),
 						NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
