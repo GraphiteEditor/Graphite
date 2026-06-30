@@ -1,11 +1,9 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
-use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
+use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
-use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
@@ -13,15 +11,12 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
-use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -31,9 +26,6 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::BezierHandles;
-use graphene_std::vector::misc::HandleId;
-use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec;
@@ -68,7 +60,6 @@ pub struct PortfolioMessageHandler {
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
-	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -280,86 +271,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Select the document being closed
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
-			}
-			PortfolioMessage::Copy { clipboard } => {
-				if context.current_tool == &ToolType::Path {
-					responses.add(PathToolMessage::Copy { clipboard });
-					return;
-				}
-
-				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
-				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
-					return;
-				};
-
-				if active_document.graph_view_overlay_open() {
-					responses.add(NodeGraphMessage::Copy);
-					return;
-				}
-
-				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
-
-					ordered_last_elements.sort_by_key(|layer| {
-						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
-						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
-					});
-
-					for layer in ordered_last_elements.into_iter() {
-						let layer_node_id = layer.to_node();
-
-						let mut copy_ids = HashMap::new();
-						copy_ids.insert(layer_node_id, NodeId(0));
-
-						active_document
-							.network_interface
-							.upstream_flow_back_from_nodes(vec![layer_node_id], &[], network_interface::FlowType::LayerChildrenUpstreamFlow)
-							.enumerate()
-							.for_each(|(index, node_id)| {
-								copy_ids.insert(node_id, NodeId((index + 1) as u64));
-							});
-
-						buffer.push(CopyBufferEntry {
-							nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
-							selected: active_document.network_interface.selected_nodes().selected_layers_contains(layer, active_document.metadata()),
-							visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
-							locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
-							collapsed: false,
-						});
-					}
-				};
-
-				if clipboard == Clipboard::Device {
-					let mut buffer = Vec::new();
-					copy_val(&mut buffer);
-					let Ok(data) = serde_json::to_string(&buffer) else {
-						log::error!("Failed to serialize nodes for clipboard");
-						return;
-					};
-					responses.add(ClipboardMessage::Write {
-						content: ClipboardContent::Layer(data),
-					});
-				} else {
-					let copy_buffer = &mut self.copy_buffer;
-					copy_buffer[clipboard as usize].clear();
-					copy_val(&mut copy_buffer[clipboard as usize]);
-				}
-			}
-			PortfolioMessage::Cut { clipboard } => {
-				if context.current_tool == &ToolType::Path {
-					responses.add(PathToolMessage::Cut { clipboard });
-					return;
-				}
-
-				if let Some(active_document) = self.active_document()
-					&& active_document.graph_view_overlay_open()
-				{
-					responses.add(NodeGraphMessage::Cut);
-					return;
-				}
-
-				responses.add(PortfolioMessage::Copy { clipboard });
-				responses.add(DocumentMessage::DeleteSelectedLayers);
 			}
 			PortfolioMessage::DeleteDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -1036,152 +947,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 				});
 			}
-			// TODO: Unused except by tests, remove?
-			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
-				let mut all_new_ids = Vec::new();
-				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
-					if self.active_document().is_some() {
-						trace!("Pasting into folder {parent:?} as index: {insert_index}");
-						let nodes = entry.clone().nodes;
-						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-						all_new_ids.extend(new_ids.values().cloned());
-						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
-						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
-					}
-				};
-
-				responses.add(DocumentMessage::DeselectAllLayers);
-
-				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
-					paste(entry, responses, &mut all_new_ids)
-				}
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-			}
-			PortfolioMessage::PasteSerializedData { data } => {
-				if let Some(document) = self.active_document() {
-					let mut all_new_ids = Vec::new();
-					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
-						let parent = document.new_layer_parent(false);
-						let mut layers = Vec::new();
-
-						let mut added_nodes = false;
-
-						for entry in data.into_iter().rev() {
-							if !added_nodes {
-								responses.add(DocumentMessage::DeselectAllLayers);
-								responses.add(DocumentMessage::AddTransaction);
-								added_nodes = true;
-							}
-
-							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-							all_new_ids.extend(new_ids.values().cloned());
-
-							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
-							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
-							layers.push(layer);
-						}
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-						responses.add(DeferMessage::AfterGraphRun {
-							messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
-						});
-					}
-				}
-			}
-			// Custom paste implementation for Path tool
-			PortfolioMessage::PasteSerializedVector { data } => {
-				// If using Path tool then send the operation to Path tool
-				if *current_tool == ToolType::Path {
-					responses.add(PathToolMessage::Paste { data });
-					return;
-				}
-
-				// If not using Path tool, create new layers and add paths into those
-				if let Some(document) = self.active_document() {
-					let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, Vector, DAffine2)>>(&data) else {
-						return;
-					};
-
-					let mut layers = Vec::new();
-
-					for (_, new_vector, transform) in data {
-						let Some(node_type) = resolve_network_node_type("Path") else {
-							error!("Path node does not exist");
-							continue;
-						};
-						let nodes = vec![(NodeId(0), node_type.default_node_template())];
-
-						let parent = document.new_layer_parent(false);
-
-						let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-						layers.push(layer);
-
-						// Adding the transform back into the layer
-						responses.add(GraphOperationMessage::TransformSet {
-							layer,
-							transform,
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
-
-						// Add default fill and stroke to the layer
-						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
-						responses.add(GraphOperationMessage::FillSet { layer, fill });
-
-						let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
-						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
-
-						// Create new point ids and add those into the existing Vector path
-						let mut points_map = HashMap::new();
-						for (point, position) in new_vector.point_domain.iter() {
-							let new_point_id = PointId::generate();
-							points_map.insert(point, new_point_id);
-							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						// Create new segment ids and add the segments into the existing Vector path
-						let mut segments_map = HashMap::new();
-						for (segment_id, bezier, start, end) in new_vector.segment_bezier_iter() {
-							let new_segment_id = SegmentId::generate();
-
-							segments_map.insert(segment_id, new_segment_id);
-
-							let handles = match bezier.handles {
-								BezierHandles::Linear => [None, None],
-								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-							};
-
-							let points = [points_map[&start], points_map[&end]];
-							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						// Set G1 continuity
-						for handles in new_vector.colinear_manipulators {
-							let to_new_handle = |handle: HandleId| -> HandleId {
-								HandleId {
-									ty: handle.ty,
-									segment: segments_map[&handle.segment],
-								}
-							};
-							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
-							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-					}
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(Message::Defer(DeferMessage::AfterGraphRun {
-						messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
-					}));
-				}
-			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
 					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.size().into_dvec2()]); // In viewport pixel coordinates
@@ -1816,14 +1581,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				PrevDocument,
 				Import,
 			));
-
-			// Extend with actions that must have a selected layer
-			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
-				common.extend(actions!(PortfolioMessageDiscriminant;
-					Copy,
-					Cut,
-				));
-			}
 		}
 
 		// Extend with actions that are disabled when focusing the document

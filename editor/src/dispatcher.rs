@@ -186,7 +186,13 @@ impl Dispatcher {
 					self.message_handlers.future_message_handler.process_message(message, &mut queue, FutureMessageContext {});
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
-				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
+				Message::Clipboard(message) => {
+					let context = ClipboardMessageContext {
+						portfolio: &mut self.message_handlers.portfolio_message_handler,
+						current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+					};
+					self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, context);
+				}
 				Message::ColorPicker(message) => self.message_handlers.color_picker_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
@@ -440,6 +446,28 @@ mod test {
 		editor
 	}
 
+	/// Copies the current layer selection to the system clipboard, returning the serialized payload the editor writes out.
+	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> String {
+		editor
+			.handle_message(ClipboardMessage::CopyLayers)
+			.await
+			.into_iter()
+			.find_map(|message| match message {
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				_ => None,
+			})
+			.expect("copying layers should write a payload to the clipboard")
+	}
+
+	/// Pastes a previously-copied clipboard string, mirroring a real system-clipboard paste.
+	async fn paste_from_clipboard(editor: &mut EditorTestUtils, clipboard: &str) {
+		editor
+			.handle_message(ClipboardMessage::ReadClipboard {
+				content: ClipboardContentRaw::Text(clipboard.to_string()),
+			})
+			.await;
+	}
+
 	/// - create rect, shape and ellipse
 	/// - copy
 	/// - paste
@@ -449,14 +477,8 @@ mod test {
 		let mut editor = create_editor_with_three_layers().await;
 
 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
@@ -483,14 +505,8 @@ mod test {
 		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
@@ -526,23 +542,11 @@ mod test {
 				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 			})
 			.await;
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
 		editor.draw_rect(0., 800., 12., 200.).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 

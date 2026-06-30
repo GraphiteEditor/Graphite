@@ -11,7 +11,6 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
-use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
@@ -141,12 +140,8 @@ pub enum PathToolMessage {
 		overlay_context: OverlayContext,
 	},
 	StartSlidingPoint,
-	Copy {
-		clipboard: Clipboard,
-	},
-	Cut {
-		clipboard: Clipboard,
-	},
+	Copy,
+	Cut,
 	Paste {
 		data: String,
 	},
@@ -2749,7 +2744,7 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 			}
-			(_, PathToolMessage::Copy { clipboard }) => {
+			(_, PathToolMessage::Copy) => {
 				// TODO: Add support for selected segments
 
 				let mut buffer = Vec::new();
@@ -2808,21 +2803,18 @@ impl Fsm for PathToolFsmState {
 					buffer.push((layer, new_vector, transform));
 				}
 
-				if clipboard == Clipboard::Device {
-					if let Ok(data) = serde_json::to_string(&buffer) {
-						responses.add(ClipboardMessage::Write {
-							content: ClipboardContent::Vector(data),
-						});
-					} else {
-						log::error!("Failed to serialize nodes for clipboard");
-					}
+				if let Ok(data) = serde_json::to_string(&buffer) {
+					responses.add(ClipboardMessage::Write {
+						content: ClipboardContent::Vector(data),
+					});
+				} else {
+					log::error!("Failed to serialize nodes for clipboard");
 				}
-				// TODO: Add implementation for internal clipboard
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::Cut { clipboard }) => {
-				responses.add(PathToolMessage::Copy { clipboard });
+			(_, PathToolMessage::Cut) => {
+				responses.add(PathToolMessage::Copy);
 				// Delete the selected points/segments
 				responses.add(PathToolMessage::DeleteSelected);
 
