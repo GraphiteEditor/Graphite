@@ -404,7 +404,7 @@ tagged_value! {
 	DAffine2(DAffine2),
 	OptionalDAffine2(Option<DAffine2>),
 	#[serde(alias = "FillGradient")]
-	LegacyGradient(legacy::Gradient),
+	LegacyGradient(graphic_types::migrations::legacy::Gradient),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
@@ -414,7 +414,7 @@ tagged_value! {
 	// ENUM TYPES
 	// ==========
 	#[serde(alias = "Fill")]
-	LegacyFill(legacy::Fill),
+	LegacyFill(graphic_types::migrations::legacy::Fill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
@@ -659,7 +659,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<GradientStops>`.
 			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `GradientStops` has none of those (it has `position`/`midpoint`/`color`).
 			"Gradient" if content.as_object().is_some_and(|c| c.contains_key("start") && c.contains_key("end")) => {
-				let gradient: legacy::Gradient = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
+				let gradient: graphic_types::migrations::legacy::Gradient = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
 				return Ok(MemoHash::new(TaggedValue::LegacyGradient(gradient)));
 			}
 			_ => {}
@@ -807,78 +807,5 @@ mod typedefault_dispatch {
 			}};
 		}
 		for_each_type_default!(check);
-	}
-}
-
-// Storing legacy structs that are only used in document migration.
-pub mod legacy {
-	use super::*;
-
-	// TODO: Eventually remove this migration document upgrade code
-	#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-	pub struct Gradient {
-		pub stops: GradientStops,
-		pub gradient_type: vector::style::GradientType,
-		pub start: DVec2,
-		pub end: DVec2,
-		#[serde(default)]
-		pub spread_method: vector::style::GradientSpreadMethod,
-		#[serde(default)]
-		pub absolute: bool,
-		#[serde(default)]
-		pub transform: DAffine2,
-	}
-
-	impl Gradient {
-		/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one in the geometry's local space.
-		/// `bounding_box` maps [0,1] onto the geometry's bounding box; `layer_transform` is the layer's own transform,
-		/// used to bake the elliptical adjustment that reproduces the legacy isotropic radial through a non-uniform layer.
-		pub fn to_absolute(&self, bounding_box: DAffine2, layer_transform: DAffine2) -> Gradient {
-			let start = bounding_box.transform_point2(self.start);
-			let end = bounding_box.transform_point2(self.end);
-			let direction = end - start;
-
-			// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
-			// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
-			let radial_invertible = self.gradient_type == vector::style::GradientType::Radial
-				&& layer_transform.is_finite()
-				&& layer_transform.matrix2.determinant().recip().is_finite()
-				&& direction.length_squared() > 1e-20;
-			let transform = if radial_invertible {
-				let radius = (layer_transform.matrix2 * direction).length();
-				let circle = DAffine2 {
-					matrix2: glam::DMat2::from_diagonal(DVec2::splat(radius)),
-					translation: layer_transform.transform_point2(start),
-				};
-				let base = DAffine2::from_cols(direction, direction.perp(), start);
-				(layer_transform.inverse() * circle) * base.inverse()
-			} else {
-				DAffine2::IDENTITY
-			};
-
-			Gradient {
-				start,
-				end,
-				transform,
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				..self.clone()
-			}
-		}
-
-		/// Builds the affine that places the gradient endpoints at `start` and `end` when applied to canonical gradient space (0, 0) -> (1, 0).
-		pub fn to_transform(&self) -> DAffine2 {
-			let direction = self.end - self.start;
-			DAffine2::from_cols(direction, direction.perp(), self.start)
-		}
-	}
-
-	// TODO: Eventually remove this migration document upgrade code
-	#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-	pub enum Fill {
-		#[default]
-		None,
-		Solid(Color),
-		Gradient(Gradient),
 	}
 }

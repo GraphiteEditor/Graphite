@@ -35,17 +35,17 @@ use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
-use graph_craft::document::value::{TaggedValue, legacy};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::graphic::is_paint_present;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
 use graphene_std::subpath::Subpath;
-use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::{PointId, graphic_types};
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -125,7 +125,7 @@ pub struct DocumentMessageHandler {
 	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
 	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, legacy::Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -4011,7 +4011,7 @@ mod document_message_handler_tests {
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
 		let document = DocumentMessageHandler {
-			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), legacy::Gradient::default())],
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::Gradient::default())],
 			..Default::default()
 		};
 

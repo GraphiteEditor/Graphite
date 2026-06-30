@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::EditorPreferences;
-use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue, legacy};
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ExportFormat, NodeGraphUpdateMessage, RenderConfig, TimingInformation};
@@ -14,7 +14,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::Vector;
+use graphene_std::vector::{Vector, graphic_types};
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic, NodeInputDecleration};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
@@ -82,7 +82,7 @@ struct ExecutionContext {
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
 	/// gradient; such runs never touch the visible artwork. Carrying the entry keeps a stale re-dispatched response paired with the fill it measured.
-	measure_fill: Option<(Vec<NodeId>, NodeId, legacy::Gradient)>,
+	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -92,7 +92,7 @@ struct ExecutionContext {
 #[derive(Debug, Clone)]
 struct GradientMigration {
 	document_id: DocumentId,
-	remaining: VecDeque<(Vec<NodeId>, NodeId, legacy::Gradient)>,
+	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
 	resolution: UVec2,
 	scale: f64,
 }
@@ -492,7 +492,7 @@ impl NodeGraphExecutor {
 		}
 
 		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above); each entry is removed from the document as its bake lands.
-		let remaining: VecDeque<(Vec<NodeId>, NodeId, legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
+		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
 		let Some((first_network_path, first_fill, first_gradient)) = remaining.front().cloned() else {
 			return false;
 		};
@@ -519,7 +519,7 @@ impl NodeGraphExecutor {
 		document_id: DocumentId,
 		network_path: Vec<NodeId>,
 		fill_node_id: NodeId,
-		gradient: legacy::Gradient,
+		gradient: graphic_types::migrations::legacy::Gradient,
 		resolution: UVec2,
 		scale: f64,
 		responses: &mut VecDeque<Message>,
@@ -588,7 +588,7 @@ impl NodeGraphExecutor {
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
-		bake_target: (Vec<NodeId>, NodeId, legacy::Gradient),
+		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient),
 		inspect_result: Option<InspectResult>,
 		responses: &mut VecDeque<Message>,
 	) {
