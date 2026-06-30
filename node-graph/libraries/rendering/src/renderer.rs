@@ -459,12 +459,10 @@ pub struct RenderMetadata {
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
-	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read paint
-	/// information that lives on the list rather than on `PathStyle.fill`.
+	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read
-	/// stroke paint information that lives on the list rather than on `Stroke.color`.
+	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	pub backgrounds: Vec<Background>,
@@ -1067,7 +1065,7 @@ impl Render for List<Vector> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
@@ -1087,7 +1085,7 @@ impl Render for List<Vector> {
 				path.push_str(bezpath.to_svg().as_str());
 			}
 
-			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) {
+			let mask_type = if vector.stroke.as_ref().map(|x| x.align) == Some(StrokeAlign::Inside) {
 				MaskType::Clip
 			} else {
 				MaskType::Mask
@@ -1101,12 +1099,12 @@ impl Render for List<Vector> {
 
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 			let can_draw_aligned_stroke = path_is_closed
-				&& vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+				&& vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
 			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
-			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+			let wants_stroke_below = vector.stroke.as_ref().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 			let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 			let use_face_fill = vector.use_face_fill();
 
@@ -1127,7 +1125,7 @@ impl Render for List<Vector> {
 				let id = format!("alignment-{}", generate_uuid());
 
 				let mut cloned_vector = vector.clone();
-				cloned_vector.style.clear_stroke();
+				cloned_vector.stroke = None;
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
@@ -1169,7 +1167,7 @@ impl Render for List<Vector> {
 				if let Some((ref id, mask_type, ref vector_item)) = push_id {
 					let mut svg = SvgRender::new();
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-					let stroke = vector.style.stroke().unwrap();
+					let stroke = vector.stroke.as_ref().unwrap();
 					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
 					let (largest_scale, _) = singular_values(applied_stroke_transform);
 					let inflation = stroke.max_aabb_inflation(true) * largest_scale;
@@ -1197,8 +1195,8 @@ impl Render for List<Vector> {
 				render_params.override_paint_order = override_paint_order;
 
 				let stroke_shape_attribute = vector
-					.style
-					.stroke()
+					.stroke
+					.as_ref()
 					.map(|stroke| {
 						if stroke_graphic_list.as_deref().is_some_and(is_paint_present) {
 							stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
@@ -1209,7 +1207,7 @@ impl Render for List<Vector> {
 					.unwrap_or_default();
 
 				// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-				let stroke_visible = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+				let stroke_visible = vector.stroke.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
 				let stroke_attribute = if stroke_visible {
 					stroke_graphic_list
 						.as_deref()
@@ -1284,7 +1282,7 @@ impl Render for List<Vector> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let multiplied_transform = parent_transform * item_transform;
-			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let has_real_stroke = element.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let mut element_transform = set_stroke_transform
@@ -1321,10 +1319,10 @@ impl Render for List<Vector> {
 			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
-			let stroke = element.style.stroke();
+			let stroke = element.stroke.as_ref();
 			let stroke_fully_transparent = stroke_graphic_list.as_ref().is_none_or(|l| l.element(0).is_none_or(|g| g.is_fully_transparent()));
 			let can_draw_aligned_stroke =
-				!stroke_fully_transparent && stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+				!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -1332,7 +1330,7 @@ impl Render for List<Vector> {
 				// `max_aabb_inflation` is in `applied_stroke_transform`-space; `layer_bounds` is path-local and `push_layer` re-applies `multiplied_transform`.
 				// Divide by the smaller axial scale to cover the stroke in both axes after Vello's transform. Skip on a degenerate transform.
 				let (_, smallest_scale) = singular_values(applied_stroke_transform);
-				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
+				let stroke_inflation = stroke.map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
 				let inflate_amount = if smallest_scale > 0. { stroke_inflation / smallest_scale } else { 0. };
 				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
@@ -1346,7 +1344,7 @@ impl Render for List<Vector> {
 			}
 
 			let use_layer = can_draw_aligned_stroke;
-			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
+			let wants_stroke_below = stroke.is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
@@ -1403,7 +1401,7 @@ impl Render for List<Vector> {
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
 				let Some(stroke_graphic_list) = stroke_graphic_list.as_deref() else { return };
-				let Some(stroke) = element.style.stroke() else { return };
+				let Some(stroke) = stroke else { return };
 
 				for paint_index in 0..stroke_graphic_list.len() {
 					let Some(stroke_graphic) = stroke_graphic_list.element(paint_index) else {
@@ -1476,7 +1474,7 @@ impl Render for List<Vector> {
 				_ => {
 					if use_layer {
 						let mut cloned_element = element.clone();
-						cloned_element.style.clear_stroke();
+						cloned_element.stroke = None;
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
@@ -1488,13 +1486,13 @@ impl Render for List<Vector> {
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
-						let inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(true));
+						let inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true));
 						let (largest_scale, _) = singular_values(applied_stroke_transform);
 						let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-						let compose = if element.style.stroke().is_some_and(|x| x.align == StrokeAlign::Outside) {
+						let compose = if stroke.is_some_and(|x| x.align == StrokeAlign::Outside) {
 							peniko::Compose::SrcOut
 						} else {
 							peniko::Compose::SrcIn
@@ -1531,7 +1529,7 @@ impl Render for List<Vector> {
 							Stroke,
 						}
 
-						let order = match element.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) {
+						let order = match stroke.is_some_and(|stroke| !stroke.paint_order.is_default()) {
 							true => [Op::Stroke, Op::Fill],
 							false => [Op::Fill, Op::Stroke], // Default
 						};
@@ -1600,9 +1598,9 @@ impl Render for List<Vector> {
 				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
 				// Source geometry (not the click-target override) so editing tools work on letterforms.
-				// Recorded together with `vector_data` from the same (first) row so `style` stays consistent with the paint.
+				// Recorded together with `vector_data` from the same (first) row so stroke geometry stays consistent with the paint.
 				// Only item 0 is recorded since editing tools can only target a single item currently.
-				// If that row has no paint attribute, none is recorded and consumers fall back to `style`.
+				// If that row has no paint attribute, none is recorded.
 				if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 					e.insert(Arc::new(source.clone()));
 
@@ -1679,7 +1677,7 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
-	let stroke_width = geometry.style.stroke().map_or(0., |stroke| {
+	let stroke_width = geometry.stroke.as_ref().map_or(0., |stroke| {
 		if stroke.align.is_not_centered() && all_subpaths_closed {
 			stroke.weight * 2.
 		} else {

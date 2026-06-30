@@ -400,7 +400,7 @@ impl TableItemLayout for Vector {
 			VectorTableTab::Properties => {
 				table_rows.push(column_headings(&["property", "value"]));
 
-				if let Some(stroke) = self.style.stroke.clone() {
+				if let Some(stroke) = self.stroke.as_ref() {
 					table_rows.push(vec![
 						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
 						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),

@@ -207,7 +207,6 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.or_else(|| list.attribute::<List<Vector>>(attribute, index).map(|v| Cow::Owned(v.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<CPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<GPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
-		// Treat a blank attribute as absent so consumers fall back to the legacy `style` instead of masking it.
 		.filter(|graphic_list| is_paint_present(graphic_list))
 }
 
@@ -602,7 +601,7 @@ impl Graphic {
 					None => true,
 				};
 
-				let stroke_invisible_or_transparent = element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+				let stroke_invisible_or_transparent = element.stroke.clone().is_none_or(|stroke| !stroke.has_renderable_stroke())
 					|| if let Some(graphic_list) = stroke_graphic_list_at(vector, index) {
 						graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent())
 					} else {
@@ -625,7 +624,7 @@ impl Graphic {
 						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
 						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_fill_opaque_at(list, i);
-						let stroke_opaque_or_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_opaque_at(list, i);
+						let stroke_opaque_or_invisible = vector.stroke.clone().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_opaque_at(list, i);
 						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
 					})
 			}
@@ -646,7 +645,7 @@ impl Graphic {
 				}
 				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
 				let fill_invisible = opacity_fill <= f64::EPSILON || is_fill_fully_transparent_at(list, i);
-				let stroke_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_fully_transparent_at(list, i);
+				let stroke_invisible = vector.stroke.clone().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_fully_transparent_at(list, i);
 				fill_invisible && stroke_invisible
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),

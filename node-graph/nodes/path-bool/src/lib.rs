@@ -49,7 +49,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
+		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
@@ -148,7 +148,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 		let copy_from = vector.element(index).unwrap();
 		let element = Vector {
-			style: copy_from.style.clone(),
+			stroke: copy_from.stroke.clone(),
 			..Default::default()
 		};
 		Item::from_parts(element, attributes)
@@ -279,7 +279,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						attributes.insert(ATTR_FILL, List::new_from_element(color));
 
 						let mut element = Vector::default();
-						element.style.set_stroke_transform(DAffine2::IDENTITY);
+						element.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)
 					})
@@ -302,7 +302,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						attributes.insert(ATTR_FILL, gradient_paint);
 
 						let mut element = Vector::default();
-						element.style.set_stroke_transform(DAffine2::IDENTITY);
+						element.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)
 					})
