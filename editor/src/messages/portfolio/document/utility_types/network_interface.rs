@@ -352,6 +352,12 @@ impl NodeNetworkInterface {
 		node.inputs.len()
 	}
 
+	/// Whether the node has an exposed input at index 0 to accept the horizontal flow from upstream.
+	/// A node without one (e.g. a generator) can only be the most-upstream node in a chain.
+	pub fn has_primary_input(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.input_from_connector(&InputConnector::node(*node_id, 0), network_path).is_some_and(|input| input.is_exposed())
+	}
+
 	pub fn number_of_outputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
 		let Some(implementation) = self.implementation(node_id, network_path) else {
 			log::error!("Could not get node {node_id} in number_of_outputs");
@@ -6094,33 +6100,42 @@ impl NodeNetworkInterface {
 			.take_while(|upstream_id| !self.is_layer(upstream_id, network_path))
 			.collect::<Vec<_>>();
 
-		let Some(from) = chain.iter().position(|id| *id == node_id) else {
-			log::error!("Node {node_id} is not part of its layer's chain in reorder_chain_node");
+		// A source node (no primary input) stays pinned at the most-upstream end; only the nodes below it reorder
+		let pinned_source = chain.last().copied().filter(|last| !self.has_primary_input(last, network_path));
+		let reorderable = &chain[..chain.len() - pinned_source.is_some() as usize];
+
+		let Some(from) = reorderable.iter().position(|id| *id == node_id) else {
+			log::error!("Node {node_id} is not a reorderable node in its layer's chain in reorder_chain_node");
 			return;
 		};
 
-		// The drop gap is measured against the chain that still includes the dragged node, so shift it down by one if the node is being removed from before the gap
-		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(chain.len() - 1);
+		// The drop gap is measured against the reorderable nodes that still include the dragged node, so shift it down by one if the node is being removed from before the gap
+		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(reorderable.len() - 1);
 		if to == from {
 			return;
 		}
 
-		let mut new_order = chain.clone();
+		let mut new_order = reorderable.to_vec();
 		new_order.remove(from);
 		new_order.insert(to, node_id);
 
-		// Preserve whatever feeds the most-upstream chain node (a value, an import, or an upstream layer) so it stays at the top
-		let Some(tail_input) = self.input_from_connector(&InputConnector::node(*chain.last().unwrap(), 0), network_path).cloned() else {
-			log::error!("Could not get the upstream input of the chain in reorder_chain_node");
-			return;
+		// The most-upstream reorderable node connects up to the pinned source, or else whatever fed the top of the chain
+		let tail_input = if let Some(source) = pinned_source {
+			NodeInput::node(source, 0)
+		} else {
+			let Some(input) = self.input_from_connector(&InputConnector::node(*chain.last().unwrap(), 0), network_path).cloned() else {
+				log::error!("Could not get the upstream input of the chain in reorder_chain_node");
+				return;
+			};
+			input
 		};
 
-		// Disconnect the existing internal chain wiring first so the rewiring below can't transiently form a cycle
-		for &chain_node in &chain {
+		// Disconnect first so the rewiring can't transiently form a cycle (the pinned source keeps its wiring)
+		for &chain_node in reorderable {
 			self.disconnect_input(&InputConnector::node(chain_node, 0), network_path);
 		}
 
-		// Rewire in the new order: layer's secondary input -> new_order[0] -> ... -> new_order[last] -> preserved tail input
+		// Rewire in the new order: layer's secondary input -> new_order[0] -> ... -> new_order[last] -> tail input
 		self.set_input(&InputConnector::node(layer, 1), NodeInput::node(new_order[0], 0), network_path);
 		for pair in new_order.windows(2) {
 			self.set_input(&InputConnector::node(pair[0], 0), NodeInput::node(pair[1], 0), network_path);

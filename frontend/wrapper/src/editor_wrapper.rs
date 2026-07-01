@@ -931,6 +931,12 @@ impl EditorWrapper {
 		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned });
 	}
 
+	/// Collapse or expand a node's section in the Properties panel
+	#[wasm_bindgen(js_name = toggleNodePropertiesSectionExpanded)]
+	pub fn toggle_node_properties_section_expanded(&self, id: u64) {
+		self.dispatch(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) });
+	}
+
 	/// Delete a layer or node given its node ID
 	#[wasm_bindgen(js_name = deleteNode)]
 	pub fn delete_node(&self, id: u64) {

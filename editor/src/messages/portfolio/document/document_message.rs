@@ -216,6 +216,9 @@ pub enum DocumentMessage {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
+	ToggleNodePropertiesSectionExpanded {
+		node_id: NodeId,
+	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
 	ToggleGridVisibility,
