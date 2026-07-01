@@ -21,7 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, stroke_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_arc_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1128,11 +1128,14 @@ impl Render for List<Vector> {
 
 				let mut cloned_vector = vector.clone();
 				cloned_vector.style.clear_stroke();
-				cloned_vector.style.set_fill(Fill::solid(Color::BLACK));
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
-				let vector_item = List::new_from_item(Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform));
+				let vector_item = List::new_from_item(
+					Item::new_from_element(cloned_vector)
+						.with_attribute(ATTR_TRANSFORM, item_transform)
+						.with_attribute(ATTR_FILL, List::new_from_element(Color::BLACK)),
+				);
 
 				(id, mask_type, vector_item)
 			});
@@ -1197,7 +1200,7 @@ impl Render for List<Vector> {
 					.style
 					.stroke()
 					.map(|stroke| {
-						if stroke_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
+						if stroke_graphic_list.as_deref().is_some_and(is_paint_present) {
 							stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 						} else {
 							String::new()
@@ -1474,11 +1477,14 @@ impl Render for List<Vector> {
 					if use_layer {
 						let mut cloned_element = element.clone();
 						cloned_element.style.clear_stroke();
-						cloned_element.style.set_fill(Fill::solid(Color::BLACK));
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
-						let vector_list = List::new_from_item(Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
+						let vector_list = List::new_from_item(
+							Item::new_from_element(cloned_element)
+								.with_attribute(ATTR_TRANSFORM, item_transform)
+								.with_attribute(ATTR_FILL, List::new_from_element(Color::BLACK)),
+						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
@@ -1600,11 +1606,11 @@ impl Render for List<Vector> {
 				if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
 					e.insert(Arc::new(source.clone()));
 
-					if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
-						metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.into_owned()));
+					if let Some(fill_graphic) = graphic_list_arc_at(self, index, ATTR_FILL) {
+						metadata.fill_attributes.insert(element_id, fill_graphic);
 					}
-					if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
-						metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.into_owned()));
+					if let Some(stroke_graphic) = graphic_list_arc_at(self, index, ATTR_STROKE) {
+						metadata.stroke_attributes.insert(element_id, stroke_graphic);
 					}
 				}
 

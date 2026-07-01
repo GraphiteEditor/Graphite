@@ -15,8 +15,8 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::vector::{GradientStops, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bbox};
+use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -271,11 +271,18 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * center)
 }
 
+/// Get the closest Fill node's ID to the provided layer, if any.
+pub fn get_fill_node_id_with_direct_fill_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
+	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+	matches!(fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?, NodeInput::Value { .. }).then_some(fill_node_id)
+}
+
 /// Determine the input connector where the gradient chain enters the layer.
 /// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
 pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
 	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
-		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Fill>::INDEX)
+		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX)
 	} else {
 		InputConnector::node(layer.to_node(), 1)
 	}
@@ -292,89 +299,29 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
 }
 
-// TODO: Eventually remove this document upgrade code
-/// Get the layer's "Fill" node itself (whose `fill` input holds the paint value), not the node feeding that input.
-pub fn get_fill_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
-}
-
 /// Get the node connected to Fill's fill input, if any.
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::<Fill>::INDEX)? else {
+	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)? else {
 		return None;
 	};
 	Some(*node_id)
 }
 
-/// Get the current gradient of a layer from the closest "Fill" node.
-pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	let fill_index = 1;
-
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
-		return None;
-	};
-	Some(gradient.clone())
-}
-
-// TODO: Eventually remove this document upgrade code
-/// The legacy bounding-box-relative gradient (`absolute == false`) in a "Fill" node's active `fill` input, if any.
-fn legacy_active_gradient_in_fill_node(fill_node_id: NodeId, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	let node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let TaggedValue::Fill(Fill::Gradient(gradient)) = node.inputs.get(graphene_std::vector::fill::FillInput::<Fill>::INDEX)?.as_value()? else {
-		return None;
-	};
-	(!gradient.absolute).then(|| gradient.clone())
-}
-
-// TODO: Eventually remove this document upgrade code
-/// The legacy bounding-box-relative gradient (`absolute == false`) stashed in a "Fill" node's `_backup_gradient` input, if any.
-/// The backup is inert until the fill is toggled back to a gradient, at which point it becomes the active fill, so it needs converting too.
-fn legacy_backup_gradient_in_fill_node(fill_node_id: NodeId, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	let node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let TaggedValue::FillGradient(gradient) = node.inputs.get(graphene_std::vector::fill::BackupGradientInput::INDEX)?.as_value()? else {
-		return None;
-	};
-	(!gradient.absolute).then(|| gradient.clone())
-}
-
-// TODO: Eventually remove this document upgrade code
-/// Convert a "Fill" node's legacy gradients (the active `fill` and/or the stashed `_backup_gradient`) to absolute space using
-/// the geometry's measured bounding box, writing each back in place. The active fill is written as a `Fill`, the backup as a bare `FillGradient`.
-pub fn migrate_fill_node_gradients_to_absolute(fill_node_id: NodeId, network_interface: &mut NodeNetworkInterface, bounding_box: DAffine2, layer_transform: DAffine2) {
-	if let Some(gradient) = legacy_active_gradient_in_fill_node(fill_node_id, network_interface) {
-		let absolute = gradient.to_absolute(bounding_box, layer_transform);
-		let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Fill>::INDEX);
-		network_interface.set_input(&input, NodeInput::value(TaggedValue::Fill(Fill::Gradient(absolute)), false), &[]);
-	}
-	if let Some(gradient) = legacy_backup_gradient_in_fill_node(fill_node_id, network_interface) {
-		let absolute = gradient.to_absolute(bounding_box, layer_transform);
-		let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX);
-		network_interface.set_input(&input, NodeInput::value(TaggedValue::FillGradient(absolute), false), &[]);
-	}
-}
-
-// TODO: Eventually remove this document upgrade code
-/// Find every root-network "Fill" node holding a legacy bounding-box-relative gradient, either as its active `fill` or as its `_backup_gradient`.
-///
-/// Scans the document network structurally instead of walking each layer's primary flow, so it also catches fills on
-/// secondary inputs and in hidden, disabled, or orphaned branches. Fills nested inside subgraph node networks are skipped.
-pub fn legacy_gradient_fill_nodes(network_interface: &NodeNetworkInterface) -> Vec<NodeId> {
-	let fill_identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
-	network_interface
-		.document_network()
-		.nodes
-		.keys()
-		.copied()
-		.filter(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&fill_identifier))
-		.filter(|&node_id| legacy_active_gradient_in_fill_node(node_id, network_interface).is_some() || legacy_backup_gradient_in_fill_node(node_id, network_interface).is_some())
-		.collect()
-}
-
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
+	// Try to find the gradient stops value that is created by a Fill node first
+	if let Some(fill_node_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
+		return network_interface
+			.document_network()
+			.nodes
+			.get(&fill_node_id)
+			.and_then(|node| node.inputs.get(graphene_std::vector::fill::FillInput::INDEX))
+			.and_then(|input| input.as_value())
+			.and_then(|value| if let TaggedValue::Gradient(gradient) = value { Some(gradient.clone()) } else { None });
+	}
+
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
 	let TaggedValue::Gradient(stops) = gradient_value_node.inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
 		return None;
@@ -398,14 +345,6 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 			.unwrap_or(metadata.document_to_viewport);
 	}
 
-	// TODO: Eventually remove this document upgrade code
-	// Only an existing legacy `Fill::Gradient` is in (0, 0)..(1, 1) bounding-box space; migrated and newly-created gradients are absolute (layer space).
-	if get_gradient(layer, network_interface).is_some_and(|gradient| !gradient.absolute) {
-		let bounds = metadata.nonzero_bounding_box(layer);
-		let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		return metadata.transform_to_viewport(layer) * bound_transform;
-	}
-
 	metadata.transform_to_viewport(layer)
 }
 
@@ -423,13 +362,11 @@ pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, tran
 
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
-	let fill_index = 1;
-
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let &TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let &TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? else {
 		return None;
 	};
-	Some(color)
+	color
 }
 
 /// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.
@@ -686,16 +623,45 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 	}
 }
 
+// TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated.
 /// Returns the `Fill` value from a layer's upstream Fill node.
 pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
-	let fill_index = graphene_std::vector::fill::FillInput::<Fill>::INDEX;
-	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER), fill_index)?;
-	if let TaggedValue::Fill(fill) = tagged { Some(fill.clone()) } else { None }
+	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
+	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+
+	match fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? {
+		&TaggedValue::Color(color) => Some(color.map_or(Fill::None, Fill::Solid)),
+		TaggedValue::Gradient(stops) => {
+			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientType(value)) => value,
+				_ => GradientType::default(),
+			};
+			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+				_ => GradientSpreadMethod::default(),
+			};
+			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer))),
+				_ => DAffine2::IDENTITY,
+			};
+			Some(Fill::Gradient(Gradient {
+				stops: stops.clone(),
+				gradient_type,
+				spread_method,
+				start: transform.transform_point2(DVec2::ZERO),
+				end: transform.transform_point2(DVec2::X),
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
+				transform: DAffine2::IDENTITY,
+			}))
+		}
+		_ => None,
+	}
 }
 
 /// Returns the stroke color from a layer's upstream Stroke node.
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
-	let color_index = graphene_std::vector::stroke::ColorInput::INDEX;
+	let color_index = graphene_std::vector::stroke::PaintInput::INDEX;
 	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), color_index)?;
 	if let TaggedValue::Color(color) = tagged { Some(*color) } else { None }
 }
@@ -816,7 +782,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			let input_index = graphene_std::vector::stroke::ColorInput::INDEX;
+			let input_index = graphene_std::vector::stroke::PaintInput::INDEX;
 			let value = TaggedValue::Color(color);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else {

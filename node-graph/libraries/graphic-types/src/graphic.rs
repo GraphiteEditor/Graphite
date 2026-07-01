@@ -1,14 +1,15 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, AnyAttributeValue, AttributeValueDyn, Item, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
-use dyn_any::DynAny;
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
+use std::sync::Arc;
 use vector_types::GradientStops;
 pub use vector_types::Vector;
 use vector_types::vector::style::Fill;
@@ -215,24 +216,40 @@ pub fn color_to_graphic_list(color: Option<Color>) -> Option<List<Graphic>> {
 	color.as_ref().map(|color| List::new_from_element((*color).into()))
 }
 
+/// Whether a normalized paint graphic list actually carries renderable paint.
+/// A 0-item list, or a list whose first graphic is empty, is treated as no paint.
+pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
+	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
+}
+
 /// Look up the paint graphics stored under attribute for a vector item, normalizing any graphic list type to `List<Graphic>`.
 pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
-	list.attribute::<List<Graphic>>(attribute, index)
-		.map(Cow::Borrowed)
+	list.attribute::<Arc<List<Graphic>>>(attribute, index)
+		.map(|graphics| Cow::Borrowed(graphics.as_ref()))
+		.or_else(|| list.attribute::<List<Graphic>>(attribute, index).map(Cow::Borrowed))
 		.or_else(|| list.attribute::<List<Color>>(attribute, index).map(|c| Cow::Owned(c.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<GradientStops>>(attribute, index).map(|g| Cow::Owned(g.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Vector>>(attribute, index).map(|v| Cow::Owned(v.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<CPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<GPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		// Treat a blank attribute as absent so consumers fall back to the legacy `style` instead of masking it.
-		.filter(|graphic_list| graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty()))
+		.filter(|graphic_list| is_paint_present(graphic_list))
+}
+
+/// Look up the paint graphics as shared ownership, avoiding a deep clone when the attribute is already stored as `Arc<List<Graphic>>`.
+pub fn graphic_list_arc_at(list: &List<Vector>, index: usize, attribute: &str) -> Option<Arc<List<Graphic>>> {
+	if let Some(graphics) = list.attribute::<Arc<List<Graphic>>>(attribute, index).filter(|graphics| is_paint_present(graphics)) {
+		return Some(graphics.clone());
+	}
+
+	graphic_list_at(list, index, attribute).map(|graphics| Arc::new(graphics.into_owned()))
 }
 
 /// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
 /// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	list.attribute::<List<Graphic>>(attribute, index)
-		.is_some_and(|graphics| graphics.element(0).is_some_and(|graphic| !graphic.is_empty()))
+	list.attribute::<Arc<List<Graphic>>>(attribute, index).is_some_and(|paint_list| is_paint_present(paint_list))
+		|| list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
 		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
 		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
@@ -320,6 +337,50 @@ pub fn is_stroke_fully_transparent_at(list: &List<Vector>, index: usize) -> bool
 	color.a() == 0.
 }
 
+/// Bake the provided transform into the gradient transform if "fill"/"stroke" attributes have List<GradientStops>.
+pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
+	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
+		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			*item_transform = transform * *item_transform;
+		}
+	}
+
+	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
+		for graphic in graphics.iter_element_values_mut() {
+			match graphic {
+				Graphic::Graphic(list) => bake_list_transform(list, transform),
+				Graphic::Vector(list) => bake_list_transform(list, transform),
+				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
+				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
+				Graphic::Gradient(list) => bake_list_transform(list, transform),
+				Graphic::Text(list) => bake_list_transform(list, transform),
+				Graphic::Color(_) => {}
+			}
+		}
+	}
+
+	for paint_key in [ATTR_FILL, ATTR_STROKE] {
+		if let Some(graphics) = attributes.get_mut::<Arc<List<Graphic>>>(paint_key) {
+			bake_graphic_paint_transform(Arc::make_mut(graphics), transform);
+		}
+		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
+			bake_graphic_paint_transform(graphics, transform);
+		}
+		if let Some(gradients) = attributes.get_mut::<List<GradientStops>>(paint_key) {
+			bake_list_transform(gradients, transform);
+		}
+		if let Some(vectors) = attributes.get_mut::<List<Vector>>(paint_key) {
+			bake_list_transform(vectors, transform);
+		}
+		if let Some(rasters) = attributes.get_mut::<List<Raster<CPU>>>(paint_key) {
+			bake_list_transform(rasters, transform);
+		}
+		if let Some(rasters) = attributes.get_mut::<List<Raster<GPU>>>(paint_key) {
+			bake_list_transform(rasters, transform);
+		}
+	}
+}
+
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
 /// enabling type-directed casting of typed `List`s from a `Graphic` value.
 pub trait TryFromGraphic: Clone + Sized {
@@ -357,7 +418,7 @@ impl TryFromGraphic for String {
 }
 
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
-pub trait IntoGraphicList {
+pub trait IntoGraphicList: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static {
 	fn into_graphic_list(self) -> List<Graphic>;
 
 	/// Deeply flattens any content of type `T` within a `List<Graphic>`, discarding all other content, and returning a flat `List<T>`.
@@ -427,6 +488,87 @@ impl IntoGraphicList for DAffine2 {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
 	}
+}
+
+/// Type-erased list of any graphics that implement the `IntoGraphicList` trait.
+/// Lets a node accept any `List<U>` source via the auto-inserted `IntoNode<AnyGraphicListDyn>`,
+/// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
+pub struct AnyGraphicListDyn(pub Box<dyn AnyAttributeValue>);
+
+impl AnyGraphicListDyn {
+	/// Converts the type-erased paint list into the canonical `List<Graphic>` paint representation.
+	/// Use this with `set_attribute` when writing `fill`/`stroke` attributes, because
+	/// `set_attribute_value_dyn` falls back to the existing attribute type's default when the incoming
+	/// paint value has a different concrete type, such as after Morph.
+	pub fn into_graphic_list(self) -> List<Graphic> {
+		let value = self.0.into_any();
+
+		let value = match value.downcast::<List<Graphic>>() {
+			Ok(value) => return *value,
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<Color>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<GradientStops>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<Vector>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		let value = match value.downcast::<List<Raster<CPU>>>() {
+			Ok(value) => return (*value).into_graphic_list(),
+			Err(value) => value,
+		};
+		match value.downcast::<List<Raster<GPU>>>() {
+			Ok(value) => (*value).into_graphic_list(),
+			Err(_) => List::new(),
+		}
+	}
+}
+
+impl<T: IntoGraphicList> From<T> for AnyGraphicListDyn {
+	fn from(value: T) -> Self {
+		Self(Box::new(value))
+	}
+}
+
+impl From<AnyGraphicListDyn> for AttributeValueDyn {
+	fn from(value: AnyGraphicListDyn) -> Self {
+		AttributeValueDyn(value.0)
+	}
+}
+
+impl Clone for AnyGraphicListDyn {
+	fn clone(&self) -> Self {
+		Self(self.0.clone_box())
+	}
+}
+impl Default for AnyGraphicListDyn {
+	fn default() -> Self {
+		Self(Box::new(List::<Color>::default()))
+	}
+}
+impl std::fmt::Debug for AnyGraphicListDyn {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "AnyGraphicListDyn({})", self.0.display_string())
+	}
+}
+impl PartialEq for AnyGraphicListDyn {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.display_string() == other.0.display_string()
+	}
+}
+impl CacheHash for AnyGraphicListDyn {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.display_string().cache_hash(state);
+	}
+}
+unsafe impl StaticType for AnyGraphicListDyn {
+	type Static = Self;
 }
 
 // DAffine2
