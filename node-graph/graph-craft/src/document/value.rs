@@ -450,7 +450,8 @@ tagged_value! {
 	ScaleType(core_types::transform::ScaleType),
 	ColorMode(vector_types::vectorize_config::ColorMode),
 	Hierarchical(vector_types::vectorize_config::Hierarchical),
-	PathSimplifyMode(vector_types::vectorize_config::PathSimplifyMode)
+	PathSimplifyMode(vector_types::vectorize_config::PathSimplifyMode),
+	VectorizeMode(vector_types::vectorize_config::VectorizeMode)
 }
 
 impl TaggedValue {

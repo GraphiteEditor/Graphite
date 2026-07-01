@@ -25,6 +25,17 @@ impl ColorMode {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+pub enum VectorizeMode {
+	#[default]
+	FullImage,
+	PathTrace,
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
 pub enum Hierarchical {
 	#[default]
 	Stacked,

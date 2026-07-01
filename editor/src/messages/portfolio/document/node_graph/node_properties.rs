@@ -34,7 +34,7 @@ use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm,
 use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::vectorize::{
 	ColorModeInput, ColorPrecisionInput, CornerThresholdInput, FilterSpeckleInput, HierarchicalInput, LayerDifferenceInput, LengthThresholdInput, MaxIterationsInput, PathPrecisionInput,
-	PathSimplifyModeInput, SpliceThresholdInput,
+	PathSimplifyModeInput, SpliceThresholdInput, VectorizeModeInput,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::vector_types::vectorize_config;
@@ -2771,6 +2771,9 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub fn vectorize_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let vector_mode = enum_choice::<vectorize_config::VectorizeMode>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, VectorizeModeInput::INDEX, true, context))
+		.property_row();
 	let color_mode = enum_choice::<vectorize_config::ColorMode>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, ColorModeInput::INDEX, true, context))
 		.property_row();
@@ -2791,13 +2794,16 @@ pub fn vectorize_properties(node_id: NodeId, context: &mut NodePropertiesContext
 	let max_iterations = number_widget(ParameterWidgetsInfo::new(node_id, MaxIterationsInput::INDEX, true, context), NumberInput::default().int().min(0.));
 	let splice_threshold = number_widget(ParameterWidgetsInfo::new(node_id, SpliceThresholdInput::INDEX, true, context), NumberInput::default().int().min(0.));
 	let path_precision = number_widget(ParameterWidgetsInfo::new(node_id, PathPrecisionInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	// let separate_layers = bool_widget(ParameterWidgetsInfo::new(node_id, SeparateLayersInput::INDEX, true, context), CheckboxInput::default());
 	vec![
+		vector_mode,
 		color_mode,
 		hierarchical,
 		LayoutGroup::row(filter_speckle),
 		LayoutGroup::row(color_precision),
 		LayoutGroup::row(layer_difference),
 		path_simplify_mode,
+		// LayoutGroup::row(separate_layers),
 		LayoutGroup::row(corner_threshold),
 		LayoutGroup::row(length_threshold),
 		LayoutGroup::row(max_iterations),
