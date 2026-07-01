@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -34,9 +34,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 		let GraphOperationMessageContext { network_interface, .. } = context;
 
 		match message {
-			GraphOperationMessage::FillSet { layer, fill } => {
+			GraphOperationMessage::FillColorSet { layer, color } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_set(fill);
+					modify_inputs.fill_color_set(color);
+				}
+			}
+			GraphOperationMessage::FillGradientSet {
+				layer,
+				gradient,
+				gradient_type,
+				spread_method,
+				transform,
+			} => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -49,9 +60,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_stops_set(stops);
 				}
 			}
-			GraphOperationMessage::GradientLineSet { layer, start, end } => {
+			GraphOperationMessage::GradientTransformSet { layer, transform } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_line_set(start, end);
+					modify_inputs.gradient_transform_set(transform);
 				}
 			}
 			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
@@ -80,9 +91,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
-			GraphOperationMessage::StrokeSet { layer, stroke } => {
+			GraphOperationMessage::StrokeSet { layer, color, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.stroke_set(stroke);
+					modify_inputs.stroke_set(color, stroke);
 				}
 			}
 			GraphOperationMessage::TransformChange {
@@ -622,7 +633,7 @@ fn import_usvg_node(
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			modify_inputs.fill_color_set(Some(Color::BLACK));
 		}
 	}
 }
@@ -674,7 +685,7 @@ fn import_usvg_node_inner(
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			modify_inputs.fill_color_set(Some(Color::BLACK));
 			0
 		}
 	}
@@ -762,27 +773,29 @@ fn set_import_child_positions(
 
 fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
 	if let usvg::Paint::Color(color) = &stroke.paint() {
-		modify_inputs.stroke_set(Stroke {
-			color: Some(usvg_color(*color, stroke.opacity().get())),
-			weight: stroke.width().get() as f64,
-			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
-			dash_offset: stroke.dashoffset() as f64,
-			cap: match stroke.linecap() {
-				usvg::LineCap::Butt => StrokeCap::Butt,
-				usvg::LineCap::Round => StrokeCap::Round,
-				usvg::LineCap::Square => StrokeCap::Square,
+		modify_inputs.stroke_set(
+			Some(usvg_color(*color, stroke.opacity().get())),
+			Stroke {
+				weight: stroke.width().get() as f64,
+				dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
+				dash_offset: stroke.dashoffset() as f64,
+				cap: match stroke.linecap() {
+					usvg::LineCap::Butt => StrokeCap::Butt,
+					usvg::LineCap::Round => StrokeCap::Round,
+					usvg::LineCap::Square => StrokeCap::Square,
+				},
+				join: match stroke.linejoin() {
+					usvg::LineJoin::Miter => StrokeJoin::Miter,
+					usvg::LineJoin::MiterClip => StrokeJoin::Miter,
+					usvg::LineJoin::Round => StrokeJoin::Round,
+					usvg::LineJoin::Bevel => StrokeJoin::Bevel,
+				},
+				join_miter_limit: stroke.miterlimit().get() as f64,
+				align: StrokeAlign::Center,
+				paint_order: PaintOrder::StrokeAbove,
+				transform,
 			},
-			join: match stroke.linejoin() {
-				usvg::LineJoin::Miter => StrokeJoin::Miter,
-				usvg::LineJoin::MiterClip => StrokeJoin::Miter,
-				usvg::LineJoin::Round => StrokeJoin::Round,
-				usvg::LineJoin::Bevel => StrokeJoin::Bevel,
-			},
-			join_miter_limit: stroke.miterlimit().get() as f64,
-			align: StrokeAlign::Center,
-			paint_order: PaintOrder::StrokeAbove,
-			transform,
-		})
+		)
 	}
 }
 
@@ -795,16 +808,18 @@ fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMet
 }
 
 fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, graphite_gradient_stops: &HashMap<String, GradientStops>) {
-	modify_inputs.fill_set(match &fill.paint() {
-		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
+	match &fill.paint() {
+		usvg::Paint::Color(color) => modify_inputs.fill_color_set(Some(usvg_color(*color, fill.opacity().get()))),
 		usvg::Paint::LinearGradient(linear) => {
 			let gradient_transform = usvg_transform(linear.transform());
 			let (start, end) = (DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64));
 			let (start, end) = (gradient_transform.transform_point2(start), gradient_transform.transform_point2(end));
+			let direction = end - start;
+			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
 			let gradient_type = GradientType::Linear;
 
-			let stops = match graphite_gradient_stops.get(linear.id()) {
+			let gradient = match graphite_gradient_stops.get(linear.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = linear.stops().iter().map(|stop| GradientStop {
@@ -816,27 +831,19 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				}
 			};
 			let spread_method = convert_spread_method(linear.spread_method());
-
-			Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type,
-				stops,
-				spread_method,
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			})
+			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
 			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
 			let edge = center + DVec2::X * radial.r().get() as f64;
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
+			let direction = end - start;
+			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
 			let gradient_type = GradientType::Radial;
 
-			let stops = match graphite_gradient_stops.get(radial.id()) {
+			let gradient = match graphite_gradient_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = radial.stops().iter().map(|stop| GradientStop {
@@ -849,20 +856,11 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			};
 			let spread_method = convert_spread_method(radial.spread_method());
 
-			Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type,
-				stops,
-				spread_method,
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			})
+			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
 		}
 		usvg::Paint::Pattern(_) => {
 			warn!("SVG patterns are not currently supported");
 			return;
 		}
-	});
+	};
 }

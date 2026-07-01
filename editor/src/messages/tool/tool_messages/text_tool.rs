@@ -24,7 +24,7 @@ use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
@@ -571,9 +571,9 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		responses.add(GraphOperationMessage::FillSet {
+		responses.add(GraphOperationMessage::FillColorSet {
 			layer: self.layer,
-			fill: editing_text.color.map_or(Fill::None, Fill::Solid),
+			color: editing_text.color,
 		});
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);

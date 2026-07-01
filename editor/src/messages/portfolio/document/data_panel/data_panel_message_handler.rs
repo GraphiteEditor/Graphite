@@ -13,7 +13,7 @@ use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -308,6 +308,21 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 	}
 }
 
+impl<T: TableItemLayout> TableItemLayout for Arc<T> {
+	fn type_name() -> &'static str {
+		T::type_name()
+	}
+	fn identifier(&self) -> String {
+		self.as_ref().identifier()
+	}
+	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
+		self.as_ref().value_widget(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.as_ref().value_page(data)
+	}
+}
+
 impl TableItemLayout for Artboard {
 	fn type_name() -> &'static str {
 		"Artboard"
@@ -385,61 +400,7 @@ impl TableItemLayout for Vector {
 			VectorTableTab::Properties => {
 				table_rows.push(column_headings(&["property", "value"]));
 
-				match self.style.fill.clone() {
-					Fill::None => table_rows.push(vec![
-						TextLabel::new("Fill").narrow(true).widget_instance(),
-						ColorInput::new(FillChoiceUI::None)
-							.disabled(true)
-							.menu_direction(Some(MenuDirection::Top))
-							.narrow(true)
-							.widget_instance(),
-					]),
-					Fill::Solid(color) => table_rows.push(vec![
-						TextLabel::new("Fill").narrow(true).widget_instance(),
-						ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(color)))
-							.disabled(true)
-							.menu_direction(Some(MenuDirection::Top))
-							.narrow(true)
-							.widget_instance(),
-					]),
-					Fill::Gradient(gradient) => {
-						table_rows.push(vec![
-							TextLabel::new("Fill").narrow(true).widget_instance(),
-							ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(gradient.stops)))
-								.disabled(true)
-								.menu_direction(Some(MenuDirection::Top))
-								.narrow(true)
-								.widget_instance(),
-						]);
-						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Type").narrow(true).widget_instance(),
-							TextLabel::new(gradient.gradient_type.to_string()).narrow(true).widget_instance(),
-						]);
-						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Start").narrow(true).widget_instance(),
-							TextLabel::new(format_dvec2(gradient.start)).narrow(true).widget_instance(),
-						]);
-						table_rows.push(vec![
-							TextLabel::new("Fill Gradient End").narrow(true).widget_instance(),
-							TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_instance(),
-						]);
-						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Transform").narrow(true).widget_instance(),
-							TextLabel::new(format_transform_matrix(gradient.transform)).narrow(true).widget_instance(),
-						]);
-					}
-				}
-
-				if let Some(stroke) = self.style.stroke.clone() {
-					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
-					table_rows.push(vec![
-						TextLabel::new("Stroke").narrow(true).widget_instance(),
-						ColorInput::new(FillChoiceUI::from(&color))
-							.disabled(true)
-							.menu_direction(Some(MenuDirection::Top))
-							.narrow(true)
-							.widget_instance(),
-					]);
+				if let Some(stroke) = self.stroke.as_ref() {
 					table_rows.push(vec![
 						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
 						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),
@@ -955,6 +916,7 @@ macro_rules! known_item_types {
 		$apply!(
 			List<Artboard>,
 			List<Graphic>,
+			Arc<List<Graphic>>,
 			List<Vector>,
 			List<Raster<CPU>>,
 			List<Raster<GPU>>,

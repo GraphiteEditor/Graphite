@@ -2850,11 +2850,11 @@ impl Fsm for PathToolFsmState {
 							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
 							// Defaults chosen because the pasted geometry has no inherent associated style
-							let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
-							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+							let color = Some(Color::BLACK);
+							let stroke = graphene_std::vector::style::Stroke::new(DEFAULT_STROKE_WIDTH);
+							responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 
-							let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
-							responses.add(GraphOperationMessage::FillSet { layer, fill });
+							responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(Color::WHITE) });
 
 							new_layers.push(layer);
 

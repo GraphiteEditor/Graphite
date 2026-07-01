@@ -6,7 +6,7 @@ use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{AnyGraphicListDyn, Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Filters out what should be unused components of the context based on the specified requirements.
@@ -39,6 +39,7 @@ async fn context_modification<T>(
 		Context -> List<GradientStops>,
 		Context -> AttributeDyn,
 		Context -> AttributeValueDyn,
+		Context -> AnyGraphicListDyn,
 		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,

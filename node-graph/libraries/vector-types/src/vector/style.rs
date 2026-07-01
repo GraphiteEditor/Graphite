@@ -1,174 +1,16 @@
 //! Contains stylistic options for SVG elements.
 
 pub use crate::gradient::*;
-use core_types::color::{Alpha, SRGBA8};
-use core_types::list::List;
+use core_types::Color;
+use core_types::color::SRGBA8;
 use core_types::transform::Transform;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::DAffine2;
-use glam::DVec2;
 use std::f64::consts::{PI, TAU};
 
-/// Describes the fill of a layer.
+/// Describes an editable fill choice, storing color or gradient stops without gradient placement metadata.
 ///
-/// Can be None, a solid [Color], or a linear/radial [Gradient].
-///
-/// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
-#[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Fill {
-	#[default]
-	None,
-	Solid(Color),
-	Gradient(Gradient),
-}
-
-impl std::fmt::Display for Fill {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::None => write!(f, "None"),
-			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", SRGBA8::from(*color).to_rgb_hex(), color.a() * 100.),
-			Self::Gradient(gradient) => write!(f, "{gradient}"),
-		}
-	}
-}
-
-impl Fill {
-	/// Construct a new [Fill::Solid] from a [Color].
-	pub fn solid(color: Color) -> Self {
-		Self::Solid(color)
-	}
-
-	/// Construct a new [Fill::Solid] or [Fill::None] from an optional [Color].
-	pub fn solid_or_none(color: Option<Color>) -> Self {
-		match color {
-			Some(color) => Self::Solid(color),
-			None => Self::None,
-		}
-	}
-
-	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.
-	pub fn color(&self) -> Color {
-		match self {
-			Self::None => Color::BLACK,
-			Self::Solid(color) => *color,
-			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
-			Self::Gradient(Gradient { stops, .. }) => {
-				if stops.is_empty() {
-					Color::BLACK
-				} else {
-					stops.color[0]
-				}
-			}
-		}
-	}
-
-	pub fn lerp(&self, other: &Self, time: f64) -> Self {
-		let transparent = Self::solid(Color::TRANSPARENT);
-		let a = if *self == Self::None && *other != Self::None { &transparent } else { self };
-		let b = if *other == Self::None && *self != Self::None { &transparent } else { other };
-
-		match (a, b) {
-			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
-			(Self::Solid(a), Self::Gradient(b)) => {
-				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.stops.color.iter_mut().for_each(|color| *color = *a);
-				let a = &solid_to_gradient;
-				Self::Gradient(a.lerp(b, time))
-			}
-			(Self::Gradient(a), Self::Solid(b)) => {
-				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.stops.color.iter_mut().for_each(|color| *color = *b);
-				let b = &gradient_to_solid;
-				Self::Gradient(a.lerp(b, time))
-			}
-			(Self::Gradient(a), Self::Gradient(b)) => Self::Gradient(a.lerp(b, time)),
-			(Self::None, _) | (_, Self::None) => Self::None,
-		}
-	}
-
-	/// Extract a gradient from the fill
-	pub fn as_gradient(&self) -> Option<&Gradient> {
-		match self {
-			Self::Gradient(gradient) => Some(gradient),
-			_ => None,
-		}
-	}
-
-	/// Extract a solid color from the fill
-	pub fn as_solid(&self) -> Option<Color> {
-		match self {
-			Self::Solid(color) => Some(*color),
-			_ => None,
-		}
-	}
-
-	/// Find if fill can be represented with only opaque colors
-	pub fn is_opaque(&self) -> bool {
-		match self {
-			Fill::Solid(color) => color.is_opaque(),
-			Fill::Gradient(gradient) => gradient.stops.color.iter().all(|color| color.is_opaque()),
-			Fill::None => true,
-		}
-	}
-
-	/// Returns if fill is none
-	pub fn is_none(&self) -> bool {
-		*self == Self::None
-	}
-}
-
-impl From<Color> for Fill {
-	fn from(color: Color) -> Fill {
-		Fill::Solid(color)
-	}
-}
-
-impl From<Option<Color>> for Fill {
-	fn from(color: Option<Color>) -> Fill {
-		Fill::solid_or_none(color)
-	}
-}
-
-impl From<List<Color>> for Fill {
-	fn from(color: List<Color>) -> Fill {
-		let alpha: f64 = color.attribute_cloned_or(ATTR_OPACITY, 0, 1.);
-		let color = color.element(0).copied();
-		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha as f32)))
-	}
-}
-
-impl From<List<GradientStops>> for Fill {
-	fn from(gradient: List<GradientStops>) -> Fill {
-		let gradient_type = gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0);
-		let spread_method = gradient.attribute_cloned_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD, 0);
-		let transform = gradient.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
-
-		Fill::Gradient(Gradient {
-			stops: gradient.element(0).cloned().unwrap_or_default(),
-			gradient_type,
-			spread_method,
-			start: transform.transform_point2(DVec2::ZERO),
-			end: transform.transform_point2(DVec2::X),
-			// TODO: Eventually remove this document upgrade code
-			absolute: true,
-			transform: DAffine2::IDENTITY,
-		})
-	}
-}
-
-impl From<Gradient> for Fill {
-	fn from(gradient: Gradient) -> Fill {
-		Fill::Gradient(gradient)
-	}
-}
-
-/// Describes the fill of a layer, but unlike [`Fill`], this doesn't store a [`Gradient`] directly but just its [`GradientStops`].
-///
-/// Can be None, a solid [Color], or a linear/radial [Gradient].
+/// Can be None, a solid [Color], or a linear/radial [GradientStops].
 ///
 /// In the future we'll probably also add a pattern fill.
 ///
@@ -260,30 +102,6 @@ impl FillChoice {
 				Some(format!("linear-gradient(#{hex}, #{hex})"))
 			}
 			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
-		}
-	}
-
-	/// Convert this [`FillChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.
-	/// If a gradient isn't provided, default gradient positional information is used in cases where the [`FillChoice`] is a [`Gradient`].
-	pub fn to_fill(&self, existing_gradient: Option<&Gradient>) -> Fill {
-		match self {
-			Self::None => Fill::None,
-			Self::Solid(color) => Fill::Solid(*color),
-			Self::Gradient(stops) => {
-				let mut fill = existing_gradient.cloned().unwrap_or_default();
-				fill.stops = stops.clone();
-				Fill::Gradient(fill)
-			}
-		}
-	}
-}
-
-impl From<Fill> for FillChoice {
-	fn from(fill: Fill) -> Self {
-		match fill {
-			Fill::None => FillChoice::None,
-			Fill::Solid(color) => FillChoice::Solid(color),
-			Fill::Gradient(gradient) => FillChoice::Gradient(gradient.stops),
 		}
 	}
 }
@@ -389,8 +207,6 @@ fn daffine2_identity() -> DAffine2 {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
-	/// Stroke color
-	pub color: Option<Color>,
 	/// Line thickness
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
@@ -410,9 +226,8 @@ pub struct Stroke {
 }
 
 impl Stroke {
-	pub const fn new(color: Option<Color>, weight: f64) -> Self {
+	pub const fn new(weight: f64) -> Self {
 		Self {
-			color,
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -427,7 +242,6 @@ impl Stroke {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
-			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
@@ -461,11 +275,6 @@ impl Stroke {
 			},
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
-	}
-
-	/// Get the current stroke color.
-	pub fn color(&self) -> Option<Color> {
-		self.color
 	}
 
 	/// Get the current stroke weight.
@@ -533,12 +342,6 @@ impl Stroke {
 		self.join_miter_limit as f32
 	}
 
-	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {
-		self.color = *color;
-
-		Some(self)
-	}
-
 	pub fn with_weight(mut self, weight: f64) -> Self {
 		self.weight = weight;
 		self
@@ -592,7 +395,6 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			weight: 0.,
-			color: Some(Color::BLACK),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			cap: StrokeCap::Butt,
@@ -602,172 +404,6 @@ impl Default for Stroke {
 			transform: DAffine2::IDENTITY,
 			paint_order: PaintOrder::default(),
 		}
-	}
-}
-
-#[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, Default, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct PathStyle {
-	pub stroke: Option<Stroke>,
-	pub fill: Fill,
-}
-
-impl std::fmt::Display for PathStyle {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let fill = &self.fill;
-
-		let stroke = match &self.stroke {
-			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| SRGBA8::from(c).to_rgba_hex()), stroke.weight),
-			None => "None".to_string(),
-		};
-
-		write!(f, "Fill: {fill}\nStroke: {stroke}")
-	}
-}
-
-impl PathStyle {
-	pub const fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
-		Self { stroke, fill }
-	}
-
-	pub fn lerp(&self, other: &Self, time: f64) -> Self {
-		Self {
-			fill: self.fill.lerp(&other.fill, time),
-			stroke: match (self.stroke.as_ref(), other.stroke.as_ref()) {
-				(Some(a), Some(b)) => Some(a.lerp(b, time)),
-				(Some(a), None) => {
-					if time < 0.5 {
-						Some(a.clone())
-					} else {
-						None
-					}
-				}
-				(None, Some(b)) => {
-					if time < 0.5 {
-						Some(b.clone())
-					} else {
-						None
-					}
-				}
-				(None, None) => None,
-			},
-		}
-	}
-
-	/// Get the current path's [Fill].
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::Color;
-	/// let fill = Fill::solid(Color::RED);
-	/// let style = PathStyle::new(None, fill.clone());
-	///
-	/// assert_eq!(*style.fill(), fill);
-	/// ```
-	pub fn fill(&self) -> &Fill {
-		&self.fill
-	}
-
-	pub fn fill_mut(&mut self) -> &mut Fill {
-		&mut self.fill
-	}
-
-	/// Get the current path's [Stroke].
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Fill, Stroke, PathStyle};
-	/// # use core_types::Color;
-	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
-	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
-	///
-	/// assert_eq!(style.stroke(), Some(stroke));
-	/// ```
-	pub fn stroke(&self) -> Option<Stroke> {
-		self.stroke.clone()
-	}
-
-	/// Replace the path's [Fill] with a provided one.
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::Color;
-	/// let mut style = PathStyle::default();
-	///
-	/// assert_eq!(*style.fill(), Fill::None);
-	///
-	/// let fill = Fill::solid(Color::RED);
-	/// style.set_fill(fill.clone());
-	///
-	/// assert_eq!(*style.fill(), fill);
-	/// ```
-	pub fn set_fill(&mut self, fill: Fill) {
-		self.fill = fill;
-	}
-
-	pub fn set_stroke_transform(&mut self, transform: DAffine2) {
-		if let Some(stroke) = &mut self.stroke {
-			stroke.transform = transform;
-		}
-	}
-
-	/// Replace the path's [Stroke] with a provided one.
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Stroke, PathStyle};
-	/// # use core_types::Color;
-	/// let mut style = PathStyle::default();
-	///
-	/// assert_eq!(style.stroke(), None);
-	///
-	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
-	/// style.set_stroke(stroke.clone());
-	///
-	/// assert_eq!(style.stroke(), Some(stroke));
-	/// ```
-	pub fn set_stroke(&mut self, stroke: Stroke) {
-		self.stroke = Some(stroke);
-	}
-
-	/// Set the path's fill to None.
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::Color;
-	/// let mut style = PathStyle::new(None, Fill::Solid(Color::RED));
-	///
-	/// assert_ne!(*style.fill(), Fill::None);
-	///
-	/// style.clear_fill();
-	///
-	/// assert_eq!(*style.fill(), Fill::None);
-	/// ```
-	pub fn clear_fill(&mut self) {
-		self.fill = Fill::None;
-	}
-
-	/// Set the path's stroke to None.
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Fill, Stroke, PathStyle};
-	/// # use core_types::Color;
-	/// let mut style = PathStyle::new(Some(Stroke::new(Some(Color::GREEN), 42.)), Fill::None);
-	///
-	/// assert!(style.stroke().is_some());
-	///
-	/// style.clear_stroke();
-	///
-	/// assert!(!style.stroke().is_some());
-	/// ```
-	pub fn clear_stroke(&mut self) {
-		self.stroke = None;
 	}
 }
 
@@ -785,40 +421,4 @@ pub enum RenderMode {
 	PixelPreview,
 	/// Render a preview of how the object would be exported as an SVG.
 	SvgPreview,
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn fill_from_gradient_list_preserves_attributes() {
-		let mut list = List::new_from_element(GradientStops::default());
-		list.set_attribute(ATTR_GRADIENT_TYPE, 0, GradientType::Radial);
-		list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Reflect);
-		list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 7.)));
-
-		let Fill::Gradient(gradient) = Fill::from(list) else {
-			panic!("expected Fill::Gradient");
-		};
-
-		assert_eq!(gradient.gradient_type, GradientType::Radial);
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
-		assert_eq!(gradient.start, DVec2::new(5., 7.));
-		assert_eq!(gradient.end, DVec2::new(6., 7.));
-	}
-
-	#[test]
-	fn fill_from_empty_gradient_list_uses_defaults() {
-		let list = List::new_from_element(GradientStops::default());
-
-		let Fill::Gradient(gradient) = Fill::from(list) else {
-			panic!("expected Fill::Gradient");
-		};
-
-		assert_eq!(gradient.gradient_type, GradientType::default());
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::default());
-		assert_eq!(gradient.start, DVec2::ZERO);
-		assert_eq!(gradient.end, DVec2::X);
-	}
 }
