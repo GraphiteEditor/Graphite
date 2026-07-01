@@ -34,7 +34,7 @@ pub struct NodePropertiesContext<'a> {
 	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
-	/// The nodes whose Properties panel sections the user has collapsed, keyed by node ID.
+	/// The node IDs whose Properties panel sections the user has collapsed.
 	pub properties_panel_collapsed_sections: &'a [NodeId],
 }
 

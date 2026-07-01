@@ -94,7 +94,7 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
-	/// Tracks which nodes have their section collapsed in the Properties panel, keyed by node ID.
+	/// The node IDs whose section is collapsed in the Properties panel.
 	#[serde(default)]
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
