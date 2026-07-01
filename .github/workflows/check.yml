@@ -37,7 +37,7 @@ jobs:
     if: needs.skip-check.outputs.skip != 'true'
     runs-on: [self-hosted, target/native]
     env:
-      RUSTC_WRAPPER: /usr/bin/sccache
+      RUSTC_WRAPPER: ""
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
     steps:
