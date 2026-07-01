@@ -132,12 +132,19 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							copy_ids.insert(node_id, NodeId((index + 1) as u64));
 						});
 
+					// The layer panel keys collapse state on the top-down path of node IDs down to the layer
+					let mut tree_path = layer
+						.ancestors(active_document.metadata())
+						.filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT)
+						.map(|ancestor| ancestor.to_node())
+						.collect::<Vec<_>>();
+					tree_path.reverse();
+
 					buffer.push(ClipboardLayer {
 						nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
-						selected: active_document.network_interface.selected_nodes().selected_layers_contains(layer, active_document.metadata()),
 						visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
 						locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
-						collapsed: false,
+						collapsed: active_document.collapsed.0.contains(&tree_path),
 					});
 				}
 
@@ -297,6 +304,15 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			ClipboardMessage::PasteLayers { entries } => {
 				if let Some(document) = portfolio.active_document() {
 					let parent = document.new_layer_parent(false);
+
+					// Top-down node ID path of the destination parent, used to derive each pasted layer's collapse path
+					let mut parent_tree_path = parent
+						.ancestors(document.metadata())
+						.filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT)
+						.map(|ancestor| ancestor.to_node())
+						.collect::<Vec<_>>();
+					parent_tree_path.reverse();
+
 					let mut all_new_ids = Vec::new();
 					let mut layers = Vec::new();
 
@@ -316,10 +332,32 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							added_nodes = true;
 						}
 
-						all_new_ids.extend(new_ids.values().cloned());
+						all_new_ids.extend(new_ids.values().copied());
 
 						responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
+
+						// Restore the copied layer's visibility, lock, and collapse state
+						if !entry.visible {
+							responses.add(NodeGraphMessage::SetVisibility {
+								node_id: root_id,
+								network_path: Vec::new(),
+								visible: false,
+							});
+						}
+						if entry.locked {
+							responses.add(NodeGraphMessage::SetLocked {
+								node_id: root_id,
+								network_path: Vec::new(),
+								locked: true,
+							});
+						}
+						if entry.collapsed {
+							let mut tree_path = parent_tree_path.clone();
+							tree_path.push(root_id);
+							responses.add(DocumentMessage::ToggleLayerExpansion { tree_path, recursive: false });
+						}
+
 						layers.push(layer);
 					}
 
@@ -332,7 +370,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			}
 			ClipboardMessage::PasteVectors { paths } => {
 				// If using Path tool then send the operation to Path tool
-				// TODO: Consider if this is accualy the correct place to put this logic
+				// TODO: Consider if this is actually the correct place to put this logic
 				// TODO: Consider making paste in general go through the current tool, so that the tool can decide what to do
 				if *current_tool == ToolType::Path {
 					responses.add(PathToolMessage::Paste { paths });

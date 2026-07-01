@@ -36,7 +36,6 @@ pub enum ClipboardItem {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClipboardLayer {
 	pub nodes: Vec<(NodeId, NodeTemplate)>,
-	pub selected: bool,
 	pub visible: bool,
 	pub locked: bool,
 	pub collapsed: bool,
