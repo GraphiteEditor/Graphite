@@ -13,7 +13,7 @@ use core_types::{
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
-use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at, stroke_graphic_list_at};
+use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
@@ -2621,8 +2621,7 @@ async fn morph<I: IntoGraphicList>(
 		return List::new_from_item(Item::from_parts(endpoint_element.clone(), attributes));
 	}
 
-	let mut vector = Vector::default();
-	vector.stroke = match (source_element.stroke.as_ref(), target_element.stroke.as_ref()) {
+	let stroke = match (source_element.stroke.as_ref(), target_element.stroke.as_ref()) {
 		(Some(a), Some(b)) => Some(a.lerp(b, time)),
 		(Some(a), None) => {
 			if time < 0.5 {
@@ -2640,15 +2639,16 @@ async fn morph<I: IntoGraphicList>(
 		}
 		(None, None) => None,
 	};
+	let mut vector = Vector { stroke, ..Default::default() };
 
 	let fill_paint = {
-		let source = fill_graphic_list_at(&content, source_index);
-		let target = fill_graphic_list_at(&content, target_index);
+		let source = graphic_list_at(&content, source_index, ATTR_FILL);
+		let target = graphic_list_at(&content, target_index, ATTR_FILL);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 	let stroke_paint = {
-		let source = stroke_graphic_list_at(&content, source_index);
-		let target = stroke_graphic_list_at(&content, target_index);
+		let source = graphic_list_at(&content, source_index, ATTR_STROKE);
+		let target = graphic_list_at(&content, target_index, ATTR_STROKE);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 
@@ -3446,7 +3446,7 @@ mod test {
 
 		let morphed = super::morph(Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default()).await;
 
-		let fill = fill_graphic_list_at(&morphed, 0).expect("Morph should keep the fill paint at the midpoint");
+		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
 		let Some(Graphic::Color(colors)) = fill.element(0) else {

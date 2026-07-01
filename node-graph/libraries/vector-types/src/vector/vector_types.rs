@@ -242,7 +242,7 @@ impl Vector {
 	pub fn stroke_inclusive_bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let path_bounds = self.bounding_box_with_transform(transform);
 
-		let Some(stroke) = self.stroke.clone() else { return path_bounds };
+		let Some(stroke) = self.stroke.as_ref() else { return path_bounds };
 		// Stroke alignment is only honored by the renderer when every subpath is closed; open paths fall
 		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
 		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezier_paths().all(|p| p.closed());

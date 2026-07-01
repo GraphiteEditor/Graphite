@@ -1639,7 +1639,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// A solid/no-fill node leaves the gradient metadata inputs unused, so seed them from the backup gradient for a later Solid -> Gradient toggle to restore
 			if matches!(
 				old_inputs[1].as_value(),
-				Some(TaggedValue::LegacyFill(graphic_types::migrations::legacy::Fill::None | graphic_types::migrations::legacy::Fill::Solid(_)))
+				Some(TaggedValue::LegacyFill(
+					graphic_types::migrations::legacy::Fill::None | graphic_types::migrations::legacy::Fill::Solid(_)
+				))
 			) {
 				document
 					.network_interface

@@ -170,8 +170,10 @@ pub mod migrations {
 
 		#[test]
 		fn preserves_stroke_from_current_vector_data() {
-			let mut vector = Vector::default();
-			vector.stroke = Some(Stroke::new(12.));
+			let vector = Vector {
+				stroke: Some(Stroke::new(12.)),
+				..Default::default()
+			};
 
 			let value = serde_json::to_value(&vector).unwrap();
 			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();

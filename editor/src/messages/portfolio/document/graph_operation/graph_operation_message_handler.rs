@@ -858,9 +858,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 
 			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
 		}
-		usvg::Paint::Pattern(_) => {
-			warn!("SVG patterns are not currently supported");
-			return;
-		}
+		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};
 }

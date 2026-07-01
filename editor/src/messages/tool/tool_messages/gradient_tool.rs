@@ -16,9 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{
-	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation,
-};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -417,7 +415,6 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	}
 }
 
-// FIXME: consider rename this and merge this to GradientOptions if possible
 #[derive(Clone, Copy, Debug, Default)]
 struct GradientAppearance {
 	transform: DAffine2,
