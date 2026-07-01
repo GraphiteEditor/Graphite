@@ -726,6 +726,39 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				self.move_selected_layers_to(parent, insert_index, responses);
 			}
+			DocumentMessage::ReorderPropertiesSection { node_id, insert_index } => {
+				// The Properties panel shows draggable sections in two cases, disambiguated by the current selection:
+				// a single selected layer (reorder within its node chain) or no selection (reorder the pinned nodes).
+				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path);
+				let Some(selected_nodes) = selected_nodes else { return };
+
+				let (mut layers, mut nodes) = (Vec::new(), Vec::new());
+
+				for selected in selected_nodes.selected_nodes() {
+					if self.network_interface.is_layer(selected, &self.selection_network_path) {
+						layers.push(*selected);
+					} else {
+						nodes.push(*selected);
+					}
+				}
+
+				layers.sort();
+				layers.dedup();
+
+				if layers.len() == 1 {
+					// Reorder a node within the selected layer's chain by rewiring the graph
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::ReorderChainNode { node_id, insert_index });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(PropertiesPanelMessage::Refresh);
+				} else if layers.is_empty() && nodes.is_empty() {
+					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed)
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::ReorderPinnedNode { node_id, insert_index });
+					responses.add(PropertiesPanelMessage::Refresh);
+				}
+			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
 				let all_layers_to_group_sorted = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);

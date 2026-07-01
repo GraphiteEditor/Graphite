@@ -756,6 +756,15 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	/// Reorder a draggable Properties panel section to the given index among its peers.
+	#[wasm_bindgen(js_name = reorderPropertiesSection)]
+	pub fn reorder_properties_section(&self, node_id: u64, insert_index: usize) {
+		self.dispatch(DocumentMessage::ReorderPropertiesSection {
+			node_id: NodeId(node_id),
+			insert_index,
+		});
+	}
+
 	/// Duplicate the selected layers, placing the copies within the given folder at the given index.
 	/// If the folder is `None`, they are inserted into the document root.
 	/// If the insert index is `None`, they are inserted at the start of the folder.
