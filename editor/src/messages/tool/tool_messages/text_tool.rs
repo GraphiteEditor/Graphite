@@ -118,7 +118,7 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: graphene_std::text::text::FontInput::INDEX,
-							value: TaggedValue::Resource(resource_id),
+							value: Box::new(TaggedValue::Resource(resource_id)),
 						}
 						.into(),
 					]),
@@ -349,7 +349,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: graphene_std::text::text::SizeInput::INDEX,
-						value: TaggedValue::F64(font_size),
+						value: Box::new(TaggedValue::F64(font_size)),
 					});
 				}
 			}
@@ -364,7 +364,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: graphene_std::text::text::AlignInput::INDEX,
-						value: TaggedValue::TextAlign(align),
+						value: Box::new(TaggedValue::TextAlign(align)),
 					});
 				}
 			}

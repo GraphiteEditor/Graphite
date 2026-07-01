@@ -63,7 +63,7 @@ pub enum ParsedValueSource {
 	#[default]
 	None,
 	Default(TokenStream2),
-	Scope(Expr),
+	Scope(Box<Expr>),
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -676,7 +676,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
 		(Some(default_value), _) => ParsedValueSource::Default(default_value),
-		(_, Some(scope)) => ParsedValueSource::Scope(scope),
+		(_, Some(scope)) => ParsedValueSource::Scope(Box::new(scope)),
 		_ => ParsedValueSource::None,
 	};
 

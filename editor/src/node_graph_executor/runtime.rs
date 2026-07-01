@@ -102,7 +102,7 @@ impl InternalNodeGraphUpdateSender {
 	}
 
 	fn send_execution_response(&self, response: ExecutionResponse) {
-		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
+		self.0.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response")
 	}
 
 	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
