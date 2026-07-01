@@ -4572,9 +4572,12 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// Prune deleted nodes from this network's pinned display order so it doesn't retain stale entries
-		if let Some(network_metadata) = self.network_metadata_mut(network_path) {
-			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| !delete_nodes.contains(node_id));
+		// Prune this network's pinned display order down to the nodes that still exist, dropping any that were actually removed
+		let surviving_nodes = self.nested_network(network_path).map(|network| network.nodes.keys().copied().collect::<HashSet<_>>());
+		if let Some(surviving_nodes) = surviving_nodes
+			&& let Some(network_metadata) = self.network_metadata_mut(network_path)
+		{
+			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| surviving_nodes.contains(node_id));
 		}
 
 		self.unload_all_nodes_bounding_box(network_path);

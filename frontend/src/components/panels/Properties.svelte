@@ -129,8 +129,8 @@
 			// Suppress the click that the browser fires after the drag release, so it doesn't toggle the dropped section
 			justFinishedDrag = true;
 
-			// Skip drops that don't actually move the node (into its own slot)
-			if (insertIndex !== undefined && fromIndex !== undefined && insertIndex !== fromIndex && insertIndex !== fromIndex + 1) {
+			// Skip drops that don't actually move the node (into its own slot), or where the dragged section vanished from the DOM mid-drag (fromIndex of -1)
+			if (insertIndex !== undefined && fromIndex !== undefined && fromIndex !== -1 && insertIndex !== fromIndex && insertIndex !== fromIndex + 1) {
 				editor.reorderPropertiesSection(dragState.nodeId, insertIndex);
 			}
 		}
@@ -140,7 +140,6 @@
 
 	function draggingKeyDown(e: KeyboardEvent) {
 		if (e.key === "Escape" && dragState?.active) {
-			justFinishedDrag = true;
 			abortDrag();
 		}
 	}
@@ -148,7 +147,6 @@
 	function draggingMouseDown(e: MouseEvent) {
 		// Abort an in-progress drag if the user presses the right mouse button
 		if (e.button === 2 && dragState?.active) {
-			justFinishedDrag = true;
 			abortDrag();
 		}
 	}
