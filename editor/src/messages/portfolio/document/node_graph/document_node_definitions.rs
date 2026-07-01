@@ -1548,6 +1548,7 @@ fn static_node_properties() -> NodeProperties {
 		"monitor_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("Used internally by the editor to obtain a layer thumbnail.")),
 	);
+	map.insert("vectorize_properties".to_string(), Box::new(node_properties::vectorize_properties));
 	map
 }
 

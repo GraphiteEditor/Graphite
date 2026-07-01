@@ -71,6 +71,7 @@ kurbo = { workspace = true, optional = true }
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 
+
 [dev-dependencies]
 tokio = { workspace = true }
 futures = { workspace = true }

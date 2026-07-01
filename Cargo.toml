@@ -210,6 +210,8 @@ petgraph = { version = "0.7", default-features = false, features = ["graphmap"] 
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.7", features = ["html_reports"] }
+vtracer = { version = "0.6.5" }
+visioncortex = { version = "0.8.9" }
 gungraun = { version = "0.18" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
