@@ -566,6 +566,30 @@ fn clamp<T: std::cmp::PartialOrd>(
 	}
 }
 
+/// Performs smooth Hermite interpolation between two values.
+#[node_macro::node(category("Math: Numeric"))]
+fn smoothstep(
+	_: impl Ctx,
+	/// The value to be mapped, which is restricted to the range between the minimum and maximum values.
+	value: f64,
+	/// The lower bound of the input range. Input values below this edge are mapped to 0.
+	#[default(0.)]
+	edge_min: f64,
+	/// The upper bound of the input range. Input values above this edge are mapped to 1.
+	#[default(1.)]
+	edge_max: f64,
+) -> f64 {
+	let divisor = edge_max - edge_min;
+
+	// handle divison by zero
+	if divisor.abs() == 0.0 {
+		return if value < edge_min { 0.0 } else { 1.0 };
+	}
+
+	let t = ((value - edge_min) / divisor).clamp(0.0, 1.0);
+	t * t * (3.0 - 2.0 * t)
+}
+
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
 #[node_macro::node(category("Math: Numeric"))]
 fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
