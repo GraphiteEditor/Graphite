@@ -97,8 +97,8 @@ pub enum NodeGraphMessage {
 	SetChainPosition {
 		node_id: NodeId,
 	},
-	PasteNodes {
-		serialized_nodes: String,
+	InsertNodes {
+		nodes: Vec<(NodeId, NodeTemplate)>,
 	},
 	PointerDown {
 		shift_click: bool,

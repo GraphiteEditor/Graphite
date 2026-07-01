@@ -5,13 +5,12 @@ use crate::consts::{
 	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
 	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
-use crate::messages::clipboard::utility_types::ClipboardContent;
+use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardVectorEntry};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
-use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
@@ -141,14 +140,11 @@ pub enum PathToolMessage {
 		overlay_context: OverlayContext,
 	},
 	StartSlidingPoint,
-	Copy {
-		clipboard: Clipboard,
-	},
-	Cut {
-		clipboard: Clipboard,
-	},
+	Copy,
+	Cut,
 	Paste {
-		data: String,
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+		paths: Vec<ClipboardVectorEntry>,
 	},
 	DeleteSelected,
 	Duplicate,
@@ -2749,7 +2745,7 @@ impl Fsm for PathToolFsmState {
 					PathToolFsmState::Ready
 				}
 			}
-			(_, PathToolMessage::Copy { clipboard }) => {
+			(_, PathToolMessage::Copy) => {
 				// TODO: Add support for selected segments
 
 				let mut buffer = Vec::new();
@@ -2808,131 +2804,121 @@ impl Fsm for PathToolFsmState {
 					buffer.push((layer, new_vector, transform));
 				}
 
-				if clipboard == Clipboard::Device {
-					if let Ok(data) = serde_json::to_string(&buffer) {
-						responses.add(ClipboardMessage::Write {
-							content: ClipboardContent::Vector(data),
-						});
-					} else {
-						log::error!("Failed to serialize nodes for clipboard");
-					}
-				}
-				// TODO: Add implementation for internal clipboard
+				responses.add(ClipboardMessage::WriteItems {
+					items: vec![ClipboardItem::Vector(buffer)],
+				});
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::Cut { clipboard }) => {
-				responses.add(PathToolMessage::Copy { clipboard });
+			(_, PathToolMessage::Cut) => {
+				responses.add(PathToolMessage::Copy);
 				// Delete the selected points/segments
 				responses.add(PathToolMessage::DeleteSelected);
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::Paste { data }) => {
-				// Deserialize the data
-				if let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, Vector, DAffine2)>>(&data) {
-					shape_editor.deselect_all_points();
-					responses.add(DocumentMessage::AddTransaction);
-					let mut new_layers = Vec::new();
-					for (layer, new_vector, transform) in data {
-						// If layer is not selected then create a new selected layer
-						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
-							layer
-						} else {
-							let Some(node_type) = resolve_network_node_type("Path") else {
-								error!("Could not resolve node type for Path");
-								continue;
-							};
-							let nodes = vec![(NodeId(0), node_type.default_node_template())];
-
-							let parent = document.new_layer_parent(false);
-
-							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-
-							// Defaults chosen because the pasted geometry has no inherent associated style
-							let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
-							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
-
-							let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
-							responses.add(GraphOperationMessage::FillSet { layer, fill });
-
-							new_layers.push(layer);
-
-							responses.add(GraphOperationMessage::TransformSet {
-								layer,
-								transform,
-								transform_in: TransformIn::Local,
-								skip_rerender: false,
-							});
-
-							layer
-						};
-
-						// Create new point ids and add those into the existing vector content
-						let mut points_map = HashMap::new();
-						for (point, position) in new_vector.point_domain.iter() {
-							let new_point_id = PointId::generate();
-							points_map.insert(point, new_point_id);
-
-							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
-
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						// Create new segment ids and add the segments into the existing vector content
-						let mut segments_map = HashMap::new();
-						for (segment_id, bezier, start, end) in new_vector.segment_iter() {
-							let new_segment_id = SegmentId::generate();
-
-							segments_map.insert(segment_id, new_segment_id);
-
-							let points = pathseg_points(bezier);
-							let handles = [points.p1.map(|handle| handle - points.p0), points.p2.map(|handle| handle - points.p3)];
-
-							let points = [points_map[&start], points_map[&end]];
-							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
-
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						// Set G1 continuity
-						for handles in new_vector.colinear_manipulators {
-							let to_new_handle = |handle: HandleId| -> HandleId {
-								HandleId {
-									ty: handle.ty,
-									segment: segments_map[&handle.segment],
-								}
-							};
-							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
-							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
-
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						shape_editor.selected_shape_state.entry(layer).or_insert(Default::default());
-
-						// Set selection to newly inserted points
-						let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-							error!("No state for layer: {layer:?}");
+			(_, PathToolMessage::Paste { paths }) => {
+				shape_editor.deselect_all_points();
+				responses.add(DocumentMessage::AddTransaction);
+				let mut new_layers = Vec::new();
+				for (layer, new_vector, transform) in paths {
+					// If layer is not selected then create a new selected layer
+					let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
+						layer
+					} else {
+						let Some(node_type) = resolve_network_node_type("Path") else {
+							error!("Could not resolve node type for Path");
 							continue;
 						};
+						let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
-						// If point editing mode is enabled, select all the pasted points
-						if tool_options.path_editing_mode.point_editing_mode {
-							points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
-						}
-						// If segment editing mode is enabled, select all the pasted segments
-						if tool_options.path_editing_mode.segment_editing_mode {
-							segments_map.values().for_each(|segment| state.select_segment(*segment));
-						}
+						let parent = document.new_layer_parent(false);
+
+						let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+
+						// Defaults chosen because the pasted geometry has no inherent associated style
+						let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
+						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
+						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
+						responses.add(GraphOperationMessage::FillSet { layer, fill });
+
+						new_layers.push(layer);
+
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+
+						layer
+					};
+
+					// Create new point ids and add those into the existing vector content
+					let mut points_map = HashMap::new();
+					for (point, position) in new_vector.point_domain.iter() {
+						let new_point_id = PointId::generate();
+						points_map.insert(point, new_point_id);
+
+						let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
+
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
 					}
 
-					// If there are new layers created, we need to center them in the viewport
-					if !new_layers.is_empty() {
-						responses.add(Message::Defer(DeferMessage::AfterGraphRun {
-							messages: vec![PortfolioMessage::CenterPastedLayers { layers: new_layers }.into()],
-						}));
+					// Create new segment ids and add the segments into the existing vector content
+					let mut segments_map = HashMap::new();
+					for (segment_id, bezier, start, end) in new_vector.segment_iter() {
+						let new_segment_id = SegmentId::generate();
+
+						segments_map.insert(segment_id, new_segment_id);
+
+						let points = pathseg_points(bezier);
+						let handles = [points.p1.map(|handle| handle - points.p0), points.p2.map(|handle| handle - points.p3)];
+
+						let points = [points_map[&start], points_map[&end]];
+						let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
+
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
 					}
+
+					// Set G1 continuity
+					for handles in new_vector.colinear_manipulators {
+						let to_new_handle = |handle: HandleId| -> HandleId {
+							HandleId {
+								ty: handle.ty,
+								segment: segments_map[&handle.segment],
+							}
+						};
+						let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
+						let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
+
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
+
+					shape_editor.selected_shape_state.entry(layer).or_insert(Default::default());
+
+					// Set selection to newly inserted points
+					let Some(state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+						error!("No state for layer: {layer:?}");
+						continue;
+					};
+
+					// If point editing mode is enabled, select all the pasted points
+					if tool_options.path_editing_mode.point_editing_mode {
+						points_map.values().for_each(|point| state.select_point(ManipulatorPointId::Anchor(*point)));
+					}
+					// If segment editing mode is enabled, select all the pasted segments
+					if tool_options.path_editing_mode.segment_editing_mode {
+						segments_map.values().for_each(|segment| state.select_segment(*segment));
+					}
+				}
+
+				// If there are new layers created, we need to center them in the viewport
+				if !new_layers.is_empty() {
+					responses.add(Message::Defer(DeferMessage::AfterGraphRun {
+						messages: vec![PortfolioMessage::CenterLayers { layers: new_layers }.into()],
+					}));
 				}
 
 				PathToolFsmState::Ready

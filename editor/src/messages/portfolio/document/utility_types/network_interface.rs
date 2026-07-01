@@ -6832,16 +6832,21 @@ pub enum TransactionStatus {
 
 fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
 	for node in network.nodes.values() {
-		for input in &node.inputs {
-			if let NodeInput::Value { tagged_value, .. } = input
-				&& let TaggedValue::Resource(id) = &**tagged_value
-			{
-				out.insert(*id);
-			}
+		collect_node_resources(node, out);
+	}
+}
+
+/// Collects resource IDs referenced by a node and its nested networks.
+pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
+	for input in &node.inputs {
+		if let NodeInput::Value { tagged_value, .. } = input
+			&& let TaggedValue::Resource(id) = &**tagged_value
+		{
+			out.insert(*id);
 		}
-		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-			collect_network_resources(nested, out);
-		}
+	}
+	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+		collect_network_resources(nested, out);
 	}
 }
 
@@ -6857,18 +6862,19 @@ mod network_interface_tests {
 			.await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
 		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
-		let serialized_nodes = frontend_messages
+		let clipboard = frontend_messages
 			.into_iter()
 			.find_map(|msg| match msg {
 				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
 				_ => None,
 			})
-			.expect("copy message should be dispatched")
-			.strip_prefix("graphite/nodes: ")
-			.expect("should start with magic string")
-			.to_string();
-		println!("Serialized: {serialized_nodes}");
-		editor.handle_message(NodeGraphMessage::PasteNodes { serialized_nodes }).await;
+			.expect("copy message should be dispatched");
+		println!("Clipboard: {clipboard}");
+		editor
+			.handle_message(ClipboardMessage::ReadClipboard {
+				content: ClipboardContentRaw::Text(clipboard),
+			})
+			.await;
 		let nodes = &mut editor.active_document_mut().network_interface.network_mut(&[]).unwrap().nodes;
 		let orignal = nodes.remove(&rectangle).expect("original node should exist");
 		assert!(

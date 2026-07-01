@@ -877,7 +877,7 @@ impl EditorWrapper {
 			None
 		};
 
-		let message = PortfolioMessage::PasteImage {
+		let message = PortfolioMessage::InsertImage {
 			name,
 			image,
 			mouse,
@@ -899,7 +899,7 @@ impl EditorWrapper {
 			None
 		};
 
-		let message = PortfolioMessage::PasteSvg {
+		let message = PortfolioMessage::InsertSvg {
 			name,
 			svg,
 			mouse,
