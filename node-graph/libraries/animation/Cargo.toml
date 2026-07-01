@@ -1,0 +1,21 @@
+[package]
+name = "graphene-animation"
+version = "0.1.0"
+edition = "2024"
+description = "Animation primitives for Graphene node system"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { workspace = true, optional = true }
+kurbo = { workspace = true }
+glam = { workspace = true }
+dyn-any = { workspace = true }
+graphene-hash = { workspace = true, features = ["derive"] }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[lints]
+workspace = true
