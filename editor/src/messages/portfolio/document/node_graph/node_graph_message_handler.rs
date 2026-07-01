@@ -2630,10 +2630,11 @@ impl NodeGraphMessageHandler {
 					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
 
-				// Mark each node in the layer's chain (but not the layer node itself, which is first) as draggable so its section can be reordered within the chain from the Properties panel
+				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
+				// A node without a primary input (e.g. a generator) is left non-draggable.
 				for chain_node_section in node_properties.iter_mut().skip(1) {
 					if let LayoutGroup::Section(section) = chain_node_section {
-						section.draggable = true;
+						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
 					}
 				}
 
