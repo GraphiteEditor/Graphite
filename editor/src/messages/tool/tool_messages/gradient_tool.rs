@@ -430,7 +430,6 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	}
 }
 
-// FIXME: consider rename this and merge this to GradientOptions if possible
 #[derive(Clone, Copy, Debug, Default)]
 struct GradientAppearance {
 	transform: DAffine2,

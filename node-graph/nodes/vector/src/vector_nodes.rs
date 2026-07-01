@@ -12,7 +12,7 @@ use core_types::{
 	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
+use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{AnyGraphicListDyn, Vector};
 use graphic_types::{Graphic, IntoGraphicList};
@@ -144,7 +144,7 @@ where
 			if fill {
 				vector_list.set_attribute(ATTR_FILL, index, paint.clone());
 			}
-			if stroke && vector_list.element(index).and_then(|vector| vector.stroke.clone()).is_some() {
+			if stroke && vector_list.element(index).and_then(|vector| vector.stroke.as_ref()).is_some() {
 				vector_list.set_attribute(ATTR_STROKE, index, paint.clone());
 			}
 
@@ -2583,13 +2583,13 @@ async fn morph<I: IntoGraphicList>(
 	};
 
 	let fill_paint = {
-		let source = fill_graphic_list_at(&content, source_index);
-		let target = fill_graphic_list_at(&content, target_index);
+		let source = graphic_list_at(&content, source_index, ATTR_FILL);
+		let target = graphic_list_at(&content, target_index, ATTR_FILL);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 	let stroke_paint = {
-		let source = stroke_graphic_list_at(&content, source_index);
-		let target = stroke_graphic_list_at(&content, target_index);
+		let source = graphic_list_at(&content, source_index, ATTR_STROKE);
+		let target = graphic_list_at(&content, target_index, ATTR_STROKE);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 
@@ -3387,7 +3387,7 @@ mod test {
 
 		let morphed = super::morph(Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default()).await;
 
-		let fill = fill_graphic_list_at(&morphed, 0).expect("morph should keep the fill paint at the midpoint");
+		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
 		let Some(Graphic::Color(colors)) = fill.element(0) else {

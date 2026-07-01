@@ -21,7 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{fill_graphic_list_at, graphic_list_arc_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
+use graphic_types::graphic::{graphic_list_arc_at, graphic_list_at, has_paint_at, is_paint_present};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1091,10 +1091,10 @@ impl Render for List<Vector> {
 				MaskType::Mask
 			};
 
-			let fill_graphic_list = fill_graphic_list_at(self, index);
+			let fill_graphic_list = graphic_list_at(self, index, ATTR_FILL);
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
-			let stroke_graphic_list = stroke_graphic_list_at(self, index);
+			let stroke_graphic_list = graphic_list_at(self, index, ATTR_STROKE);
 			let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
 
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
@@ -1306,8 +1306,8 @@ impl Render for List<Vector> {
 				}
 			}
 
-			let fill_graphic_list = fill_graphic_list_at(self, index);
-			let stroke_graphic_list = stroke_graphic_list_at(self, index);
+			let fill_graphic_list = graphic_list_at(self, index, ATTR_FILL);
+			let stroke_graphic_list = graphic_list_at(self, index, ATTR_STROKE);
 
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
