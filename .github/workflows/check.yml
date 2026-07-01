@@ -58,7 +58,7 @@ jobs:
       - name: 🧪 Run Rust tests
         env:
           # `--cfg=web_sys_unstable_apis` mirrors the `[build]` section of `.cargo/config.toml`
-          RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+          RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis --cfg=skip_desktop_license_embed"
         run: mold -run cargo test --workspace --all-features
 
   # Rust format check on GitHub runner
