@@ -93,10 +93,20 @@ impl SvgRender {
 
 	/// Add an outer `<svg>...</svg>` tag with a `viewBox` and the `<defs />`
 	pub fn format_svg(&mut self, bounds_min: DVec2, bounds_max: DVec2) {
+		self.format_svg_with_attributes(bounds_min, bounds_max, |_| {});
+	}
+
+	/// Add an outer `<svg>...</svg>` tag with a `viewBox`, the `<defs />`, and the provided attributes.
+	pub fn format_svg_with_attributes(&mut self, bounds_min: DVec2, bounds_max: DVec2, attributes: impl FnOnce(&mut SvgRenderAttrs)) {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
+
+		let mut attr_render = SvgRender::new();
+		attributes(&mut SvgRenderAttrs(&mut attr_render));
+		let attributes_str = attr_render.svg.to_svg_string();
+
 		let svg_header = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,
+			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"{attributes_str}><defs>{defs}</defs>"#,
 			defs = &self.svg_defs
 		);
 		self.svg_defs = String::new();
@@ -708,22 +718,8 @@ impl Render for List<Artboard> {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
-			let x = location.x.min(location.x + dimensions.x);
-			let y = location.y.min(location.y + dimensions.y);
 			let width = dimensions.x.abs();
 			let height = dimensions.y.abs();
-
-			// Background
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
-				if background.a() < 1. {
-					attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
-				}
-				attributes.push("x", x.to_string());
-				attributes.push("y", y.to_string());
-				attributes.push("width", width.to_string());
-				attributes.push("height", height.to_string());
-			});
 
 			// Artwork
 			render.parent_tag(
@@ -747,10 +743,27 @@ impl Render for List<Artboard> {
 						)
 						.unwrap();
 						attributes.push("clip-path", selector);
+					} else {
+						// Keep blend behavior consistent between clipped and unclipped artboards.
+						// An SVG clip-path creates an isolated group, so blends inside it do not use external backdrops such as the checkerboard preview background.
+						// Without a clip-path, the group would otherwise blend against that backdrop, so we explicitly isolate the artboard group.
+						// TODO: Consider another way to clip artboards.
+						// With multiple transparent artboards, blending does not take colors from other artboards into account, which is inconsistent from the vello's behavior.
+						attributes.push("style", "isolation: isolate;");
 					}
 				},
-				// Artwork content
 				|render| {
+					// Background
+					render.leaf_tag("rect", |attributes| {
+						attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
+						if background.a() < 1. {
+							attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
+						}
+						attributes.push("width", width.to_string());
+						attributes.push("height", height.to_string());
+					});
+
+					// Artwork content
 					let mut render_params = render_params.clone();
 					render_params.artboard_background = Some(background);
 					content.render_svg(render, &render_params);
