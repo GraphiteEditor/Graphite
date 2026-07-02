@@ -92,6 +92,8 @@ pub enum ExportFormat {
 pub struct TimingInformation {
 	pub time: f64,
 	pub animation_time: Duration,
+	/// Seconds of animation time elapsed since the previous frame.
+	pub animation_delta_time: f64,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]

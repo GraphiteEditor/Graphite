@@ -33,6 +33,8 @@ pub struct AnimationMessageHandler {
 	animation_state: AnimationState,
 	fps: f64,
 	animation_time_mode: AnimationTimeMode,
+	/// Seconds of animation time elapsed between the previous frame and the current one.
+	animation_delta_time: f64,
 }
 impl AnimationMessageHandler {
 	pub(crate) fn timing_information(&self) -> TimingInformation {
@@ -41,7 +43,11 @@ impl AnimationMessageHandler {
 			AnimationTimeMode::TimeBased => Duration::from_millis(animation_time as u64),
 			AnimationTimeMode::FrameBased => Duration::from_secs((self.frame_index / self.fps) as u64),
 		};
-		TimingInformation { time: self.timestamp, animation_time }
+		TimingInformation {
+			time: self.timestamp,
+			animation_time,
+			animation_delta_time: self.animation_delta_time,
+		}
 	}
 
 	pub(crate) fn animation_start(&self) -> f64 {
@@ -89,7 +95,11 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			AnimationMessage::SetTime { time } => {
+				// Elapsed animation time since the previous frame, in seconds (frozen while paused, so it reads 0 then)
+				let previous_animation_time = self.timestamp - self.animation_start();
 				self.timestamp = time;
+				let current_animation_time = self.timestamp - self.animation_start();
+				self.animation_delta_time = ((current_animation_time - previous_animation_time) / 1000.).max(0.);
 				responses.add(AnimationMessage::UpdateTime);
 			}
 			AnimationMessage::IncrementFrameCounter => {
@@ -110,6 +120,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::RestartAnimation => {
 				self.frame_index = 0.;
+				self.animation_delta_time = 0.;
 				self.animation_state = match self.animation_state {
 					AnimationState::Playing { .. } => AnimationState::Playing { start: self.timestamp },
 					_ => AnimationState::Stopped,
