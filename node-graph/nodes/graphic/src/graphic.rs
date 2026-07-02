@@ -27,7 +27,12 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 		List<String>,
 		List<f64>,
 		List<u8>,
+		List<bool>,
 		List<NodeId>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
 	list: T,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -81,6 +86,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		List<String>,
 		List<f64>,
 		List<u8>,
+		List<bool>,
 		List<NodeId>,
 		List<Color>,
 		List<GradientStops>,
@@ -88,6 +94,10 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		List<Raster<CPU>>,
 		List<Graphic>,
 		List<Artboard>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
 	list: List<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -117,6 +127,13 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		List<Color>,
 		List<GradientStops>,
 		List<String>,
+		List<f64>,
+		List<u8>,
+		List<bool>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
 	content: List<Item>,
 	#[implementations(
@@ -126,6 +143,13 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<Color>,
 		Context -> List<GradientStops>,
 		Context -> List<String>,
+		Context -> List<f64>,
+		Context -> List<u8>,
+		Context -> List<bool>,
+		Context -> List<DAffine2>,
+		Context -> List<BlendMode>,
+		Context -> List<GradientType>,
+		Context -> List<GradientSpreadMethod>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
 ) -> List<Item> {
@@ -498,6 +522,45 @@ fn read_attribute_raster(
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `List` whose items will appear at the start of the extended `List`.
+	#[implementations(
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+		List<f64>,
+		List<u8>,
+		List<bool>,
+		List<NodeId>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
+	)]
+	base: List<T>,
+	/// The `List` whose items will appear at the end of the extended `List`.
+	#[expose]
+	#[implementations(
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+		List<f64>,
+		List<u8>,
+		List<bool>,
+		List<NodeId>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
+	)]
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
 	base: List<T>,
 	/// The `List` whose items will appear at the end of the extended `List`.
