@@ -1,6 +1,6 @@
 use core_types::list::List;
 use core_types::transform::Footprint;
-use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationDeltaTime, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -58,6 +58,12 @@ fn animation_time(
 	rate: f64,
 ) -> f64 {
 	ctx.try_animation_time().unwrap_or_default() * rate
+}
+
+/// Produces the elapsed animation time, in seconds, since the previous frame was rendered (or delta time-dependent node was evaluated).
+#[node_macro::node(category("Animation"))]
+fn animation_delta_time(ctx: impl Ctx + ExtractAnimationDeltaTime) -> f64 {
+	ctx.try_animation_delta_time().unwrap_or_default()
 }
 
 #[node_macro::node(category("Debug"))]

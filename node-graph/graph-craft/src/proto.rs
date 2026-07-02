@@ -742,7 +742,7 @@ impl TypingContext {
 		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
+			.filter(|node_io| valid_type(&node_io.call_argument, call_argument) && inputs.len() == node_io.inputs.len() && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results

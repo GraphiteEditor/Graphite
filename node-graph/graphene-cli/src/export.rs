@@ -187,6 +187,7 @@ pub async fn export_gif(
 			time: TimingInformation {
 				time: animation_time.as_secs_f64(),
 				animation_time,
+				animation_delta_time: 0.,
 			},
 			..Default::default()
 		};
