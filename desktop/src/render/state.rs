@@ -206,8 +206,12 @@ impl RenderState {
 		self.update_bindgroup();
 	}
 
-	pub(crate) fn bind_ui_texture(&mut self, bind_ui_texture: wgpu::Texture) {
-		self.ui_texture = Some(bind_ui_texture);
+	pub(crate) fn bind_ui_texture(&mut self, ui_texture: wgpu::Texture) {
+		if self.ui_texture.as_ref() == Some(&ui_texture) {
+			self.surface_outdated = true;
+			return;
+		}
+		self.ui_texture = Some(ui_texture);
 		self.update_bindgroup();
 	}
 

@@ -96,8 +96,8 @@ pub fn start() {
 		println!("UI acceleration is disabled");
 	}
 
-	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.create(cef_handler, prefs.disable_ui_acceleration) {
+	let cef_handler = cef::CefHandler::new(app_event_scheduler.clone(), cef_view_info_receiver);
+	let cef_context = match cef_context_builder.create(cef_handler, wgpu_context.clone(), prefs.disable_ui_acceleration) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context
