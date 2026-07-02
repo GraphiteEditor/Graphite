@@ -21,9 +21,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::render::FrameBufferRef;
 use crate::window::Cursor;
-use crate::wrapper::{WgpuContext, deserialize_editor_message};
+use crate::wrapper::deserialize_editor_message;
 
 mod consts;
 mod context;
@@ -32,17 +31,14 @@ mod internal;
 mod ipc;
 mod platform;
 mod utility;
-
-#[cfg(feature = "accelerated_paint")]
-use cef::osr_texture_import::SharedTextureHandle;
+mod view;
 
 pub(crate) use context::{CefContext, CefContextBuilder, InitError};
+pub(crate) use view::View;
 
 pub(crate) trait CefEventHandler: Send + Sync + 'static {
 	fn view_info(&self) -> ViewInfo;
-	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
-	#[cfg(feature = "accelerated_paint")]
-	fn draw_gpu(&self, shared_texture: SharedTextureHandle);
+	fn draw(&self, view: &View);
 	fn load_resource(&self, path: PathBuf) -> Option<Resource>;
 	fn cursor_change(&self, cursor: Cursor);
 	/// Schedule the main event loop to run the CEF event loop after the timeout.
@@ -120,15 +116,13 @@ impl Read for ResourceReader {
 }
 
 pub(crate) struct CefHandler {
-	wgpu_context: WgpuContext,
 	app_event_scheduler: AppEventScheduler,
 	view_info_receiver: Arc<Mutex<ViewInfoReceiver>>,
 }
 
 impl CefHandler {
-	pub(crate) fn new(wgpu_context: WgpuContext, app_event_scheduler: AppEventScheduler, view_info_receiver: Receiver<ViewInfoUpdate>) -> Self {
+	pub(crate) fn new(app_event_scheduler: AppEventScheduler, view_info_receiver: Receiver<ViewInfoUpdate>) -> Self {
 		Self {
-			wgpu_context,
 			app_event_scheduler,
 			view_info_receiver: Arc::new(Mutex::new(ViewInfoReceiver::new(view_info_receiver))),
 		}
@@ -147,55 +141,10 @@ impl CefEventHandler for CefHandler {
 		}
 		*view_info
 	}
-	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>) {
-		let width = frame_buffer.width() as u32;
-		let height = frame_buffer.height() as u32;
-		let texture = self.wgpu_context.device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("CEF Texture"),
-			size: wgpu::Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Bgra8Unorm,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-			view_formats: &[],
-		});
-		self.wgpu_context.queue.write_texture(
-			wgpu::TexelCopyTextureInfo {
-				texture: &texture,
-				mip_level: 0,
-				origin: wgpu::Origin3d::ZERO,
-				aspect: wgpu::TextureAspect::All,
-			},
-			frame_buffer.buffer(),
-			wgpu::TexelCopyBufferLayout {
-				offset: 0,
-				bytes_per_row: Some(4 * width),
-				rows_per_image: Some(height),
-			},
-			wgpu::Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-		);
 
-		self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
-	}
-
-	#[cfg(feature = "accelerated_paint")]
-	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
-		match shared_texture.import_texture(&self.wgpu_context.device) {
-			Ok(texture) => {
-				self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
-			}
-			Err(e) => {
-				tracing::error!("Failed to import shared texture: {}", e);
-			}
+	fn draw(&self, view: &View) {
+		if let Some(texture) = view.texture() {
+			self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
 		}
 	}
 
@@ -279,7 +228,6 @@ impl CefEventHandler for CefHandler {
 		Self: Sized,
 	{
 		Self {
-			wgpu_context: self.wgpu_context.clone(),
 			app_event_scheduler: self.app_event_scheduler.clone(),
 			view_info_receiver: self.view_info_receiver.clone(),
 		}

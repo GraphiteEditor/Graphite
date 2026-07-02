@@ -13,6 +13,7 @@ use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
 use crate::dirs::TempDir;
+use crate::wrapper::WgpuContext;
 
 pub(crate) struct CefContextBuilder<H: CefEventHandler> {
 	pub(crate) args: Args,
@@ -67,19 +68,19 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 
 	#[cfg(target_os = "macos")]
-	pub(crate) fn create(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
+	pub(crate) fn create(self, event_handler: H, wgpu_context: WgpuContext, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
 		let instance_dir = TempDir::new().expect("Failed to create temporary directory for CEF instance");
 		let accelerated_paint = accelerated_paint(disable_gpu_acceleration);
 		self.build_inner(&event_handler, instance_dir.as_ref(), accelerated_paint)?;
-		create_browser(event_handler, instance_dir, accelerated_paint)
+		create_browser(event_handler, wgpu_context, instance_dir, accelerated_paint)
 	}
 
 	#[cfg(not(target_os = "macos"))]
-	pub(crate) fn create(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
+	pub(crate) fn create(self, event_handler: H, wgpu_context: WgpuContext, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
 		let instance_dir = TempDir::new().expect("Failed to create temporary directory for CEF instance");
 		let accelerated_paint = accelerated_paint(disable_gpu_acceleration);
 		self.build_inner(&event_handler, instance_dir.as_ref(), accelerated_paint)?;
-		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, instance_dir, accelerated_paint) {
+		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, wgpu_context, instance_dir, accelerated_paint) {
 			Ok(context) => super::multithreaded::CONTEXT.with(|b| *b.borrow_mut() = Some(context)),
 			Err(e) => panic!("Failed to initialize CEF context: {:?}", e),
 		});
@@ -149,8 +150,8 @@ fn platform_settings(instance_dir: &Path) -> Settings {
 	}
 }
 
-fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, accelerated_paint: bool) -> Result<SingleThreadedCefContext, InitError> {
-	let mut client = Client::new(BrowserProcessClientImpl::new(&event_handler));
+fn create_browser<H: CefEventHandler>(event_handler: H, wgpu_context: WgpuContext, instance_dir: TempDir, accelerated_paint: bool) -> Result<SingleThreadedCefContext, InitError> {
+	let mut client = Client::new(BrowserProcessClientImpl::new(&event_handler, wgpu_context));
 
 	let window_info = WindowInfo {
 		windowless_rendering_enabled: 1,
