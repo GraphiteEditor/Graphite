@@ -720,6 +720,8 @@ impl Render for List<Artboard> {
 
 			let width = dimensions.x.abs();
 			let height = dimensions.y.abs();
+			let local_x = dimensions.x.min(0.);
+			let local_y = dimensions.y.min(0.);
 
 			// Artwork
 			render.parent_tag(
@@ -738,8 +740,7 @@ impl Render for List<Artboard> {
 
 						write!(
 							&mut attributes.0.svg_defs,
-							r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
-							dimensions.x, dimensions.y,
+							r##"<clipPath id="{id}"><rect x="{local_x}" y="{local_y}" width="{width}" height="{height}" /></clipPath>"##,
 						)
 						.unwrap();
 						attributes.push("clip-path", selector);
@@ -755,6 +756,13 @@ impl Render for List<Artboard> {
 				|render| {
 					// Background
 					render.leaf_tag("rect", |attributes| {
+						if local_x != 0. {
+							attributes.push("x", local_x.to_string());
+						}
+						if local_y != 0. {
+							attributes.push("y", local_y.to_string());
+						}
+
 						attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
 						if background.a() < 1. {
 							attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
