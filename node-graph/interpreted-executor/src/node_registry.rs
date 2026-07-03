@@ -306,7 +306,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::PromoteNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::IntoNode::new(
+						let node = graphene_std::ops::PromoteNode::new(
 							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 						);
@@ -315,7 +315,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::IntoNode::new(
+					let node = graphene_std::ops::PromoteNode::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 					);
