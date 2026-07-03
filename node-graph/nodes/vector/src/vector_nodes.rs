@@ -908,7 +908,6 @@ pub fn vectorize(
 	#[default(2.)] path_precision: f64,
 ) -> List<Vector> {
 	image.into_iter().fold(List::new(), |mut vectors, row| {
-		// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let image_data = row.element();
 		let color_image = ColorImage {
 			width: image_data.width() as usize,
@@ -928,13 +927,19 @@ pub fn vectorize(
 			splice_threshold: splice_threshold as i32,
 			path_precision: Some(path_precision as u32),
 		};
-		let vectorized_image = convert(color_image, config).expect("failed to obtain an SvgFile from vtracer.");
+		let vectorized_image = match convert(color_image, config) {
+			Ok(image) => image,
+			Err(e) => {
+				log::error!("Vectorization failed for image:\n{e}");
+				return vectors;
+			}
+		};
 		let image_svg = vectorized_image.to_string();
 		let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
 			Ok(t) => t,
 			Err(e) => {
 				log::error!("Failed to create a usvg tree:\n{e}");
-				return List::<Vector>::new();
+				return vectors;
 			}
 		};
 		// log::debug!("vectorized_image: {}", image_svg);
