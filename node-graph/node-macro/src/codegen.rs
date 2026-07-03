@@ -64,6 +64,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// Node generics for regular fields (Node0, Node1, ...)
 	let node_generics: Vec<Ident> = regular_fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 
+	// An `Item<T>` primary input declares the node as an element-wise rank-0 kernel over element type `T`
+	let primary_element = primary_item_element(parsed);
+	let element_wise = primary_element.is_some();
+
 	// Extract just the idents from data_field_generics for struct type parameters
 	let data_field_generic_idents: Vec<Ident> = data_field_generics
 		.iter()
@@ -119,7 +123,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! { pub(super) #name: #r#gen }
 	});
 
-	let struct_fields = data_field_defs.chain(regular_field_defs);
+	let struct_fields: Vec<_> = data_field_defs.chain(regular_field_defs).collect();
 
 	let mut future_idents = Vec::new();
 
@@ -187,8 +191,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let default_types: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match &field.ty {
+		.enumerate()
+		.map(|(index, field)| match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => match implementations.first() {
+				Some(ty) if index == 0 && element_wise => quote!(Some(concrete!(#core_types::list::List<#ty>))),
 				Some(ty) => quote!(Some(concrete!(#ty))),
 				_ => quote!(None),
 			},
@@ -276,64 +282,91 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
 
 	let input_type = &parsed.input.ty;
-	let mut clauses = Vec::new();
 	let mut clampable_clauses = Vec::new();
 
-	for (field, name) in regular_fields.iter().zip(node_generics.iter()) {
-		clauses.push(match (&field.ty, *is_async) {
-			(
-				ParsedFieldType::Regular(RegularParsedField {
-					ty, number_hard_min, number_hard_max, ..
-				}),
-				_,
-			) => {
-				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
-				let id = future_idents.len();
-				let fut_ident = format_ident!("F{}", id);
-				future_idents.push(fut_ident.clone());
-
-				// Add Clampable bound if this field uses hard_min or hard_max
-				if number_hard_min.is_some() || number_hard_max.is_some() {
-					// The bound applies to the Output type of the future, which is #ty
-					clampable_clauses.push(quote!(#ty: #core_types::misc::Clampable));
-				}
-
-				quote!(
-					#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
-					for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
-					#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
-				)
-			}
-			(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
-				let id = future_idents.len();
-				let fut_ident = format_ident!("F{}", id);
-				future_idents.push(fut_ident.clone());
-
-				quote!(
-					#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
-					#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
-				)
-			}
-			(ParsedFieldType::Node { .. }, false) => unreachable!("Found node which takes an impl Node<> input but is not async"),
-		});
+	for field in &regular_fields {
+		// Add Clampable bound if this field uses hard_min or hard_max, applying to the Output type of the future, which is #ty
+		if let ParsedFieldType::Regular(RegularParsedField {
+			ty, number_hard_min, number_hard_max, ..
+		}) = &field.ty
+			&& (number_hard_min.is_some() || number_hard_max.is_some())
+		{
+			clampable_clauses.push(quote!(#ty: #core_types::misc::Clampable));
+		}
 	}
+	future_idents.extend((0..regular_fields.len()).map(|id| format_ident!("F{}", id)));
+
+	// Builds every field's where-clause bounds, optionally wrapping the primary field's wire type for the element-wise variants
+	let build_field_clauses = |primary_wire: Option<WireWrapper>| -> Vec<TokenStream2> {
+		regular_fields
+			.iter()
+			.zip(node_generics.iter())
+			.zip(future_idents.iter())
+			.enumerate()
+			.map(|(index, ((field, name), fut_ident))| match (&field.ty, *is_async) {
+				(ParsedFieldType::Regular(RegularParsedField { ty, .. }), _) => {
+					let ty = match (index, primary_wire) {
+						// An `Item<T>`-declared primary contributes its element type to the wire wrapping
+						(0, Some(wrap)) => {
+							let element_ty = peel_item(ty).unwrap_or_else(|| ty.clone());
+							wrap.apply(core_types, &element_ty)
+						}
+						_ => ty.clone(),
+					};
+					let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
+					quote!(
+						#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
+						for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
+						#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
+					)
+				}
+				(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
+					quote!(
+						#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
+						#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
+					)
+				}
+				(ParsedFieldType::Node { .. }, false) => unreachable!("Found node which takes an impl Node<> input but is not async"),
+			})
+			.collect()
+	};
 	let where_clause = where_clause.clone().unwrap_or(WhereClause {
 		where_token: Token![where](output_type.span()),
 		predicates: Default::default(),
 	});
 
-	let mut struct_where_clause = where_clause.clone();
-	let extra_where: Punctuated<WherePredicate, Comma> = parse_quote!(
-		#(#clauses,)*
-		#(#clampable_clauses,)*
-		#output_type: 'n,
-	);
-	struct_where_clause.predicates.extend(extra_where);
+	let make_struct_where_clause = |field_clauses: Vec<TokenStream2>, extra_clauses: Vec<TokenStream2>| {
+		let mut struct_where_clause = where_clause.clone();
+		let extra_where: Punctuated<WherePredicate, Comma> = parse_quote!(
+			#(#field_clauses,)*
+			#(#clampable_clauses,)*
+			#(#extra_clauses,)*
+			#output_type: 'n,
+		);
+		struct_where_clause.predicates.extend(extra_where);
+		struct_where_clause
+	};
+	let struct_where_clause = make_struct_where_clause(build_field_clauses(element_wise.then_some(WireWrapper::Item)), Vec::new());
+
+	// The mapped variant clones every non-primary parameter once per row, so those parameter types must be Clone
+	let param_clone_clauses: Vec<TokenStream2> = regular_fields
+		.iter()
+		.skip(1)
+		.filter_map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
+			ParsedFieldType::Node(_) => None,
+		})
+		.collect();
+	let mapped_struct_where_clause = element_wise.then(|| make_struct_where_clause(build_field_clauses(Some(WireWrapper::List)), param_clone_clauses));
 
 	// Only regular fields are parameters to new()
-	let new_args = node_generics.iter().zip(regular_field_names.iter()).map(|(r#gen, name)| {
-		quote! { #name: #r#gen }
-	});
+	let new_args: Vec<_> = node_generics
+		.iter()
+		.zip(regular_field_names.iter())
+		.map(|(r#gen, name)| {
+			quote! { #name: #r#gen }
+		})
+		.collect();
 
 	// Initialize data fields with Default, regular fields with parameters
 	let data_inits = data_field_names.iter().map(|name| {
@@ -342,7 +375,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let regular_inits = regular_field_names.iter().map(|name| {
 		quote! { #name }
 	});
-	let all_field_inits = data_inits.chain(regular_inits);
+	let all_field_inits: Vec<_> = data_inits.chain(regular_inits).collect();
 
 	let async_keyword = is_async.then(|| quote!(async));
 	let await_keyword = is_async.then(|| quote!(.await));
@@ -366,21 +399,65 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote!()
 	};
 
+	let eval_prelude = quote! {
+		use #core_types::misc::Clampable;
+
+		#(#eval_args)*
+		#(#min_max_args)*
+	};
+
 	let eval_impl = quote! {
 		type Output = #core_types::registry::DynFuture<'n, #output_type>;
 		#[inline]
 		fn eval(&'n self, __input: #input_type) -> Self::Output {
 			Box::pin(async move {
-				use #core_types::misc::Clampable;
-
-				#(#eval_args)*
-				#(#min_max_args)*
+				#eval_prelude
 				self::#fn_name(__input #(, &self.#data_field_names)* #(, #regular_field_names)*) #await_keyword
 			})
 		}
 
 		#serialize_impl
 	};
+
+	// The mapped variant calls the kernel once per item of the primary input's list, broadcasting the other parameters by clone
+	let mapped_eval_impl = element_wise.then(|| {
+		let primary_name = &regular_field_names[0];
+		let per_row_args: Vec<_> = regular_fields
+			.iter()
+			.enumerate()
+			.map(|(index, field)| {
+				let name = &field.pat_ident.ident;
+				match (index, &field.ty) {
+					(0, _) => quote!(__item),
+					(_, ParsedFieldType::Regular(_)) => quote!(#name.clone()),
+					(_, ParsedFieldType::Node(_)) => quote!(#name),
+				}
+			})
+			.collect();
+
+		let list_element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+
+		quote! {
+			type Output = #core_types::registry::DynFuture<'n, #core_types::list::List<#list_element_ty>>;
+			#[inline]
+			#[allow(clippy::clone_on_copy)]
+			fn eval(&'n self, __input: #input_type) -> Self::Output {
+				Box::pin(async move {
+					#eval_prelude
+
+					let mut __output = #core_types::list::List::with_capacity(#primary_name.len());
+					for __item in #primary_name {
+						let __result = self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #per_row_args)*) #await_keyword;
+						__output.push(__result);
+					}
+
+					__output
+				})
+			}
+
+			#serialize_impl
+		}
+	});
 
 	let identifier = format_ident!("{}_proto_ident", fn_name);
 	let identifier_path = match parsed.attributes.path.as_ref() {
@@ -391,7 +468,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		None => quote!(std::module_path!()),
 	};
 
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
+	let mapped_struct_name = format_ident!("{}Mapped", struct_name);
+	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &mapped_struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
@@ -401,6 +479,47 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
+
+	let mapped_node_impl = match (&mapped_struct_where_clause, &mapped_eval_impl) {
+		(Some(mapped_where_clause), Some(mapped_eval)) => quote! {
+			#cfg
+			#[automatically_derived]
+			impl<'n, #(#fn_generics,)* #(#node_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#mapped_struct_name<#(#struct_type_params,)*>
+			#mapped_where_clause
+			{
+				#mapped_eval
+			}
+		},
+		_ => quote!(),
+	};
+
+	let mapped_struct_def = element_wise.then(|| {
+		quote! {
+			#struct_derives
+			pub struct #mapped_struct_name<#(#struct_generic_params,)*> {
+				#(#struct_fields,)*
+			}
+
+			#[automatically_derived]
+			impl<'n, #(#struct_generic_params,)*> #mapped_struct_name<#(#struct_type_params,)*>
+			{
+				#[allow(clippy::too_many_arguments)]
+				pub fn new(#(#new_args,)*) -> Self {
+					Self {
+						#(#all_field_inits,)*
+					}
+				}
+			}
+		}
+	});
+
+	let mapped_struct_export = element_wise.then(|| {
+		quote! {
+			#cfg
+			#[doc(hidden)]
+			pub use #mod_name::#mapped_struct_name;
+		}
+	});
 
 	let display_name_header = format!("# {display_name}");
 	let mut description_doc_attrs = vec![quote!(#[doc = #display_name_header]), quote!(#[doc = ""])];
@@ -440,6 +559,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#eval_impl
 		}
 
+		#mapped_node_impl
+
 		#cfg
 		const fn #identifier() -> #core_types::ProtoNodeIdentifier {
 			#core_types::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
@@ -448,6 +569,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#cfg
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
+
+		#mapped_struct_export
 
 		#[doc(hidden)]
 		#node_input_accessor
@@ -483,6 +606,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 			}
+
+			#mapped_struct_def
 
 			#register_node_impl
 
@@ -549,6 +674,13 @@ fn generate_node_input_references(
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
 			}
 			.clone();
+
+			// The element-wise primary input's document wire carries the mapped List form
+			if input_index == 0
+				&& let Some(element_ty) = primary_item_element(parsed)
+			{
+				ty = parse_quote!(#core_types::list::List<#element_ty>);
+			}
 
 			// We only want the necessary generics.
 			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
@@ -619,7 +751,47 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 	(fn_generic_params, phantom_data_declerations)
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
+/// The wire container a generated node variant is registered with, wrapping the kernel's primary input element type.
+#[derive(Clone, Copy, PartialEq)]
+enum WireWrapper {
+	Item,
+	List,
+}
+
+impl WireWrapper {
+	fn apply(self, core_types: &TokenStream2, ty: &syn::Type) -> syn::Type {
+		match self {
+			WireWrapper::Item => parse_quote!(#core_types::list::Item<#ty>),
+			WireWrapper::List => parse_quote!(#core_types::list::List<#ty>),
+		}
+	}
+}
+
+/// Returns the element type of the node's primary input if it is declared `Item<T>`, which marks the node as element-wise.
+fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
+	let field = parsed.fields.first()?;
+	match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.is_data_field => peel_item(ty),
+		_ => None,
+	}
+}
+
+/// Extracts `T` from an `Item<T>` type, if the type is one.
+fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+	let syn::Type::Path(type_path) = ty else { return None };
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != "Item" {
+		return None;
+	}
+
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else { return None };
+	match arguments.args.first()? {
+		GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	}
+}
+
+fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, mapped_struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
 	// On native, `register_node` and `register_metadata` run automatically via `#[ctor]`.
 	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
 	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
@@ -675,50 +847,70 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
 
+	// Element-wise nodes register two wire variants per implementations row; all other nodes register one
+	let gcore = quote!(gcore);
+	let wire_variants: &[Option<WireWrapper>] = match primary_item_element(parsed).is_some() {
+		true => &[Some(WireWrapper::Item), Some(WireWrapper::List)],
+		false => &[None],
+	};
+
 	for i in 0..max_implementations.unwrap_or(0) {
-		let mut temp_constructors = Vec::new();
-		let mut temp_node_io = Vec::new();
-		let mut panic_node_types = Vec::new();
+		for wire in wire_variants {
+			let mut temp_constructors = Vec::new();
+			let mut temp_node_io = Vec::new();
+			let mut panic_node_types = Vec::new();
 
-		for (j, types) in parameter_types.iter().enumerate() {
-			let field_name = field_names[j];
-			let (input_type, output_type) = &types[i.min(types.len() - 1)];
+			for (j, types) in parameter_types.iter().enumerate() {
+				let field_name = field_names[j];
+				let (input_type, output_type) = &types[i.min(types.len() - 1)];
+				let output_type = match (j, wire) {
+					(0, Some(wrap)) => {
+						let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+						wrap.apply(&gcore, &element_ty)
+					}
+					_ => output_type.clone(),
+				};
 
-			let node = matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
+				let node = matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
 
-			let downcast_node = quote!(
-				let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
-			);
-			if node && !parsed.is_async {
-				return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
-			}
-			temp_constructors.push(downcast_node);
-			temp_node_io.push(quote!(fn_type_fut!(#input_type, #output_type, alias: #output_type)));
-			panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
-		}
-		let input_type = match parsed.input.implementations.is_empty() {
-			true => parsed.input.ty.clone(),
-			false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
-		};
-		constructors.push(quote!(
-			(
-				|args| {
-					Box::pin(async move {
-						#(#temp_constructors;)*
-						let node = #struct_name::new(#(#field_names,)*);
-						// try polling futures
-						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox<'_>
-					})
-				}, {
-					let node = #struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
-					let params = vec![#(#temp_node_io,)*];
-					let mut node_io = NodeIO::<'_, #input_type>::to_async_node_io(&node, params);
-					node_io
-
+				let downcast_node = quote!(
+					let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
+				);
+				if node && !parsed.is_async {
+					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
 				}
-			)
-		));
+				temp_constructors.push(downcast_node);
+				temp_node_io.push(quote!(fn_type_fut!(#input_type, #output_type, alias: #output_type)));
+				panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
+			}
+			let input_type = match parsed.input.implementations.is_empty() {
+				true => parsed.input.ty.clone(),
+				false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
+			};
+			let variant_struct_name = match wire {
+				Some(WireWrapper::List) => mapped_struct_name,
+				_ => struct_name,
+			};
+			constructors.push(quote!(
+				(
+					|args| {
+						Box::pin(async move {
+							#(#temp_constructors;)*
+							let node = #variant_struct_name::new(#(#field_names,)*);
+							// try polling futures
+							let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
+							Box::new(any) as TypeErasedBox<'_>
+						})
+					}, {
+						let node = #variant_struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
+						let params = vec![#(#temp_node_io,)*];
+						let mut node_io = NodeIO::<'_, #input_type>::to_async_node_io(&node, params);
+						node_io
+
+					}
+				)
+			));
+		}
 	}
 	let native = quote! {
 	#[cfg_attr(not(target_family = "wasm"), ctor)]

@@ -11,6 +11,8 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_primary_input_expose,
 		validate_min_max,
 		validate_range_slider_bounds,
+		validate_no_item_parameters,
+		validate_element_wise,
 	];
 
 	for validator in validators {
@@ -18,6 +20,72 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
+	// The primary input (index 0) may be Item<T>, which declares the node as an element-wise kernel
+	for field in parsed.fields.iter().skip(1) {
+		let ParsedField {
+			ty: ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }),
+			pat_ident,
+			..
+		} = field
+		else {
+			continue;
+		};
+
+		if outer_wrapper_is(ty, "Item") || implementations.iter().any(|ty| outer_wrapper_is(ty, "Item")) {
+			emit_error!(
+				pat_ident.span(),
+				"Parameter `{}` must not be typed `Item<T>`.",
+				pat_ident.ident;
+				help = "Only the primary input may be typed `Item<T>`, which declares the node as an element-wise kernel.";
+			);
+		}
+	}
+}
+
+fn validate_element_wise(parsed: &ParsedNodeFn) {
+	let Some(primary) = parsed.fields.first() else { return };
+	let ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) = &primary.ty else {
+		return;
+	};
+
+	if !outer_wrapper_is(ty, "Item") {
+		if outer_wrapper_is(&parsed.output_type, "Item") {
+			emit_error!(
+				parsed.output_type.span(),
+				"Returning `Item<T>` requires the primary input to also be typed `Item<T>`, declaring an element-wise node"
+			);
+		}
+		return;
+	}
+
+	if primary.is_data_field {
+		emit_error!(primary.pat_ident.span(), "The `Item<T>` primary input `{}` cannot be a #[data] field", primary.pat_ident.ident);
+	}
+
+	if parsed.attributes.shader_node.is_some() {
+		emit_error!(parsed.fn_name.span(), "An element-wise `Item<T>` primary input cannot be combined with `shader_node`");
+	}
+
+	if implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "Item")) {
+		emit_error!(
+			primary.pat_ident.span(),
+			"The #[implementations(...)] of `{}` must be bare element types; the macro derives the Item and List wire forms",
+			primary.pat_ident.ident
+		);
+	}
+
+	if !outer_wrapper_is(&parsed.output_type, "Item") {
+		emit_error!(parsed.output_type.span(), "An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`");
+	}
+}
+
+/// Returns whether the type's outermost path segment is the given wrapper name, like `Item` in `Item<T>`.
+fn outer_wrapper_is(ty: &Type, wrapper: &str) -> bool {
+	let Type::Path(type_path) = ty else { return false };
+	type_path.path.segments.last().is_some_and(|segment| segment.ident == wrapper)
 }
 
 fn validate_min_max(parsed: &ParsedNodeFn) {
