@@ -2,7 +2,6 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
 use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
-use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::raster::Image;
@@ -38,12 +37,6 @@ pub enum PortfolioMessage {
 	},
 	CloseDocumentWithConfirmation {
 		document_id: DocumentId,
-	},
-	Copy {
-		clipboard: Clipboard,
-	},
-	Cut {
-		clipboard: Clipboard,
 	},
 	DeleteDocument {
 		document_id: DocumentId,
@@ -113,31 +106,19 @@ pub enum PortfolioMessage {
 		name: Option<String>,
 		svg: String,
 	},
-	PasteSerializedData {
-		data: String,
-	},
-	PasteSerializedVector {
-		data: String,
-	},
-	PasteImage {
+	InsertImage {
 		name: Option<String>,
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
-	PasteSvg {
+	InsertSvg {
 		name: Option<String>,
 		svg: String,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
-	// TODO: Unused except by tests, remove?
-	PasteIntoFolder {
-		clipboard: Clipboard,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
-	CenterPastedLayers {
+	CenterLayers {
 		layers: Vec<LayerNodeIdentifier>,
 	},
 	PrevDocument,

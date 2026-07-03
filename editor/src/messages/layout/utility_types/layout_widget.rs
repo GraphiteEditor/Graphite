@@ -370,14 +370,25 @@ pub struct WidgetTable {
 	pub unstyled: bool,
 }
 
+/// A collapsible Properties panel section for a single node: a header with its name and pin, delete, and visibility controls, above its input parameter widgets.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetSection {
+	/// The node's name shown in the section header: its given alias with the implementation name in parentheses, or just the implementation name.
 	pub name: String,
+	/// The node definition's description, shown as the header's tooltip (empty when it has none).
 	pub description: String,
+	/// Whether the node is visible rather than hidden (shown as the eye icon).
 	pub visible: bool,
+	/// Whether the node is pinned, keeping its section shown in the Properties panel when nothing is selected (shown as the pin icon).
 	pub pinned: bool,
+	/// Whether this section can be dragged to reorder it within its layer's chain of nodes (true for a layer chain's nodes, but not its terminal layer node).
+	pub draggable: bool,
+	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
+	pub expanded: bool,
+	/// The ID of the node whose properties this section displays.
 	pub id: u64,
+	/// The node's properties content, rendered as the section's body when expanded.
 	pub layout: Layout,
 }
 
@@ -405,12 +416,14 @@ impl LayoutGroup {
 		Self::Table(WidgetTable { rows, unstyled })
 	}
 
-	pub fn section(name: impl Into<String>, description: impl Into<String>, visible: bool, pinned: bool, id: u64, layout: Layout) -> Self {
+	pub fn section(name: impl Into<String>, description: impl Into<String>, visible: bool, pinned: bool, expanded: bool, id: u64, layout: Layout) -> Self {
 		Self::Section(WidgetSection {
 			name: name.into(),
 			description: description.into(),
 			visible,
 			pinned,
+			draggable: false,
+			expanded,
 			id,
 			layout,
 		})
@@ -507,6 +520,8 @@ impl Diffable for LayoutGroup {
 					description: current_description,
 					visible: current_visible,
 					pinned: current_pinned,
+					draggable: current_draggable,
+					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
 				}),
@@ -515,6 +530,8 @@ impl Diffable for LayoutGroup {
 					description: new_description,
 					visible: new_visible,
 					pinned: new_pinned,
+					draggable: new_draggable,
+					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
 				}),
@@ -526,6 +543,8 @@ impl Diffable for LayoutGroup {
 					|| *current_description != new_description
 					|| *current_visible != new_visible
 					|| *current_pinned != new_pinned
+					|| *current_draggable != new_draggable
+					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
 					// Update self to reflect new changes
@@ -533,6 +552,8 @@ impl Diffable for LayoutGroup {
 					current_description.clone_from(&new_description);
 					*current_visible = new_visible;
 					*current_pinned = new_pinned;
+					*current_draggable = new_draggable;
+					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
 
@@ -542,6 +563,8 @@ impl Diffable for LayoutGroup {
 						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
+						draggable: new_draggable,
+						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,
 					})

@@ -2202,7 +2202,7 @@ impl Render for List<GradientStops> {
 				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 				..Default::default()
 			});
-			let brush_transform = kurbo::Affine::new((gradient_transform).to_cols_array());
+			let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_type).to_cols_array());
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;

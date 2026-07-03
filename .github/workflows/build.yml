@@ -302,6 +302,7 @@ jobs:
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
       BINARYEN_VERSION: "130"
+      CARGO_ABOUT_VERSION: "0.9.0"
 
     steps:
       - name: 📥 Clone repository
@@ -358,7 +359,7 @@ jobs:
           tar -xzf "$env:RUNNER_TEMP\binaryen.tar.gz" -C $env:RUNNER_TEMP
           "$env:RUNNER_TEMP\binaryen-version_$env:BINARYEN_VERSION\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-          cargo binstall --no-confirm --force cargo-about
+          cargo binstall --no-confirm --force "cargo-about@$env:CARGO_ABOUT_VERSION"
           cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
 
       - name: 🏗 Build Windows bundle
@@ -496,6 +497,7 @@ jobs:
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
       BINARYEN_VERSION: "130"
+      CARGO_ABOUT_VERSION: "0.9.0"
 
     steps:
       - name: 📥 Clone repository
@@ -554,7 +556,7 @@ jobs:
           fi
           echo "$BINARYEN_DIR/bin" >> "$GITHUB_PATH"
 
-          cargo binstall --no-confirm --force cargo-about
+          cargo binstall --no-confirm --force "cargo-about@${CARGO_ABOUT_VERSION}"
           cargo binstall --no-confirm --force "wasm-bindgen-cli@${WASM_BINDGEN_CLI_VERSION}"
 
       - name: 🏗 Build Mac bundle

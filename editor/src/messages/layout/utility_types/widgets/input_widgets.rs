@@ -612,6 +612,16 @@ pub enum SpectrumInputUpdate {
 	DeleteMarker {
 		index: u32,
 	},
+	/// Insert a copy (same color and midpoint) of the marker at `index` at `position`, keeping the marker at `index` active.
+	InsertDuplicate {
+		index: u32,
+		position: f64,
+	},
+	/// Remove the marker at `index` while keeping the currently active marker active (renumbered to account for the removal).
+	/// Used to un-duplicate when Alt is released mid-drag, deleting the frozen copy left by [`InsertDuplicate`](Self::InsertDuplicate).
+	RemoveDuplicate {
+		index: u32,
+	},
 	/// Emitted when the user double-clicks a marker. The consumer decides what (if anything) to reset the marker to.
 	ResetMarker {
 		index: u32,

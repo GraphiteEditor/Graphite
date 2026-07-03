@@ -58,7 +58,7 @@ impl graphene_hash::CacheHash for Vector {
 impl core_types::ops::FromAnchorPosition for Vector {
 	fn from_anchor_position(position: DVec2) -> Self {
 		let mut point_domain = PointDomain::new();
-		point_domain.push(PointId::generate(), position);
+		point_domain.push(PointId::ZERO, position);
 
 		Self { point_domain, ..Default::default() }
 	}
@@ -646,7 +646,7 @@ mod tests {
 		let vector = Vector::from_anchor_position(DVec2::new(3., 4.));
 
 		assert_eq!(vector.point_domain.positions(), [DVec2::new(3., 4.)]);
-		assert_eq!(vector.point_domain.ids().len(), 1);
+		assert_eq!(vector.point_domain.ids(), [PointId::ZERO], "expected the anchor position to be assigned the default PointId::ZERO",);
 		assert!(vector.segment_domain.ids().is_empty());
 	}
 }
