@@ -8,7 +8,7 @@ use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::Texture;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::gradient::GradientStops;
-use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
+use graphene_std::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 #[cfg(target_family = "wasm")]
 use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
 #[cfg(feature = "gpu")]
@@ -291,6 +291,59 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Option<&wgpu_executor::WgpuExecutor>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuPipelineCache]),
 	];
+	// A rank promotion adapter registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged
+	macro_rules! promote_node {
+		(element: $element:ty) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+			promote_node!(from: $element, to: Item<$element>, element: $element),
+			promote_node!(from: Item<$element>, to: Item<$element>, element: $element),
+			promote_node!(from: List<$element>, to: List<$element>, element: $element),
+			];
+			entries
+		}};
+		(from: $from:ty, to: $to:ty, element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::PromoteNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::IntoNode::new(
+							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+						);
+						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::IntoNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+					);
+					let params = vec![fn_type_fut!(Context, $from)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
+	// =============
+	// PROMOTE NODES
+	// =============
+	node_types.extend(
+		[
+			promote_node!(element: Vector),
+			promote_node!(element: Raster<CPU>),
+			promote_node!(element: Graphic),
+			promote_node!(element: Color),
+			promote_node!(element: GradientStops),
+			promote_node!(element: String),
+			promote_node!(element: f64),
+			promote_node!(element: DVec2),
+			promote_node!(element: bool),
+		]
+		.into_iter()
+		.flatten(),
+	);
 	// =============
 	// CONVERT NODES
 	// =============
@@ -332,7 +385,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		let mut new_name = id.as_str().replace('\n', " ");
 
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode"))
+		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode") || new_name.contains("PromoteNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
 		{
 			new_name = path.to_string();
