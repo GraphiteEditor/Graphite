@@ -1145,28 +1145,22 @@ async fn auto_tangents(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn bounding_box(_: impl Ctx, content: List<Vector>) -> List<Vector> {
-	content
-		.into_iter()
-		.map(|mut row| {
-			let vector = std::mem::take(row.element_mut());
-
-			let mut result = vector
-				.bounding_box_rect()
-				.map(|bbox| {
-					let mut vector = Vector::default();
-					vector.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
-					vector
-				})
-				.unwrap_or_default();
-
-			result.stroke = vector.stroke.clone();
-			result.set_stroke_transform(DAffine2::IDENTITY);
-
-			*row.element_mut() = result;
-			row
+async fn bounding_box(_: impl Ctx, mut content: Item<Vector>) -> Item<Vector> {
+	let mut result = content
+		.element()
+		.bounding_box_rect()
+		.map(|bbox| {
+			let mut vector = Vector::default();
+			vector.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
+			vector
 		})
-		.collect()
+		.unwrap_or_default();
+
+	result.stroke = std::mem::take(&mut content.element_mut().stroke);
+	result.set_stroke_transform(DAffine2::IDENTITY);
+
+	*content.element_mut() = result;
+	content
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
@@ -3103,14 +3097,9 @@ fn bevel(_: impl Ctx, source: List<Vector>, #[default(10.)] distance: Length) ->
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn close_path(_: impl Ctx, source: List<Vector>) -> List<Vector> {
+fn close_path(_: impl Ctx, mut source: Item<Vector>) -> Item<Vector> {
+	source.element_mut().close_subpaths();
 	source
-		.into_iter()
-		.map(|mut row| {
-			row.element_mut().close_subpaths();
-			row
-		})
-		.collect()
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
@@ -3292,8 +3281,8 @@ mod test {
 
 	#[tokio::test]
 	async fn bounding_box() {
-		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
-		let bounding_box = bounding_box.element(0).unwrap();
+		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)))).await;
+		let bounding_box = bounding_box.element();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
 			.region_manipulator_groups()
@@ -3310,7 +3299,7 @@ mod test {
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = List::new_from_element(square);
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
-		let bounding_box = BoundingBoxNode { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
+		let bounding_box = BoundingBoxNodeMapped { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box

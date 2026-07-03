@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
-use core_types::list::List;
+use core_types::list::Item;
 use core_types::registry::types::PixelLength;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
@@ -90,7 +90,7 @@ fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Imag
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: List<Raster<CPU>>,
+	image_frame: Item<Raster<CPU>>,
 	/// The radius of the blur kernel.
 	#[range]
 	#[hard(0..)]
@@ -100,26 +100,19 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> List<Raster<CPU>> {
-	image_frame
-		.into_iter()
-		.map(|mut row| {
-			let image = row.element().clone();
+) -> Item<Raster<CPU>> {
+	let (image, attributes) = image_frame.into_parts();
 
-			// Run blur algorithm
-			let blurred_image = if radius < 0.1 {
-				// Minimum blur radius
-				image.clone()
-			} else if box_blur {
-				Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
-			} else {
-				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
-			};
+	let blurred_image = if radius < 0.1 {
+		// Minimum blur radius
+		image
+	} else if box_blur {
+		Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
+	} else {
+		Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
+	};
 
-			*row.element_mut() = blurred_image;
-			row
-		})
-		.collect()
+	Item::from_parts(blurred_image, attributes)
 }
 
 /// Applies a median filter to reduce noise while preserving edges.
@@ -127,30 +120,23 @@ async fn blur(
 async fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.
-	image_frame: List<Raster<CPU>>,
+	image_frame: Item<Raster<CPU>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
 	#[range]
 	#[hard(0..)]
 	#[soft(..50)]
 	radius: PixelLength,
-) -> List<Raster<CPU>> {
-	image_frame
-		.into_iter()
-		.map(|mut row| {
-			let image = row.element().clone();
+) -> Item<Raster<CPU>> {
+	let (image, attributes) = image_frame.into_parts();
 
-			// Apply median filter
-			let filtered_image = if radius < 0.5 {
-				// Minimum filter radius
-				image.clone()
-			} else {
-				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32))
-			};
+	let filtered_image = if radius < 0.5 {
+		// Minimum filter radius
+		image
+	} else {
+		Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32))
+	};
 
-			*row.element_mut() = filtered_image;
-			row
-		})
-		.collect()
+	Item::from_parts(filtered_image, attributes)
 }
 
 // 1D gaussian kernel

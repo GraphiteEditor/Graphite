@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::color::Color;
-use core_types::list::{List, ListDyn};
+use core_types::list::{Item, List, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
@@ -57,57 +57,56 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 fn reset_transform<T>(
 	_: impl Ctx,
 	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Graphic,
+		Vector,
+		Raster<CPU>,
+		Raster<GPU>,
+		Color,
+		GradientStops,
 	)]
-	mut content: List<T>,
+	mut content: Item<T>,
 	#[default(true)] reset_translation: bool,
 	reset_rotation: bool,
 	reset_scale: bool,
-) -> List<T> {
-	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-		if reset_translation {
-			row_transform.translation = DVec2::ZERO;
-		}
+) -> Item<T> {
+	let item_transform = content.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
 
-		match (reset_rotation, reset_scale) {
-			(true, true) => row_transform.matrix2 = DMat2::IDENTITY,
-			(true, false) => {
-				let scale = row_transform.scale_magnitudes();
-				row_transform.matrix2 = DMat2::from_diagonal(scale);
-			}
-			(false, true) => {
-				let rotation = row_transform.decompose_rotation();
-				row_transform.matrix2 = DMat2::from_angle(rotation);
-			}
-			(false, false) => {}
-		}
+	if reset_translation {
+		item_transform.translation = DVec2::ZERO;
 	}
+
+	match (reset_rotation, reset_scale) {
+		(true, true) => item_transform.matrix2 = DMat2::IDENTITY,
+		(true, false) => {
+			let scale = item_transform.scale_magnitudes();
+			item_transform.matrix2 = DMat2::from_diagonal(scale);
+		}
+		(false, true) => {
+			let rotation = item_transform.decompose_rotation();
+			item_transform.matrix2 = DMat2::from_angle(rotation);
+		}
+		(false, false) => {}
+	}
+
 	content
 }
 
-/// Overwrites the transform of each item in the input `List` with the specified transform.
+/// Overwrites the transform of the input content with the specified transform.
 #[node_macro::node(category("Math: Transform"))]
 fn replace_transform<T>(
 	_: impl Ctx + InjectFootprint,
 	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Graphic,
+		Vector,
+		Raster<CPU>,
+		Raster<GPU>,
+		Color,
+		GradientStops,
 	)]
-	mut content: List<T>,
+	mut content: Item<T>,
 	transform: DAffine2,
-) -> List<T> {
-	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-		*row_transform = transform.transform();
-	}
+) -> Item<T> {
+	content.set_attribute(ATTR_TRANSFORM, transform.transform());
 	content
 }
 
