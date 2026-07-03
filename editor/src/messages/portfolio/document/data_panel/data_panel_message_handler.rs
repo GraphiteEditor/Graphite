@@ -3,6 +3,7 @@ use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup,
 use crate::messages::portfolio::document::data_panel::{DataPanelMessage, PathStep};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{format_rounded, round_away_float_noise};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
@@ -623,6 +624,7 @@ impl TableItemLayout for Vector {
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
+					let position = DVec2::new(round_away_float_noise(position.x), round_away_float_noise(position.y));
 					vec![
 						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
 						TextLabel::new(format!("{position}")).narrow(true).widget_instance(),
@@ -1339,19 +1341,17 @@ fn format_transform_matrix(transform: DAffine2) -> String {
 	} else {
 		transform.to_scale_angle_translation()
 	};
-	let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
-	let round = |x: f64| (x * 1e3).round() / 1e3;
+	let rotation = format_rounded(angle.to_degrees(), 3);
 
 	format!(
-		"Location: ({} px, {} px) — Rotation: {rotation:2}° — Scale: ({}x, {}x)",
-		round(translation.x),
-		round(translation.y),
-		round(scale.x),
-		round(scale.y)
+		"Location: ({} px, {} px) — Rotation: {rotation}° — Scale: ({}x, {}x)",
+		format_rounded(translation.x, 3),
+		format_rounded(translation.y, 3),
+		format_rounded(scale.x, 3),
+		format_rounded(scale.y, 3)
 	)
 }
 
 fn format_dvec2(value: DVec2) -> String {
-	let round = |x: f64| (x * 1e3).round() / 1e3;
-	format!("({} px, {} px)", round(value.x), round(value.y))
+	format!("({} px, {} px)", format_rounded(value.x, 3), format_rounded(value.y, 3))
 }
