@@ -17,12 +17,13 @@ use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
-use rendering::usvg_utils::extract_graphite_gradient_stops;
-use rendering::usvg_utils::{ParsedSvgNode, extract_usvg_node};
+use rendering::usvg_utils::{extract_all_paths, extract_usvg_node};
 use repeat_nodes::raster_types::Bitmap;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use vector_types::Vector;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
+use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
@@ -33,7 +34,6 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::vector::{PathStyle, PointDomain};
 use vector_types::vectorize_config;
 use vtracer::{ColorImage, Config, convert};
 
@@ -890,52 +890,22 @@ where
 	result
 }
 
-fn extract_all_paths(parsed_node: ParsedSvgNode, vectors: &mut List<Vector>, vectorize_mode: vectorize_config::VectorizeMode) {
-	match parsed_node {
-		ParsedSvgNode::Group(group) => {
-			for child in group.children {
-				// if let ParsedSvgNode::Path(ref path) = child {
-				// 	log::debug!("Reading path (in a group) {} from a total of {}.", i, svg_tree.root().children().len());
-				// 	i += 1;
-				// }
-				extract_all_paths(child, vectors, vectorize_mode);
-			}
-		}
-		ParsedSvgNode::Path(path) => {
-			let mut child_subpaths = path.subpaths.clone();
-			child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
-			let mut vector = Vector::from_subpaths(child_subpaths, false);
-			if let vectorize_config::VectorizeMode::FullImage = vectorize_mode {
-				vector.style = PathStyle {
-					fill: path.fill.unwrap_or(Fill::None),
-					stroke: path.stroke,
-				};
-			}
-
-			vectors.push(Item::new_from_element(vector));
-			// log::debug!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
-			// i += 1;
-		}
-		_ => {}
-	}
-}
-
-#[node_macro::node(category("Vector"), path(core_types::vector), properties("vectorize_properties"))]
+#[node_macro::node(category("Vector"), path(core_types::vector), properties("vectorize_properties"), memoize)]
 pub fn vectorize(
 	_ctx: impl Ctx,
 	image: List<Raster<CPU>>,
 	vectorize_mode: vectorize_config::VectorizeMode,
 	color_mode: vectorize_config::ColorMode,
 	hierarchical: vectorize_config::Hierarchical,
-	#[default(4.)] filter_speckle: f64,
-	#[default(6.)] color_precision: f64,
-	#[default(16.)] layer_difference: f64,
+	#[default(10.)] filter_speckle: f64,
+	#[default(8.)] color_precision: f64,
+	#[default(48.)] layer_difference: f64,
 	path_simplify_mode: vectorize_config::PathSimplifyMode,
 	#[default(60.)] corner_threshold: f64,
 	#[default(4.)] length_threshold: f64,
 	#[default(10.)] max_iterations: f64,
 	#[default(45.)] splice_threshold: f64,
-	#[default(6.)] path_precision: f64,
+	#[default(2.)] path_precision: f64,
 ) -> List<Vector> {
 	image.into_iter().fold(List::new(), |mut vectors, row| {
 		// let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -963,20 +933,18 @@ pub fn vectorize(
 		let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
 			Ok(t) => t,
 			Err(e) => {
-				// TODO: use proper error statements
-				panic!("Failed to create a usvg tree:\n{e}");
+				log::error!("Failed to create a usvg tree:\n{e}");
+				return List::<Vector>::new();
 			}
 		};
 		// log::debug!("vectorized_image: {}", image_svg);
 
-		// let mut subpaths: Vec<Subpath<PointId>> = vec![];
-		let graphite_gradient_stops = extract_graphite_gradient_stops(&image_svg);
+		let graphite_gradient_stops = HashMap::new();
+		let parsed_root = extract_usvg_node(&usvg::Node::Group(Box::new(svg_tree.root().clone())), &graphite_gradient_stops);
 		// let mut i = 1;
-		for child in svg_tree.root().children() {
-			let parsed_child = extract_usvg_node(child, &graphite_gradient_stops);
-			extract_all_paths(parsed_child, &mut vectors, vectorize_mode);
-		}
-		return vectors;
+		extract_all_paths(parsed_root, &mut vectors, vectorize_mode);
+
+		vectors
 	})
 }
 

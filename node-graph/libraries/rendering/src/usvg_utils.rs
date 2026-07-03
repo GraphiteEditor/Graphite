@@ -1,12 +1,20 @@
 use std::collections::HashMap;
 
-use core_types::{Color, math::quad::Quad};
+use core_types::{
+	Color,
+	list::{Item, List},
+	math::quad::Quad,
+};
 use glam::{DAffine2, DVec2};
 use log::warn;
 use vector_types::{
+	Vector,
 	subpath::{ManipulatorGroup, Subpath},
-	vector::PointId,
-	vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
+	vector::{
+		PathStyle, PointId,
+		style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
+	},
+	vectorize_config,
 };
 
 pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
@@ -308,5 +316,40 @@ pub fn extract_usvg_node(node: &usvg::Node, graphite_gradient_stops: &HashMap<St
 			};
 			ParsedSvgNode::Text(Box::new(text))
 		}
+	}
+}
+
+pub fn extract_all_paths(
+	parsed_node: ParsedSvgNode,
+	vectors: &mut List<Vector>,
+	vectorize_mode: vectorize_config::VectorizeMode,
+	//  mut i: i32
+) {
+	match parsed_node {
+		ParsedSvgNode::Group(group) => {
+			for child in group.children {
+				// if let ParsedSvgNode::Path(ref path) = child {
+				// 	log::debug!("Reading path (in a group) {} from a total of {}.", i, svg_tree.root().children().len());
+				// 	i += 1;
+				// }
+				extract_all_paths(child, vectors, vectorize_mode);
+			}
+		}
+		ParsedSvgNode::Path(path) => {
+			let mut child_subpaths = path.subpaths.clone();
+			child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
+			let mut vector = Vector::from_subpaths(child_subpaths, false);
+			if let vectorize_config::VectorizeMode::FullImage = vectorize_mode {
+				vector.style = PathStyle {
+					fill: path.fill.unwrap_or(Fill::None),
+					stroke: path.stroke,
+				};
+			}
+
+			vectors.push(Item::new_from_element(vector));
+			// log::debug!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
+			// i += 1;
+		}
+		_ => {}
 	}
 }
