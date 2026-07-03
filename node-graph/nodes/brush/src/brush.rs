@@ -223,10 +223,7 @@ async fn brush(
 
 	let mut brush_plan = cache.compute_brush_plan(list_item, &draw_strokes);
 
-	// TODO: Find a way to handle more than one item
-	let Some(mut actual_image) = extend_image_to_bounds((), List::new_from_item(brush_plan.background), background_bounds).into_iter().next() else {
-		return List::new();
-	};
+	let mut actual_image = extend_image_to_bounds((), brush_plan.background, background_bounds);
 
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
 	for (idx, stroke) in brush_plan.strokes.into_iter().enumerate() {
@@ -263,7 +260,7 @@ async fn brush(
 			);
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				extend_image_to_bounds((), List::new_from_item(target), stroke_to_layer)
+				List::new_from_item(extend_image_to_bounds((), target, stroke_to_layer))
 			} else {
 				empty_image((), stroke_to_layer, List::new_from_element(Color::TRANSPARENT))
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())

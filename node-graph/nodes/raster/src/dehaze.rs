@@ -1,5 +1,5 @@
 use core_types::context::Ctx;
-use core_types::list::List;
+use core_types::list::Item;
 use core_types::registry::types::Percentage;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
@@ -8,33 +8,28 @@ use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentage) -> List<Raster<CPU>> {
-	image_frame
-		.into_iter()
-		.map(|mut row| {
-			let image = std::mem::replace(row.element_mut(), Raster::new_cpu(Image::default()));
-			// Prepare the image data for processing
-			let image_data = bytemuck::cast_vec(image.data.clone());
-			let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
-			let dynamic_image: DynamicImage = image_buffer.into();
+async fn dehaze(_: impl Ctx, image_frame: Item<Raster<CPU>>, strength: Percentage) -> Item<Raster<CPU>> {
+	let (image, attributes) = image_frame.into_parts();
 
-			// Run the dehaze algorithm
-			let dehazed_dynamic_image = dehaze_image(dynamic_image, strength / 100.);
+	// Prepare the image data for processing
+	let image_data = bytemuck::cast_vec(image.data.clone());
+	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
+	let dynamic_image: DynamicImage = image_buffer.into();
 
-			// Prepare the image data for returning
-			let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
-			let color_vec = bytemuck::cast_vec(buffer);
-			let dehazed_image = Image {
-				width: image.width,
-				height: image.height,
-				data: color_vec,
-				base64_string: None,
-			};
+	// Run the dehaze algorithm
+	let dehazed_dynamic_image = dehaze_image(dynamic_image, strength / 100.);
 
-			*row.element_mut() = Raster::new_cpu(dehazed_image);
-			row
-		})
-		.collect()
+	// Prepare the image data for returning
+	let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
+	let color_vec = bytemuck::cast_vec(buffer);
+	let dehazed_image = Image {
+		width: image.width,
+		height: image.height,
+		data: color_vec,
+		base64_string: None,
+	};
+
+	Item::from_parts(Raster::new_cpu(dehazed_image), attributes)
 }
 
 // There is no real point in modifying these values because they do not change the final result all that much.
