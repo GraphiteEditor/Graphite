@@ -326,6 +326,33 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
+	// A singleton raise adapter inserted by type resolution when an Item wire feeds a List connector
+	macro_rules! item_to_list_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ItemToListNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::PromoteNode::new(
+							graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
+						);
+						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::PromoteNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
+					);
+					let params = vec![fn_type_fut!(Context, Item<$element>)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
 	// =============
 	// PROMOTE NODES
 	// =============
@@ -344,6 +371,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		.into_iter()
 		.flatten(),
 	);
+	let item_to_list_nodes: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+		item_to_list_node!(element: Vector),
+		item_to_list_node!(element: Raster<CPU>),
+		item_to_list_node!(element: Graphic),
+		item_to_list_node!(element: Color),
+		item_to_list_node!(element: GradientStops),
+		item_to_list_node!(element: String),
+		item_to_list_node!(element: f64),
+		item_to_list_node!(element: DVec2),
+		item_to_list_node!(element: bool),
+	];
+	node_types.extend(item_to_list_nodes);
 	// =============
 	// CONVERT NODES
 	// =============
@@ -385,7 +424,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		let mut new_name = id.as_str().replace('\n', " ");
 
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode") || new_name.contains("PromoteNode"))
+		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode") || new_name.contains("PromoteNode") || new_name.contains("ItemToListNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
 		{
 			new_name = path.to_string();

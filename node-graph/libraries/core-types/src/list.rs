@@ -1392,6 +1392,12 @@ impl<T> From<T> for Item<T> {
 	}
 }
 
+impl<T> From<Item<T>> for List<T> {
+	fn from(item: Item<T>) -> Self {
+		Self::new_from_item(item)
+	}
+}
+
 unsafe impl<T: StaticTypeSized> StaticType for Item<T> {
 	type Static = Item<T::Static>;
 }
