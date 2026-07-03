@@ -1386,6 +1386,10 @@ impl<T> Item<T> {
 	}
 }
 
+unsafe impl<T: StaticTypeSized> StaticType for Item<T> {
+	type Static = Item<T::Static>;
+}
+
 // ===========
 // ItemIter<T>
 // ===========
