@@ -485,6 +485,27 @@ mod test {
 	}
 
 	#[test]
+	fn bare_value_promotes_to_item_wire() {
+		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
+
+		let mut promote_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		promote_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::PromoteNode<f64>");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), promote_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A bare f64 should resolve the promotion variant");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion constructor should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert_eq!(result.map(|item| *item.element()), Some(3.), "The bare value should arrive wrapped as an Item");
+	}
+
+	#[test]
 	fn list_wire_variant_resolves_and_executes() {
 		let tree = compile_bounding_box_network(TaggedValue::TypeDefault(descriptor!(List<Vector>)));
 

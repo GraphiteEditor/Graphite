@@ -143,9 +143,41 @@ impl Preprocessor {
 				.take(input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
+					// A field registering the Item/List wire pair gets a rank promotion adapter instead of a typed conversion
+					if inputs.len() != 1
+						&& let Some(list_input) = collapse_item_list_pair(inputs)
+					{
+						let element_name = {
+							let name = list_input.nested_type().identifier_name();
+							name.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')).unwrap_or(&name).to_string()
+						};
+						let promote_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::PromoteNode<{element_name}>"));
+
+						let document_node = if into_node_registry.keys().any(|ident| ident.as_str() == promote_node_identifier.as_str()) {
+							generated_nodes += 1;
+							let mut original_location = OriginalLocation::default();
+							original_location.auto_convert_index = Some(i);
+							DocumentNode {
+								inputs: vec![NodeInput::import(generic!(X), i)],
+								implementation: DocumentNodeImplementation::ProtoNode(promote_node_identifier),
+								visible: true,
+								original_location,
+								..Default::default()
+							}
+						} else {
+							DocumentNode {
+								inputs: vec![NodeInput::import(generic!(X), i)],
+								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
+								visible: false,
+								..Default::default()
+							}
+						};
+						return (NodeId(i as u64), document_node);
+					}
+
 					let single_wire_type = match inputs.len() {
 						1 => inputs.iter().next(),
-						_ => collapse_item_list_pair(inputs),
+						_ => None,
 					};
 					(
 						NodeId(i as u64),
