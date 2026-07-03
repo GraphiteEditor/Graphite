@@ -302,15 +302,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.iter()
 			.zip(node_generics.iter())
 			.zip(future_idents.iter())
-			.enumerate()
-			.map(|(index, ((field, name), fut_ident))| match (&field.ty, *is_async) {
+			.map(|((field, name), fut_ident)| match (&field.ty, *is_async) {
 				(ParsedFieldType::Regular(RegularParsedField { ty, .. }), _) => {
-					let ty = match (index, primary_wire) {
-						// An `Item<T>`-declared primary contributes its element type to the wire wrapping
-						(0, Some(wrap)) => {
-							let element_ty = peel_item(ty).unwrap_or_else(|| ty.clone());
-							wrap.apply(core_types, &element_ty)
-						}
+					let ty = match (peel_item(ty), primary_wire) {
+						// An `Item<T>`-declared connector contributes its element type to the wire wrapping
+						(Some(element_ty), Some(wrap)) => wrap.apply(core_types, &element_ty),
 						_ => ty.clone(),
 					};
 					let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
@@ -348,12 +344,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	let struct_where_clause = make_struct_where_clause(build_field_clauses(element_wise.then_some(WireWrapper::Item)), Vec::new());
 
-	// The mapped variant clones every non-primary parameter once per row, so those parameter types must be Clone
+	// The mapped variant clones bare parameters and clones ranked connectors' items per frame slot, so both need Clone
 	let param_clone_clauses: Vec<TokenStream2> = regular_fields
 		.iter()
-		.skip(1)
 		.filter_map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match peel_item(ty) {
+				Some(element_ty) => Some(quote!(#element_ty: Clone)),
+				None => Some(quote!(#ty: Clone)),
+			},
 			ParsedFieldType::Node(_) => None,
 		})
 		.collect();
@@ -419,21 +417,34 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#serialize_impl
 	};
 
-	// The mapped variant calls the kernel once per item of the primary input's list, broadcasting the other parameters by clone
+	// The mapped variant zips every ranked connector by frame slot (longest-list, last-element repeats), broadcasting bare parameters by clone
 	let mapped_eval_impl = element_wise.then(|| {
-		let primary_name = &regular_field_names[0];
-		let per_row_args: Vec<_> = regular_fields
+		let ranked_names: Vec<_> = regular_fields
 			.iter()
-			.enumerate()
-			.map(|(index, field)| {
+			.filter(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+			.map(|field| &field.pat_ident.ident)
+			.collect();
+
+		let per_slot_args: Vec<_> = regular_fields
+			.iter()
+			.map(|field| {
 				let name = &field.pat_ident.ident;
-				match (index, &field.ty) {
-					(0, _) => quote!(__item),
-					(_, ParsedFieldType::Regular(_)) => quote!(#name.clone()),
-					(_, ParsedFieldType::Node(_)) => quote!(#name),
+				match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some() => quote! {
+						#name.clone_item(__slot_index.min(#name.len() - 1)).expect("A zip slot index is always within bounds")
+					},
+					ParsedFieldType::Regular(_) => quote!(#name.clone()),
+					ParsedFieldType::Node(_) => quote!(#name),
 				}
 			})
 			.collect();
+
+		// The frame index is stamped onto each slot's context so lazy connectors can generate uniquely per slot
+		let has_lazy_connectors = regular_fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)));
+		let slot_context = match has_lazy_connectors {
+			true => quote!(#core_types::OwnedContextImpl::from(__input.clone()).with_index(__slot_index).into_context()),
+			false => quote!(__input.clone()),
+		};
 
 		let list_element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 
@@ -445,9 +456,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				Box::pin(async move {
 					#eval_prelude
 
-					let mut __output = #core_types::list::List::with_capacity(#primary_name.len());
-					for __item in #primary_name {
-						let __result = self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #per_row_args)*) #await_keyword;
+					let __frame_length = [#(#ranked_names.len()),*].into_iter().max().unwrap_or(0);
+					if [#(#ranked_names.len()),*].into_iter().any(|length| length == 0) {
+						return #core_types::list::List::new();
+					}
+
+					let mut __output = #core_types::list::List::with_capacity(__frame_length);
+					for __slot_index in 0..__frame_length {
+						let __slot_context = #slot_context;
+						let __result = self::#fn_name(__slot_context #(, &self.#data_field_names)* #(, #per_slot_args)*) #await_keyword;
 						__output.push(__result);
 					}
 
@@ -863,8 +880,10 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			for (j, types) in parameter_types.iter().enumerate() {
 				let field_name = field_names[j];
 				let (input_type, output_type) = &types[i.min(types.len() - 1)];
-				let output_type = match (j, wire) {
-					(0, Some(wrap)) => {
+				// Rankedness comes from the field's declared type; its #[implementations(...)] entries are bare element types
+				let field_is_ranked = matches!(&regular_fields[j].ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some());
+				let output_type = match (field_is_ranked, wire) {
+					(true, Some(wrap)) => {
 						let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 						wrap.apply(&gcore, &element_ty)
 					}

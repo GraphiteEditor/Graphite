@@ -23,7 +23,11 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
-	// The primary input (index 0) may be Item<T>, which declares the node as an element-wise kernel
+	let primary_is_item = matches!(
+		parsed.fields.first().map(|field| &field.ty),
+		Some(ParsedFieldType::Regular(RegularParsedField { ty, .. })) if outer_wrapper_is(ty, "Item")
+	);
+
 	for field in parsed.fields.iter().skip(1) {
 		let ParsedField {
 			ty: ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }),
@@ -34,13 +38,17 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 			continue;
 		};
 
-		if outer_wrapper_is(ty, "Item") || implementations.iter().any(|ty| outer_wrapper_is(ty, "Item")) {
+		// Ranked parameters join the element-wise frame, so they require an element-wise (Item-primary) node
+		if outer_wrapper_is(ty, "Item") && !primary_is_item {
 			emit_error!(
 				pat_ident.span(),
-				"Parameter `{}` must not be typed `Item<T>`.",
-				pat_ident.ident;
-				help = "Only the primary input may be typed `Item<T>`, which declares the node as an element-wise kernel.";
+				"The `Item<T>` parameter `{}` requires the node's primary input to also be typed `Item<T>`",
+				pat_ident.ident
 			);
+		}
+
+		if outer_wrapper_is(ty, "Item") && implementations.iter().any(|ty| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List")) {
+			emit_error!(pat_ident.span(), "The #[implementations(...)] of the ranked parameter `{}` must be bare element types", pat_ident.ident);
 		}
 	}
 }
