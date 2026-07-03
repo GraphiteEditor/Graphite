@@ -143,11 +143,14 @@ impl Preprocessor {
 				.take(input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
+					let single_wire_type = match inputs.len() {
+						1 => inputs.iter().next(),
+						_ => collapse_item_list_pair(inputs),
+					};
 					(
 						NodeId(i as u64),
-						match inputs.len() {
-							1 => {
-								let input = inputs.iter().next().unwrap();
+						match single_wire_type {
+							Some(input) => {
 								let input_ty = input.nested_type();
 								let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
@@ -174,7 +177,7 @@ impl Preprocessor {
 									..Default::default()
 								}
 							}
-							_ => DocumentNode {
+							None => DocumentNode {
 								inputs: vec![NodeInput::import(generic!(X), i)],
 								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 								visible: false,
@@ -299,5 +302,50 @@ impl std::fmt::Display for PreprocessorError {
 		match self {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
 		}
+	}
+}
+
+/// Collapses an element-wise node's dual wire registration for one field, `{Item<X>, List<X>}`, to its `List<X>` document wire form.
+fn collapse_item_list_pair(types: &HashSet<Type>) -> Option<&Type> {
+	fn inner_name<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a str> {
+		let Type::Concrete(descriptor) = ty.nested_type() else { return None };
+		descriptor.name.strip_prefix("core_types::list::")?.strip_prefix(wrapper)?.strip_prefix('<')?.strip_suffix('>')
+	}
+
+	let mut types_iterator = types.iter();
+	let (first, second) = (types_iterator.next()?, types_iterator.next()?);
+	if types_iterator.next().is_some() {
+		return None;
+	}
+
+	for (item, list) in [(first, second), (second, first)] {
+		if let (Some(item_inner), Some(list_inner)) = (inner_name(item, "Item"), inner_name(list, "List"))
+			&& item_inner == list_inner
+		{
+			return Some(list);
+		}
+	}
+
+	None
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn item_list_wire_pair_collapses_to_list() {
+		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+		let implementations = registry.get(&identifier).expect("Bounding Box should be registered");
+
+		let primary_types: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.inputs[0].clone()).collect();
+		assert_eq!(primary_types.len(), 2, "An element-wise node should register Item and List wire variants for its primary input");
+
+		let collapsed = collapse_item_list_pair(&primary_types).expect("The Item/List wire pair should collapse");
+		let Type::Concrete(descriptor) = collapsed.nested_type() else {
+			panic!("The collapsed wire type should be concrete")
+		};
+		assert!(descriptor.name.contains("List<"), "The collapse should pick the List form, but got {}", descriptor.name);
 	}
 }
