@@ -4,7 +4,7 @@ use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
@@ -37,6 +37,7 @@ macro_rules! for_each_type_default {
 		$action!(List<Raster<CPU>>);
 		$action!(List<Vector>);
 		$action!(List<String>);
+		$action!(Item<Vector>);
 		$action!(DocumentNode);
 		$action!(Resource);
 	};
