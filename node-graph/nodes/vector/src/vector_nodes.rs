@@ -2086,8 +2086,9 @@ async fn offset_points(
 	/// The distance to offset each anchor point along its normal. Positive values move outward, negative values move inward.
 	#[default(10.)]
 	#[unit(" px")]
-	distance: f64,
+	distance: Item<f64>,
 ) -> Item<Vector> {
+	let distance = *distance.element();
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 

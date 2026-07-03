@@ -519,6 +519,52 @@ mod test {
 		assert!(result.is_some(), "The promoted wire should execute end-to-end");
 	}
 
+	/// Builds a network feeding the given content plus a promoted bare distance into Offset Points, whose distance connector is ranked `Item<f64>`.
+	fn offset_points_network(content: TaggedValue) -> ProtoNetwork {
+		let content_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);
+		let distance_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(10.).into()), vec![NodeId(1)]);
+
+		let mut promote_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+		promote_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::PromoteNode<f64>");
+
+		let mut offset_points_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
+		offset_points_node.identifier = ProtoNodeIdentifier::new("core_types::vector::OffsetPointsNode");
+
+		ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![(NodeId(0), content_node), (NodeId(1), distance_node), (NodeId(2), promote_node), (NodeId(3), offset_points_node)],
+		}
+	}
+
+	#[test]
+	fn mixed_rank_connectors_resolve_via_promotion() {
+		let network = offset_points_network(TaggedValue::TypeDefault(descriptor!(List<Vector>)));
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context
+			.update(&network)
+			.expect("A List primary with an Item parameter should resolve the mapped variant via promotion");
+		assert!(typing_context.promotions(NodeId(3)).is_some(), "The Item distance should be marked for promotion");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Construction should wrap the promoted argument");
+
+		let context: Context = None;
+		let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+		assert!(result.is_some(), "The zipped mapped variant should execute end-to-end");
+	}
+
+	#[test]
+	fn all_item_connectors_resolve_without_promotion() {
+		let network = offset_points_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)));
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("All-Item connectors should resolve the rank-0 variant exactly");
+		assert!(typing_context.promotions(NodeId(3)).is_none(), "No promotion should be needed at rank 0");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The rank-0 variant should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+		assert!(result.is_some(), "The rank-0 variant should execute and stay rank 0");
+	}
+
 	#[test]
 	fn bare_value_promotes_to_item_wire() {
 		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
