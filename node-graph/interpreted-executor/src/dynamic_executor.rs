@@ -432,7 +432,12 @@ impl BorrowTree {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core_types::Context;
+	use core_types::descriptor;
+	use core_types::list::{Item, List};
+	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::vector::Vector;
 
 	#[test]
 	fn push_node_sync() {
@@ -444,5 +449,50 @@ mod test {
 		let _node = tree.get(NodeId(0)).unwrap();
 		let result = futures::executor::block_on(tree.eval(NodeId(0), ()));
 		assert_eq!(result, Some(2u32));
+	}
+
+	/// Builds a two-node network feeding the given value into Bounding Box, whose primary input registers both `Item<Vector>` and `List<Vector>` wire variants.
+	fn bounding_box_network(content: TaggedValue) -> ProtoNetwork {
+		let value_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);
+
+		let mut bounding_box_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		bounding_box_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+
+		ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), bounding_box_node)],
+		}
+	}
+
+	fn compile_bounding_box_network(content: TaggedValue) -> BorrowTree {
+		let network = bounding_box_network(content);
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("The network should resolve against exactly one registered wire variant");
+		futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The resolved variant's constructor should instantiate")
+	}
+
+	#[test]
+	fn item_wire_variant_resolves_and_executes() {
+		let tree = compile_bounding_box_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)));
+
+		let context: Context = None;
+		let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
+		assert!(result.is_some(), "The Item wire variant should downcast and execute end-to-end");
+
+		let wrong_type: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert!(wrong_type.is_none(), "An Item wire should not downcast as a List");
+	}
+
+	#[test]
+	fn list_wire_variant_resolves_and_executes() {
+		let tree = compile_bounding_box_network(TaggedValue::TypeDefault(descriptor!(List<Vector>)));
+
+		let context: Context = None;
+		let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
+		assert!(result.is_some(), "The mapped List wire variant should downcast and execute end-to-end");
+
+		let wrong_type: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert!(wrong_type.is_none(), "A List wire should not downcast as an Item");
 	}
 }
