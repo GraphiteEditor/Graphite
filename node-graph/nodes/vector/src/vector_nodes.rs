@@ -3459,12 +3459,10 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
-		let vector = Vector::from_bezpath(source);
-		let mut vector_list = List::new_from_element(vector.clone());
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
+		let vector_item = Item::new_from_element(Vector::from_bezpath(source)).with_attribute(ATTR_TRANSFORM, transform);
 
-		vector_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
-
-		let beveled = super::bevel((), Item::new_from_element(vector), 2_f64.sqrt() * 10.);
+		let beveled = super::bevel((), vector_item, 2_f64.sqrt() * 100.);
 		let beveled = beveled.element();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
