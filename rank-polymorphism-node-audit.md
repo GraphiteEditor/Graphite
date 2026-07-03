@@ -8,7 +8,7 @@ Classification of all 271 live `#[node_macro::node]` definitions (July 2026, mas
 - Classification is by **intended semantics**, not today's signatures (bulk-converted `List<T>` carries no signal). Element-wise is the default; rank 1 only for genuine whole-list needs.
 - **Classes:** `element-wise` (all data connectors rank 0 → rank 0, includes generators), `floor` (rank 1 → rank 1), `reducer` (rank 1 → rank 0), `expander` (rank 0 → rank 1), `mixed` (differing cell ranks), `infrastructure` (exempt).
 - **Lazy connectors** (`Context -> T`, one evaluation per frame slot): only for (1) frame-synthesizers, (2) demand-context modifiers (Footprint et al.), and (3) evaluation-control (Memoize, Monitor, Switch — nodes whose purpose is deciding whether/when upstream evaluates).
-- **Attrs**: node reads/writes ATTR_* columns; keeps its List kernel + `#[length_preserving]` singleton round-trip near-term, still classified by semantic rank.
+- **Attrs**: node reads/writes ATTR_* values; authored as an element-wise `Item<T>` kernel with direct attribute access, classified by semantic rank.
 - No `Option` outputs. `Default::default()` is the fallback only when a node's own semantics define no answer; nodes may define richer valid domains (negative from-end indexing, clamping) as non-failures.
 - Notation: `name: Item<T>` = rank-0 connector, `name: List<T>` = rank-1 connector, `name: Context -> Item<T> (lazy)` = lazy connector. `DEVIATION:` marks observable behavior changes vs. today.
 
@@ -311,8 +311,8 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 | Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Transform | transform_nodes.rs:14 | `content: Context -> Item<T> (lazy), translation: Item<DVec2>, rotation: Item<f64>, scale: Item<DVec2>, skew: Item<DVec2> -> Item<T>` | element-wise | content (footprint modifier) | attrs | THE broadcast node (replaces Repeat on Points). DAffine2/DVec2 value implementations need an eager value-kernel sibling |
-| Reset Transform | transform_nodes.rs:57 | `content: Item<T>, reset_translation: Item<bool>, reset_rotation: Item<bool>, reset_scale: Item<bool> -> Item<T>` | element-wise | no | attrs | Round-trip |
-| Replace Transform | transform_nodes.rs:95 | `content: Item<T>, transform: Item<DAffine2> -> Item<T>` | element-wise | no | attrs | Round-trip |
+| Reset Transform | transform_nodes.rs:57 | `content: Item<T>, reset_translation: Item<bool>, reset_rotation: Item<bool>, reset_scale: Item<bool> -> Item<T>` | element-wise | no | attrs | Implemented as an Item kernel |
+| Replace Transform | transform_nodes.rs:95 | `content: Item<T>, transform: Item<DAffine2> -> Item<T>` | element-wise | no | attrs | Implemented as an Item kernel |
 | Extract Transform | transform_nodes.rs:117 | `content: Item<Dyn> -> Item<DAffine2>` | element-wise | no | attrs | DEVIATION: today reads only element 0; framing yields per-element transforms (TODO #2982 anticipated this) |
 | Invert Transform | transform_nodes.rs:123 | `transform: Item<DAffine2> -> Item<DAffine2>` | element-wise | no | no | |
 | Decompose Translation | transform_nodes.rs:129 | `transform: Item<DAffine2> -> Item<DVec2>` | element-wise | no | no | |
@@ -323,9 +323,9 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 | Repeat Array | repeat_nodes.rs:48 | `content: Context -> Item<T> (lazy), direction: Item<DVec2>, angle: Item<f64>, count: Item<u32> -> List<T>` | expander | content (frame-synth) | attrs | Composes per-copy ATTR_TRANSFORM. Same flattening DEVIATION |
 | Repeat Radial | repeat_nodes.rs:96 | `content: Context -> Item<T> (lazy), start_angle: Item<f64>, radius: Item<f64>, count: Item<u32> -> List<T>` | expander | content (frame-synth) | attrs | Same family |
 | Repeat on Points | repeat_nodes.rs:142 | DELETE | expander | — | attrs | Transform broadcasting replaces it; classified for the record only |
-| Blend Mode | blending/lib.rs:185 | `content: Item<T>, blend_mode: Item<BlendMode> -> Item<T>` | element-wise | no | attrs | Round-trip. "Apply to the parent" TODO fixed by rank-0 wires |
-| Opacity | blending/lib.rs:209 | `content: Item<T>, has_opacity: Item<bool>, opacity: Item<f64>, has_fill: Item<bool>, fill: Item<f64> -> Item<T>` | element-wise | no | attrs | Round-trip. Missing attribute = 1.0 implicit default, NOT f64::default() — round-trip must preserve this |
-| Clipping Mask | blending/lib.rs:251 | `content: Item<T>, clip: Item<bool> -> Item<T>` | element-wise | no | attrs | Round-trip. Same TODO fixed |
+| Blend Mode | blending/lib.rs:185 | `content: Item<T>, blend_mode: Item<BlendMode> -> Item<T>` | element-wise | no | attrs | Implemented as an Item kernel; "apply to the parent" TODO fixed |
+| Opacity | blending/lib.rs:209 | `content: Item<T>, has_opacity: Item<bool>, opacity: Item<f64>, has_fill: Item<bool>, fill: Item<f64> -> Item<T>` | element-wise | no | attrs | Implemented as an Item kernel; missing attribute treated as the 1.0 implicit default, NOT f64::default() |
+| Clipping Mask | blending/lib.rs:251 | `content: Item<T>, clip: Item<bool> -> Item<T>` | element-wise | no | attrs | Implemented as an Item kernel; same TODO fixed |
 
 ## Gcore (24 nodes)
 
