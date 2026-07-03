@@ -413,7 +413,20 @@ impl BorrowTree {
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids = ids.to_vec();
-				let construction_nodes = self.node_deps(&ids);
+				let mut construction_nodes = self.node_deps(&ids);
+
+				// Wrap arguments the typing pass marked for Item -> List promotion with their adapter node
+				if let Some(promotions) = typing_context.promotions(id) {
+					for (argument_index, element_name) in promotions {
+						let identifier = graph_craft::ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ItemToListNode<{element_name}>"));
+						let adapter_constructor = typing_context
+							.adapter_constructor(&identifier)
+							.ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
+						let adapter = adapter_constructor(vec![construction_nodes[*argument_index].clone()]).await;
+						construction_nodes[*argument_index] = NodeContainer::new(adapter);
+					}
+				}
+
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
@@ -482,6 +495,28 @@ mod test {
 
 		let wrong_type: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
 		assert!(wrong_type.is_none(), "An Item wire should not downcast as a List");
+	}
+
+	#[test]
+	fn item_wire_promotes_to_list_connector() {
+		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
+
+		let mut flatten_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		flatten_node.identifier = ProtoNodeIdentifier::new("graphene_core::vector::FlattenPathNode");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), flatten_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("An Item wire should resolve a List connector via promotion");
+		assert!(typing_context.promotions(NodeId(1)).is_some(), "The typing pass should record the promotion");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapter should instantiate");
+
+		let context: Context = None;
+		let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert!(result.is_some(), "The promoted wire should execute end-to-end");
 	}
 
 	#[test]

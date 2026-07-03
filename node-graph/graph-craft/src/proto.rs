@@ -634,6 +634,7 @@ pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
+	promotions: HashMap<NodeId, Vec<(usize, String)>>,
 }
 
 impl TypingContext {
@@ -658,7 +659,18 @@ impl TypingContext {
 
 	pub fn remove_inference(&mut self, node_id: NodeId) -> Option<NodeIOTypes> {
 		self.constructor.remove(&node_id);
+		self.promotions.remove(&node_id);
 		self.inferred.remove(&node_id)
+	}
+
+	/// Returns the input positions of a node which type resolution marked for Item -> List promotion, with each element's simplified name.
+	pub fn promotions(&self, node_id: NodeId) -> Option<&Vec<(usize, String)>> {
+		self.promotions.get(&node_id)
+	}
+
+	/// Looks up the sole constructor registered under an adapter identifier, such as an Item -> List promotion adapter.
+	pub fn adapter_constructor(&self, identifier: &ProtoNodeIdentifier) -> Option<NodeConstructor> {
+		self.lookup.get(identifier).and_then(|implementations| implementations.values().next().copied())
 	}
 
 	/// Returns the node constructor for a given node id.
@@ -768,6 +780,52 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
+				// Retry allowing an Item<X> input to feed a List<X> connector, satisfied at construction time by an inserted promotion adapter
+				fn promotable_element(from: &Type, to: &Type) -> Option<String> {
+					fn wrapped_name<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a str> {
+						let Type::Concrete(descriptor) = ty.nested_type() else { return None };
+						descriptor.name.strip_prefix("core_types::list::")?.strip_prefix(wrapper)?.strip_prefix('<')?.strip_suffix('>')
+					}
+
+					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
+						return None;
+					};
+					if !valid_type(from_input, to_input) {
+						return None;
+					}
+
+					if wrapped_name(from_output, "Item")? != wrapped_name(to_output, "List")? {
+						return None;
+					}
+					let element = to_output.nested_type().identifier_name();
+					element.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')).map(str::to_string)
+				}
+
+				let mut promotable_matches = impls
+					.keys()
+					.filter(|node_io| collect_generics(node_io).is_empty() && valid_type(&node_io.call_argument, call_argument) && inputs.len() == node_io.inputs.len())
+					.filter_map(|node_io| {
+						let mut required_promotions = Vec::new();
+						for (index, (provided, expected)) in inputs.iter().zip(node_io.inputs.iter()).enumerate() {
+							if valid_type(provided, expected) {
+								continue;
+							}
+							required_promotions.push((index, promotable_element(provided, expected)?));
+						}
+						Some((node_io, required_promotions))
+					})
+					.collect::<Vec<_>>();
+
+				if promotable_matches.len() == 1 {
+					let (node_io, required_promotions) = promotable_matches.remove(0);
+					let node_io = node_io.clone();
+
+					self.inferred.insert(node_id, node_io.clone());
+					self.constructor.insert(node_id, impls[&node_io]);
+					self.promotions.insert(node_id, required_promotions);
+					return Ok(node_io);
+				}
+
 				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
