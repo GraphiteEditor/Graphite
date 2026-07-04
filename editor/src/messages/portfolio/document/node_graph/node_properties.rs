@@ -2460,14 +2460,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let fill = match input_type.compiled_nested_type() {
 		Some(ty) if ty == &concrete!(List<Color>) => {
 			if let Ok(document_node) = get_document_node(node_id, context) {
-				let input = &document_node.inputs[FillInput::<List<Graphic>>::INDEX];
-				let color: Option<Color> = match input.as_value() {
+				let color = match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
 					Some(&TaggedValue::Color(c)) => c,
-					_ => input
-						.as_node()
-						.and_then(|id| context.network_interface.nested_network(context.selection_network_path)?.nodes.get(&id))
-						.and_then(|node| node.inputs.get(graphene_std::math_nodes::color_value::ColorInput::INDEX)?.as_value())
-						.and_then(|value| if let &TaggedValue::Color(c) = value { c } else { None }),
+					_ => None,
 				};
 				ResolvedFill::Solid(color)
 			} else {
