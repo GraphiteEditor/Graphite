@@ -32,21 +32,23 @@ fn opacity<T>(
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	#[default(true)]
-	has_opacity: bool,
+	has_opacity: Item<bool>,
 	/// How visible the content should be, including any content clipped to it.
 	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	opacity: Percentage,
+	opacity: Item<Percentage>,
 	/// Whether the *Fill* property is enabled, multiplying the existing fill by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
-	has_fill: bool,
+	has_fill: Item<bool>,
 	/// How visible the content should be, independent of any content clipped to it.
 	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	fill: Percentage,
+	fill: Item<Percentage>,
 ) -> Item<T> {
+	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());
+
 	if has_opacity {
 		let multiplied = content.attribute_cloned_or(ATTR_OPACITY, 1.) * (opacity / 100.);
 		content.set_attribute(ATTR_OPACITY, multiplied);
@@ -68,8 +70,10 @@ fn clipping_mask<T>(
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
 	mut content: Item<T>,
 	/// Whether the content inherits the alpha of the content beneath it.
-	clip: bool,
+	clip: Item<bool>,
 ) -> Item<T> {
+	let clip = *clip.element();
+
 	content.set_attribute(ATTR_CLIPPING_MASK, clip);
 	content
 }

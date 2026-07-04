@@ -95,12 +95,14 @@ async fn blur(
 	#[range]
 	#[hard(0..)]
 	#[soft(..100)]
-	radius: PixelLength,
+	radius: Item<PixelLength>,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
-	box_blur: bool,
+	box_blur: Item<bool>,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
-	gamma: bool,
+	gamma: Item<bool>,
 ) -> Item<Raster<CPU>> {
+	let (radius, box_blur, gamma) = (*radius.element(), *box_blur.element(), *gamma.element());
+
 	let (image, attributes) = image_frame.into_parts();
 
 	let blurred_image = if radius < 0.1 {
@@ -125,8 +127,10 @@ async fn median_filter(
 	#[range]
 	#[hard(0..)]
 	#[soft(..50)]
-	radius: PixelLength,
+	radius: Item<PixelLength>,
 ) -> Item<Raster<CPU>> {
+	let radius = *radius.element();
+
 	let (image, attributes) = image_frame.into_parts();
 
 	let filtered_image = if radius < 0.5 {

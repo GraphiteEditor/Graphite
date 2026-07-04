@@ -449,14 +449,14 @@ async fn round_corners(
 	#[range]
 	#[hard(0..1)]
 	#[default(0.5)]
-	roundness: f64,
-	#[default(100.)] edge_length_limit: Percentage,
+	roundness: Item<f64>,
+	#[default(100.)] edge_length_limit: Item<Percentage>,
 	#[range]
 	#[hard(0..180)]
 	#[default(5.)]
-	min_angle_threshold: Angle,
+	min_angle_threshold: Item<Angle>,
 ) -> Item<Vector> {
-	let radius = *radius.element();
+	let (radius, roundness, edge_length_limit, min_angle_threshold) = (*radius.element(), *roundness.element(), *edge_length_limit.element(), *min_angle_threshold.element());
 	let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let source_transform_inverse = source_transform.inverse();
 	let (source, attributes) = source.into_parts();
@@ -553,9 +553,11 @@ pub fn merge_by_distance(
 	mut content: Item<Vector>,
 	#[default(0.1)]
 	#[hard(0.0001..)]
-	distance: PixelLength,
+	distance: Item<PixelLength>,
 	algorithm: MergeByDistanceAlgorithm,
 ) -> Item<Vector> {
+	let distance = *distance.element();
+
 	match algorithm {
 		MergeByDistanceAlgorithm::Spatial => {
 			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -765,7 +767,9 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn extrude(_: impl Ctx, mut source: Item<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> Item<Vector> {
+async fn extrude(_: impl Ctx, mut source: Item<Vector>, direction: Item<DVec2>, joining_algorithm: ExtrudeJoiningAlgorithm) -> Item<Vector> {
+	let direction = *direction.element();
+
 	extrude_algorithms::extrude(source.element_mut(), direction, joining_algorithm);
 	source
 }
@@ -984,11 +988,13 @@ async fn auto_tangents(
 	#[default(0.5)]
 	#[range]
 	#[soft(0..1)]
-	spread: f64,
+	spread: Item<f64>,
 	/// If active, existing non-zero handles won't be affected.
 	#[default(true)]
-	preserve_existing: bool,
+	preserve_existing: Item<bool>,
 ) -> Item<Vector> {
+	let (spread, preserve_existing) = (*spread.element(), *preserve_existing.element());
+
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let (source, attributes) = source.into_parts();
 
@@ -1161,7 +1167,9 @@ fn as_vector(_: impl Ctx, value: List<Vector>) -> List<Vector> {
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-async fn points_to_polyline(_: impl Ctx, mut points: Item<Vector>, #[default(true)] closed: bool) -> Item<Vector> {
+async fn points_to_polyline(_: impl Ctx, mut points: Item<Vector>, #[default(true)] closed: Item<bool>) -> Item<Vector> {
+	let closed = *closed.element();
+
 	let vector = points.element_mut();
 
 	let mut segment_domain = SegmentDomain::new();
@@ -1189,7 +1197,9 @@ async fn points_to_polyline(_: impl Ctx, mut points: Item<Vector>, #[default(tru
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-async fn offset_path(_: impl Ctx, mut content: Item<Vector>, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> Item<Vector> {
+async fn offset_path(_: impl Ctx, mut content: Item<Vector>, distance: Item<f64>, join: StrokeJoin, #[default(4.)] miter_limit: Item<f64>) -> Item<Vector> {
+	let (distance, miter_limit) = (*distance.element(), *miter_limit.element());
+
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let transform = Affine::new(transform_attribute.to_cols_array());
 	let vector = std::mem::take(content.element_mut());
@@ -1463,18 +1473,20 @@ async fn sample_polyline(
 	#[default(100.)]
 	#[hard(0..)]
 	#[unit(" px")]
-	separation: f64,
+	separation: Item<f64>,
 	#[default(100)]
 	#[hard(2..)]
 	quantity: u32,
 	#[hard(0..)]
 	#[unit(" px")]
-	start_offset: f64,
+	start_offset: Item<f64>,
 	#[hard(0..)]
 	#[unit(" px")]
-	stop_offset: f64,
-	adaptive_spacing: bool,
+	stop_offset: Item<f64>,
+	adaptive_spacing: Item<bool>,
 ) -> Item<Vector> {
+	let (separation, start_offset, stop_offset, adaptive_spacing) = (*separation.element(), *start_offset.element(), *stop_offset.element(), *adaptive_spacing.element());
+
 	let pathseg_perimeter = |segment: PathSeg| {
 		if is_linear(segment) {
 			Line::new(segment.start(), segment.end()).perimeter(DEFAULT_ACCURACY)
@@ -1544,8 +1556,10 @@ async fn simplify(
 	/// The maximum distance the simplified path may deviate from the original.
 	#[default(5.)]
 	#[unit(" px")]
-	tolerance: Length,
+	tolerance: Item<Length>,
 ) -> Item<Vector> {
+	let tolerance = *tolerance.element();
+
 	if tolerance <= 0. {
 		return content;
 	}
@@ -1583,8 +1597,10 @@ async fn decimate(
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
 	#[default(5.)]
 	#[unit(" px")]
-	tolerance: Length,
+	tolerance: Item<Length>,
 ) -> Item<Vector> {
+	let tolerance = *tolerance.element();
+
 	// Tolerance of 0 means no simplification is possible, so return immediately
 	if tolerance <= 0. {
 		return content;
@@ -1704,12 +1720,14 @@ async fn cut_path(
 	/// The path to insert a cut into.
 	mut content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Progression,
+	progression: Item<Progression>,
 	/// Swap the direction of the path.
-	reverse: bool,
+	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
-	parameterized_distance: bool,
+	parameterized_distance: Item<bool>,
 ) -> Item<Vector> {
+	let (progression, reverse, parameterized_distance) = (*progression.element(), *reverse.element(), *parameterized_distance.element());
+
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
@@ -1899,9 +1917,11 @@ async fn scatter_points(
 	#[range]
 	#[hard(0.01..)]
 	#[soft(1..100)]
-	separation: f64,
+	separation: Item<f64>,
 	seed: SeedValue,
 ) -> Item<Vector> {
+	let separation = *separation.element();
+
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	let mut result = Vector::default();
@@ -2038,13 +2058,15 @@ async fn jitter_points(
 	/// The maximum extent of the random distance each point can be offset.
 	#[default(5.)]
 	#[unit(" px")]
-	max_distance: f64,
+	max_distance: Item<f64>,
 	/// Seed used to determine unique variations on all randomized offsets.
 	seed: SeedValue,
 	/// Whether to offset anchor points along their normal direction (perpendicular to the path) or in a random direction. Free-floating and branching points have no normal direction, so they receive a random-angled offset regardless of this setting.
 	#[default(true)]
-	along_normals: bool,
+	along_normals: Item<bool>,
 ) -> Item<Vector> {
+	let (max_distance, along_normals) = (*max_distance.element(), *along_normals.element());
+
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
@@ -3031,7 +3053,9 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn bevel(_: impl Ctx, source: Item<Vector>, #[default(10.)] distance: Length) -> Item<Vector> {
+fn bevel(_: impl Ctx, source: Item<Vector>, #[default(10.)] distance: Item<Length>) -> Item<Vector> {
+	let distance = *distance.element();
+
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let (element, attributes) = source.into_parts();
 
@@ -3288,7 +3312,17 @@ mod test {
 	#[tokio::test]
 	async fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_item_from_bezpath(path), PointSpacingType::Separation, 30., 0, 0., 0., false).await;
+		let sample_polyline = super::sample_polyline(
+			Footprint::default(),
+			vector_item_from_bezpath(path),
+			PointSpacingType::Separation,
+			Item::new_from_element(30.),
+			0,
+			Item::new_from_element(0.),
+			Item::new_from_element(0.),
+			Item::new_from_element(false),
+		)
+		.await;
 		let sample_polyline = sample_polyline.element();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
@@ -3298,7 +3332,17 @@ mod test {
 	#[tokio::test]
 	async fn sample_polyline_adaptive_spacing() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_item_from_bezpath(path), PointSpacingType::Separation, 18., 0, 45., 10., true).await;
+		let sample_polyline = super::sample_polyline(
+			Footprint::default(),
+			vector_item_from_bezpath(path),
+			PointSpacingType::Separation,
+			Item::new_from_element(18.),
+			0,
+			Item::new_from_element(45.),
+			Item::new_from_element(10.),
+			Item::new_from_element(true),
+		)
+		.await;
 		let sample_polyline = sample_polyline.element();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
@@ -3310,7 +3354,7 @@ mod test {
 		let poisson_points = super::scatter_points(
 			Footprint::default(),
 			vector_item_from_bezpath(Ellipse::from_rect(Rect::new(-50., -50., 50., 50.)).to_path(DEFAULT_ACCURACY)),
-			10. * std::f64::consts::SQRT_2,
+			Item::new_from_element(10. * std::f64::consts::SQRT_2),
 			0,
 		)
 		.await;
@@ -3409,7 +3453,7 @@ mod test {
 	#[tokio::test]
 	async fn bevel_rect() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), 2_f64.sqrt() * 10.);
+		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), Item::new_from_element(2_f64.sqrt() * 10.));
 		let beveled = beveled.element();
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
@@ -3437,7 +3481,7 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
-		let beveled = super::bevel((), vector_item_from_bezpath(source), 2_f64.sqrt() * 10.);
+		let beveled = super::bevel((), vector_item_from_bezpath(source), Item::new_from_element(2_f64.sqrt() * 10.));
 		let beveled = beveled.element();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -3464,7 +3508,7 @@ mod test {
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 		let vector_item = Item::new_from_element(Vector::from_bezpath(source)).with_attribute(ATTR_TRANSFORM, transform);
 
-		let beveled = super::bevel((), vector_item, 2_f64.sqrt() * 100.);
+		let beveled = super::bevel((), vector_item, Item::new_from_element(2_f64.sqrt() * 100.));
 		let beveled = beveled.element();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -3487,7 +3531,7 @@ mod test {
 		source.line_to(Point::new(100., 100.));
 		source.line_to(Point::new(0., 100.));
 
-		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), 999.);
+		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), Item::new_from_element(999.));
 		let beveled = beveled.element();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
@@ -3511,7 +3555,7 @@ mod test {
 
 		let subpath = BezPath::from_path_segments([line, point, curve].into_iter());
 
-		let beveled_item = super::bevel(Footprint::default(), vector_item_from_bezpath(subpath), 5.);
+		let beveled_item = super::bevel(Footprint::default(), vector_item_from_bezpath(subpath), Item::new_from_element(5.));
 		let beveled = beveled_item.element();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);

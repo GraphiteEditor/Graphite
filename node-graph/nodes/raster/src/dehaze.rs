@@ -8,7 +8,9 @@ use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: Item<Raster<CPU>>, strength: Percentage) -> Item<Raster<CPU>> {
+async fn dehaze(_: impl Ctx, image_frame: Item<Raster<CPU>>, strength: Item<Percentage>) -> Item<Raster<CPU>> {
+	let strength = *strength.element();
+
 	let (image, attributes) = image_frame.into_parts();
 
 	// Prepare the image data for processing

@@ -67,10 +67,12 @@ fn reset_transform<T>(
 		GradientStops,
 	)]
 	mut content: Item<T>,
-	#[default(true)] reset_translation: bool,
-	reset_rotation: bool,
-	reset_scale: bool,
+	#[default(true)] reset_translation: Item<bool>,
+	reset_rotation: Item<bool>,
+	reset_scale: Item<bool>,
 ) -> Item<T> {
+	let (reset_translation, reset_rotation, reset_scale) = (*reset_translation.element(), *reset_rotation.element(), *reset_scale.element());
+
 	let item_transform = content.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
 
 	if reset_translation {
@@ -106,8 +108,10 @@ fn replace_transform<T>(
 		GradientStops,
 	)]
 	mut content: Item<T>,
-	transform: DAffine2,
+	transform: Item<DAffine2>,
 ) -> Item<T> {
+	let transform = *transform.element();
+
 	content.set_attribute(ATTR_TRANSFORM, transform.transform());
 	content
 }
