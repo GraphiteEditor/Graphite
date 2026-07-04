@@ -2073,11 +2073,10 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Move the `Gdd` undo/redo cursor (the authoritative path) and spawn the async future that rebuilds the
+	/// Move the `Gdd` undo/redo cursor and spawn the async future that rebuilds the
 	/// interface from the cursor and swaps it in. `had_oracle` records whether the legacy snapshot already
 	/// applied, so the completion can compare; it travels with the spawned message. Returns whether the
 	/// cursor moved, so callers know a rebuild is pending.
-	/// TODO(TrueDoctor): Shorten
 	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, resource_storage: &ResourceStorageMessageHandler, had_oracle: bool, undo: bool, responses: &mut VecDeque<Message>) -> bool {
 		let Some(gdd) = self.history.move_cursor(undo) else { return false };
 
@@ -2090,11 +2089,7 @@ impl DocumentMessageHandler {
 		true
 	}
 
-	/// Swap in the interface rebuilt from the `Gdd` cursor, the authoritative source of truth. When
-	/// `validate` and `had_oracle` both hold, the rebuilt network is compared against the legacy-restored one
-	/// and drift is logged before overwriting. Always overwrites, including the across-reopen case where no
-	/// legacy snapshot exists.
-	/// TODO(TrueDoctor): Shorten
+	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
 	pub(crate) fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
 		std::mem::swap(&mut rebuilt.resolved_types, &mut self.network_interface.resolved_types);

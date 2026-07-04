@@ -1861,13 +1861,10 @@ impl PortfolioMessageHandler {
 			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		}
 
-		// Mount the per-document `Gdd` working copy asynchronously (its container is built off-thread).
-		// The document is already usable; the working copy attaches once the future resolves. With no
-		// configured root the working copy is in-memory, so the mount path still runs uniformly.
+		// Mount the per-document `Gdd` working copy asynchronously.
 		//
-		// Only mount for legacy loads: a `.gdd` open already mounted its working copy (with the persisted
-		// undo/redo cursor), and remounting would overwrite it and drop that history state.
-		// TODO(TrueDoctor): Shorten
+		// Only mount for legacy loads: a `.gdd` open already mounted its working copy
+		// and remounting would overwrite it and drop that history state.
 		if self.documents.get(&document_id).and_then(|document| document.storage()).is_none() {
 			let legacy_network = self
 				.documents
@@ -1885,16 +1882,11 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	/// Build the `FutureMessage` that constructs (or reopens) the document's `Gdd` working copy and
-	/// delivers it back via [`PortfolioMessage::DocumentStorageMounted`]. With a configured root the
-	/// working copy lives at `<root>/<id_hex>`; without one it is in-memory.
+	/// With a configured root the working copy lives at `<root>/<id_hex>`; without one it is in-memory.
 	///
 	/// On a *reopen* (existing working copy), the freshly-read `.gdd` is converted back to a runtime
-	/// network and compared against `legacy_network` (the document the user actually loaded) before
-	/// the working copy attaches. This is the dual-write soak's compare-on-open: it validates the
-	/// `.gdd` *read* path (deserialize + hot-log replay), which the in-process `verify_storage_round_trip`
-	/// can't, since that never touches persisted bytes. Legacy stays authoritative; divergence is logged.
-	/// TODO(TrueDoctor): Shorten
+	/// network and compared against `legacy_network` before
+	/// the working copy attaches. It validates the `.gdd` *read* path.
 	fn mount_document_storage(
 		working_copy_root: Option<std::path::PathBuf>,
 		document_id: DocumentId,
