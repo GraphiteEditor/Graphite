@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::NodeInputDecleration;
 use graphene_std::list::List;
@@ -623,6 +623,46 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 	}
 }
 
+/// A Fill node's decoded gradient inputs, with the transform kept in its raw form (not yet baked into `start`/`end`).
+pub struct FillNodeGradient {
+	pub stops: GradientStops,
+	pub gradient_type: GradientType,
+	pub spread_method: GradientSpreadMethod,
+	pub transform: DAffine2,
+	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
+	pub transform_is_value: bool,
+}
+
+/// Decode a Fill node's gradient metadata inputs, resolving an unset transform to the default over `bounding_box`. Returns `None` when the fill input isn't a gradient value.
+pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<FillNodeGradient> {
+	use graphene_std::vector::fill;
+
+	let TaggedValue::Gradient(stops) = fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+		return None;
+	};
+	let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::GradientType(value)) => value,
+		_ => GradientType::default(),
+	};
+	let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+		_ => GradientSpreadMethod::default(),
+	};
+	let transform_input = fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value());
+	let transform = match transform_input {
+		Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(bounding_box())),
+		_ => DAffine2::IDENTITY,
+	};
+
+	Some(FillNodeGradient {
+		stops: stops.clone(),
+		gradient_type,
+		spread_method,
+		transform,
+		transform_is_value: transform_input.is_some(),
+	})
+}
+
 // TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated.
 /// Returns the `Fill` value from a layer's upstream Fill node.
 pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
@@ -631,25 +671,14 @@ pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 
 	match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
 		&TaggedValue::Color(color) => Some(color.map_or(Fill::None, Fill::Solid)),
-		TaggedValue::Gradient(stops) => {
-			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientType(value)) => value,
-				_ => GradientType::default(),
-			};
-			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-				_ => GradientSpreadMethod::default(),
-			};
-			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer))),
-				_ => DAffine2::IDENTITY,
-			};
+		TaggedValue::Gradient(_) => {
+			let gradient = read_fill_node_gradient(fill_node, || network_interface.document_metadata().nonzero_bounding_box(layer))?;
 			Some(Fill::Gradient(Gradient {
-				stops: stops.clone(),
-				gradient_type,
-				spread_method,
-				start: transform.transform_point2(DVec2::ZERO),
-				end: transform.transform_point2(DVec2::X),
+				stops: gradient.stops,
+				gradient_type: gradient.gradient_type,
+				spread_method: gradient.spread_method,
+				start: gradient.transform.transform_point2(DVec2::ZERO),
+				end: gradient.transform.transform_point2(DVec2::X),
 				// TODO: Eventually remove this document upgrade code
 				absolute: true,
 				transform: DAffine2::IDENTITY,

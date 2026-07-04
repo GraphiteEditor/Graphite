@@ -35,7 +35,6 @@ use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{
 	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
-	initial_gradient_transform_for_bounding_box,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -2480,34 +2479,17 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			}
 		}
 		Some(ty) if ty == &concrete!(List<GradientStops>) => {
-			// Read this node's own stops rather than the layer's nearest Fill, which may be a different node when Fills are chained
+			// Read this node's own inputs rather than the layer's nearest Fill, which may be a different node when Fills are chained
 			if let Ok(document_node) = get_document_node(node_id, context)
-				&& let Some(TaggedValue::Gradient(stops)) = document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value()
-			{
-				let gradient = stops.clone();
-				let gradient_type = match document_node.inputs[GradientTypeInput::INDEX].as_value() {
-					Some(&TaggedValue::GradientType(value)) => value,
-					_ => GradientType::default(),
-				};
-				let spread_method = match document_node.inputs[SpreadMethodInput::INDEX].as_value() {
-					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-					_ => GradientSpreadMethod::default(),
-				};
-				let transform_input = document_node.inputs[TransformInput::INDEX].as_value();
-				let transform_is_value = transform_input.is_some();
-				let transform = match transform_input {
-					Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| {
-						let bounding_box = layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer));
-						initial_gradient_transform_for_bounding_box(bounding_box)
-					}),
-					_ => DAffine2::IDENTITY,
-				};
+				&& let Some(gradient) = graph_modification_utils::read_fill_node_gradient(document_node, || {
+					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
+				}) {
 				ResolvedFill::Gradient {
-					gradient,
-					gradient_type,
-					spread_method,
-					transform,
-					transform_is_value,
+					gradient: gradient.stops,
+					gradient_type: gradient.gradient_type,
+					spread_method: gradient.spread_method,
+					transform: gradient.transform,
+					transform_is_value: gradient.transform_is_value,
 				}
 			} else {
 				ResolvedFill::Other

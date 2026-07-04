@@ -13,12 +13,9 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{
-	Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, initial_gradient_transform_for_bounding_box,
-};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -360,33 +357,9 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 // TODO: Remove this whole function once all gradients are stored via the modern `Gradient(GradientStops)` slot
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
-		// Try to read a Fill node's values first
-		if let Some(fill_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
-			let fill_node = network_interface.document_network().nodes.get(&fill_id)?;
-
-			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientType(value)) => value,
-				_ => GradientType::default(),
-			};
-			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-				_ => GradientSpreadMethod::default(),
-			};
-			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer))),
-				_ => DAffine2::IDENTITY,
-			};
-
-			return Some(Gradient {
-				stops,
-				gradient_type,
-				spread_method,
-				start: transform.transform_point2(DVec2::ZERO),
-				end: transform.transform_point2(DVec2::X),
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			});
+		// A Fill node holding a direct gradient value decodes through the shared reader
+		if get_fill_node_id_with_direct_fill_input(layer, network_interface).is_some() {
+			return graph_modification_utils::get_fill_value(layer, network_interface)?.as_gradient().cloned();
 		}
 
 		// Then, try to construct a gradient out of a chain, which is directly connected to a Fill node or a layer
@@ -1964,7 +1937,6 @@ mod test_gradient {
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::List;
-	use graphene_std::vector::GradientType;
 	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 	use graphene_std::{Graphic, NodeInputDecleration};
@@ -1973,44 +1945,14 @@ mod test_gradient {
 
 	async fn get_gradients_from_fill(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
 		let document = editor.active_document();
-
 		document
 			.metadata()
 			.all_layers()
 			.filter_map(|layer| {
-				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
-				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
+				// Only read Fill-owned gradient values, not chains
+				get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 
-				let stops = match fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
-					TaggedValue::Gradient(stops) => stops.clone(),
-					_ => return None,
-				};
-
-				let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::GradientType(value)) => value,
-					_ => GradientType::default(),
-				};
-
-				let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-					_ => GradientSpreadMethod::default(),
-				};
-
-				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::OptionalDAffine2(Some(value))) => value,
-					_ => DAffine2::IDENTITY,
-				};
-
-				let gradient = Gradient {
-					stops,
-					gradient_type,
-					spread_method,
-					start: local_transform.transform_point2(DVec2::ZERO),
-					end: local_transform.transform_point2(DVec2::X),
-					absolute: true,
-					transform: DAffine2::IDENTITY,
-				};
-
+				let gradient = super::get_gradient(layer, &document.network_interface)?;
 				let transform = gradient_space_transform(layer, document);
 				Some((gradient, transform))
 			})
