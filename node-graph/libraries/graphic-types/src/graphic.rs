@@ -221,28 +221,28 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 }
 
-/// Look up the paint graphics stored under attribute for a vector item, normalizing any graphic list type to `List<Graphic>`.
+/// Look up the paint graphics stored under attribute for a vector item, in the canonical `List<Graphic>` form.
 pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
 	list.attribute::<List<Graphic>>(attribute, index)
 		.map(Cow::Borrowed)
-		.or_else(|| list.attribute::<List<Color>>(attribute, index).map(|c| Cow::Owned(c.clone().into_graphic_list())))
-		.or_else(|| list.attribute::<List<GradientStops>>(attribute, index).map(|g| Cow::Owned(g.clone().into_graphic_list())))
-		.or_else(|| list.attribute::<List<Vector>>(attribute, index).map(|v| Cow::Owned(v.clone().into_graphic_list())))
-		.or_else(|| list.attribute::<List<Raster<CPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
-		.or_else(|| list.attribute::<List<Raster<GPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		// Treat a blank attribute as absent so consumers fall back to the legacy `style` instead of masking it.
 		.filter(|graphic_list| is_paint_present(graphic_list))
 }
 
-/// Whether the item carries a non-blank paint attribute in any representation (`Graphic`, `Color`,
-/// `GradientStops`, `Vector`, or raster), checked by borrowing without cloning the renderable list.
+/// Whether the item carries a non-blank canonical `List<Graphic>` paint attribute,
+/// checked by borrowing without cloning the renderable list.
 pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
 	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
-		|| list.attribute::<List<Color>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
-		|| list.attribute::<List<GradientStops>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
-		|| list.attribute::<List<Vector>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
-		|| list.attribute::<List<Raster<CPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
-		|| list.attribute::<List<Raster<GPU>>>(attribute, index).is_some_and(|paint_list| !paint_list.is_empty())
+}
+
+/// Stores a paint attribute in its canonical `List<Graphic>` form, the only representation paint readers accept.
+pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
+	attributes.insert(key, paint.into_graphic_list());
+}
+
+/// Stores a paint attribute at a list index in its canonical `List<Graphic>` form, the only representation paint readers accept.
+pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, paint: impl IntoGraphicList) {
+	list.set_attribute(key, index, paint.into_graphic_list());
 }
 
 /// Look up the fill paint graphics for a vector item, falling back to the legacy

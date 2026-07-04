@@ -5,7 +5,7 @@ use core_types::{
 	Ctx,
 };
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::bake_paint_transforms;
+use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -210,13 +210,14 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 
 						let element = Vector::from_subpath(subpath);
 
-						Item::new_from_element(element)
+						let mut item = Item::new_from_element(element)
 							.with_attribute(ATTR_BLEND_MODE, blend_mode)
 							.with_attribute(ATTR_OPACITY, opacity)
 							.with_attribute(ATTR_OPACITY_FILL, fill)
 							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer)
-							.with_attribute(ATTR_FILL, List::new_from_element(Color::BLACK))
+							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+						item
 					};
 
 					// Apply the parent graphic's transform to each raster element, preserving each item's layer
@@ -242,13 +243,14 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 
 						let element = Vector::from_subpath(subpath);
 
-						Item::new_from_element(element)
+						let mut item = Item::new_from_element(element)
 							.with_attribute(ATTR_BLEND_MODE, blend_mode)
 							.with_attribute(ATTR_OPACITY, opacity)
 							.with_attribute(ATTR_OPACITY_FILL, fill)
 							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer)
-							.with_attribute(ATTR_FILL, List::new_from_element(Color::BLACK))
+							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+						item
 					};
 
 					// Apply the parent graphic's transform to each raster element, preserving each item's layer
@@ -283,7 +285,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					.into_iter()
 					.map(|row| {
 						let (color, mut attributes) = row.into_parts();
-						attributes.insert(ATTR_FILL, List::new_from_element(color));
+						set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
 
 						let mut element = Vector::default();
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
@@ -306,7 +308,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
 							gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
 						}
-						attributes.insert(ATTR_FILL, gradient_paint);
+						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
 
 						let mut element = Vector::default();
 						element.style.set_stroke_transform(DAffine2::IDENTITY);

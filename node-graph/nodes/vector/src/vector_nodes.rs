@@ -13,7 +13,7 @@ use core_types::{
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
-use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
+use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
@@ -141,10 +141,10 @@ where
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
-				vector_list.set_attribute(ATTR_FILL, index, paint.clone());
+				set_paint_attribute_at(vector_list, index, ATTR_FILL, paint.clone());
 			}
 			if stroke && vector_list.element(index).and_then(|vector| vector.style.stroke()).is_some() {
-				vector_list.set_attribute(ATTR_STROKE, index, paint.clone());
+				set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
 			}
 
 			i += 1;
@@ -214,7 +214,7 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	let fill = fill.into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
-			vector_list.set_attribute(ATTR_FILL, index, fill.clone());
+			set_paint_attribute_at(vector_list, index, ATTR_FILL, fill.clone());
 		}
 	});
 	content
@@ -340,7 +340,7 @@ where
 	let paint = paint.into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
-			vector_list.set_attribute(ATTR_STROKE, index, paint.clone());
+			set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
 		}
 	});
 	content

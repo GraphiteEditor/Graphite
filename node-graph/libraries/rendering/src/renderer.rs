@@ -21,7 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1131,11 +1131,9 @@ impl Render for List<Vector> {
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
-				let vector_item = List::new_from_item(
-					Item::new_from_element(cloned_vector)
-						.with_attribute(ATTR_TRANSFORM, item_transform)
-						.with_attribute(ATTR_FILL, List::new_from_element(Color::BLACK)),
-				);
+				let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
+				set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+				let vector_item = List::new_from_item(mask_item);
 
 				(id, mask_type, vector_item)
 			});
@@ -1480,11 +1478,9 @@ impl Render for List<Vector> {
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
-						let vector_list = List::new_from_item(
-							Item::new_from_element(cloned_element)
-								.with_attribute(ATTR_TRANSFORM, item_transform)
-								.with_attribute(ATTR_FILL, List::new_from_element(Color::BLACK)),
-						);
+						let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
+						set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+						let vector_list = List::new_from_item(mask_item);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
