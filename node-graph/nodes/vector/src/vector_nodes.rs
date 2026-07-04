@@ -222,8 +222,9 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 
 	let fill = fill.into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
-		for index in 0..vector_list.len() {
-			set_paint_attribute_at(vector_list, index, ATTR_FILL, fill.clone());
+		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
+		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_FILL) {
+			*slot = fill.clone();
 		}
 	});
 	content
@@ -348,8 +349,9 @@ where
 
 	let paint = paint.into_graphic_list();
 	content.for_each_vector_list_mut(|vector_list| {
-		for index in 0..vector_list.len() {
-			set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
+		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
+		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_STROKE) {
+			*slot = paint.clone();
 		}
 	});
 	content
