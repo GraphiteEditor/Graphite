@@ -585,13 +585,21 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(id) => id,
 			None => {
 				let target = gradient_chain_target_input(output_layer, self.network_interface);
+				let starts_layer_chain = target == InputConnector::node(output_layer.to_node(), 1);
+
+				// The Gradient Value node discards its primary input, so starting a chain ahead of existing layer content would drop that content; refuse instead
+				if starts_layer_chain && self.network_interface.upstream_output_connector(&target, &[]).is_some() {
+					log::error!("Refusing to start a gradient chain ahead of existing layer content");
+					return;
+				}
+
 				let Some(node_definition) = resolve_proto_node_type(graphene_std::math_nodes::gradient_value::IDENTIFIER) else {
 					return;
 				};
 				let node_id = NodeId::new();
 				self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
 
-				if target == InputConnector::node(output_layer.to_node(), 1) {
+				if starts_layer_chain {
 					// No Fill node: the new node starts the layer's chain
 					self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
 				} else {
