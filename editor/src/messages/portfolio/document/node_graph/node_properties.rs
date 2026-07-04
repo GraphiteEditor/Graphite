@@ -2416,8 +2416,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
 }
 
-/// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
-/// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
 /// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
 /// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
 fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
@@ -2428,6 +2426,8 @@ fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContex
 	Some(LayerNodeIdentifier::new(layer_node, context.network_interface))
 }
 
+/// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
+/// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
 fn gradient_orientation_in_fill_node(node_id: NodeId, start: DVec2, end: DVec2, context: &mut NodePropertiesContext) -> Option<bool> {
 	let layer = root_layer_for_chain_node(node_id, context)?;
 	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
