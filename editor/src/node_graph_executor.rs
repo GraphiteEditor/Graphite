@@ -80,9 +80,10 @@ struct ExecutionContext {
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
 	// TODO: Eventually remove this document upgrade code
-	/// Set when this execution is a gradient-migration measurement run for the given "Fill" node, whose evaluated geometry
-	/// is read back from the inspect result to size the gradient; such runs never touch the visible artwork.
-	measure_fill: Option<NodeId>,
+	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
+	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
+	/// gradient; such runs never touch the visible artwork. Carrying the entry keeps a stale re-dispatched response paired with the fill it measured.
+	measure_fill: Option<(Vec<NodeId>, NodeId, Gradient)>,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -349,6 +350,12 @@ impl NodeGraphExecutor {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		// TODO: Eventually remove this document upgrade code
+		// A gradient migration belongs to one document; if the active document changed away from it, cancel so its stale in-flight response is ignored and revisiting restarts a fresh pass
+		if self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id != document_id) {
+			self.cancel_gradient_migration();
+		}
+
 		let results = self.runtime_io.receive().collect::<Vec<_>>();
 		for response in results {
 			match response {
@@ -377,9 +384,9 @@ impl NodeGraphExecutor {
 					// TODO: Eventually remove this document upgrade code
 					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
 					// Apply only to the active document's in-progress migration, dropping responses left over from a document switch.
-					if let Some(fill_node_id) = execution_context.measure_fill {
+					if let Some(bake_target) = execution_context.measure_fill {
 						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
-							self.handle_gradient_measurement(document, document_id, fill_node_id, result.ok().and(inspect_result), responses);
+							self.handle_gradient_measurement(document, document_id, bake_target, result.ok().and(inspect_result), responses);
 						}
 						continue;
 					}
@@ -487,7 +494,9 @@ impl NodeGraphExecutor {
 
 		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above); each entry is removed from the document as its bake lands.
 		let remaining: VecDeque<(Vec<NodeId>, NodeId, Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
-		let Some((first_network_path, first_fill, _)) = remaining.front().cloned() else { return false };
+		let Some((first_network_path, first_fill, first_gradient)) = remaining.front().cloned() else {
+			return false;
+		};
 
 		self.gradient_migration = Some(GradientMigration {
 			document_id,
@@ -495,7 +504,7 @@ impl NodeGraphExecutor {
 			resolution,
 			scale,
 		});
-		self.dispatch_gradient_measurement(document, document_id, first_network_path, first_fill, resolution, scale, responses);
+		self.dispatch_gradient_measurement(document, document_id, first_network_path, first_fill, first_gradient, resolution, scale, responses);
 
 		true
 	}
@@ -511,6 +520,7 @@ impl NodeGraphExecutor {
 		document_id: DocumentId,
 		network_path: Vec<NodeId>,
 		fill_node_id: NodeId,
+		gradient: Gradient,
 		resolution: UVec2,
 		scale: f64,
 		responses: &mut VecDeque<Message>,
@@ -568,7 +578,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
-				measure_fill: Some(fill_node_id),
+				measure_fill: Some((network_path, fill_node_id, gradient)),
 			},
 		));
 	}
@@ -579,32 +589,39 @@ impl NodeGraphExecutor {
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
-		fill_node_id: NodeId,
+		bake_target: (Vec<NodeId>, NodeId, Gradient),
 		inspect_result: Option<InspectResult>,
 		responses: &mut VecDeque<Message>,
 	) {
-		let measured = inspect_result.and_then(|mut result| result.take_data()).and_then(|data| measure_fill_geometry(&data));
+		let (network_path, fill_node_id, gradient) = bake_target;
 
-		// The fill being measured is still at the front of the queue, so its network path and original relative gradient are read from there.
-		let pending = self
+		// Ignore a stale response whose fill is no longer the one being measured (a re-dispatch after a document switch can leave two measurements in flight for the same entry).
+		let is_current = self
 			.gradient_migration
 			.as_ref()
 			.and_then(|migration| migration.remaining.front())
-			.map(|(network_path, _, gradient)| (network_path.clone(), gradient.clone()));
+			.is_some_and(|(front_path, front_fill, _)| *front_fill == fill_node_id && *front_path == network_path);
+		if !is_current {
+			return;
+		}
 
-		match (measured, pending) {
-			(Some((bounding_box, item_transform)), Some((network_path, gradient))) => {
-				let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
-				let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-				let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
-				document
-					.network_interface
-					.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
+		match inspect_result.and_then(|mut result| result.take_data()).and_then(|data| measure_fill_geometry(&data)) {
+			Some((bounding_box, item_transform)) => {
+				// Skip the bake if the user already placed this gradient themselves (their value survives an undo of a prior bake and must not be clobbered on retry), but drop the now-superseded entry.
+				if fill_transform_unbaked(document, &network_path, fill_node_id) {
+					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
+					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
+					let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					document
+						.network_interface
+						.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
+				}
 
-				// The bake landed, so its entry no longer needs to persist for a retry on the next open
+				// The transform is settled, so its entry no longer needs to persist for a retry on the next open
 				remove_pending_gradient_bake(document, &network_path, fill_node_id);
 			}
-			_ => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving its transform unbaked and pending a retry on the next open"),
+			// Leave the entry pending so the next open retries it
+			None => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving its transform unbaked and pending a retry on the next open"),
 		}
 
 		self.advance_gradient_migration(document, document_id, responses);
@@ -613,22 +630,28 @@ impl NodeGraphExecutor {
 	// TODO: Eventually remove this document upgrade code
 	/// Move to the next queued fill, or finish the migration and trigger a normal render once the queue is empty.
 	fn advance_gradient_migration(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
-		let next_fill = self.gradient_migration.as_mut().and_then(|migration| {
+		let next = self.gradient_migration.as_mut().and_then(|migration| {
 			migration.remaining.pop_front();
-			migration.remaining.front().map(|(network_path, node_id, _)| (network_path.clone(), *node_id))
+			migration.remaining.front().cloned()
 		});
 
-		if let Some((next_network_path, next_fill)) = next_fill {
+		if let Some((next_network_path, next_fill, next_gradient)) = next {
 			let (resolution, scale) = self.gradient_migration.as_ref().map(|migration| (migration.resolution, migration.scale)).unwrap_or((UVec2::ONE, 1.));
-			self.dispatch_gradient_measurement(document, document_id, next_network_path, next_fill, resolution, scale, responses);
+			self.dispatch_gradient_measurement(document, document_id, next_network_path, next_fill, next_gradient, resolution, scale, responses);
 		} else {
 			// Entries still pending failed to measure; they stay persisted for the next open while this marker stops re-runs this session
-			self.gradient_migration = None;
-			self.previous_node_to_inspect = Vec::new();
-			self.node_graph_hash = 0;
+			self.cancel_gradient_migration();
 			self.gradient_migration_attempted.insert(document_id);
 			responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Tear down the in-progress migration and clear the stale inspect target and hash so the next normal render recompiles the real network.
+	fn cancel_gradient_migration(&mut self) {
+		self.gradient_migration = None;
+		self.previous_node_to_inspect = Vec::new();
+		self.node_graph_hash = 0;
 	}
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
@@ -796,6 +819,20 @@ impl NodeGraphExecutor {
 
 		Ok(())
 	}
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Whether the fill node's transform input is still the unset `OptionalDAffine2(None)` placeholder that the migration leaves
+/// behind, meaning its gradient placement has not yet been baked (or set by the user), so a measured bake may safely be written.
+fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[NodeId], fill_node_id: NodeId) -> bool {
+	let Some(network) = document.network_interface.document_network().nested_network(network_path) else {
+		return false;
+	};
+	let Some(node) = network.nodes.get(&fill_node_id) else { return false };
+	matches!(
+		node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()),
+		Some(TaggedValue::OptionalDAffine2(None))
+	)
 }
 
 // TODO: Eventually remove this document upgrade code
