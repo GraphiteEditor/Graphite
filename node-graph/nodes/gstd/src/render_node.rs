@@ -88,13 +88,12 @@ async fn render<'a: 'n>(
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
-	let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
-
 	let RenderIntermediate { ty, mut metadata } = data;
-	metadata.apply_transform(logical_transform);
+	metadata.apply_transform(footprint.transform);
 
 	let data = match (render_params.render_output_type, ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
+			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
 			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
 
 			let mut render = SvgRender::from(data.as_ref());
@@ -180,5 +179,8 @@ async fn create_context<'a: 'n>(
 		.with_vararg(Box::new(render_params))
 		.into_context();
 
-	data.eval(ctx).await
+	let mut result = data.eval(ctx).await;
+
+	result.metadata.apply_transform(glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_config.scale)));
+	result
 }

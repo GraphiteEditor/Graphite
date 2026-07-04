@@ -69,9 +69,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 
 	result.data = RenderOutputType::Texture(resampled);
 
-	result
-		.metadata
-		.apply_transform(logical_transform * DAffine2::from_translation(upstream_min) * DAffine2::from_scale(DVec2::splat(physical_scale)));
+	result.metadata.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min));
 
 	result
 }

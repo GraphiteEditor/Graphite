@@ -379,16 +379,7 @@ pub async fn render_output_cache<'a: 'n>(
 		if missing_region.tiles.is_empty() {
 			continue;
 		}
-		let region = render_missing_region(
-			missing_region,
-			|ctx| data.eval(ctx),
-			ctx.clone(),
-			render_params,
-			&footprint.transform,
-			&device_origin_offset,
-			render_params.scale,
-		)
-		.await;
+		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &device_origin_offset).await;
 		new_regions.push(region);
 	}
 
@@ -405,8 +396,7 @@ pub async fn render_output_cache<'a: 'n>(
 	let executor = executor.expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution).await;
 
-	let logical_viewport_transform = DAffine2::from_scale(DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
-	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &logical_viewport_transform, executor);
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, executor);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(output_texture.into()),
@@ -421,7 +411,6 @@ async fn render_missing_region<F, Fut>(
 	render_params: &RenderParams,
 	viewport_transform: &DAffine2,
 	viewport_origin_offset: &DVec2,
-	device_scale: f64,
 ) -> CachedRegion
 where
 	F: Fn(Context<'static>) -> Fut,
@@ -449,8 +438,7 @@ where
 		unreachable!("render_missing_region: expected texture output from Vello render");
 	};
 
-	let logical_region_transform = DAffine2::from_scale(DVec2::splat(1.0 / device_scale)) * region_transform;
-	let pixel_to_document = logical_region_transform.inverse();
+	let pixel_to_document = region_transform.inverse();
 	result.metadata.apply_transform(pixel_to_document);
 
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
