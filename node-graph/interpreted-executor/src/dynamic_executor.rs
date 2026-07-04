@@ -566,6 +566,42 @@ mod test {
 	}
 
 	#[test]
+	fn transform_composes_onto_item_wire() {
+		use glam::{DAffine2, DVec2};
+
+		let content_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
+		let translation_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(DVec2::new(5., 0.)).into()), vec![NodeId(1)]);
+		let rotation_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(0.).into()), vec![NodeId(2)]);
+		let scale_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(DVec2::ONE).into()), vec![NodeId(3)]);
+		let skew_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(DVec2::ZERO).into()), vec![NodeId(4)]);
+
+		let mut transform_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3), NodeId(4)]), vec![NodeId(5)]);
+		transform_node.identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(5),
+			nodes: vec![
+				(NodeId(0), content_node),
+				(NodeId(1), translation_node),
+				(NodeId(2), rotation_node),
+				(NodeId(3), scale_node),
+				(NodeId(4), skew_node),
+				(NodeId(5), transform_node),
+			],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("Transform should resolve its Item wire variant");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Transform's Item variant should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+		let item = result.expect("A rank-0 chain through Transform should stay rank 0");
+		let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+		assert_eq!(transform.translation, DVec2::new(5., 0.), "The translation should compose onto the item's transform attribute");
+	}
+
+	#[test]
 	fn bare_value_promotes_to_item_wire() {
 		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
 

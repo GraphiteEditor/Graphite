@@ -16,6 +16,13 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
+		Context -> Item<Graphic>,
+		Context -> Item<String>,
+		Context -> Item<Vector>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Color>,
+		Context -> Item<GradientStops>,
 		Context -> List<Graphic>,
 		Context -> List<String>,
 		Context -> List<Vector>,
