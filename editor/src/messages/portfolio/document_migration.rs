@@ -1635,8 +1635,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				.network_interface
 				.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(g.stops.clone()), false), network_path);
 
-			// A solid/no-fill node leaves the transform input unused, so bake the backup gradient's placement into it for a later Solid -> Gradient toggle to restore
+			// A solid/no-fill node leaves the gradient metadata inputs unused, so seed them from the backup gradient for a later Solid -> Gradient toggle to restore
 			if matches!(old_inputs[1].as_value(), Some(TaggedValue::Fill(Fill::None | Fill::Solid(_)))) {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::GradientType(g.gradient_type), false), network_path);
+				document.network_interface.set_input(
+					&InputConnector::node(*node_id, 5),
+					NodeInput::value(TaggedValue::GradientSpreadMethod(g.spread_method), false),
+					network_path,
+				);
+
 				let transform = if g.absolute {
 					Some(g.transform * g.to_transform())
 				} else {
