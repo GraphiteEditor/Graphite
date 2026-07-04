@@ -14,8 +14,10 @@ fn blend_mode<T>(
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
 	mut content: Item<T>,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
-	blend_mode: BlendMode,
+	blend_mode: Item<BlendMode>,
 ) -> Item<T> {
+	let blend_mode = *blend_mode.element();
+
 	content.set_attribute(ATTR_BLEND_MODE, blend_mode);
 	content
 }

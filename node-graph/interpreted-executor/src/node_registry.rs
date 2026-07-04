@@ -20,6 +20,8 @@ use graphene_std::render_node::RenderIntermediate;
 use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
+use graphene_std::vector::misc::{ExtrudeJoiningAlgorithm, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::style::StrokeJoin;
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
 use std::collections::HashMap;
@@ -380,51 +382,39 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// =============
-	// PROMOTE NODES
-	// =============
-	node_types.extend(
-		[
-			promote_node!(element: Vector),
-			promote_node!(element: Raster<CPU>),
-			promote_node!(element: Graphic),
-			promote_node!(element: Color),
-			promote_node!(element: GradientStops),
-			promote_node!(element: String),
-			promote_node!(element: f64),
-			promote_node!(element: DVec2),
-			promote_node!(element: DAffine2),
-			promote_node!(element: bool),
-		]
-		.into_iter()
-		.flatten(),
-	);
-	let item_to_list_nodes: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		item_to_list_node!(element: Vector),
-		item_to_list_node!(element: Raster<CPU>),
-		item_to_list_node!(element: Graphic),
-		item_to_list_node!(element: Color),
-		item_to_list_node!(element: GradientStops),
-		item_to_list_node!(element: String),
-		item_to_list_node!(element: f64),
-		item_to_list_node!(element: DVec2),
-		item_to_list_node!(element: DAffine2),
-		item_to_list_node!(element: bool),
-	];
-	node_types.extend(item_to_list_nodes);
-	let wrap_item_nodes: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		wrap_item_node!(element: Vector),
-		wrap_item_node!(element: Raster<CPU>),
-		wrap_item_node!(element: Graphic),
-		wrap_item_node!(element: Color),
-		wrap_item_node!(element: GradientStops),
-		wrap_item_node!(element: String),
-		wrap_item_node!(element: f64),
-		wrap_item_node!(element: DVec2),
-		wrap_item_node!(element: DAffine2),
-		wrap_item_node!(element: bool),
-	];
-	node_types.extend(wrap_item_nodes);
+	// ==================
+	// RANK ADAPTER NODES
+	// ==================
+	// Registers all three rank adapters (PromoteNode, ItemToListNode, WrapItemNode) for each promotable element type
+	macro_rules! rank_adapter_nodes {
+		($($element:ty),* $(,)?) => {{
+			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
+			$(
+				entries.extend(promote_node!(element: $element));
+				entries.push(item_to_list_node!(element: $element));
+				entries.push(wrap_item_node!(element: $element));
+			)*
+			entries
+		}};
+	}
+	node_types.extend(rank_adapter_nodes!(
+		Vector,
+		Raster<CPU>,
+		Graphic,
+		Color,
+		GradientStops,
+		String,
+		f64,
+		DVec2,
+		DAffine2,
+		bool,
+		u32,
+		BlendMode,
+		MergeByDistanceAlgorithm,
+		ExtrudeJoiningAlgorithm,
+		StrokeJoin,
+		PointSpacingType,
+	));
 	// =============
 	// CONVERT NODES
 	// =============

@@ -554,9 +554,9 @@ pub fn merge_by_distance(
 	#[default(0.1)]
 	#[hard(0.0001..)]
 	distance: Item<PixelLength>,
-	algorithm: MergeByDistanceAlgorithm,
+	algorithm: Item<MergeByDistanceAlgorithm>,
 ) -> Item<Vector> {
-	let distance = *distance.element();
+	let (distance, algorithm) = (*distance.element(), *algorithm.element());
 
 	match algorithm {
 		MergeByDistanceAlgorithm::Spatial => {
@@ -767,8 +767,8 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn extrude(_: impl Ctx, mut source: Item<Vector>, direction: Item<DVec2>, joining_algorithm: ExtrudeJoiningAlgorithm) -> Item<Vector> {
-	let direction = *direction.element();
+async fn extrude(_: impl Ctx, mut source: Item<Vector>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<Vector> {
+	let (direction, joining_algorithm) = (*direction.element(), *joining_algorithm.element());
 
 	extrude_algorithms::extrude(source.element_mut(), direction, joining_algorithm);
 	source
@@ -1197,8 +1197,8 @@ async fn points_to_polyline(_: impl Ctx, mut points: Item<Vector>, #[default(tru
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-async fn offset_path(_: impl Ctx, mut content: Item<Vector>, distance: Item<f64>, join: StrokeJoin, #[default(4.)] miter_limit: Item<f64>) -> Item<Vector> {
-	let (distance, miter_limit) = (*distance.element(), *miter_limit.element());
+async fn offset_path(_: impl Ctx, mut content: Item<Vector>, distance: Item<f64>, join: Item<StrokeJoin>, #[default(4.)] miter_limit: Item<f64>) -> Item<Vector> {
+	let (distance, join, miter_limit) = (*distance.element(), *join.element(), *miter_limit.element());
 
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let transform = Affine::new(transform_attribute.to_cols_array());
@@ -1469,14 +1469,14 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 async fn sample_polyline(
 	_: impl Ctx,
 	mut content: Item<Vector>,
-	spacing: PointSpacingType,
+	spacing: Item<PointSpacingType>,
 	#[default(100.)]
 	#[hard(0..)]
 	#[unit(" px")]
 	separation: Item<f64>,
 	#[default(100)]
 	#[hard(2..)]
-	quantity: u32,
+	quantity: Item<u32>,
 	#[hard(0..)]
 	#[unit(" px")]
 	start_offset: Item<f64>,
@@ -1485,7 +1485,8 @@ async fn sample_polyline(
 	stop_offset: Item<f64>,
 	adaptive_spacing: Item<bool>,
 ) -> Item<Vector> {
-	let (separation, start_offset, stop_offset, adaptive_spacing) = (*separation.element(), *start_offset.element(), *stop_offset.element(), *adaptive_spacing.element());
+	let (spacing, separation, quantity) = (*spacing.element(), *separation.element(), *quantity.element());
+	let (start_offset, stop_offset, adaptive_spacing) = (*start_offset.element(), *stop_offset.element(), *adaptive_spacing.element());
 
 	let pathseg_perimeter = |segment: PathSeg| {
 		if is_linear(segment) {
@@ -1918,9 +1919,9 @@ async fn scatter_points(
 	#[hard(0.01..)]
 	#[soft(1..100)]
 	separation: Item<f64>,
-	seed: SeedValue,
+	seed: Item<SeedValue>,
 ) -> Item<Vector> {
-	let separation = *separation.element();
+	let (separation, seed) = (*separation.element(), *seed.element());
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
@@ -2060,12 +2061,12 @@ async fn jitter_points(
 	#[unit(" px")]
 	max_distance: Item<f64>,
 	/// Seed used to determine unique variations on all randomized offsets.
-	seed: SeedValue,
+	seed: Item<SeedValue>,
 	/// Whether to offset anchor points along their normal direction (perpendicular to the path) or in a random direction. Free-floating and branching points have no normal direction, so they receive a random-angled offset regardless of this setting.
 	#[default(true)]
 	along_normals: Item<bool>,
 ) -> Item<Vector> {
-	let (max_distance, along_normals) = (*max_distance.element(), *along_normals.element());
+	let (max_distance, seed, along_normals) = (*max_distance.element(), *seed.element(), *along_normals.element());
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -3315,9 +3316,9 @@ mod test {
 		let sample_polyline = super::sample_polyline(
 			Footprint::default(),
 			vector_item_from_bezpath(path),
-			PointSpacingType::Separation,
+			Item::new_from_element(PointSpacingType::Separation),
 			Item::new_from_element(30.),
-			0,
+			Item::new_from_element(0),
 			Item::new_from_element(0.),
 			Item::new_from_element(0.),
 			Item::new_from_element(false),
@@ -3335,9 +3336,9 @@ mod test {
 		let sample_polyline = super::sample_polyline(
 			Footprint::default(),
 			vector_item_from_bezpath(path),
-			PointSpacingType::Separation,
+			Item::new_from_element(PointSpacingType::Separation),
 			Item::new_from_element(18.),
-			0,
+			Item::new_from_element(0),
 			Item::new_from_element(45.),
 			Item::new_from_element(10.),
 			Item::new_from_element(true),
@@ -3355,7 +3356,7 @@ mod test {
 			Footprint::default(),
 			vector_item_from_bezpath(Ellipse::from_rect(Rect::new(-50., -50., 50., 50.)).to_path(DEFAULT_ACCURACY)),
 			Item::new_from_element(10. * std::f64::consts::SQRT_2),
-			0,
+			Item::new_from_element(0),
 		)
 		.await;
 		let poisson_points = poisson_points.element();
