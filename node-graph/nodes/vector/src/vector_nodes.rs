@@ -1255,7 +1255,10 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 	let graphic_list = content.into_graphic_list();
 	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
 
-	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint_at(&flattened, index, ATTR_FILL)).collect();
+	// A fill exists when the canonical attribute carries paint or, matching the renderer's fallback, when the legacy `style.fill` does
+	let has_fills: Vec<bool> = (0..flattened.len())
+		.map(|index| has_paint_at(&flattened, index, ATTR_FILL) || flattened.element(index).is_some_and(|vector| !vector.style.fill().is_none()))
+		.collect();
 
 	let mut output: List<Vector> = flattened
 		.into_iter()
