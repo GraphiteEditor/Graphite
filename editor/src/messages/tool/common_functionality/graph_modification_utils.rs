@@ -14,7 +14,7 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bbox};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
 use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
@@ -641,7 +641,7 @@ pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 				_ => GradientSpreadMethod::default(),
 			};
 			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bbox(network_interface.document_metadata().nonzero_bounding_box(layer))),
+				Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer))),
 				_ => DAffine2::IDENTITY,
 			};
 			Some(Fill::Gradient(Gradient {

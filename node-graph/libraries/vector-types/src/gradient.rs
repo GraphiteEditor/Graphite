@@ -709,8 +709,9 @@ pub fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_
 	}
 }
 
-/// Build a new affine for a gradient that fits to the bounding box width. Most likely used for creating initial gradient transform.
-pub fn initial_gradient_transform_for_bbox(bounds: [DVec2; 2]) -> DAffine2 {
+/// Build the default transform for a gradient not yet given one: a horizontal gradient spanning the
+/// bounding box's width, running through its vertical middle.
+pub fn initial_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffine2 {
 	let [min, max] = bounds;
 	let x_axis = DVec2::new(max.x - min.x, 0.);
 	DAffine2 {

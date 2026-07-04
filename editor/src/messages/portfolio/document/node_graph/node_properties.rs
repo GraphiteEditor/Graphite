@@ -35,7 +35,7 @@ use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{
 	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
-	initial_gradient_transform_for_bbox,
+	initial_gradient_transform_for_bounding_box,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -2487,7 +2487,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				};
 				let transform = match document_node.inputs[TransformInput::INDEX].as_value() {
 					Some(&TaggedValue::OptionalDAffine2(value)) => {
-						value.unwrap_or_else(|| initial_gradient_transform_for_bbox(context.network_interface.document_metadata().nonzero_bounding_box(layer)))
+						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(context.network_interface.document_metadata().nonzero_bounding_box(layer)))
 					}
 					_ => DAffine2::IDENTITY,
 				};

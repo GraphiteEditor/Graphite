@@ -20,7 +20,7 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bbox};
+use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -202,7 +202,7 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 						});
 					}
 				});
-				initial_gradient_transform_for_bbox(bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]))
+				initial_gradient_transform_for_bounding_box(bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]))
 			});
 
 			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
