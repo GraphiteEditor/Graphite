@@ -715,7 +715,7 @@ pub fn initial_gradient_transform_for_bbox(bounds: [DVec2; 2]) -> DAffine2 {
 	let x_axis = DVec2::new(max.x - min.x, 0.);
 	DAffine2 {
 		matrix2: glam::DMat2::from_cols(x_axis, x_axis.perp()),
-		translation: DVec2::new(min.x, 0.),
+		translation: DVec2::new(min.x, (min.y + max.y) / 2.),
 	}
 }
 
