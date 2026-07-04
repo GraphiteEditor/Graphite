@@ -133,9 +133,10 @@ pub struct DocumentMessageHandler {
 	pub(crate) path: Option<PathBuf>,
 	// TODO: Eventually remove this document upgrade code
 	/// Fill nodes whose legacy bounding-box-relative gradient was decomposed into the value model, but whose transform still
-	/// needs the bounding box baked in. The deferred migration bakes them after the first graph run (when bounds are available) and clears this.
+	/// needs the bounding box baked in. Each entry records the path of the network containing the node, the node itself, and its
+	/// original relative gradient. The deferred migration bakes them after the first graph run (when bounds are available) and clears this.
 	#[serde(skip)]
-	pub(crate) pending_gradient_bbox_bake: Vec<(NodeId, Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, Gradient)>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
