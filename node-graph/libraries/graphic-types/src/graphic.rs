@@ -325,7 +325,8 @@ pub fn is_stroke_fully_transparent_at(list: &List<Vector>, index: usize) -> bool
 	color.a() == 0.
 }
 
-/// Bake the provided transform into the gradient transform if "fill"/"stroke" attributes have List<GradientStops>.
+/// Bake the provided transform into the per-item transforms of the paint graphics stored under the
+/// canonical `List<Graphic>` fill and stroke attributes.
 pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
 		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
@@ -350,18 +351,6 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 	for paint_key in [ATTR_FILL, ATTR_STROKE] {
 		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
 			bake_graphic_paint_transform(graphics, transform);
-		}
-		if let Some(gradients) = attributes.get_mut::<List<GradientStops>>(paint_key) {
-			bake_list_transform(gradients, transform);
-		}
-		if let Some(vectors) = attributes.get_mut::<List<Vector>>(paint_key) {
-			bake_list_transform(vectors, transform);
-		}
-		if let Some(rasters) = attributes.get_mut::<List<Raster<CPU>>>(paint_key) {
-			bake_list_transform(rasters, transform);
-		}
-		if let Some(rasters) = attributes.get_mut::<List<Raster<GPU>>>(paint_key) {
-			bake_list_transform(rasters, transform);
 		}
 	}
 }
