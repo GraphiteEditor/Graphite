@@ -37,9 +37,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			} else {
-				// Derive the dialog filter from the suggested filename's extension so it tracks the
-				// editor's save-format preference (.gdd container or plain .graphite).
-				let extension = std::path::Path::new(&name).extension().and_then(|extension| extension.to_str()).unwrap_or("graphite").to_string();
+				let extension = std::path::Path::new(&name).extension().and_then(|extension| extension.to_str()).unwrap_or("*").to_string();
 				dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
