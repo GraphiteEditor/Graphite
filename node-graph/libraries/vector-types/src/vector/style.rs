@@ -66,30 +66,6 @@ impl Fill {
 		}
 	}
 
-	pub fn lerp(&self, other: &Self, time: f64) -> Self {
-		let transparent = Self::solid(Color::TRANSPARENT);
-		let a = if *self == Self::None && *other != Self::None { &transparent } else { self };
-		let b = if *other == Self::None && *self != Self::None { &transparent } else { other };
-
-		match (a, b) {
-			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
-			(Self::Solid(a), Self::Gradient(b)) => {
-				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.stops.color.iter_mut().for_each(|color| *color = *a);
-				let a = &solid_to_gradient;
-				Self::Gradient(a.lerp(b, time))
-			}
-			(Self::Gradient(a), Self::Solid(b)) => {
-				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.stops.color.iter_mut().for_each(|color| *color = *b);
-				let b = &gradient_to_solid;
-				Self::Gradient(a.lerp(b, time))
-			}
-			(Self::Gradient(a), Self::Gradient(b)) => Self::Gradient(a.lerp(b, time)),
-			(Self::None, _) | (_, Self::None) => Self::None,
-		}
-	}
-
 	/// Extract a gradient from the fill
 	pub fn as_gradient(&self) -> Option<&Gradient> {
 		match self {
@@ -389,7 +365,8 @@ fn daffine2_identity() -> DAffine2 {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
-	/// Stroke color
+	/// Deprecated, use `ATTR_STROKE` instead.
+	/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
 	pub color: Option<Color>,
 	/// Line thickness
 	pub weight: f64,
@@ -632,30 +609,6 @@ impl PathStyle {
 		Self { stroke, fill }
 	}
 
-	pub fn lerp(&self, other: &Self, time: f64) -> Self {
-		Self {
-			fill: self.fill.lerp(&other.fill, time),
-			stroke: match (self.stroke.as_ref(), other.stroke.as_ref()) {
-				(Some(a), Some(b)) => Some(a.lerp(b, time)),
-				(Some(a), None) => {
-					if time < 0.5 {
-						Some(a.clone())
-					} else {
-						None
-					}
-				}
-				(None, Some(b)) => {
-					if time < 0.5 {
-						Some(b.clone())
-					} else {
-						None
-					}
-				}
-				(None, None) => None,
-			},
-		}
-	}
-
 	/// Get the current path's [Fill].
 	///
 	/// # Example
@@ -688,25 +641,6 @@ impl PathStyle {
 	/// ```
 	pub fn stroke(&self) -> Option<Stroke> {
 		self.stroke.clone()
-	}
-
-	/// Replace the path's [Fill] with a provided one.
-	///
-	/// # Example
-	/// ```
-	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::Color;
-	/// let mut style = PathStyle::default();
-	///
-	/// assert_eq!(*style.fill(), Fill::None);
-	///
-	/// let fill = Fill::solid(Color::RED);
-	/// style.set_fill(fill.clone());
-	///
-	/// assert_eq!(*style.fill(), fill);
-	/// ```
-	pub fn set_fill(&mut self, fill: Fill) {
-		self.fill = fill;
 	}
 
 	pub fn set_stroke_transform(&mut self, transform: DAffine2) {

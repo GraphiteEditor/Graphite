@@ -1,21 +1,22 @@
-use core_types::list::{Item, List};
+use core_types::list::{ATTR_FILL, Item, List};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
 	Ctx,
 };
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::gradient::{Gradient, GradientSpreadMethod, GradientType};
+use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
+use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::vector_types::vector::style::Fill;
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
 use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 pub use vector_types::vector::misc::BooleanOperation;
+use vector_types::vector::style::Fill;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
@@ -23,7 +24,7 @@ pub use vector_types::vector::misc::BooleanOperation;
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
-async fn boolean_operation<I: graphic_types::IntoGraphicList + 'n + Send + Clone>(
+async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	_: impl Ctx,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
 	#[implementations(List<Graphic>, List<Vector>)]
@@ -143,12 +144,15 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
+
+		bake_paint_transforms(&mut attributes, copy_from_transform);
+
 		let copy_from = vector.element(index).unwrap();
 		let mut element = Vector {
 			style: copy_from.style.clone(),
 			..Default::default()
 		};
-		// An absolute gradient lives in the geometry's space, so bake the same transform into it to track the baked points
+		// Legacy Fill fallback: An absolute gradient lives in the geometry's space, so bake the same transform into it to track the baked points
 		if let Fill::Gradient(gradient) = element.style.fill_mut()
 			&& gradient.absolute
 		{
@@ -204,15 +208,16 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
-						let mut element = Vector::from_subpath(subpath);
-						element.style.set_fill(Fill::Solid(Color::BLACK));
+						let element = Vector::from_subpath(subpath);
 
-						Item::new_from_element(element)
+						let mut item = Item::new_from_element(element)
 							.with_attribute(ATTR_BLEND_MODE, blend_mode)
 							.with_attribute(ATTR_OPACITY, opacity)
 							.with_attribute(ATTR_OPACITY_FILL, fill)
 							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer)
+							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+						item
 					};
 
 					// Apply the parent graphic's transform to each raster element, preserving each item's layer
@@ -236,15 +241,16 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
-						let mut element = Vector::from_subpath(subpath);
-						element.style.set_fill(Fill::Solid(Color::BLACK));
+						let element = Vector::from_subpath(subpath);
 
-						Item::new_from_element(element)
+						let mut item = Item::new_from_element(element)
 							.with_attribute(ATTR_BLEND_MODE, blend_mode)
 							.with_attribute(ATTR_OPACITY, opacity)
 							.with_attribute(ATTR_OPACITY_FILL, fill)
 							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer)
+							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
+						item
 					};
 
 					// Apply the parent graphic's transform to each raster element, preserving each item's layer
@@ -278,9 +284,10 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				Graphic::Color(color) => color
 					.into_iter()
 					.map(|row| {
-						let (color, attributes) = row.into_parts();
+						let (color, mut attributes) = row.into_parts();
+						set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
+
 						let mut element = Vector::default();
-						element.style.set_fill(Fill::Solid(color));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)
@@ -289,19 +296,21 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				Graphic::Gradient(gradient) => gradient
 					.into_iter()
 					.map(|row| {
-						let (stops, attributes) = row.into_parts();
+						let (stops, mut attributes) = row.into_parts();
+
+						let mut gradient_paint = List::new_from_element(stops);
+						if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
+							gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
+						}
+						if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
+						}
+						if let Some(spread_method) = attributes.remove::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+							gradient_paint.set_attribute(ATTR_SPREAD_METHOD, 0, spread_method);
+						}
+						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
+
 						let mut element = Vector::default();
-						// Convert the gradient's transform to absolute endpoints, matching `From<List<GradientStops>> for Fill`
-						let transform = attributes.get::<DAffine2>(ATTR_TRANSFORM).cloned().unwrap_or_default();
-						element.style.set_fill(Fill::Gradient(Gradient {
-							stops,
-							gradient_type: attributes.get::<GradientType>(ATTR_GRADIENT_TYPE).cloned().unwrap_or_default(),
-							spread_method: attributes.get::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).cloned().unwrap_or_default(),
-							start: transform.transform_point2(DVec2::ZERO),
-							end: transform.transform_point2(DVec2::X),
-							absolute: true,
-							transform: DAffine2::IDENTITY,
-						}));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)

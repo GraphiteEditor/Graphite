@@ -458,6 +458,15 @@ impl GradientStops {
 
 		result
 	}
+
+	pub fn lerp(&self, other: &Self, time: f64) -> Self {
+		let stops = self.iter().zip(other.iter()).map(|(a, b)| {
+			let position = a.position + (b.position - a.position) * time;
+			let color = a.color.lerp(&b.color, time as f32);
+			GradientStop { position, midpoint: 0.5, color }
+		});
+		GradientStops::new(stops)
+	}
 }
 
 #[repr(C)]
@@ -601,30 +610,6 @@ impl Gradient {
 		}
 	}
 
-	pub fn lerp(&self, other: &Self, time: f64) -> Self {
-		let start = self.start + (other.start - self.start) * time;
-		let end = self.end + (other.end - self.end) * time;
-		let stops = self.stops.iter().zip(other.stops.iter()).map(|(a, b)| {
-			let position = a.position + (b.position - a.position) * time;
-			let color = a.color.lerp(&b.color, time as f32);
-			GradientStop { position, midpoint: 0.5, color }
-		});
-		let stops = GradientStops::new(stops);
-		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
-		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
-
-		Self {
-			start,
-			end,
-			stops,
-			gradient_type,
-			spread_method,
-			// TODO: Eventually remove this document upgrade code
-			absolute: self.absolute,
-			transform: if time < 0.5 { self.transform } else { other.transform },
-		}
-	}
-
 	/// Insert a stop into the gradient, the index if successful
 	pub fn insert_stop(&mut self, mouse: DVec2, transform: DAffine2) -> Option<usize> {
 		// Transform the start and end positions to the same coordinate space as the mouse.
@@ -660,6 +645,54 @@ impl Gradient {
 	pub fn to_transform(&self) -> DAffine2 {
 		let direction = self.end - self.start;
 		DAffine2::from_cols(direction, direction.perp(), self.start)
+	}
+}
+
+/// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
+/// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
+/// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
+/// Falls back to a +90° rotation of `new_x` when `old_x` is degenerate.
+fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec2 {
+	let old_x_length = old_x.length();
+	if old_x_length < 1e-9 {
+		return DVec2::new(-new_x.y, new_x.x);
+	}
+	let ex_old = old_x / old_x_length;
+	let ey_old = DVec2::new(-ex_old.y, ex_old.x);
+
+	let new_x_length = new_x.length();
+	if new_x_length < 1e-9 {
+		return DVec2::ZERO;
+	}
+	let ex_new = new_x / new_x_length;
+	let ey_new = DVec2::new(-ex_new.y, ex_new.x);
+
+	let parallel = old_y.dot(ex_old);
+	let perpendicular = old_y.dot(ey_old);
+	let scale = new_x_length / old_x_length;
+
+	scale * (parallel * ex_new + perpendicular * ey_new)
+}
+
+/// Build a new affine that maps canonical (0,0) -> (1,0) to (new_start, new_end), preserving the y-axis
+/// shape of `old` proportionally to the x-axis length change.
+pub fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end: DVec2) -> DAffine2 {
+	let new_x_axis = new_end - new_start;
+	let preserved_y_axis = scale_y_axis_to_match_new_x(old.matrix2.x_axis, old.matrix2.y_axis, new_x_axis);
+	DAffine2 {
+		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
+		translation: new_start,
+	}
+}
+
+/// Build the default transform for a gradient not yet given one: a horizontal gradient spanning the
+/// bounding box's width, running through its vertical middle.
+pub fn initial_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffine2 {
+	let [min, max] = bounds;
+	let x_axis = DVec2::new(max.x - min.x, 0.);
+	DAffine2 {
+		matrix2: glam::DMat2::from_cols(x_axis, x_axis.perp()),
+		translation: DVec2::new(min.x, (min.y + max.y) / 2.),
 	}
 }
 

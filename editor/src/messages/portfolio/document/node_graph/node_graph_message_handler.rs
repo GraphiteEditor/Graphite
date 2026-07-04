@@ -1765,11 +1765,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				use graphene_std::vector::generator_nodes::*;
 
-				let is_fill = matches!(value, TaggedValue::Fill(_));
 				let reference = network_interface.reference(&node_id, selection_network_path);
 				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
 				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
 				let is_fill_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER));
+				let is_fill_input = is_fill_node && input_index == graphene_std::vector::fill::FillInput::<graphene_std::list::List<Graphic>>::INDEX;
 				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
 					[regular_polygon::IDENTIFIER, star::IDENTIFIER, arc::IDENTIFIER, spiral::IDENTIFIER, grid::IDENTIFIER, arrow::IDENTIFIER]
 						.into_iter()
@@ -1782,7 +1782,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if is_fill {
+				if is_fill_input {
 					responses.add(OverlaysMessage::Draw);
 				}
 				if is_stroke_node || is_fill_node || is_shape_generator_node || is_text_node {
