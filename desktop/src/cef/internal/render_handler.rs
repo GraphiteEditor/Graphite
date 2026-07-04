@@ -2,18 +2,20 @@ use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_render_handler_t, cef_base_ref_counted_t};
 use cef::{Browser, ImplRenderHandler, PaintElementType, Rect, WrapRenderHandler};
 
-use crate::cef::CefEventHandler;
-use crate::render::FrameBufferRef;
+use crate::cef::{CefEventHandler, View};
+use crate::wrapper::WgpuContext;
 
 pub(crate) struct RenderHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_render_handler_t, Self>,
 	event_handler: H,
+	view: View,
 }
 impl<H: CefEventHandler> RenderHandlerImpl<H> {
-	pub(crate) fn new(event_handler: H) -> Self {
+	pub(crate) fn new(event_handler: H, wgpu_context: WgpuContext) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
 			event_handler,
+			view: View::new(wgpu_context),
 		}
 	}
 }
@@ -31,29 +33,26 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 		}
 	}
 
-	fn on_paint(&self, _browser: Option<&mut Browser>, _type_: PaintElementType, _dirty_rects: Option<&[Rect]>, buffer: *const u8, width: std::ffi::c_int, height: std::ffi::c_int) {
-		let buffer_size = (width * height * 4) as usize;
-		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
-		let frame_buffer = FrameBufferRef::new(buffer_slice, width as usize, height as usize).expect("Failed to create frame buffer");
-
-		self.event_handler.draw(frame_buffer)
-	}
-
-	#[cfg(feature = "accelerated_paint")]
-	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rects: Option<&[Rect]>, info: Option<&cef::AcceleratedPaintInfo>) {
-		use cef::osr_texture_import::SharedTextureHandle;
-
+	fn on_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, dirty_rects: Option<&[Rect]>, buffer: *const u8, width: std::ffi::c_int, height: std::ffi::c_int) {
 		if type_ != PaintElementType::default() {
 			return;
 		}
 
-		let shared_handle = SharedTextureHandle::new(info.unwrap());
-		if let SharedTextureHandle::Unsupported = shared_handle {
-			tracing::error!("Platform does not support accelerated painting");
+		let buffer_size = (width * height * 4) as usize;
+		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
+
+		self.view.upload_frame_buffer(buffer_slice, width as u32, height as u32, dirty_rects.unwrap_or(&[]));
+		self.event_handler.draw(&self.view)
+	}
+
+	#[cfg(feature = "accelerated_paint")]
+	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rects: Option<&[Rect]>, info: Option<&cef::AcceleratedPaintInfo>) {
+		if type_ != PaintElementType::default() {
 			return;
 		}
 
-		self.event_handler.draw_gpu(shared_handle);
+		self.view.import_shared_texture(info.unwrap());
+		self.event_handler.draw(&self.view)
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {
@@ -70,6 +69,7 @@ impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 		Self {
 			object: self.object,
 			event_handler: self.event_handler.duplicate(),
+			view: self.view.clone(),
 		}
 	}
 }

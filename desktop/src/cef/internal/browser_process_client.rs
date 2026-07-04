@@ -4,6 +4,7 @@ use cef::{ContextMenuHandler, DisplayHandler, ImplClient, LifeSpanHandler, LoadH
 
 use crate::cef::CefEventHandler;
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
+use crate::wrapper::WgpuContext;
 
 use super::context_menu_handler::ContextMenuHandlerImpl;
 use super::display_handler::DisplayHandlerImpl;
@@ -21,12 +22,12 @@ pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
 	request_handler: RequestHandler,
 }
 impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
-	pub(crate) fn new(event_handler: &H) -> Self {
+	pub(crate) fn new(event_handler: &H, wgpu_context: WgpuContext) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
 			event_handler: event_handler.duplicate(),
 			load_handler: LoadHandler::new(LoadHandlerImpl::new(event_handler.duplicate())),
-			render_handler: RenderHandler::new(RenderHandlerImpl::new(event_handler.duplicate())),
+			render_handler: RenderHandler::new(RenderHandlerImpl::new(event_handler.duplicate(), wgpu_context)),
 			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(event_handler.duplicate())),
 			request_handler: RequestHandler::new(RequestHandlerImpl::new()),
 		}
