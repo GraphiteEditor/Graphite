@@ -1296,7 +1296,7 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 			let stroke_options_default = kurbo::StrokeOpts::default();
 			let stroke_options_stable = kurbo::StrokeOpts::default().stable_dash_order(true);
 
-			// 0.25 is balanced between performace and accuracy of the curve.
+			// 0.25 is balanced between performance and accuracy of the curve.
 			const STROKE_TOLERANCE: f64 = 0.25;
 
 			for mut path in bezpaths {
