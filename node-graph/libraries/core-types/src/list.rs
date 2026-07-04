@@ -1398,6 +1398,20 @@ impl<T> From<Item<T>> for List<T> {
 	}
 }
 
+impl<T> ApplyTransform for Item<T> {
+	/// Right-multiplies the modification into the item's transform attribute.
+	fn apply_transform(&mut self, modification: &DAffine2) {
+		let transform = self.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
+		*transform *= *modification;
+	}
+
+	/// Left-multiplies the modification into the item's transform attribute.
+	fn left_apply_transform(&mut self, modification: &DAffine2) {
+		let transform = self.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
+		*transform = *modification * *transform;
+	}
+}
+
 unsafe impl<T: StaticTypeSized> StaticType for Item<T> {
 	type Static = Item<T::Static>;
 }
