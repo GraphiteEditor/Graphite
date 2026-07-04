@@ -1634,6 +1634,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document
 				.network_interface
 				.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(g.stops.clone()), false), network_path);
+
+			// A solid/no-fill node leaves the transform input unused, so bake the backup gradient's placement into it for a later Solid -> Gradient toggle to restore
+			if matches!(old_inputs[1].as_value(), Some(TaggedValue::Fill(Fill::None | Fill::Solid(_)))) {
+				let transform = if g.absolute {
+					Some(g.transform * g.to_transform())
+				} else {
+					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
+					None
+				};
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+			}
 		}
 
 		inputs_count = 7;
