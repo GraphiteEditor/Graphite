@@ -2,7 +2,7 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
-use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION};
+use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
@@ -14,6 +14,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document_migration::*;
+use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
 use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -64,6 +65,9 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
 	pub workspace_panel_layout: WorkspacePanelLayout,
+	working_copy_root: Option<PathBuf>,
+	/// Number of document not fully loaded. While non-zero, resource GC is skipped.
+	pending_opens: usize,
 }
 
 #[message_handler_data]
@@ -197,7 +201,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let Some(document) = self.document(document_id) else { return };
+				let validate = preferences.validate_storage_round_trip;
+				let Some(document) = self.documents.get_mut(&document_id) else { return };
+
+				document.commit_storage_snapshot(&resource_storage.resources_mut(), validate);
+
 				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
@@ -292,6 +300,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
+			PortfolioMessage::DocumentStorageMounted { document_id, reopened, gdd } => {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Document was closed before its working copy finished mounting.
+					return;
+				};
+				document.set_storage(gdd);
+				if !reopened {
+					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+					document.retire_storage_interaction();
+				}
+			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
@@ -307,6 +326,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// We don't know what can be safely garbage collected
 					return;
 				}
+				if self.pending_opens > 0 {
+					// A document not fully loaded, skip garbage collection.
+					return;
+				}
 
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
@@ -320,6 +343,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
+
+					if let Some(storage) = document.storage() {
+						used_resources.extend(storage.all_referenced_resource_hashes());
+					}
 				}
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
@@ -505,7 +532,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses);
+				self.load_document(new_document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::MoveAllPanelTabs {
@@ -642,6 +669,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							document_serialized_content: content,
 						});
 					}
+					FileContent::GddDocument(content) => {
+						let document_path = if path.is_absolute() { Some(path) } else { None };
+						responses.add(PortfolioMessage::OpenGddDocument {
+							document_name: name,
+							document_path,
+							content,
+						});
+					}
 					FileContent::Svg(svg) => {
 						responses.add(PortfolioMessage::OpenSvg { name, svg });
 					}
@@ -667,6 +702,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							document_name: name,
 							document_path: Some(path),
 							document_serialized_content: content,
+						});
+					}
+					FileContent::GddDocument(content) => {
+						responses.add(PortfolioMessage::OpenGddDocument {
+							document_name: name,
+							document_path: Some(path),
+							content,
 						});
 					}
 					FileContent::Svg(svg) => {
@@ -709,6 +751,68 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_serialized_content,
 				});
 				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::OpenGddDocument {
+				document_name,
+				document_path,
+				content,
+			} => {
+				let document_id = DocumentId(generate_uuid());
+
+				// Suppress resource GC until the open completes
+				self.pending_opens += 1;
+
+				responses.add(open_gdd_document(
+					self.working_copy_root.clone(),
+					document_id,
+					document_name,
+					document_path,
+					content,
+					resource_storage.resources_mut(),
+					preferences.validate_storage_round_trip,
+				));
+			}
+			PortfolioMessage::GddDocumentLoaded {
+				document_id,
+				document_name,
+				document_path,
+				document,
+			} => {
+				self.pending_opens = self.pending_opens.saturating_sub(1);
+
+				let Some(mut document) = document.map(|boxed| *boxed) else {
+					let name = document_name
+						.filter(|name| !name.trim().is_empty())
+						.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
+						.unwrap_or_default();
+					simple_dialogs::FailedToOpenDocumentDialog { document_name: name }.send_dialog_to_frontend(responses);
+					return;
+				};
+				document.finalize_storage_load();
+				document.set_save_state(true);
+
+				let name = document_name
+					.filter(|name| !name.trim().is_empty())
+					.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
+					.unwrap_or_else(|| DEFAULT_DOCUMENT_NAME.to_string());
+				document.name = self.resolve_document_name(name, None);
+				document.path = document_path;
+
+				// The working copy is already mounted (we opened the .gdd), so skip the async re-mount.
+				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface } => {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Document was closed before its undo/redo rebuild completed; drop the payload.
+					return;
+				};
+				let Some(interface) = interface.map(|boxed| *boxed) else {
+					// The rebuild failed and already logged; leave the live document untouched.
+					return;
+				};
+
+				document.apply_gdd_cursor_rebuild(interface, had_oracle, preferences.validate_storage_round_trip, responses);
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
@@ -836,8 +940,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.set_save_state(document_is_saved);
 
 				let document_name_from_path = document_path.as_ref().and_then(|path| {
-					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
-						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					if path.extension().is_some_and(|extension| extension == FILE_EXTENSION || extension == GDD_FILE_EXTENSION) {
+						path.file_stem().map(|stem| stem.to_string_lossy().to_string())
 					} else {
 						None
 					}
@@ -855,7 +959,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.name = self.resolve_document_name(candidate_name, None);
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, responses);
+				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
 
 				responses.add(AppWindowMessage::Focus);
 
@@ -1601,6 +1705,10 @@ impl PortfolioMessageHandler {
 		Self { executor, ..Default::default() }
 	}
 
+	pub fn set_working_copy_root(&mut self, root: Option<PathBuf>) {
+		self.working_copy_root = root;
+	}
+
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
 		self.documents.get(&document_id)
 	}
@@ -1698,6 +1806,7 @@ impl PortfolioMessageHandler {
 				Ok(content) => FileContent::Document(content),
 				Err(_) => FileContent::Unsupported,
 			},
+			GDD_FILE_EXTENSION => FileContent::GddDocument(content),
 			"svg" => match String::from_utf8(content) {
 				Ok(content) => FileContent::Svg(content),
 				Err(_) => FileContent::Unsupported,
@@ -1717,7 +1826,14 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+	fn load_document(
+		&mut self,
+		mut new_document: DocumentMessageHandler,
+		document_id: DocumentId,
+		resource_storage: &ResourceStorageMessageHandler,
+		validate: bool,
+		responses: &mut VecDeque<Message>,
+	) {
 		let is_new_document = !self.document_ids.contains(&document_id);
 		if is_new_document {
 			self.document_ids.push_back(document_id);
@@ -1744,6 +1860,64 @@ impl PortfolioMessageHandler {
 		if is_new_document {
 			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		}
+
+		// Mount the per-document `Gdd` working copy asynchronously.
+		//
+		// Only mount for legacy loads: a `.gdd` open already mounted its working copy
+		// and remounting would overwrite it and drop that history state.
+		if self.documents.get(&document_id).and_then(|document| document.storage()).is_none() {
+			let legacy_network = self
+				.documents
+				.get(&document_id)
+				.map(|document| document.network_interface.document_network().clone())
+				.unwrap_or_default();
+
+			responses.add(Self::mount_document_storage(
+				self.working_copy_root.clone(),
+				document_id,
+				legacy_network,
+				resource_storage.resources(),
+				validate,
+			));
+		}
+	}
+
+	/// With a configured root the working copy lives at `<root>/<id_hex>`; without one it is in-memory.
+	///
+	/// On a *reopen* (existing working copy), the freshly-read `.gdd` is converted back to a runtime
+	/// network and compared against `legacy_network` before
+	/// the working copy attaches. It validates the `.gdd` *read* path.
+	fn mount_document_storage(
+		working_copy_root: Option<std::path::PathBuf>,
+		document_id: DocumentId,
+		legacy_network: graph_craft::document::NodeNetwork,
+		byte_store: Box<dyn graph_craft::application_io::resource::LoadResource>,
+		validate: bool,
+	) -> Message {
+		let path = working_copy_root.map(|root| root.join(format!("{:016x}", document_id.0)));
+		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
+		let peer = graph_storage::PeerId(generate_uuid());
+
+		let future = async move {
+			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {
+				Ok(result) => result,
+				Err(error) => {
+					log::error!("Failed to mount document storage for {document_id:?}: {error}");
+					return Message::NoOp;
+				}
+			};
+
+			if validate && reopened {
+				compare_storage_against_runtime(&gdd, &legacy_network, byte_store.as_ref(), document_id).await;
+			}
+
+			Message::Portfolio(PortfolioMessage::DocumentStorageMounted {
+				document_id,
+				reopened,
+				gdd: Some(gdd),
+			})
+		};
+		future.into()
 	}
 
 	/// Returns an iterator over the open documents in order.

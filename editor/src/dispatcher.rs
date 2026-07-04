@@ -89,9 +89,10 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>, working_copy_root: Option<std::path::PathBuf>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
+		s.message_handlers.portfolio_message_handler.set_working_copy_root(working_copy_root);
 		s
 	}
 
@@ -271,6 +272,7 @@ impl Dispatcher {
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
+					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;
 
 					if let Some(document) = self
 						.message_handlers
