@@ -16,7 +16,7 @@ use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::Gradient;
-use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
+use graphene_std::{ATTR_TRANSFORM, Context, Graphic, NodeInputDecleration};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -585,7 +585,7 @@ impl NodeGraphExecutor {
 			(Some((bounding_box, item_transform)), Some((network_path, gradient))) => {
 				let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 				let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-				let input = InputConnector::node(fill_node_id, 6);
+				let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
 				document
 					.network_interface
 					.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
