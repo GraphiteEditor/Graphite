@@ -2061,7 +2061,11 @@ impl DocumentMessageHandler {
 		let legacy_document = self.serialize_document();
 
 		self.history
-			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store, validate);
+			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
+
+		if validate {
+			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
 	}
 
 	/// Restore the `ui::doc::*`-keyed `view_settings` map from `session.json` into the runtime handler
@@ -2130,12 +2134,8 @@ impl DocumentMessageHandler {
 
 		// The live `Gdd` cursor's registry should match a fresh `from_runtime` of the now-swapped interface.
 		if validate {
-			use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::StorageMetadataView;
-
 			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
-			let view = StorageMetadataView::new(&self.network_interface);
-			self.history
-				.verify_cursor_matches_runtime(self.network_interface.document_network(), &view, &self.resources.registry, &current_resources);
+			self.history.verify_cursor_matches_runtime(&self.network_interface, &self.resources.registry, &current_resources);
 		}
 
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
