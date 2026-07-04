@@ -23,10 +23,11 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
-	let primary_is_item = matches!(
-		parsed.fields.first().map(|field| &field.ty),
-		Some(ParsedFieldType::Regular(RegularParsedField { ty, .. })) if outer_wrapper_is(ty, "Item")
-	);
+	let primary_is_item = match parsed.fields.first().map(|field| &field.ty) {
+		Some(ParsedFieldType::Regular(RegularParsedField { ty, .. })) => outer_wrapper_is(ty, "Item"),
+		Some(ParsedFieldType::Node(NodeParsedField { output_type, .. })) => outer_wrapper_is(output_type, "Item"),
+		None => false,
+	};
 
 	for field in parsed.fields.iter().skip(1) {
 		let ParsedField {

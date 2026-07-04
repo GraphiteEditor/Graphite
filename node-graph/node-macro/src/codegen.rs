@@ -798,12 +798,17 @@ impl WireWrapper {
 	}
 }
 
-/// Returns the element type of the node's primary input if it is declared `Item<T>`, which marks the node as element-wise.
+/// Returns the element type of the node's primary input if it is declared `Item<T>` (directly, or as a lazy
+/// connector's `Output = Item<T>`), which marks the node as element-wise.
 fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	let field = parsed.fields.first()?;
+	if field.is_data_field {
+		return None;
+	}
+
 	match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.is_data_field => peel_item(ty),
-		_ => None,
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => peel_item(ty),
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => peel_item(output_type),
 	}
 }
 
