@@ -1610,7 +1610,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					let transform = if gradient.absolute {
 						Some(gradient.transform * gradient.to_transform())
 					} else {
-						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint target's bounds.
+						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint target's bounds
 						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
 						None
 					};

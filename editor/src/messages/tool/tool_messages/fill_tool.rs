@@ -242,7 +242,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let color = fills.get(0).unwrap().element(0).expect("Color is stored in the list");
+		let color = fills.first().unwrap().element(0).expect("Color is stored in the list");
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::GREEN));
 	}
 
@@ -255,7 +255,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let color = fills.get(0).unwrap().element(0).expect("Color is stored in the list");
+		let color = fills.first().unwrap().element(0).expect("Color is stored in the list");
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
 	}
 }

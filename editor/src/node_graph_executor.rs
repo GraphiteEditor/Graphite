@@ -595,7 +595,7 @@ impl NodeGraphExecutor {
 	) {
 		let (network_path, fill_node_id, gradient) = bake_target;
 
-		// Ignore a stale response whose fill is no longer the one being measured (a re-dispatch after a document switch can leave two measurements in flight for the same entry).
+		// Ignore a stale response whose fill is no longer the one being measured (a re-dispatch after a document switch can leave two measurements in flight for the same entry)
 		let is_current = self
 			.gradient_migration
 			.as_ref()
@@ -607,7 +607,7 @@ impl NodeGraphExecutor {
 
 		match inspect_result.and_then(|mut result| result.take_data()).and_then(|data| measure_fill_geometry(&data)) {
 			Some((bounding_box, item_transform)) => {
-				// Skip the bake if the user already placed this gradient themselves (their value survives an undo of a prior bake and must not be clobbered on retry), but drop the now-superseded entry.
+				// Skip the bake if the user already placed this gradient themselves, but drop the now-superseded entry either way
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
 					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();

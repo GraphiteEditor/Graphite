@@ -663,7 +663,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	})
 }
 
-// TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated.
+// TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated
 /// Returns the `Fill` value from a layer's upstream Fill node.
 pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;

@@ -3457,14 +3457,14 @@ mod test {
 
 		let morphed = super::morph(Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default()).await;
 
-		let fill = fill_graphic_list_at(&morphed, 0).expect("morph should keep the fill paint at the midpoint");
+		let fill = fill_graphic_list_at(&morphed, 0).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
 		let Some(Graphic::Color(colors)) = fill.element(0) else {
-			panic!("expected a solid color fill, got {:?}", fill.element(0));
+			panic!("Expected a solid color fill, got {:?}", fill.element(0));
 		};
-		let color = *colors.element(0).expect("color present");
-		assert!(color.r() > 0. && color.b() > 0., "fill should be a red↔blue blend, got {color:?}");
+		let color = *colors.element(0).expect("Color present");
+		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
 	}
 
 	#[track_caller]
