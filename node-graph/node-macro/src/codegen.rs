@@ -196,36 +196,24 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
-	let number_min_values: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { number_soft_min, number_hard_min, .. }) => match (number_soft_min, number_hard_min) {
-				(Some(soft_min), _) => quote!(Some(#soft_min)),
-				(None, Some(hard_min)) => quote!(Some(#hard_min)),
-				(None, None) => quote!(None),
-			},
-			_ => quote!(None),
-		})
-		.collect();
-	let number_max_values: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { number_soft_max, number_hard_max, .. }) => match (number_soft_max, number_hard_max) {
-				(Some(soft_max), _) => quote!(Some(#soft_max)),
-				(None, Some(hard_max)) => quote!(Some(#hard_max)),
-				(None, None) => quote!(None),
-			},
-			_ => quote!(None),
-		})
-		.collect();
+	let bound_values = |select: fn(&RegularParsedField) -> &Option<NumberBound>| -> Vec<_> {
+		regular_fields
+			.iter()
+			.map(|field| match &field.ty {
+				ParsedFieldType::Regular(regular) => select(regular).as_ref().map_or(quote!(None), |bound| quote!(Some(#bound))),
+				_ => quote!(None),
+			})
+			.collect()
+	};
+	let number_soft_min_values = bound_values(|field| &field.number_soft_min);
+	let number_soft_max_values = bound_values(|field| &field.number_soft_max);
+	let number_hard_min_values = bound_values(|field| &field.number_hard_min);
+	let number_hard_max_values = bound_values(|field| &field.number_hard_max);
 	let number_mode_range_values: Vec<_> = regular_fields
 		.iter()
 		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField {
-				number_mode_range: Some(number_mode_range),
-				..
-			}) => quote!(Some(#number_mode_range)),
-			_ => quote!(None),
+			ParsedFieldType::Regular(RegularParsedField { number_mode_range, .. }) => quote!(#number_mode_range),
+			_ => quote!(false),
 		})
 		.collect();
 	let number_display_decimal_places: Vec<_> = regular_fields
@@ -518,8 +506,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								exposed: #exposed,
 								value_source: #value_sources,
 								default_type: #default_types,
-								number_min: #number_min_values,
-								number_max: #number_max_values,
+								number_soft_min: #number_soft_min_values,
+								number_soft_max: #number_soft_max_values,
+								number_hard_min: #number_hard_min_values,
+								number_hard_max: #number_hard_max_values,
 								number_mode_range: #number_mode_range_values,
 								number_display_decimal_places: #number_display_decimal_places,
 								number_step: #number_step,

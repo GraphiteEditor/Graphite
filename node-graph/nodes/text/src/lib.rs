@@ -424,7 +424,7 @@ fn string_repeat(
 	string: String,
 	/// The number of times the string should appear in the output.
 	#[default(2)]
-	#[hard_min(1)]
+	#[hard(1..)]
 	count: u32,
 	/// The string placed between each repetition.
 	#[default("\\n")]

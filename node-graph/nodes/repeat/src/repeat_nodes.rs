@@ -20,7 +20,7 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(1)]
-	#[hard_min(1)]
+	#[hard(1..)]
 	count: u32,
 	reverse: bool,
 ) -> List<T> {
@@ -60,7 +60,7 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	direction: PixelSize,
 	angle: Angle,
 	#[default(5)]
-	#[hard_min(1)]
+	#[hard(1..)]
 	count: u32,
 ) -> List<T> {
 	let angle = angle.to_radians();
@@ -108,7 +108,7 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	#[default(5)]
 	radius: f64,
 	#[default(5)]
-	#[hard_min(1)]
+	#[hard(1..)]
 	count: u32,
 ) -> List<T> {
 	let count = count.max(1);

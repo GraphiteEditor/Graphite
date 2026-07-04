@@ -156,7 +156,9 @@ async fn mirror<T: 'n + Send + Clone>(
 	content: List<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
-	#[range((-90., 90.))] angle: Angle,
+	#[range]
+	#[soft(-90..90)]
+	angle: Angle,
 	#[default(true)] keep_original: bool,
 ) -> List<T>
 where

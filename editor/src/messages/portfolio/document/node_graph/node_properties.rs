@@ -149,22 +149,36 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	widgets
 }
 
+/// The numeric bounds and widget mode of a number parameter, sourced from the node's field metadata.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct NumberOptions {
+	pub soft_min: Option<f64>,
+	pub soft_max: Option<f64>,
+	pub hard_min: Option<f64>,
+	pub hard_max: Option<f64>,
+	pub slider: bool,
+}
+
 pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
 	ty: &Type,
-	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+	number_options: NumberOptions,
 	unit: Option<&str>,
 	display_decimal_places: Option<u32>,
 	step: Option<f64>,
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
-	let (mut number_min, mut number_max, range) = number_options;
+	let NumberOptions {
+		soft_min,
+		soft_max,
+		hard_min,
+		hard_max,
+		slider,
+	} = number_options;
 	let mut number_input = NumberInput::default();
-	if let Some((range_start, range_end)) = range {
-		number_min = Some(range_start);
-		number_max = Some(range_end);
-		number_input = number_input.mode_range().min(range_start).max(range_end);
+	if slider {
+		number_input = number_input.mode_range();
 	}
 	if let Some(unit) = unit {
 		number_input = number_input.unit(unit);
@@ -176,8 +190,22 @@ pub(crate) fn property_from_type(
 		number_input = number_input.step(step);
 	}
 
-	let min = |x: f64| number_min.unwrap_or(x);
-	let max = |x: f64| number_max.unwrap_or(x);
+	// Applies the parameter's typing clamp and slider extent to the widget, given the type's own default bounds.
+	// Per end: the clamp is the hard bound (or unbounded if only a soft bound is given, since soft is a suggested
+	// extent rather than a limit), and the slider extent is the soft bound, each falling back to the hard bound
+	// and then to the type default when unspecified. An end with any explicit bound ignores the type default.
+	let bounded = |number_input: NumberInput, type_min: f64, type_max: f64| {
+		let clamp_min = hard_min.unwrap_or(if soft_min.is_some() { f64::NEG_INFINITY } else { type_min });
+		let clamp_max = hard_max.unwrap_or(if soft_max.is_some() { f64::INFINITY } else { type_max });
+		let extent_min = soft_min.or(hard_min).unwrap_or(type_min);
+		let extent_max = soft_max.or(hard_max).unwrap_or(type_max);
+
+		number_input
+			.min(clamp_min)
+			.max(clamp_max)
+			.range_min(Some(extent_min).filter(|bound| bound.is_finite()))
+			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
+	};
 
 	let default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
 
@@ -186,16 +214,16 @@ pub(crate) fn property_from_type(
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
-				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
-				Some("Angle") | Some("AngleF32") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
-				Some("Multiplier") => number_widget(default_info, number_input.unit(unit.unwrap_or("x"))).into(),
-				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(unit.unwrap_or(" px"))).into(),
-				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
-				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
-				Some("Progression") => progression_widget(default_info, number_input.min(min(0.))).into(),
-				Some("SignedInteger") => number_widget(default_info, number_input.int()).into(),
-				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
+				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, bounded(number_input.percentage(), 0., 100.)).into(),
+				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, bounded(number_input.percentage(), -100., 100.)).into(),
+				Some("Angle") | Some("AngleF32") => number_widget(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°"))).into(),
+				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
+				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
+				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+				Some("Fraction") => number_widget(default_info, bounded(number_input.mode_range(), 0., 1.)).into(),
+				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some("SeedValue") => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 
@@ -206,9 +234,9 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if x == TypeId::of::<f64>() || x == TypeId::of::<f32>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
-						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX)))).into(),
-						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
+						Some(x) if x == TypeId::of::<f64>() || x == TypeId::of::<f32>() => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
+						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
@@ -2295,7 +2323,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					return Vec::new();
 				};
 
-				let mut number_options = (None, None, None);
+				let mut number_options = NumberOptions::default();
 				let mut display_decimal_places = None;
 				let mut step = None;
 				let mut unit_suffix = None;
@@ -2307,7 +2335,13 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.get(proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
-							number_options = (field.number_min, field.number_max, field.number_mode_range);
+							number_options = NumberOptions {
+								soft_min: field.number_soft_min,
+								soft_max: field.number_soft_max,
+								hard_min: field.number_hard_min,
+								hard_max: field.number_hard_max,
+								slider: field.number_mode_range,
+							};
 							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
 							step = field.number_step;

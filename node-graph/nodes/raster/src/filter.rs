@@ -92,8 +92,9 @@ async fn blur(
 	/// The image to be blurred.
 	image_frame: List<Raster<CPU>>,
 	/// The radius of the blur kernel.
-	#[range((0., 100.))]
-	#[hard_min(0.)]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
 	radius: PixelLength,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
 	box_blur: bool,
@@ -128,8 +129,9 @@ async fn median_filter(
 	/// The image to be filtered.
 	image_frame: List<Raster<CPU>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
-	#[range((0., 50.))]
-	#[hard_min(0.)]
+	#[range]
+	#[hard(0..)]
+	#[soft(..50)]
 	radius: PixelLength,
 ) -> List<Raster<CPU>> {
 	image_frame

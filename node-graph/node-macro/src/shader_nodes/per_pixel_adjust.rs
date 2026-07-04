@@ -238,7 +238,7 @@ impl PerPixelAdjustCodegen<'_> {
 				number_soft_max: None,
 				number_hard_min: None,
 				number_hard_max: None,
-				number_mode_range: None,
+				number_mode_range: false,
 				implementations: Default::default(),
 				gpu_image: false,
 			}),

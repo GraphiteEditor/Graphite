@@ -1664,15 +1664,18 @@ fn static_input_properties() -> InputProperties {
 				if let Some(unit) = field.unit {
 					number_input = number_input.unit(unit);
 				}
-				if let Some(number_min) = field.number_min {
-					number_input = number_input.min(number_min);
+				// Typing is clamped only by the hard bounds; the slider extent prefers the soft bounds (see `property_from_type`)
+				if let Some(hard_min) = field.number_hard_min {
+					number_input = number_input.min(hard_min);
 				}
-				if let Some(number_max) = field.number_max {
-					number_input = number_input.max(number_max);
+				if let Some(hard_max) = field.number_hard_max {
+					number_input = number_input.max(hard_max);
 				}
-				if let Some((range_min, range_max)) = field.number_mode_range {
-					number_input = number_input.range_min(Some(range_min));
-					number_input = number_input.range_max(Some(range_max));
+				if field.number_mode_range {
+					number_input = number_input
+						.mode_range()
+						.range_min(field.number_soft_min.or(field.number_hard_min))
+						.range_max(field.number_soft_max.or(field.number_hard_max));
 				}
 				number_input = number_input.is_integer(false);
 				if let Some(number_step) = field.number_step {
