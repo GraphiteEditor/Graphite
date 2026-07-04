@@ -72,10 +72,6 @@ impl EditorTestUtils {
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
 		let frontend_messages_from_msg = self.editor.handle_message(message);
 
-		// Settle async work (notably the undo/redo `Gdd` cursor rebuild) so each test step sees a fully
-		// applied state, rather than a rebuild landing in a later step after its oracle has moved.
-		self.editor.dispatcher.settle_async_work().await;
-
 		// Required to process any buffered messages
 		if let Err(e) = self.eval_graph().await {
 			panic!("Failed to evaluate graph: {e}");

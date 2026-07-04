@@ -376,15 +376,6 @@ impl Dispatcher {
 		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
 	}
 
-	/// Block until no async work is in flight. Each result feeds back through `handle_message`, which may
-	/// spawn more, so loop until the in-flight count drains. Test-only: production pumps results lazily.
-	pub async fn settle_async_work(&mut self) {
-		while self.message_handlers.future_message_handler.has_in_flight() {
-			let Some(message) = self.message_handlers.future_message_handler.recv_next().await else { break };
-			self.handle_message(message, true);
-		}
-	}
-
 	/// Create the tree structure for logging the messages as a tree
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
