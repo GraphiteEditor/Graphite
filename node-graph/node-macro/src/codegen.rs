@@ -282,18 +282,30 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
 
 	let input_type = &parsed.input.ty;
-	let mut clampable_clauses = Vec::new();
 
-	for field in &regular_fields {
-		// Add Clampable bound if this field uses hard_min or hard_max, applying to the Output type of the future, which is #ty
-		if let ParsedFieldType::Regular(RegularParsedField {
-			ty, number_hard_min, number_hard_max, ..
-		}) = &field.ty
-			&& (number_hard_min.is_some() || number_hard_max.is_some())
-		{
-			clampable_clauses.push(quote!(#ty: #core_types::misc::Clampable));
-		}
-	}
+	// Add Clampable bounds for fields with hard bounds, applying to each variant's evaluated wire type
+	let build_clampable_clauses = |primary_wire: Option<WireWrapper>| -> Vec<TokenStream2> {
+		regular_fields
+			.iter()
+			.filter_map(|field| {
+				let ParsedFieldType::Regular(RegularParsedField {
+					ty, number_hard_min, number_hard_max, ..
+				}) = &field.ty
+				else {
+					return None;
+				};
+				if number_hard_min.is_none() && number_hard_max.is_none() {
+					return None;
+				}
+
+				let ty = match (peel_item(ty), primary_wire) {
+					(Some(element_ty), Some(wrap)) => wrap.apply(core_types, &element_ty),
+					_ => ty.clone(),
+				};
+				Some(quote!(#ty: #core_types::misc::Clampable))
+			})
+			.collect()
+	};
 	future_idents.extend((0..regular_fields.len()).map(|id| format_ident!("F{}", id)));
 
 	// Builds every field's where-clause bounds, optionally wrapping the primary field's wire type for the element-wise variants
@@ -331,7 +343,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		predicates: Default::default(),
 	});
 
-	let make_struct_where_clause = |field_clauses: Vec<TokenStream2>, extra_clauses: Vec<TokenStream2>| {
+	let make_struct_where_clause = |field_clauses: Vec<TokenStream2>, clampable_clauses: Vec<TokenStream2>, extra_clauses: Vec<TokenStream2>| {
 		let mut struct_where_clause = where_clause.clone();
 		let extra_where: Punctuated<WherePredicate, Comma> = parse_quote!(
 			#(#field_clauses,)*
@@ -342,7 +354,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		struct_where_clause.predicates.extend(extra_where);
 		struct_where_clause
 	};
-	let struct_where_clause = make_struct_where_clause(build_field_clauses(element_wise.then_some(WireWrapper::Item)), Vec::new());
+	let primary_wire = element_wise.then_some(WireWrapper::Item);
+	let struct_where_clause = make_struct_where_clause(build_field_clauses(primary_wire), build_clampable_clauses(primary_wire), Vec::new());
 
 	// The mapped variant clones bare parameters and clones ranked connectors' items per frame slot, so both need Clone
 	let param_clone_clauses: Vec<TokenStream2> = regular_fields
@@ -355,7 +368,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Node(_) => None,
 		})
 		.collect();
-	let mapped_struct_where_clause = element_wise.then(|| make_struct_where_clause(build_field_clauses(Some(WireWrapper::List)), param_clone_clauses));
+	let mapped_struct_where_clause =
+		element_wise.then(|| make_struct_where_clause(build_field_clauses(Some(WireWrapper::List)), build_clampable_clauses(Some(WireWrapper::List)), param_clone_clauses));
 
 	// Only regular fields are parameters to new()
 	let new_args: Vec<_> = node_generics
