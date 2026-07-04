@@ -64,7 +64,8 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	count: u32,
 ) -> List<T> {
 	let angle = angle.to_radians();
-	let total = (count - 1) as f64;
+	// A single copy has no steps between copies, so the denominator is kept at 1 to avoid `0. / 0.` producing a NaN transform
+	let total = (count - 1).max(1) as f64;
 
 	let mut result_list = List::new();
 
@@ -260,6 +261,26 @@ mod test {
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
+	}
+
+	#[tokio::test]
+	async fn repeat_single_copy() {
+		let context = OwnedContextImpl::default().into_context();
+		let repeated = super::repeat_array(
+			context,
+			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			DVec2::new(12., 10.),
+			45.,
+			1,
+		)
+		.await;
+		let vector_list = vector_nodes::flatten_path(Footprint::default(), repeated).await;
+		let vector = vector_list.element(0).unwrap();
+		assert_eq!(vector.region_manipulator_groups().count(), 1);
+
+		let (_, manipulator_groups) = vector.region_manipulator_groups().next().unwrap();
+		let anchor = manipulator_groups[0].anchor;
+		assert!(anchor.length() < 1e-5, "Expected the single copy to be untransformed, found anchor {anchor}");
 	}
 
 	#[tokio::test]
