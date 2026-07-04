@@ -1,6 +1,5 @@
 use super::DocumentHistory;
 use super::document_diff::diff_networks;
-use super::document_history::SnapshotInputs;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
@@ -2040,7 +2039,7 @@ impl DocumentMessageHandler {
 	/// staging the runtime network into the `Gdd` working copy at each `CommitTransaction`. No-op while
 	/// unmounted. `validate` (the `validate_storage_round_trip` preference) gates the soak round-trip.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView};
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
 		if self.history.storage().is_none() {
 			return;
@@ -2061,17 +2060,8 @@ impl DocumentMessageHandler {
 		// blob and the registry snapshot describe one consistent document (no interleaved edit).
 		let legacy_document = self.serialize_document();
 
-		let view = StorageMetadataView::new(&self.network_interface);
-		let inputs = SnapshotInputs {
-			network: self.network_interface.document_network(),
-			view: &view,
-			interface: &self.network_interface,
-			registry: &self.resources.registry,
-			view_settings,
-			legacy_document,
-		};
-
-		self.history.stage_snapshot(inputs, byte_store, validate);
+		self.history
+			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store, validate);
 	}
 
 	/// Restore the `ui::doc::*`-keyed `view_settings` map from `session.json` into the runtime handler

@@ -8,18 +8,6 @@ use graph_storage::Registry;
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, collect_network_view_settings};
 
-/// Document-derived inputs for [`DocumentHistory::stage_snapshot`], gathered before the mutable cursor
-/// borrow. `network`/`view`/`registry` are the runtime graph, `interface` resolves the per-network ids,
-/// and `view_settings`/`legacy_document` are the pre-serialized per-peer view map and legacy blob.
-pub struct SnapshotInputs<'a> {
-	pub network: &'a NodeNetwork,
-	pub view: &'a StorageMetadataView<'a>,
-	pub interface: &'a NodeNetworkInterface,
-	pub registry: &'a ResourceRegistry,
-	pub view_settings: BTreeMap<String, serde_json::Value>,
-	pub legacy_document: String,
-}
-
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
 /// becoming the authoritative history. Owns the dual-stack bookkeeping (push/pop/clear, trimmed to
 /// [`MAX_UNDO_HISTORY_LEN`](crate::consts::MAX_UNDO_HISTORY_LEN)) and the cursor's stage/retire/move/verify
@@ -113,29 +101,40 @@ impl DocumentHistory {
 	/// staged hot ops are retired by [`retire_storage_interaction`](Self::retire_storage_interaction) at
 	/// undo-step boundaries. `validate` (the `validate_storage_round_trip` preference) gates the per-commit
 	/// round-trip check, off by default for its perf cost.
-	pub fn stage_snapshot(&mut self, inputs: SnapshotInputs, byte_store: &dyn ResourceStorage, validate: bool) {
+	pub fn stage_snapshot(
+		&mut self,
+		interface: &NodeNetworkInterface,
+		registry: &ResourceRegistry,
+		view_settings: BTreeMap<String, serde_json::Value>,
+		legacy_document: &str,
+		byte_store: &dyn ResourceStorage,
+		validate: bool,
+	) {
 		if self.storage.is_none() {
 			return;
 		}
+
+		let network = interface.document_network();
+		let metadata_view = StorageMetadataView::new(interface);
 
 		// Per-network view state is per-peer, so collect it (keyed by the stable `NetworkId`) for
 		// `session.json`. Computed before the mutable `storage` borrow below.
 		let network_view_settings = self
 			.storage
 			.as_ref()
-			.and_then(|storage| storage.network_ids(inputs.network, inputs.view).ok())
-			.map(|network_ids| collect_network_view_settings(inputs.interface, &network_ids));
+			.and_then(|storage| storage.network_ids(network, &metadata_view).ok())
+			.map(|network_ids| collect_network_view_settings(interface, &network_ids));
 
 		let storage = self.storage.as_mut().expect("checked present above");
 
 		// Stage without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
 		// step, so the deltas accumulate as hot ops and coalesce at the next undo-step boundary.
-		if let Err(error) = storage.stage_runtime_snapshot(inputs.network, inputs.view, inputs.registry, byte_store) {
+		if let Err(error) = storage.stage_runtime_snapshot(network, &metadata_view, registry, byte_store) {
 			log::error!("Storage snapshot staging failed: {error}");
 			return;
 		}
 
-		if let Err(error) = storage.set_view_settings(inputs.view_settings) {
+		if let Err(error) = storage.set_view_settings(view_settings) {
 			log::error!("Persisting view settings failed: {error}");
 		}
 
@@ -147,12 +146,12 @@ impl DocumentHistory {
 
 		// Dual-write soak: embed the legacy `.graphite` bytes so the new format can be validated against
 		// (and recovered from) the old one on open.
-		if let Err(error) = storage.store_legacy_document(inputs.legacy_document.as_bytes()) {
+		if let Err(error) = storage.store_legacy_document(legacy_document.as_bytes()) {
 			log::error!("Embedding legacy document into working copy failed: {error}");
 		}
 
 		if validate {
-			self.verify_round_trip(inputs.network, inputs.view, inputs.registry);
+			self.verify_round_trip(network, &metadata_view, registry);
 		}
 	}
 
@@ -190,14 +189,14 @@ impl DocumentHistory {
 
 	/// Soak check: the stored registry should equal a fresh `from_runtime`, and a `to_runtime` of it should
 	/// equal the original network.
-	pub fn verify_round_trip(&self, network: &NodeNetwork, view: &StorageMetadataView, registry: &ResourceRegistry) {
+	pub fn verify_round_trip(&self, network: &NodeNetwork, metadata_view: &StorageMetadataView, registry: &ResourceRegistry) {
 		use super::diff_networks;
 		use super::document_diff::diff_registries;
 
 		let Some(storage) = &self.storage else { return };
 		let peer = storage.session().peer();
 
-		let conversion = match Registry::convert_from_runtime(network, view, registry, peer) {
+		let conversion = match Registry::convert_from_runtime(network, metadata_view, registry, peer) {
 			Ok(conversion) => conversion,
 			Err(error) => {
 				log::error!("storage round-trip: from_runtime failed: {error}");
