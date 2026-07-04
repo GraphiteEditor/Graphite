@@ -43,16 +43,10 @@ impl ResourceStorageMessageHandler {
 		})
 	}
 
-	/// The backing store as a `&dyn ResourceStorage`, for write paths (e.g. persisting declaration
-	/// bytes on commit). `None` before initialization.
-	pub fn storage(&self) -> Option<&dyn ResourceStorage> {
-		self.storage.as_deref()
-	}
-
-	/// An owned, cloneable handle that both loads and stores, for `'static` async tasks that need to
-	/// read and write the cache off-thread. `None` before initialization.
-	pub fn store_handle(&self) -> Option<ResourcesHandle> {
-		self.storage.clone().map(|inner| ResourcesHandle { inner })
+	pub fn resources_mut(&self) -> ResourcesHandle {
+		ResourcesHandle {
+			inner: self.storage.clone().expect("Resource storage not initialized"),
+		}
 	}
 }
 

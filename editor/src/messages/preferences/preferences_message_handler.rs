@@ -23,17 +23,8 @@ pub struct PreferencesMessageHandler {
 	pub ui_scale: f64,
 	pub max_render_region_size: u32,
 	pub disable_ui_acceleration: bool,
-	/// Dual-write soak validation: when on, every storage commit/open/undo round-trips the document
-	/// through `graph-storage` and compares it against the legacy path, logging any drift. Off by
-	/// default since the per-commit round-trip is a real perf cost; turn it on to debug the `.gdd`
-	/// format during the soak. See [`save_as_gdd`](Self::save_as_gdd).
 	pub validate_storage_round_trip: bool,
-	/// Save documents in the new `.gdd` container format (with the legacy `.graphite` embedded as a
-	/// recovery fallback) instead of a plain `.graphite` file. Off by default while `.gdd` is in soak.
 	pub save_as_gdd: bool,
-	/// Show the in-soak "Documents" storage section (`.gdd` save and round-trip validation) in the
-	/// preferences dialog. Toggled from the developer debug menu; off by default to keep the soak-only
-	/// options out of sight until a developer opts in.
 	pub show_storage_preferences: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,

@@ -14,7 +14,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document_migration::*;
-use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document_future};
+use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
 use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -65,15 +65,9 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
 	pub workspace_panel_layout: WorkspacePanelLayout,
-	/// Parent directory holding every document's `Gdd` working copy; a document mounts at
-	/// `working_copy_root.join(format!("{id:x}"))`. A filesystem path on native, converted to an OPFS
-	/// directory name on web. `None` (tests, headless) mounts an in-memory working copy that writes
-	/// nowhere durable.
 	working_copy_root: Option<PathBuf>,
-	/// Number of `.gdd` opens whose async build is in flight. While non-zero, resource GC is skipped:
-	/// the opening document's resources are being extracted into the cache but it isn't in `documents`
-	/// yet, so GC would wrongly evict them (notably proto-node declaration bytes).
-	pending_gdd_opens: usize,
+	/// Number of document not fully loaded. While non-zero, resource GC is skipped.
+	pending_opens: usize,
 }
 
 #[message_handler_data]
@@ -210,11 +204,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let validate = preferences.validate_storage_round_trip;
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
 
-				// The `.gdd` snapshot needs the byte store, but the legacy document and session state must
-				// autosave even without it, or the autosave persists nothing.
-				if let Some(byte_store) = resource_storage.storage() {
-					document.commit_storage_snapshot(byte_store, validate);
-				}
+				document.commit_storage_snapshot(&resource_storage.resources_mut(), validate);
+
 				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
@@ -311,19 +302,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::DocumentStorageMounted { document_id, reopened, gdd } => {
 				let Some(document) = self.documents.get_mut(&document_id) else {
-					// Document was closed before its working copy finished mounting; drop the `Gdd`.
+					// Document was closed before its working copy finished mounting.
 					return;
 				};
 				document.set_storage(gdd);
-				// On a fresh mount, commit the current runtime state to bring the working copy up to date:
-				// edits during the mount window were skipped (staging is a no-op while unmounted). On a reopen
-				// the persisted cursor is already current, and re-committing would stack a spurious interaction
-				// that makes the first undo a no-op, so skip it.
-				if !reopened && let Some(byte_store) = resource_storage.storage() {
-					document.commit_storage_snapshot(byte_store, preferences.validate_storage_round_trip);
-					// Seal the freshly-converted document as the base revision: the conversion is a completed
-					// import, so retire it into history rather than leaving it in the hot log, where it would
-					// never reach an interaction boundary on a save without edits.
+				if !reopened {
+					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
 					document.retire_storage_interaction();
 				}
 			}
@@ -342,9 +326,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// We don't know what can be safely garbage collected
 					return;
 				}
-				if self.pending_gdd_opens > 0 {
-					// A .gdd open is extracting its resources into the cache but isn't in `documents` yet,
-					// so its hashes would look unused. Skip this cycle; GC resumes once the open lands.
+				if self.pending_opens > 0 {
+					// A document not fully loaded, skip garbage collection.
 					return;
 				}
 
@@ -360,9 +343,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
-					// Also keep resources the `.gdd` storage references anywhere in history (notably proto-node
-					// declaration bytes), which the runtime registry doesn't track but the export needs. History-
-					// wide, since an undo drops an interaction's resources but redo still needs them.
+
 					if let Some(storage) = document.storage() {
 						used_resources.extend(storage.all_referenced_resource_hashes());
 					}
@@ -724,7 +705,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 					}
 					FileContent::GddDocument(content) => {
-						// Treat importing a `.gdd` document as opening it (same as the legacy path above).
 						responses.add(PortfolioMessage::OpenGddDocument {
 							document_name: name,
 							document_path: Some(path),
@@ -778,20 +758,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				content,
 			} => {
 				let document_id = DocumentId(generate_uuid());
-				let Some(store_handle) = resource_storage.store_handle() else {
-					log::error!("Cannot open .gdd: resource storage not initialized");
-					return;
-				};
-				// Suppress resource GC until the open completes: the document's resources are extracted
-				// into the cache before it joins `documents`, so GC would otherwise evict them mid-open.
-				self.pending_gdd_opens += 1;
-				responses.add(open_gdd_document_future(
+
+				// Suppress resource GC until the open completes
+				self.pending_opens += 1;
+
+				responses.add(open_gdd_document(
 					self.working_copy_root.clone(),
 					document_id,
 					document_name,
 					document_path,
 					content,
-					store_handle,
+					resource_storage.resources_mut(),
 					preferences.validate_storage_round_trip,
 				));
 			}
@@ -801,11 +778,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_path,
 				document,
 			} => {
-				self.pending_gdd_opens = self.pending_gdd_opens.saturating_sub(1);
+				self.pending_opens = self.pending_opens.saturating_sub(1);
 
 				let Some(mut document) = document.map(|boxed| *boxed) else {
-					// The build failed and already logged; surface a dialog so a corrupt or invalid `.gdd`
-					// doesn't look like Open silently did nothing.
 					let name = document_name
 						.filter(|name| !name.trim().is_empty())
 						.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
@@ -1730,8 +1705,6 @@ impl PortfolioMessageHandler {
 		Self { executor, ..Default::default() }
 	}
 
-	/// Set the parent directory under which each document's `Gdd` working copy is mounted. `None`
-	/// mounts in-memory working copies (no durable location configured).
 	pub fn set_working_copy_root(&mut self, root: Option<PathBuf>) {
 		self.working_copy_root = root;
 	}
@@ -1894,9 +1867,8 @@ impl PortfolioMessageHandler {
 		//
 		// Only mount for legacy loads: a `.gdd` open already mounted its working copy (with the persisted
 		// undo/redo cursor), and remounting would overwrite it and drop that history state.
+		// TODO(TrueDoctor): Shorten
 		if self.documents.get(&document_id).and_then(|document| document.storage()).is_none() {
-			// Pass the just-loaded runtime network + a resource handle so a reopen can compare the stored
-			// `.gdd` against this legacy load (compare-on-open).
 			let legacy_network = self
 				.documents
 				.get(&document_id)
@@ -1922,6 +1894,7 @@ impl PortfolioMessageHandler {
 	/// the working copy attaches. This is the dual-write soak's compare-on-open: it validates the
 	/// `.gdd` *read* path (deserialize + hot-log replay), which the in-process `verify_storage_round_trip`
 	/// can't, since that never touches persisted bytes. Legacy stays authoritative; divergence is logged.
+	/// TODO(TrueDoctor): Shorten
 	fn mount_document_storage(
 		working_copy_root: Option<std::path::PathBuf>,
 		document_id: DocumentId,
@@ -1929,7 +1902,7 @@ impl PortfolioMessageHandler {
 		byte_store: Box<dyn graph_craft::application_io::resource::LoadResource>,
 		validate: bool,
 	) -> Message {
-		let path = working_copy_root.map(|root| root.join(format!("{:x}", document_id.0)));
+		let path = working_copy_root.map(|root| root.join(format!("{:016x}", document_id.0)));
 		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
 		let peer = graph_storage::PeerId(generate_uuid());
 

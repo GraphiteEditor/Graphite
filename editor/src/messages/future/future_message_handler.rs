@@ -73,8 +73,10 @@ pub struct FutureMessageContext {}
 
 #[derive(ExtractField)]
 pub struct FutureMessageHandler {
+	#[cfg_attr(test, expect(dead_code))]
 	spawner: Arc<dyn MessageSpawner>,
 	wake: Wake,
+	#[cfg_attr(test, expect(dead_code))]
 	results_sender: UnboundedSender<Message>,
 	results_receiver: UnboundedReceiver<Message>,
 }

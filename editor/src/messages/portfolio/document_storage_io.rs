@@ -61,7 +61,7 @@ pub(super) async fn build_or_open_working_copy(path: Option<&std::path::Path>, p
 
 /// `FutureMessage` that opens a `.gdd` archive into a document, delivered via
 /// [`PortfolioMessage::GddDocumentLoaded`]. See [`build_document_from_gdd`] for the build itself.
-pub(super) fn open_gdd_document_future(
+pub(super) async fn open_gdd_document(
 	working_copy_root: Option<std::path::PathBuf>,
 	document_id: DocumentId,
 	document_name: Option<String>,
@@ -72,40 +72,34 @@ pub(super) fn open_gdd_document_future(
 ) -> Message {
 	let path = working_copy_root.map(|root| root.join(format!("{:x}", document_id.0)));
 
-	let future = async move {
-		let document = build_document_from_gdd(path.as_deref(), &content, &store_handle, document_id, validate).await;
-		Message::Portfolio(PortfolioMessage::GddDocumentLoaded {
-			document_id,
-			document_name,
-			document_path,
-			document: document.map(Box::new),
-		})
-	};
-	future.into()
+	let document = build_document_from_gdd(path.as_deref(), &content, &store_handle, document_id, validate).await;
+	Message::Portfolio(PortfolioMessage::GddDocumentLoaded {
+		document_id,
+		document_name,
+		document_path,
+		document: document.map(Box::new),
+	})
 }
 
 /// `FutureMessage` that rebuilds a document's interface from a post-move `Gdd` cursor snapshot and
 /// delivers it via [`PortfolioMessage::GddUndoRedoRebuilt`] (`None` interface on failure, logged here).
-pub(crate) fn rebuild_gdd_cursor_future(gdd: GddV1, store_handle: ResourcesHandle, document_id: DocumentId, had_oracle: bool) -> Message {
-	let future = async move {
-		let declarations = gdd.declarations(&store_handle).await;
-		let interface = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
-			Ok((network, node_entries, network_entries)) => match build_interface_from_storage(network, node_entries, network_entries) {
-				Ok(interface) => Some(Box::new(interface)),
-				Err(error) => {
-					log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to build interface: {error}");
-					None
-				}
-			},
+pub(crate) async fn rebuild_gdd_cursor(gdd: GddV1, store_handle: ResourcesHandle, document_id: DocumentId, had_oracle: bool) -> Message {
+	let declarations = gdd.declarations(&store_handle).await;
+	let interface = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
+		Ok((network, node_entries, network_entries)) => match build_interface_from_storage(network, node_entries, network_entries) {
+			Ok(interface) => Some(Box::new(interface)),
 			Err(error) => {
-				log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to convert registry to runtime: {error}");
+				log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to build interface: {error}");
 				None
 			}
-		};
-
-		Message::Portfolio(PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface })
+		},
+		Err(error) => {
+			log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to convert registry to runtime: {error}");
+			None
+		}
 	};
-	future.into()
+
+	Message::Portfolio(PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface })
 }
 
 /// Core of the `.gdd` open: archive -> working copy -> `Gdd` -> runtime interface. The registry build is
