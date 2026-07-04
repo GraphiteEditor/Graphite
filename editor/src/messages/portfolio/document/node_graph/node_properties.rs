@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_gradient_stops};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -2475,8 +2475,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			}
 		}
 		Some(ty) if ty == &concrete!(List<GradientStops>) => {
-			let gradient = get_gradient_stops(layer, context.network_interface).unwrap_or_default();
-			if let Ok(document_node) = get_document_node(node_id, context) {
+			// Read this node's own stops rather than the layer's nearest Fill, which may be a different node when Fills are chained
+			if let Ok(document_node) = get_document_node(node_id, context)
+				&& let Some(TaggedValue::Gradient(stops)) = document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value()
+			{
+				let gradient = stops.clone();
 				let gradient_type = match document_node.inputs[GradientTypeInput::INDEX].as_value() {
 					Some(&TaggedValue::GradientType(value)) => value,
 					_ => GradientType::default(),
