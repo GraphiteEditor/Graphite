@@ -195,6 +195,10 @@ pub struct NumberRange {
 
 impl Parse for NumberRange {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
+		if input.is_empty() {
+			return Err(input.error("expected a range like `0..100`, `..100`, or `0..`"));
+		}
+
 		// A leading endpoint is present unless the range opens directly into the `..` operator.
 		let start = if input.peek(syn::Token![..=]) || input.peek(syn::Token![..]) {
 			None
@@ -1417,6 +1421,21 @@ mod tests {
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
+	}
+
+	#[test]
+	fn test_empty_bounds_range() {
+		let attr = quote!(category("Math: Arithmetic"));
+		let input = quote!(
+			fn add(a: f64, #[soft()] b: f64) -> f64 {
+				a + b
+			}
+		);
+
+		let result = parse_node_fn(attr, input);
+		assert!(result.is_err());
+		let error_message = result.unwrap_err().to_string();
+		assert!(error_message.contains("expected a range like `0..100`, `..100`, or `0..`"));
 	}
 
 	#[test]

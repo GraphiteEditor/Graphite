@@ -26,7 +26,7 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 ) -> List<T> {
 	// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
 
-	let count = count.max(1) as usize;
+	let count = count as usize;
 
 	let mut result_list = List::new();
 
@@ -64,7 +64,6 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	count: u32,
 ) -> List<T> {
 	let angle = angle.to_radians();
-	let count = count.max(1);
 	let total = (count - 1) as f64;
 
 	let mut result_list = List::new();
@@ -111,8 +110,6 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	#[hard(1..)]
 	count: u32,
 ) -> List<T> {
-	let count = count.max(1);
-
 	let mut result_list = List::new();
 
 	for index in 0..count {
