@@ -2447,6 +2447,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient_type: GradientType,
 			spread_method: GradientSpreadMethod,
 			transform: DAffine2,
+			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
+			transform_is_value: bool,
 		},
 		Other,
 	}
@@ -2491,7 +2493,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 					_ => GradientSpreadMethod::default(),
 				};
-				let transform = match document_node.inputs[TransformInput::INDEX].as_value() {
+				let transform_input = document_node.inputs[TransformInput::INDEX].as_value();
+				let transform_is_value = transform_input.is_some();
+				let transform = match transform_input {
 					Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| {
 						let bounding_box = layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer));
 						initial_gradient_transform_for_bounding_box(bounding_box)
@@ -2503,6 +2507,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					gradient_type,
 					spread_method,
 					transform,
+					transform_is_value,
 				}
 			} else {
 				ResolvedFill::Other
@@ -2638,6 +2643,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		gradient_type,
 		spread_method,
 		transform,
+		transform_is_value,
 		..
 	} = fill.clone()
 	{
@@ -2666,22 +2672,27 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		// space so canvas tilt and layer transforms behave the same as in the Gradient tool's control bar.
 		let mut spread_methods_row = vec![TextLabel::new("").widget_instance()];
 
-		let start = transform.transform_point2(DVec2::ZERO);
-		let end = transform.transform_point2(DVec2::X);
-		let new_transform = build_transform_with_y_preservation(transform, end, start);
-		let orientation_rightward = gradient_orientation_in_fill_node(node_id, start, end, context).unwrap_or(true);
+		// The button writes a value into the transform input, so only offer it when the input isn't wired
+		if transform_is_value {
+			let start = transform.transform_point2(DVec2::ZERO);
+			let end = transform.transform_point2(DVec2::X);
+			let new_transform = build_transform_with_y_preservation(transform, end, start);
+			let orientation_rightward = gradient_orientation_in_fill_node(node_id, start, end, context).unwrap_or(true);
 
-		let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
-			.tooltip_label("Reverse Direction")
-			.tooltip_description(if gradient_type == GradientType::Radial {
-				"Reverse which end the gradient radiates from."
-			} else {
-				"Swap the start and end points of the gradient line."
-			})
-			.on_update(update_value(move |_| TaggedValue::OptionalDAffine2(Some(new_transform)), node_id, TransformInput::INDEX))
-			.widget_instance();
-		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		spread_methods_row.push(reverse_direction_button);
+			let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+				.tooltip_label("Reverse Direction")
+				.tooltip_description(if gradient_type == GradientType::Radial {
+					"Reverse which end the gradient radiates from."
+				} else {
+					"Swap the start and end points of the gradient line."
+				})
+				.on_update(update_value(move |_| TaggedValue::OptionalDAffine2(Some(new_transform)), node_id, TransformInput::INDEX))
+				.widget_instance();
+			spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			spread_methods_row.push(reverse_direction_button);
+		} else {
+			add_blank_assist(&mut spread_methods_row);
+		}
 
 		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
 			.iter()

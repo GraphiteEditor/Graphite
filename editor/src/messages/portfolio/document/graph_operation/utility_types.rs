@@ -483,22 +483,30 @@ impl<'a> ModifyInputsContext<'a> {
 					true,
 				);
 
-				let old_transform: DAffine2 = self
+				// Reposition the gradient only when the transform is a plain value, leaving a wired transform source connected
+				let old_transform: Option<DAffine2> = self
 					.network_interface
 					.document_network()
 					.nodes
 					.get(&fill_node_id)
 					.and_then(|node| node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX))
 					.and_then(|input| input.as_value())
-					.and_then(|value| if let TaggedValue::OptionalDAffine2(transform) = value { *transform } else { None })
-					.unwrap_or(DAffine2::IDENTITY);
+					.map(|value| {
+						if let TaggedValue::OptionalDAffine2(transform) = value {
+							transform.unwrap_or(DAffine2::IDENTITY)
+						} else {
+							DAffine2::IDENTITY
+						}
+					});
 
-				let new_transform = build_transform_with_y_preservation(old_transform, gradient.start, gradient.end);
-				self.set_input_with_refresh(
-					InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-					NodeInput::value(TaggedValue::OptionalDAffine2(Some(new_transform)), false),
-					true,
-				);
+				if let Some(old_transform) = old_transform {
+					let new_transform = build_transform_with_y_preservation(old_transform, gradient.start, gradient.end);
+					self.set_input_with_refresh(
+						InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
+						NodeInput::value(TaggedValue::OptionalDAffine2(Some(new_transform)), false),
+						true,
+					);
+				}
 
 				self.set_input_with_refresh(
 					InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
