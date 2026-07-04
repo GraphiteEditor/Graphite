@@ -268,7 +268,7 @@ fn qr_code(
 	};
 
 	if has_size {
-		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size.max(1.) / qr_code.size() as f64)));
+		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
 	List::new_from_element(vector)

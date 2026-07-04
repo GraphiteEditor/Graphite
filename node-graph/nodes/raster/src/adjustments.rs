@@ -1007,9 +1007,8 @@ fn posterize<T: Adjust<Color>>(
 	#[hard(2..)]
 	levels: u32,
 ) -> T {
+	let levels = levels as f32;
 	input.adjust(|color| {
-		// `hard(2..)` constrains the widget but doesn't bind the data-flow input (a saved doc or upstream node could still feed 0 or 1, producing inf/NaN below).
-		let levels = (levels as f32).max(2.);
 		let number_of_areas = levels.recip();
 		let size_of_areas = (levels - 1.).recip();
 		color.map_gamma_rgb(|c| (c / number_of_areas).floor() * size_of_areas)
