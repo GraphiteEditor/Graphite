@@ -365,7 +365,8 @@ fn daffine2_identity() -> DAffine2 {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
-	/// Deprecated, use `ATTR_STROKE` instead. This field will be removed after the full migration.
+	/// Deprecated, use `ATTR_STROKE` instead.
+	/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
 	pub color: Option<Color>,
 	/// Line thickness
 	pub weight: f64,

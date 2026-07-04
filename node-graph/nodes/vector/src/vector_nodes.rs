@@ -318,7 +318,7 @@ where
 	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
 
 	let stroke = Stroke {
-		// Not using Stroke struct's color any more, the field will be cleaned up soon after the full migration to `ATTR_STROKE`.
+		// TODO: Remove once the deprecated `Stroke.color` field is deleted in favor of the `ATTR_STROKE` attribute
 		color: None,
 		weight,
 		dash_lengths,
