@@ -2644,9 +2644,9 @@ async fn morph<I: IntoGraphicList>(
 		}
 		(None, Some(b)) => {
 			if time < 0.5 {
-				Some(b.clone())
-			} else {
 				None
+			} else {
+				Some(b.clone())
 			}
 		}
 		(None, None) => None,
