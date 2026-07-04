@@ -353,6 +353,33 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
+	// A bare-value wrap adapter inserted by type resolution when a bare wire feeds an Item connector
+	macro_rules! wrap_item_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::WrapItemNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::PromoteNode::new(
+							graphene_std::any::downcast_node::<Context, $element>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<Item<$element>>)),
+						);
+						let any: DynAnyNode<Context, Item<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::PromoteNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $element> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<Item<$element>>)),
+					);
+					let params = vec![fn_type_fut!(Context, $element)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
 	// =============
 	// PROMOTE NODES
 	// =============
@@ -366,6 +393,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			promote_node!(element: String),
 			promote_node!(element: f64),
 			promote_node!(element: DVec2),
+			promote_node!(element: DAffine2),
 			promote_node!(element: bool),
 		]
 		.into_iter()
@@ -380,9 +408,23 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		item_to_list_node!(element: String),
 		item_to_list_node!(element: f64),
 		item_to_list_node!(element: DVec2),
+		item_to_list_node!(element: DAffine2),
 		item_to_list_node!(element: bool),
 	];
 	node_types.extend(item_to_list_nodes);
+	let wrap_item_nodes: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+		wrap_item_node!(element: Vector),
+		wrap_item_node!(element: Raster<CPU>),
+		wrap_item_node!(element: Graphic),
+		wrap_item_node!(element: Color),
+		wrap_item_node!(element: GradientStops),
+		wrap_item_node!(element: String),
+		wrap_item_node!(element: f64),
+		wrap_item_node!(element: DVec2),
+		wrap_item_node!(element: DAffine2),
+		wrap_item_node!(element: bool),
+	];
+	node_types.extend(wrap_item_nodes);
 	// =============
 	// CONVERT NODES
 	// =============
@@ -424,7 +466,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		let mut new_name = id.as_str().replace('\n', " ");
 
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode") || new_name.contains("PromoteNode") || new_name.contains("ItemToListNode"))
+		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode") || new_name.contains("PromoteNode") || new_name.contains("ItemToListNode") || new_name.contains("WrapItemNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
 		{
 			new_name = path.to_string();

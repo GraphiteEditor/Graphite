@@ -663,7 +663,7 @@ impl TypingContext {
 		self.inferred.remove(&node_id)
 	}
 
-	/// Returns the input positions of a node which type resolution marked for Item -> List promotion, with each element's simplified name.
+	/// Returns the input positions of a node which type resolution marked for rank promotion, with each adapter's identifier name.
 	pub fn promotions(&self, node_id: NodeId) -> Option<&Vec<(usize, String)>> {
 		self.promotions.get(&node_id)
 	}
@@ -781,10 +781,17 @@ impl TypingContext {
 		match valid_impls.as_slice() {
 			[] => {
 				// Retry allowing an Item<X> input to feed a List<X> connector, satisfied at construction time by an inserted promotion adapter
-				fn promotable_element(from: &Type, to: &Type) -> Option<String> {
+				fn promotable_adapter(from: &Type, to: &Type) -> Option<String> {
 					fn wrapped_name<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a str> {
 						let Type::Concrete(descriptor) = ty.nested_type() else { return None };
 						descriptor.name.strip_prefix("core_types::list::")?.strip_prefix(wrapper)?.strip_prefix('<')?.strip_suffix('>')
+					}
+					fn peel_identifier(ty: &Type, wrapper: &str) -> Option<String> {
+						let name = ty.nested_type().identifier_name();
+						name.strip_prefix(wrapper)
+							.and_then(|rest| rest.strip_prefix('<'))
+							.and_then(|rest| rest.strip_suffix('>'))
+							.map(str::to_string)
 					}
 
 					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
@@ -794,11 +801,23 @@ impl TypingContext {
 						return None;
 					}
 
-					if wrapped_name(from_output, "Item")? != wrapped_name(to_output, "List")? {
-						return None;
+					// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
+					if let (Some(item_inner), Some(list_inner)) = (wrapped_name(from_output, "Item"), wrapped_name(to_output, "List"))
+						&& item_inner == list_inner
+					{
+						let element = peel_identifier(to_output, "List")?;
+						return Some(format!("graphene_core::ops::ItemToListNode<{element}>"));
 					}
-					let element = to_output.nested_type().identifier_name();
-					element.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')).map(str::to_string)
+
+					// A bare wire may feed an `Item<X>` connector via a wrap
+					if let (Type::Concrete(from_descriptor), Some(item_inner)) = (from_output.nested_type(), wrapped_name(to_output, "Item"))
+						&& from_descriptor.name == item_inner
+					{
+						let element = peel_identifier(to_output, "Item")?;
+						return Some(format!("graphene_core::ops::WrapItemNode<{element}>"));
+					}
+
+					None
 				}
 
 				let mut promotable_matches = impls
@@ -810,7 +829,7 @@ impl TypingContext {
 							if valid_type(provided, expected) {
 								continue;
 							}
-							required_promotions.push((index, promotable_element(provided, expected)?));
+							required_promotions.push((index, promotable_adapter(provided, expected)?));
 						}
 						Some((node_io, required_promotions))
 					})

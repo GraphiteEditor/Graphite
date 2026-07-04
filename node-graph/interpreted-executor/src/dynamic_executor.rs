@@ -417,8 +417,8 @@ impl BorrowTree {
 
 				// Wrap arguments the typing pass marked for Item -> List promotion with their adapter node
 				if let Some(promotions) = typing_context.promotions(id) {
-					for (argument_index, element_name) in promotions {
-						let identifier = graph_craft::ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ItemToListNode<{element_name}>"));
+					for (argument_index, adapter_name) in promotions {
+						let identifier = graph_craft::ProtoNodeIdentifier::with_owned_string(adapter_name.clone());
 						let adapter_constructor = typing_context
 							.adapter_constructor(&identifier)
 							.ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
@@ -637,6 +637,43 @@ mod test {
 		let second: DAffine2 = list.attribute_cloned_or_default(core_types::ATTR_TRANSFORM, 1);
 		assert!((first.matrix2.col(0).y - 0.).abs() < 1e-10, "Slot 0 should be unrotated");
 		assert!((second.matrix2.col(0).y - 1.).abs() < 1e-10, "Slot 1 should be rotated 90 degrees");
+	}
+
+	#[test]
+	fn bare_wires_promote_to_item_connectors_at_resolution() {
+		use glam::{DAffine2, DVec2};
+
+		let values = [
+			TaggedValue::DAffine2(DAffine2::IDENTITY),
+			TaggedValue::DVec2(DVec2::new(7., 0.)),
+			TaggedValue::F64(0.),
+			TaggedValue::DVec2(DVec2::ONE),
+			TaggedValue::DVec2(DVec2::ZERO),
+		];
+		let mut nodes: Vec<_> = values
+			.into_iter()
+			.enumerate()
+			.map(|(index, value)| (NodeId(index as u64), ProtoNode::value(ConstructionArgs::Value(value.into()), vec![NodeId(index as u64)])))
+			.collect();
+		let mut transform_node = ProtoNode::value(ConstructionArgs::Nodes((0..5).map(NodeId).collect()), vec![NodeId(5)]);
+		transform_node.identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
+		nodes.push((NodeId(5), transform_node));
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(5),
+			nodes,
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("Bare wires should resolve Item connectors via wrap promotion");
+		assert_eq!(typing_context.promotions(NodeId(5)).map(Vec::len), Some(5), "All five bare inputs should be wrapped");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The wrap adapters should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<DAffine2>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+		let item = result.expect("A bare matrix should flow through Transform as an Item");
+		let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+		assert_eq!(transform.translation, DVec2::new(7., 0.), "The translation should compose onto the gained transform attribute");
 	}
 
 	#[test]
