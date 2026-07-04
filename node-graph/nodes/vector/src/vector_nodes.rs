@@ -13,7 +13,7 @@ use core_types::{
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
-use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at, stroke_graphic_list_at};
+use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute, set_paint_attribute_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
@@ -1326,6 +1326,13 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
 			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
 			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
+
+			// Fall back to the legacy stroke color when no canonical stroke paint attribute was carried over
+			if !stroke_attributes.get::<List<Graphic>>(ATTR_FILL).is_some_and(is_paint_present)
+				&& let Some(color) = stroke.color
+			{
+				set_paint_attribute(&mut stroke_attributes, ATTR_FILL, List::new_from_element(color));
+			}
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
