@@ -445,7 +445,7 @@ async fn round_corners(
 	source: Item<Vector>,
 	#[hard(0..)]
 	#[default(10.)]
-	radius: PixelLength,
+	radius: Item<PixelLength>,
 	#[range]
 	#[hard(0..1)]
 	#[default(0.5)]
@@ -456,6 +456,7 @@ async fn round_corners(
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> Item<Vector> {
+	let radius = *radius.element();
 	let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let source_transform_inverse = source_transform.inverse();
 	let (source, attributes) = source.into_parts();
