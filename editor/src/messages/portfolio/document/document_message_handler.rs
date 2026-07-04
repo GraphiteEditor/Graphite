@@ -120,6 +120,12 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
+	// TODO: Eventually remove this document upgrade code
+	/// Fill nodes whose decomposed legacy gradient still awaits its bounding box measurement, each recorded as its enclosing
+	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
+	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, Gradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -131,12 +137,6 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
-	// TODO: Eventually remove this document upgrade code
-	/// Fill nodes whose legacy bounding-box-relative gradient was decomposed into the value model, but whose transform still
-	/// needs the bounding box baked in. Each entry records the path of the network containing the node, the node itself, and its
-	/// original relative gradient. The deferred migration bakes them after the first graph run (when bounds are available) and clears this.
-	#[serde(skip)]
-	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, Gradient)>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -187,13 +187,13 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
+			// TODO: Eventually remove this document upgrade code
+			pending_gradient_bbox_bake: Vec::new(),
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
-			// TODO: Eventually remove this document upgrade code
-			pending_gradient_bbox_bake: Vec::new(),
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
@@ -4013,6 +4013,21 @@ fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: 
 mod document_message_handler_tests {
 	use super::*;
 	use crate::test_utils::test_prelude::*;
+
+	#[test]
+	fn pending_gradient_bakes_round_trip_through_serialization() {
+		let document = DocumentMessageHandler {
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), Gradient::default())],
+			..Default::default()
+		};
+
+		let serialized = document.serialize_document();
+		let deserialized = DocumentMessageHandler::deserialize_document(&serialized).expect("Document with pending gradient bakes should deserialize");
+		assert_eq!(deserialized.pending_gradient_bbox_bake, document.pending_gradient_bbox_bake);
+
+		// The common empty case must not add the field to saved files
+		assert!(!DocumentMessageHandler::default().serialize_document().contains("pending_gradient_bbox_bake"));
+	}
 
 	#[tokio::test]
 	async fn test_layer_selection_with_shift_and_ctrl() {

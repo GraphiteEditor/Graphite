@@ -69,6 +69,10 @@ pub struct NodeGraphExecutor {
 	// TODO: Eventually remove this document upgrade code
 	/// In-progress one-time pre-pass that converts legacy bounding-box-relative gradients to absolute space, if any.
 	gradient_migration: Option<GradientMigration>,
+	// TODO: Eventually remove this document upgrade code
+	/// Documents whose gradient migration pass already ran this session, so entries that failed to measure
+	/// (kept pending for a retry on the next open) don't re-run the pass on every render request.
+	gradient_migration_attempted: HashSet<DocumentId>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +112,7 @@ impl NodeGraphExecutor {
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
 			gradient_migration: None,
+			gradient_migration_attempted: HashSet::new(),
 		};
 		(node_runtime, node_executor)
 	}
@@ -465,21 +470,24 @@ impl NodeGraphExecutor {
 
 	// TODO: Eventually remove this document upgrade code
 	/// Kick off the one-time pre-pass converting legacy bounding-box gradients to absolute space, or no-op if already running.
-	pub(crate) fn drive_gradient_migration(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, resolution: UVec2, scale: f64, responses: &mut VecDeque<Message>) {
+	/// Returns false when the render should proceed normally instead: the pass already ran this session, so any entries still
+	/// pending are unmeasurable ones kept to retry on the next open.
+	pub(crate) fn drive_gradient_migration(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, resolution: UVec2, scale: f64, responses: &mut VecDeque<Message>) -> bool {
+		if self.gradient_migration_attempted.contains(&document_id) {
+			return false;
+		}
+
 		match &self.gradient_migration {
 			// Already running for this document
-			Some(migration) if migration.document_id == document_id => return,
+			Some(migration) if migration.document_id == document_id => return true,
 			// A different document's migration is in progress; cancel it so this one can run (the other restarts when revisited)
 			Some(_) => self.gradient_migration = None,
 			None => {}
 		}
 
-		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above) until the migration finishes and clears it.
+		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above); each entry is removed from the document as its bake lands.
 		let remaining: VecDeque<(Vec<NodeId>, NodeId, Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
-		let Some((first_network_path, first_fill, _)) = remaining.front().cloned() else {
-			responses.add(NodeGraphMessage::RunDocumentGraph);
-			return;
-		};
+		let Some((first_network_path, first_fill, _)) = remaining.front().cloned() else { return false };
 
 		self.gradient_migration = Some(GradientMigration {
 			document_id,
@@ -488,6 +496,8 @@ impl NodeGraphExecutor {
 			scale,
 		});
 		self.dispatch_gradient_measurement(document, document_id, first_network_path, first_fill, resolution, scale, responses);
+
+		true
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -511,8 +521,9 @@ impl NodeGraphExecutor {
 		// But upstream generators keep their visibility, so a hidden one intentionally contributes no geometry.
 		let full_path: Vec<NodeId> = network_path.iter().copied().chain(std::iter::once(fill_node_id)).collect();
 		if !redirect_export_chain(&mut network, &full_path) {
-			// No export chain to redirect through, so skip this Fill rather than leaving the migration stuck
-			log::warn!("Gradient migration: could not redirect the document network's export chain to fill node {fill_node_id:?}");
+			// The fill was deleted or is otherwise unreachable, so drop its stale entry instead of retrying it on every open
+			log::warn!("Gradient migration: could not redirect the document network's export chain to fill node {fill_node_id:?}; dropping its pending gradient bake");
+			remove_pending_gradient_bake(document, &network_path, fill_node_id);
 			self.advance_gradient_migration(document, document_id, responses);
 			return;
 		}
@@ -589,8 +600,11 @@ impl NodeGraphExecutor {
 				document
 					.network_interface
 					.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
+
+				// The bake landed, so its entry no longer needs to persist for a retry on the next open
+				remove_pending_gradient_bake(document, &network_path, fill_node_id);
 			}
-			_ => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving its transform unbaked"),
+			_ => log::warn!("Gradient migration could not measure geometry for fill node {fill_node_id:?}; leaving its transform unbaked and pending a retry on the next open"),
 		}
 
 		self.advance_gradient_migration(document, document_id, responses);
@@ -608,10 +622,11 @@ impl NodeGraphExecutor {
 			let (resolution, scale) = self.gradient_migration.as_ref().map(|migration| (migration.resolution, migration.scale)).unwrap_or((UVec2::ONE, 1.));
 			self.dispatch_gradient_measurement(document, document_id, next_network_path, next_fill, resolution, scale, responses);
 		} else {
+			// Entries still pending failed to measure; they stay persisted for the next open while this marker stops re-runs this session
 			self.gradient_migration = None;
 			self.previous_node_to_inspect = Vec::new();
 			self.node_graph_hash = 0;
-			document.pending_gradient_bbox_bake.clear();
+			self.gradient_migration_attempted.insert(document_id);
 			responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}
@@ -780,6 +795,18 @@ impl NodeGraphExecutor {
 		};
 
 		Ok(())
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Remove a fill's entry from the document's persisted pending-bake list, either because its bake landed or because it is stale.
+fn remove_pending_gradient_bake(document: &mut DocumentMessageHandler, network_path: &[NodeId], fill_node_id: NodeId) {
+	if let Some(index) = document
+		.pending_gradient_bbox_bake
+		.iter()
+		.position(|(path, node_id, _)| *node_id == fill_node_id && path == network_path)
+	{
+		document.pending_gradient_bbox_bake.remove(index);
 	}
 }
 
