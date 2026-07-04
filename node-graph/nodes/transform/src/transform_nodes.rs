@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::color::Color;
-use core_types::list::{Item, List, ListDyn};
+use core_types::list::{Item, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
@@ -9,13 +9,13 @@ use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
-/// Applies the specified transform to the input value, which may be a graphic type or another transform.
+/// Applies the specified transform to the input content.
 #[node_macro::node(category("Math: Transform"))]
-async fn transform<T: ApplyTransform + 'n + 'static>(
+async fn transform<T: 'n + Send + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
-		Context -> DAffine2,
-		Context -> DVec2,
+		Context -> Item<DAffine2>,
+		Context -> Item<DVec2>,
 		Context -> Item<Graphic>,
 		Context -> Item<String>,
 		Context -> Item<Vector>,
@@ -23,22 +23,17 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<GradientStops>,
-		Context -> List<Graphic>,
-		Context -> List<String>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
 	)]
-	content: impl Node<Context<'static>, Output = T>,
-	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
-	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: f64,
+	content: impl Node<Context<'static>, Output = Item<T>>,
+	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: Item<DVec2>,
+	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: Item<f64>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
 	#[default(1., 1.)]
-	scale: DVec2,
-	#[widget(ParsedWidgetOverride::Custom = "transform_skew")] skew: DVec2,
-) -> T {
+	scale: Item<DVec2>,
+	#[widget(ParsedWidgetOverride::Custom = "transform_skew")] skew: Item<DVec2>,
+) -> Item<T> {
+	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
+
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
 	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
 	let matrix = trs * skew;
@@ -51,11 +46,11 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		ctx = ctx.with_footprint(footprint);
 	}
 
-	let mut transform_target = content.eval(ctx.into_context()).await;
+	let mut item = content.eval(ctx.into_context()).await;
 
-	transform_target.left_apply_transform(&matrix);
+	item.left_apply_transform(&matrix);
 
-	transform_target
+	item
 }
 
 /// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.

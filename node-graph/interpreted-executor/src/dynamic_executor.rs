@@ -565,40 +565,78 @@ mod test {
 		assert!(result.is_some(), "The rank-0 variant should execute and stay rank 0");
 	}
 
+	/// Builds a Transform network: content (node 0) plus four parameter values, each promoted onto Item wires as the preprocessor would.
+	fn transform_network(content: TaggedValue, rotation: TaggedValue) -> ProtoNetwork {
+		let mut nodes = vec![(NodeId(0), ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]))];
+
+		let parameters = [
+			(TaggedValue::DVec2(glam::DVec2::new(5., 0.)), "DVec2"),
+			(rotation, "f64"),
+			(TaggedValue::DVec2(glam::DVec2::ONE), "DVec2"),
+			(TaggedValue::DVec2(glam::DVec2::ZERO), "DVec2"),
+		];
+		let mut transform_inputs = vec![NodeId(0)];
+		let mut next_id = 1;
+		for (value, element) in parameters {
+			let value_id = NodeId(next_id);
+			let promote_id = NodeId(next_id + 1);
+			next_id += 2;
+
+			nodes.push((value_id, ProtoNode::value(ConstructionArgs::Value(value.into()), vec![value_id])));
+			let mut promote_node = ProtoNode::value(ConstructionArgs::Nodes(vec![value_id]), vec![promote_id]);
+			promote_node.identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::PromoteNode<{element}>"));
+			nodes.push((promote_id, promote_node));
+			transform_inputs.push(promote_id);
+		}
+
+		let output = NodeId(next_id);
+		let mut transform_node = ProtoNode::value(ConstructionArgs::Nodes(transform_inputs), vec![output]);
+		transform_node.identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
+		nodes.push((output, transform_node));
+
+		ProtoNetwork { inputs: vec![], output, nodes }
+	}
+
 	#[test]
 	fn transform_composes_onto_item_wire() {
 		use glam::{DAffine2, DVec2};
 
-		let content_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
-		let translation_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(DVec2::new(5., 0.)).into()), vec![NodeId(1)]);
-		let rotation_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(0.).into()), vec![NodeId(2)]);
-		let scale_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(DVec2::ONE).into()), vec![NodeId(3)]);
-		let skew_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(DVec2::ZERO).into()), vec![NodeId(4)]);
-
-		let mut transform_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3), NodeId(4)]), vec![NodeId(5)]);
-		transform_node.identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
-
-		let network = ProtoNetwork {
-			inputs: vec![],
-			output: NodeId(5),
-			nodes: vec![
-				(NodeId(0), content_node),
-				(NodeId(1), translation_node),
-				(NodeId(2), rotation_node),
-				(NodeId(3), scale_node),
-				(NodeId(4), skew_node),
-				(NodeId(5), transform_node),
-			],
-		};
+		let network = transform_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)), TaggedValue::F64(0.));
+		let output = network.output;
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-		typing_context.update(&network).expect("Transform should resolve its Item wire variant");
-		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Transform's Item variant should instantiate");
+		typing_context.update(&network).expect("Transform should resolve its rank-0 variant");
+		assert!(typing_context.promotions(output).is_none(), "All-Item connectors should need no promotion");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Transform's rank-0 variant should instantiate");
 
 		let context: Context = None;
-		let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+		let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(output, context));
 		let item = result.expect("A rank-0 chain through Transform should stay rank 0");
 		let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
 		assert_eq!(transform.translation, DVec2::new(5., 0.), "The translation should compose onto the item's transform attribute");
+	}
+
+	#[test]
+	fn transform_broadcasts_item_content_across_a_framed_parameter() {
+		use glam::DAffine2;
+
+		let network = transform_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)), TaggedValue::F64Array(vec![0., 90.]));
+		let output = network.output;
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context
+			.update(&network)
+			.expect("A framed rotation should resolve the mapped variant via promotion of the other connectors");
+		assert!(typing_context.promotions(output).is_some(), "The Item-typed connectors should be raised into the frame");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped variant should instantiate");
+
+		let context: Context = None;
+		let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(output, context));
+		let list = result.expect("The broadcast should produce a List");
+		assert_eq!(list.len(), 2, "One output item per frame slot");
+
+		let first: DAffine2 = list.attribute_cloned_or_default(core_types::ATTR_TRANSFORM, 0);
+		let second: DAffine2 = list.attribute_cloned_or_default(core_types::ATTR_TRANSFORM, 1);
+		assert!((first.matrix2.col(0).y - 0.).abs() < 1e-10, "Slot 0 should be unrotated");
+		assert!((second.matrix2.col(0).y - 1.).abs() < 1e-10, "Slot 1 should be rotated 90 degrees");
 	}
 
 	#[test]
