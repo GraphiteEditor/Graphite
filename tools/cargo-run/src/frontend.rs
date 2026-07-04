@@ -70,7 +70,9 @@ pub fn build_wasm_steps(release: bool, native: bool) -> Vec<Expression> {
 
 	if release {
 		let wasm_file = pkg_dir.join(format!("{OUT_NAME}_bg.wasm"));
-		steps.push(cmd!("wasm-opt", "-Os", "-g", &wasm_file, "-o", &wasm_file));
+		// `-Oz` (size over speed) keeps us under Cloudflare Pages' 25 MiB single-file cap.
+		// `-g` preserves the name section, which the panic hook reads at runtime to spot node-graph panics (see wrapper `lib.rs`).
+		steps.push(cmd!("wasm-opt", "-Oz", "-g", &wasm_file, "-o", &wasm_file));
 	}
 
 	steps
