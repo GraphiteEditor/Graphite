@@ -2306,7 +2306,7 @@ async fn morph<I: IntoGraphicList>(
 		build_transform_with_y_preservation(metadata_source_transform, start, end)
 	}
 
-	// Lerp between two graphics. Currently supports combinations of a solid color and a gradient.
+	// Lerp between two graphics. Solid color and gradient pairings interpolate; all other pairings step at the midpoint.
 	fn lerp_graphic(a: Option<&List<Graphic>>, b: Option<&List<Graphic>>, time: f64) -> Option<List<Graphic>> {
 		let transparent = List::new_from_element(Color::TRANSPARENT).into_graphic_list();
 
@@ -2356,7 +2356,8 @@ async fn morph<I: IntoGraphicList>(
 
 				gradient_with_stops(gradient_list, stops)
 			}),
-			_ => None,
+			// Pairings beyond solid colors and gradients (raster, vector, or mixed) can't be interpolated, so step at the midpoint
+			_ => return Some(if time < 0.5 { a.clone() } else { b.clone() }),
 		};
 
 		graphic.map(List::new_from_element)
