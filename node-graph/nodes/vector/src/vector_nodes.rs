@@ -202,7 +202,16 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 						});
 					}
 				});
-				initial_gradient_transform_for_bounding_box(bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]))
+
+				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
+				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+				if max.x - min.x < 1e-10 {
+					max.x = min.x + 1.;
+				}
+				if max.y - min.y < 1e-10 {
+					max.y = min.y + 1.;
+				}
+				initial_gradient_transform_for_bounding_box([min, max])
 			});
 
 			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
