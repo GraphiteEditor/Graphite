@@ -504,7 +504,7 @@ async fn paste_image_with_name_is_one_undo_step() {
 	// own transaction. `create_raster_image` passes `name: None` and so wouldn't exercise this path.
 	let image = Image::new(2, 2, Color::WHITE);
 	editor
-		.handle_message(PortfolioMessage::PasteImage {
+		.handle_message(PortfolioMessage::InsertImage {
 			name: Some("pasted".into()),
 			image,
 			mouse: None,
@@ -539,7 +539,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 
 	let image = Image::new(2, 2, Color::WHITE);
 	editor
-		.handle_message(PortfolioMessage::PasteImage {
+		.handle_message(PortfolioMessage::InsertImage {
 			name: Some("pasted".into()),
 			image,
 			mouse: None,
@@ -583,7 +583,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 
 	let image = Image::new(2, 2, Color::WHITE);
 	editor
-		.handle_message(PortfolioMessage::PasteImage {
+		.handle_message(PortfolioMessage::InsertImage {
 			name: Some("pasted".into()),
 			image,
 			mouse: None,
