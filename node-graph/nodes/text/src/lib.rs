@@ -424,7 +424,7 @@ fn string_repeat(
 	string: String,
 	/// The number of times the string should appear in the output.
 	#[default(2)]
-	#[hard_min(1)]
+	#[hard(1..)]
 	count: u32,
 	/// The string placed between each repetition.
 	#[default("\\n")]
@@ -436,7 +436,7 @@ fn string_repeat(
 ) -> String {
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
-	let count = count.max(1) as usize;
+	let count = count as usize;
 
 	let mut result = String::with_capacity((string.len() + separator.len()) * count);
 	for i in 0..count {

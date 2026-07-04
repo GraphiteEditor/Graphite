@@ -102,7 +102,7 @@ Instead of manually implementing the `Node` trait with complex generics, one can
 
 ```rs
 #[node_macro::node(category("Raster: Adjustments"))]
-fn opacity(_input: (), #[default(424242)] color: Color, #[soft_min(0.1)] opacity_multiplier: f64) -> Color {
+fn opacity(_input: (), #[default(424242)] color: Color, #[range] #[soft(0..100)] opacity_multiplier: f64) -> Color {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
@@ -110,7 +110,7 @@ fn opacity(_input: (), #[default(424242)] color: Color, #[soft_min(0.1)] opacity
 
 ## Additional Macro Options
 
-The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `min`, `max` and `range_mode` attributes to influence how the properties are generated.
+The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `soft`, `hard`, and `range` attributes to influence how the properties are generated. The `#[soft(a..b)]` and `#[hard(a..b)]` attributes set the slider's suggested extent and its enforced clamp, respectively (either endpoint may be omitted, e.g. `0..` or `..100`; both endpoints are inclusive, so there is no `..=` form), and `#[range]` renders the input as a draggable slider. Values typed into the input may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` is only meaningful together with `#[range]`.
 
 ## Executing a document `NodeNetwork`
 

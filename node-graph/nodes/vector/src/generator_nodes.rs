@@ -77,7 +77,8 @@ fn arc(
 	radius: f64,
 	start_angle: Angle,
 	#[default(270.)]
-	#[range((0., 360.))]
+	#[range]
+	#[soft(0..360)]
 	sweep_angle: Angle,
 	arc_type: ArcType,
 ) -> List<Vector> {
@@ -167,7 +168,7 @@ fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
-	#[hard_min(3.)]
+	#[hard(3..)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[unit(" px")]
@@ -185,7 +186,7 @@ fn star<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
-	#[hard_min(2.)]
+	#[hard(2..)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[unit(" px")]
@@ -228,7 +229,7 @@ fn qr_code(
 	text: String,
 	#[widget(ParsedWidgetOverride::Hidden)] has_size: bool,
 	#[unit(" px")]
-	#[hard_min(1.)]
+	#[hard(1..)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	size: f64,
 	error_correction: QRCodeErrorCorrectionLevel,
@@ -267,7 +268,7 @@ fn qr_code(
 	};
 
 	if has_size {
-		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size.max(1.) / qr_code.size() as f64)));
+		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
 	List::new_from_element(vector)
@@ -312,7 +313,7 @@ fn grid<T: GridSpacing>(
 	_primary: (),
 	grid_type: GridType,
 	#[unit(" px")]
-	#[hard_min(0.)]
+	#[hard(0..)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
 	spacing: T,

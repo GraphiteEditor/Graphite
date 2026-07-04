@@ -263,21 +263,25 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	content: List<I>,
 	/// Minimum range of randomized sizes given to each placed copy.
 	#[default(1)]
-	#[range((0., 2.))]
+	#[range]
+	#[soft(0..2)]
 	#[unit("x")]
 	random_scale_min: Multiplier,
 	/// Maximum range of randomized sizes given to each placed copy.
 	#[default(1)]
-	#[range((0., 2.))]
+	#[range]
+	#[soft(0..2)]
 	#[unit("x")]
 	random_scale_max: Multiplier,
 	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
-	#[range((-50., 50.))]
+	#[range]
+	#[soft(-50..50)]
 	random_scale_bias: f64,
 	/// Seed to determine unique variations on all the randomized copy sizes.
 	random_scale_seed: SeedValue,
 	/// Range of randomized angles given to each placed copy, in degrees ranging from furthest clockwise to counterclockwise.
-	#[range((0., 360.))]
+	#[range]
+	#[soft(0..360)]
 	random_rotation: Angle,
 	/// Seed to determine unique variations on all the randomized copy angles.
 	random_rotation_seed: SeedValue,
@@ -337,18 +341,16 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 async fn round_corners(
 	_: impl Ctx,
 	source: List<Vector>,
-	#[hard_min(0.)]
+	#[hard(0..)]
 	#[default(10.)]
 	radius: PixelLength,
-	#[range((0., 1.))]
-	#[hard_min(0.)]
-	#[hard_max(1.)]
+	#[range]
+	#[hard(0..1)]
 	#[default(0.5)]
 	roundness: f64,
 	#[default(100.)] edge_length_limit: Percentage,
-	#[range((0., 180.))]
-	#[hard_min(0.)]
-	#[hard_max(180.)]
+	#[range]
+	#[hard(0..180)]
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> List<Vector> {
@@ -452,7 +454,7 @@ pub fn merge_by_distance(
 	_: impl Ctx,
 	content: List<Vector>,
 	#[default(0.1)]
-	#[hard_min(0.0001)]
+	#[hard(0.0001..)]
 	distance: PixelLength,
 	algorithm: MergeByDistanceAlgorithm,
 ) -> List<Vector> {
@@ -892,8 +894,8 @@ async fn auto_tangents(
 	source: List<Vector>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
 	#[default(0.5)]
-	// TODO: Make this a soft range to allow any value to be typed in outside the slider range of 0 to 1
-	#[range((0., 1.))]
+	#[range]
+	#[soft(0..1)]
 	spread: f64,
 	/// If active, existing non-zero handles won't be affected.
 	#[default(true)]
@@ -1376,16 +1378,16 @@ async fn sample_polyline(
 	content: List<Vector>,
 	spacing: PointSpacingType,
 	#[default(100.)]
-	#[hard_min(0.)]
+	#[hard(0..)]
 	#[unit(" px")]
 	separation: f64,
 	#[default(100)]
-	#[hard_min(2)]
+	#[hard(2..)]
 	quantity: u32,
-	#[hard_min(0.)]
+	#[hard(0..)]
 	#[unit(" px")]
 	start_offset: f64,
-	#[hard_min(0.)]
+	#[hard(0..)]
 	#[unit(" px")]
 	stop_offset: f64,
 	adaptive_spacing: bool,
@@ -1830,8 +1832,9 @@ async fn scatter_points(
 	content: List<Vector>,
 	#[unit(" px")]
 	#[default(10.)]
-	#[hard_min(0.01)]
-	#[range((1., 100.))]
+	#[range]
+	#[hard(0.01..)]
+	#[soft(1..100)]
 	separation: f64,
 	seed: SeedValue,
 ) -> List<Vector> {

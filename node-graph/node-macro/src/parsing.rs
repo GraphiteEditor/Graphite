@@ -7,8 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait,
-	TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait, TypeParam,
+	TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -126,7 +126,7 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
-/// A numeric bound value accepted by attributes like `#[soft_min]`, `#[hard_min]`, `#[soft_max]`, and `#[hard_max]`.
+/// A single numeric endpoint within a `#[soft(..)]` or `#[hard(..)]` bounds range.
 /// Accepts both integer literals (e.g. `1`, `-1`) and float literals (e.g. `1.`, `-500.`).
 #[derive(Clone, Debug)]
 pub struct NumberBound {
@@ -180,6 +180,52 @@ impl ToTokens for NumberBound {
 	}
 }
 
+/// A pair of numeric bounds parsed from the `#[soft(a..b)]` and `#[hard(a..b)]` attributes.
+/// Either endpoint may be omitted for an open-ended bound (`a..` or `..b`), and each endpoint
+/// independently accepts an integer or float literal (each cast to `f64`), so a mixed range like
+/// `0..3.14159` is valid.
+///
+/// The operator is always the bare `..`; both endpoints are treated as inclusive (clamping reaches them).
+/// Unlike a Rust range there is no `..=` form, `..` is purely this attribute DSL's bounds operator.
+#[derive(Clone, Debug)]
+pub struct NumberRange {
+	start: Option<NumberBound>,
+	end: Option<NumberBound>,
+}
+
+impl Parse for NumberRange {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		if input.is_empty() {
+			return Err(input.error("expected a range like `0..100`, `..100`, or `0..`"));
+		}
+
+		// A leading endpoint is present unless the range opens directly into the `..` operator.
+		let start = if input.peek(syn::Token![..=]) || input.peek(syn::Token![..]) {
+			None
+		} else {
+			Some(input.parse::<NumberBound>()?)
+		};
+
+		// Only the bare `..` is accepted. `..=` is rejected even though both endpoints are inclusive here:
+		// this DSL treats `..` as its own bounds operator, deliberately diverging from Rust's range semantics.
+		if input.peek(syn::Token![..=]) {
+			return Err(input.error("use `..` rather than `..=` for number bounds; both endpoints are always inclusive (e.g. `0..100`)"));
+		}
+		if !input.peek(syn::Token![..]) {
+			return Err(input.error("expected a range like `0..100`, `..100`, or `0..`"));
+		}
+		input.parse::<syn::Token![..]>()?;
+
+		let end = if input.is_empty() { None } else { Some(input.parse::<NumberBound>()?) };
+
+		if start.is_none() && end.is_none() {
+			return Err(input.error("a bounds range must specify at least a lower or upper bound"));
+		}
+
+		Ok(NumberRange { start, end })
+	}
+}
+
 /// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
 /// `#[implementation(type)]`
 #[derive(Clone, Debug)]
@@ -191,7 +237,8 @@ pub struct RegularParsedField {
 	pub number_soft_max: Option<NumberBound>,
 	pub number_hard_min: Option<NumberBound>,
 	pub number_hard_max: Option<NumberBound>,
-	pub number_mode_range: Option<ExprTuple>,
+	/// Whether the number input renders as a draggable slider (the `#[range]` attribute) rather than the default increment field.
+	pub number_mode_range: bool,
 	pub implementations: Punctuated<Type, Comma>,
 	pub gpu_image: bool,
 }
@@ -680,47 +727,27 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		_ => ParsedValueSource::None,
 	};
 
-	let number_soft_min = extract_attribute(attrs, "soft_min")
+	// The slider's interactive extent (`#[soft(a..b)]`) and the enforced clamp (`#[hard(a..b)]`), each an
+	// optionally open-ended range. They decompose into the four bound values used by codegen and the UI.
+	let number_soft_bounds = extract_attribute(attrs, "soft")
 		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_min` value for argument '{ident}': {e}")))
+			attr.parse_args::<NumberRange>()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `soft` bounds for argument '{ident}': {e}\nUSAGE EXAMPLE: #[soft(0..100)]")))
 		})
 		.transpose()?;
-	let number_soft_max = extract_attribute(attrs, "soft_max")
+	let number_hard_bounds = extract_attribute(attrs, "hard")
 		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_max` value for argument '{ident}': {e}")))
+			attr.parse_args::<NumberRange>()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `hard` bounds for argument '{ident}': {e}\nUSAGE EXAMPLE: #[hard(0..100)]")))
 		})
 		.transpose()?;
+	let number_soft_min = number_soft_bounds.as_ref().and_then(|range| range.start.clone());
+	let number_soft_max = number_soft_bounds.as_ref().and_then(|range| range.end.clone());
+	let number_hard_min = number_hard_bounds.as_ref().and_then(|range| range.start.clone());
+	let number_hard_max = number_hard_bounds.as_ref().and_then(|range| range.end.clone());
 
-	let number_hard_min = extract_attribute(attrs, "hard_min")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{ident}': {e}")))
-		})
-		.transpose()?;
-	let number_hard_max = extract_attribute(attrs, "hard_max")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{ident}': {e}")))
-		})
-		.transpose()?;
-
-	let number_mode_range = extract_attribute(attrs, "range")
-		.map(|attr| {
-			attr.parse_args::<ExprTuple>().map_err(|e| {
-				Error::new_spanned(
-					attr,
-					format!("Invalid `range` tuple of min and max range slider values for argument '{ident}': {e}\nUSAGE EXAMPLE: #[range((0., 100.))]"),
-				)
-			})
-		})
-		.transpose()?;
-	if let Some(range) = &number_mode_range
-		&& range.elems.len() != 2
-	{
-		return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
-	}
+	// The `#[range]` marker selects the slider widget; its extent is derived from the soft (then hard) bounds.
+	let number_mode_range = extract_attribute(attrs, "range").is_some();
 
 	let unit = extract_attribute(attrs, "unit")
 		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, "Expected a unit type as string".to_string())))
@@ -810,15 +837,15 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
-		// Error if a float literal is given for a bound attribute on an integer-typed field
+		// Error if a float literal is given for a bound on an integer-typed field
 		if is_integer_type(&ty) {
 			let bound_attrs = [
-				(&number_soft_min, "soft_min"),
-				(&number_hard_min, "hard_min"),
-				(&number_soft_max, "soft_max"),
-				(&number_hard_max, "hard_max"),
+				(&number_soft_min, "soft", "lower"),
+				(&number_soft_max, "soft", "upper"),
+				(&number_hard_min, "hard", "lower"),
+				(&number_hard_max, "hard", "upper"),
 			];
-			for (bound, attr_name) in bound_attrs {
+			for (bound, attr_name, end) in bound_attrs {
 				if let Some(NumberBound {
 					literal: NumberBoundLiteral::Float(_),
 					..
@@ -826,7 +853,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				{
 					return Err(Error::new_spanned(
 						&pat_ident,
-						format!("Attribute `#[{attr_name}]` on `{ident}` has a float literal, but `{ident}` is an integer type. Use an integer literal without a decimal point."),
+						format!("The {end} `#[{attr_name}]` bound on `{ident}` is a float literal, but `{ident}` is an integer type. Use an integer literal without a decimal point."),
 					));
 				}
 			}
@@ -1082,7 +1109,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1168,7 +1195,7 @@ mod tests {
 						number_soft_max: None,
 						number_hard_min: None,
 						number_hard_max: None,
-						number_mode_range: None,
+						number_mode_range: false,
 						implementations: Punctuated::new(),
 						gpu_image: false,
 					}),
@@ -1236,7 +1263,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1302,7 +1329,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: {
 						let mut p = Punctuated::new();
 						p.push(parse_quote!(f32));
@@ -1330,9 +1357,9 @@ mod tests {
 			fn add(
 				a: f64,
 				/// b
-				#[range((0., 100.))]
-				#[soft_min(-500.)]
-				#[soft_max(500.)]
+				#[range]
+				#[soft(0..100)]
+				#[hard(-500..500)]
 				b: f64,
 			) -> f64 {
 				a + b
@@ -1376,11 +1403,11 @@ mod tests {
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
-					number_soft_min: Some(parse_quote!(-500.)),
-					number_soft_max: Some(parse_quote!(500.)),
-					number_hard_min: None,
-					number_hard_max: None,
-					number_mode_range: Some(parse_quote!((0., 100.))),
+					number_soft_min: Some(parse_quote!(0)),
+					number_soft_max: Some(parse_quote!(100)),
+					number_hard_min: Some(parse_quote!(-500)),
+					number_hard_max: Some(parse_quote!(500)),
+					number_mode_range: true,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1394,6 +1421,21 @@ mod tests {
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
+	}
+
+	#[test]
+	fn test_empty_bounds_range() {
+		let attr = quote!(category("Math: Arithmetic"));
+		let input = quote!(
+			fn add(a: f64, #[soft()] b: f64) -> f64 {
+				a + b
+			}
+		);
+
+		let result = parse_node_fn(attr, input);
+		assert!(result.is_err());
+		let error_message = result.unwrap_err().to_string();
+		assert!(error_message.contains("expected a range like `0..100`, `..100`, or `0..`"));
 	}
 
 	#[test]
@@ -1446,7 +1488,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
