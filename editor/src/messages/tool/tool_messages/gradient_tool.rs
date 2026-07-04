@@ -1960,11 +1960,12 @@ mod test_gradient {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
+	use graphene_std::list::List;
 	use graphene_std::vector::GradientType;
 	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
+	use graphene_std::{Graphic, NodeInputDecleration};
 
 	use super::gradient_space_transform;
 
@@ -1978,7 +1979,7 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let stops = match fill_node.inputs.get(fill::FillInput::INDEX)?.as_value()? {
+				let stops = match fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
 					TaggedValue::Gradient(stops) => stops.clone(),
 					_ => return None,
 				};
@@ -2104,7 +2105,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::node(gradient_node_id, 0),
-				input_connector: InputConnector::node(fill_node_id, fill::FillInput::INDEX),
+				input_connector: InputConnector::node(fill_node_id, fill::FillInput::<List<Graphic>>::INDEX),
 			})
 			.await;
 

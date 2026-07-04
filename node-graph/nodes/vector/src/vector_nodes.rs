@@ -12,9 +12,9 @@ use core_types::{
 	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
+use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, fill_graphic_list_at, has_paint_at, is_paint_present, stroke_graphic_list_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{AnyGraphicListDyn, Vector};
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
@@ -156,21 +156,28 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V: VectorListIterMut + 'n + Send>(
+async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(List<Vector>, List<Graphic>)]
+	#[implementations(
+		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
+		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
+	)]
 	mut content: V,
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
-	mut fill: AnyGraphicListDyn,
+	#[implementations(
+		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
+	)]
+	mut fill: F,
 	_backup_color: List<Color>,
 	_backup_gradient: List<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
 ) -> V {
-	if let Some(gradient) = fill.0.as_any_mut().downcast_mut::<List<GradientStops>>() {
+	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
 				*value = _gradient_type;
@@ -234,14 +241,41 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec>(
+async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(List<Vector>, List<Vector>, List<Vector>, List<Graphic>, List<Graphic>, List<Graphic>)]
+	#[implementations(
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+	)]
 	mut content: List<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
-	paint: AnyGraphicListDyn,
+	#[implementations(
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Color>, List<Color>, List<Color>,
+		List<GradientStops>, List<GradientStops>, List<GradientStops>,
+		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
+		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Vector>, List<Vector>, List<Vector>,
+		List<Color>, List<Color>, List<Color>,
+		List<GradientStops>, List<GradientStops>, List<GradientStops>,
+		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
+		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
+	)]
+	paint: P,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -259,7 +293,20 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(List<f64>, f64, String, List<f64>, f64, String)]
+	#[implementations(
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+		List<f64>, f64, String,
+	)]
 	dash_lengths: L,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]

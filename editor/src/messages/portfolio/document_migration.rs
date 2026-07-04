@@ -1572,7 +1572,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the
-	// value-model 7-input shape (content, fill: AnyGraphicListDyn, _backup_color, _backup_gradient, _gradient_type, _spread_method, _transform).
+	// value-model 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _transform).
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1620,7 +1620,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				}
 			}
 			// Wired/exposed fill keeps the connection.
-			// `AnyGraphicListDyn` accepts `List<Color>`/`List<GradientStops>` sources, and there were no other nodes which can generate output type that implements `From` for `Fill`.
+			// The generic paint connector accepts `List<Color>`/`List<GradientStops>` sources directly, and there were no other nodes which can generate output type that implements `From` for `Fill`.
 			_ => {
 				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 			}

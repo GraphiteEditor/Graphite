@@ -8,7 +8,7 @@ pub use vector_types;
 
 // Re-export commonly used types at the crate root
 pub use artboard::Artboard;
-pub use graphic::{AnyGraphicListDyn, Graphic, IntoGraphicList, TryFromGraphic, Vector};
+pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {
 	use vector_types::vector::{PathStyle, PointDomain, RegionDomain, SegmentDomain, misc::HandleId};

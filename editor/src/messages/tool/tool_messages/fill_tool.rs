@@ -202,21 +202,9 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
-	use graph_craft::ProtoNodeIdentifier;
-	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::List;
 	use graphene_std::vector::fill;
-
-	// Same node+index as `FillInput`, retyped to the pre-erasure value the instrumentation monitor actually captures.
-	struct FillColorInput;
-	impl NodeInputDecleration for FillColorInput {
-		const INDEX: usize = fill::FillInput::INDEX;
-		type Result = List<Color>;
-		fn identifier() -> ProtoNodeIdentifier {
-			fill::FillInput::identifier()
-		}
-	}
 
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<List<Color>> {
 		let instrumented = match editor.eval_graph().await {
@@ -224,7 +212,7 @@ mod test_fill {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<FillColorInput>(&editor.runtime).collect()
+		instrumented.grab_all_input::<fill::FillInput<List<Color>>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
