@@ -735,8 +735,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// vector
 	// ================================
 	NodeReplacement {
-		node: graphene_std::vector::apply_transform::IDENTIFIER,
-		aliases: &["graphene_core::vector::ApplyTransformNode", "graphene_core::vector::vector_modification::ApplyTransformNode"],
+		node: graphene_std::vector::bake_transform::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::ApplyTransformNode",
+			"graphene_core::vector::vector_modification::ApplyTransformNode",
+			"vector_nodes::vector_modification_nodes::ApplyTransformNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::area::IDENTIFIER,

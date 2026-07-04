@@ -71,6 +71,15 @@ impl core_types::ops::ListConvert<Vector> for Vector {
 	}
 }
 
+impl core_types::transform::BakeTransform for Vector {
+	fn bake_transform(&mut self, transform: &glam::DAffine2) {
+		for (_, point) in self.point_domain.positions_mut() {
+			*point = transform.transform_point2(*point);
+		}
+		self.segment_domain.transform(*transform);
+	}
+}
+
 impl Vector {
 	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {

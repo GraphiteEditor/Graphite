@@ -1,7 +1,8 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
+use core_types::transform::BakeTransform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use vector_types::vector::VectorModification;
 
@@ -33,18 +34,12 @@ async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box
 	vector
 }
 
-/// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
+/// Bakes the content's transform attribute into its underlying value, removing the attribute.
 #[node_macro::node(category("Vector"))]
-async fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> List<Vector> {
-	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-	for (element, transform) in elements.iter_mut().zip(transforms.iter_mut()) {
-		for (_, point) in element.point_domain.positions_mut() {
-			*point = transform.transform_point2(*point);
-		}
-		element.segment_domain.transform(*transform);
-
-		*transform = DAffine2::IDENTITY;
+async fn bake_transform<T: BakeTransform + 'n + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] mut content: Item<T>) -> Item<T> {
+	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
+		content.element_mut().bake_transform(&transform);
 	}
 
-	vector
+	content
 }
