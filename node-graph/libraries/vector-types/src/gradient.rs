@@ -610,30 +610,6 @@ impl Gradient {
 		}
 	}
 
-	pub fn lerp(&self, other: &Self, time: f64) -> Self {
-		let start = self.start + (other.start - self.start) * time;
-		let end = self.end + (other.end - self.end) * time;
-		let stops = self.stops.iter().zip(other.stops.iter()).map(|(a, b)| {
-			let position = a.position + (b.position - a.position) * time;
-			let color = a.color.lerp(&b.color, time as f32);
-			GradientStop { position, midpoint: 0.5, color }
-		});
-		let stops = GradientStops::new(stops);
-		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
-		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
-
-		Self {
-			start,
-			end,
-			stops,
-			gradient_type,
-			spread_method,
-			// TODO: Eventually remove this document upgrade code
-			absolute: self.absolute,
-			transform: if time < 0.5 { self.transform } else { other.transform },
-		}
-	}
-
 	/// Insert a stop into the gradient, the index if successful
 	pub fn insert_stop(&mut self, mouse: DVec2, transform: DAffine2) -> Option<usize> {
 		// Transform the start and end positions to the same coordinate space as the mouse.
