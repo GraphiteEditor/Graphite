@@ -45,7 +45,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::{Gradient, RenderMode};
+use graphene_std::vector::style::{Fill, Gradient, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -2772,7 +2772,12 @@ impl DocumentMessageHandler {
 			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
 			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
 
-			let has_fill = fill_graphic_list.is_some_and(|g| is_paint_present(g));
+			// `ATTR_FILL` is the source of truth when set; fall back to the legacy `style.fill` only when no attribute is present
+			let has_fill = if let Some(list) = fill_graphic_list {
+				is_paint_present(list)
+			} else {
+				!matches!(style.fill, Fill::None)
+			};
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
 			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no attribute is present.
