@@ -49,7 +49,8 @@ By area: math 57 (100% element-wise), vector 58, graphic 31, text 33, raster 31,
 7. **Nodes define their own valid domains.** Negative from-end indexing and clamping are legitimate node semantics, not failures; `Default::default()` applies only when the node itself has no defined answer. Index Points keeps its behavior unchanged.
 8. **Some / Unwrap Option / Size Of deleted** — vestigial and unused.
 9. **Byte-blob unification adopted:** a rank-0 blob type replaces `List<u8>`; Post Request's body, String to Bytes, and Image to Bytes become element-wise.
-10. **Text to Vector splits in two:** the compound-path-per-string node (element-wise) and a Separate Glyphs expander.
+10. **Dash patterns become a `DashPattern` value type** (amending the Stroke row's rank-1 `List<f64>` cell): `List<T>` is reserved for frames and attribute-carrying collections; compound values whose inner elements never hold attributes (dash sequences, corner radii) are value types, keeping their connectors rank 0 and frameable. Cascades to the Vec-looking TaggedValue variants.
+11. **Text to Vector splits in two:** the compound-path-per-string node (element-wise) and a Separate Glyphs expander.
 
 ## Deletions, merges, and splits
 
