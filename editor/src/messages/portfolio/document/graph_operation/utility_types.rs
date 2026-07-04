@@ -476,10 +476,11 @@ impl<'a> ModifyInputsContext<'a> {
 				let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX);
 				self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Gradient(gradient.stops.clone()), false), true);
 
+				// Skip the rerender on all but the last input so the whole update triggers a single graph run
 				self.set_input_with_refresh(
 					InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
 					NodeInput::value(TaggedValue::Gradient(gradient.stops.clone()), false),
-					false,
+					true,
 				);
 
 				let old_transform: DAffine2 = self
@@ -496,13 +497,13 @@ impl<'a> ModifyInputsContext<'a> {
 				self.set_input_with_refresh(
 					InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
 					NodeInput::value(TaggedValue::OptionalDAffine2(Some(new_transform)), false),
-					false,
+					true,
 				);
 
 				self.set_input_with_refresh(
 					InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
 					NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
-					false,
+					true,
 				);
 
 				self.set_input_with_refresh(
