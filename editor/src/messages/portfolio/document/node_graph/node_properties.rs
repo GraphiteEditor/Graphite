@@ -2419,9 +2419,18 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 /// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
 /// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
-fn gradient_orientation_in_fill_node(node_id: NodeId, start: DVec2, end: DVec2, context: &mut NodePropertiesContext) -> Option<bool> {
+/// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
+/// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
+fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
+	if !context.selection_network_path.is_empty() {
+		return None;
+	}
 	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
-	let layer = LayerNodeIdentifier::new(layer_node, context.network_interface);
+	Some(LayerNodeIdentifier::new(layer_node, context.network_interface))
+}
+
+fn gradient_orientation_in_fill_node(node_id: NodeId, start: DVec2, end: DVec2, context: &mut NodePropertiesContext) -> Option<bool> {
+	let layer = root_layer_for_chain_node(node_id, context)?;
 	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
 	Some(graph_modification_utils::gradient_orientation_rightward(start, end, transform))
 }
@@ -2452,10 +2461,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		return vec![LayoutGroup::row(widgets_first_row)];
 	}
 
-	let Some(layer_node) = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path) else {
-		return vec![LayoutGroup::row(widgets_first_row)];
-	};
-	let layer = LayerNodeIdentifier::new(layer_node, context.network_interface);
+	// A Fill node not attached to a layer (or living in a nested network) still shows its full fill UI; only the gradient's
+	// bounding-box default transform needs the layer, and it falls back to a unit box when there isn't one.
+	let layer = root_layer_for_chain_node(node_id, context);
 
 	let fill = match input_type.compiled_nested_type() {
 		Some(ty) if ty == &concrete!(List<Color>) => {
@@ -2484,9 +2492,10 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					_ => GradientSpreadMethod::default(),
 				};
 				let transform = match document_node.inputs[TransformInput::INDEX].as_value() {
-					Some(&TaggedValue::OptionalDAffine2(value)) => {
-						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(context.network_interface.document_metadata().nonzero_bounding_box(layer)))
-					}
+					Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| {
+						let bounding_box = layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer));
+						initial_gradient_transform_for_bounding_box(bounding_box)
+					}),
 					_ => DAffine2::IDENTITY,
 				};
 				ResolvedFill::Gradient {
