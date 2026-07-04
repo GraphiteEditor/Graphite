@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -582,7 +582,21 @@ impl<'a> ModifyInputsContext<'a> {
 				};
 				let node_id = NodeId::new();
 				self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
-				self.network_interface.set_input(&target, NodeInput::node(node_id, 0), &[]);
+
+				if target == InputConnector::node(output_layer.to_node(), 1) {
+					// No Fill node: the new node starts the layer's chain
+					self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
+				} else {
+					// Feeding a Fill node's paint input: wire it up and place it one chain-width left and a step below the Fill
+					self.network_interface.set_input(&target, NodeInput::node(node_id, 0), &[]);
+					if let Some(target_node_id) = target.node_id()
+						&& let Some(target_position) = self.network_interface.position(&target_node_id, &[])
+					{
+						let node_position = self.network_interface.position(&node_id, &[]).unwrap_or_default();
+						let desired_position = target_position + IVec2::new(-crate::consts::NODE_CHAIN_WIDTH, 2);
+						self.network_interface.shift_absolute_node_position(&node_id, desired_position - node_position, &[]);
+					}
+				}
 
 				node_id
 			}
