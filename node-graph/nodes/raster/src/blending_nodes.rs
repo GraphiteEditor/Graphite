@@ -5,7 +5,7 @@ use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
 #[cfg(not(feature = "std"))]
-use no_std_types::list::Item;
+use no_std_types::list::ShaderItem as Item;
 use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};

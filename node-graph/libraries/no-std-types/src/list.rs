@@ -1,17 +1,18 @@
 //! A zero-cost stand-in for `core_types::list::Item` used when node kernels are compiled for the GPU.
 //!
 //! Shader node kernels compile twice: under `std` against the real attribute-carrying `Item`, and under
-//! `no_std` (SPIR-V) against this transparent wrapper. Only the element-access surface is provided, since
-//! rust-gpu cannot allocate and attributes have no per-pixel meaning; attribute use fails the shader build.
+//! `no_std` (SPIR-V) against this transparent wrapper, imported as `Item`. Only the element-access surface is
+//! provided, since rust-gpu cannot allocate and attributes have no per-pixel meaning; attribute use fails the
+//! shader build. It is named distinctly from `Item` so a search for the canonical type finds only that one.
 
 /// A rank-0 wire value holding a single element, mirroring the element-access API of the real `Item`.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct Item<T> {
+pub struct ShaderItem<T> {
 	element: T,
 }
 
-impl<T> Item<T> {
+impl<T> ShaderItem<T> {
 	/// Constructs an item with the given element.
 	pub fn new_from_element(element: T) -> Self {
 		Self { element }
@@ -33,7 +34,7 @@ impl<T> Item<T> {
 	}
 }
 
-impl<T> From<T> for Item<T> {
+impl<T> From<T> for ShaderItem<T> {
 	fn from(element: T) -> Self {
 		Self::new_from_element(element)
 	}

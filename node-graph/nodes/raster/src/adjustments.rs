@@ -9,7 +9,7 @@ use glam::Vec3;
 use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
 #[cfg(not(feature = "std"))]
-use no_std_types::list::Item;
+use no_std_types::list::ShaderItem as Item;
 use no_std_types::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
