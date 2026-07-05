@@ -44,19 +44,24 @@ fn regex_contains(
 #[node_macro::node(category("Text: Regex"))]
 fn regex_replace(
 	_: impl Ctx,
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to search for.
-	pattern: String,
+	pattern: Item<String>,
 	/// The replacement string. Use `$0` for the whole match and `$1`, `$2`, etc. for capture groups.
-	replacement: String,
+	replacement: Item<String>,
 	/// Replace all matches. When disabled, only the first match is replaced.
 	#[default(true)]
-	replace_all: bool,
+	replace_all: Item<bool>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
-) -> String {
+	multiline: Item<bool>,
+) -> Item<String> {
+	let mut string = string;
+	let pattern = pattern.element().clone();
+	let replacement = replacement.element().clone();
+	let (replace_all, case_insensitive, multiline) = (*replace_all.element(), *case_insensitive.element(), *multiline.element());
+
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
 		(true, false) => "(?i)",
@@ -70,11 +75,14 @@ fn regex_replace(
 		return string;
 	};
 
-	if replace_all {
-		regex.replace_all(&string, replacement.as_str()).into_owned()
+	let result = if replace_all {
+		regex.replace_all(string.element(), replacement.as_str()).into_owned()
 	} else {
-		regex.replace(&string, replacement.as_str()).into_owned()
-	}
+		regex.replace(string.element(), replacement.as_str()).into_owned()
+	};
+
+	*string.element_mut() = result;
+	string
 }
 
 /// Finds a regex match in the string and returns its components. The result is a list where the first item is the whole match (`$0`) and subsequent items are the capture groups (`$1`, `$2`, etc., if any).

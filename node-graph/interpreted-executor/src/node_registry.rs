@@ -17,6 +17,7 @@ use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::render_node::RenderIntermediate;
+use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
@@ -414,6 +415,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		ExtrudeJoiningAlgorithm,
 		StrokeJoin,
 		PointSpacingType,
+		StringCapitalization,
 	));
 	// =============
 	// CONVERT NODES
