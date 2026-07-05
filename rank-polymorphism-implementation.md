@@ -13,9 +13,9 @@ A node whose primary input is typed `Item<T>` is an element-wise rank-0 kernel: 
 
 The kernel owns the item wrapping on both sides: it receives `Item<T>`, may read or write attributes, and returns `Item<U>`. Generic element-wise nodes list bare element types in `#[implementations(...)]` (e.g. `Graphic, Vector, Raster<CPU>`); the macro derives both wire forms. Field metadata, `NodeInputDecleration` accessors, and default types keep the `List` wire form for document compatibility.
 
-Rules enforced by validation: only the primary input may be `Item`-typed; an `Item<T>` primary requires an `Item<U>` return and bare-element implementations; an `Item<U>` return requires an `Item<T>` primary; incompatible with `shader_node` (GPU kernels need bare `repr(C)` values). Bare-typed primaries continue to mean today's plain wires, so unmigrated nodes are untouched.
+Rules enforced by validation: only the primary input may be `Item`-typed; an `Item<T>` primary requires an `Item<U>` return and bare-element implementations; an `Item<U>` return requires an `Item<T>` primary. Bare-typed primaries continue to mean today's plain wires, so unmigrated nodes are untouched. `shader_node` kernels are now compatible: the same `Item<T>` body is re-emitted against a transparent GPU stand-in (see below).
 
-Migrated so far: Bounding Box, Close Path, Blur, Median Filter, Blend Mode, Opacity, Clipping Mask, Reset Transform, Replace Transform. The attribute-manipulating nodes became one-line kernels (`content.set_attribute(ATTR_BLEND_MODE, blend_mode)`), which deleted the ~180 lines of `SetBlendMode`/`MultiplyAlpha`/`MultiplyFill`/`SetClip` trait impls in the blending crate and resolved its three "apply once to the list's parent" TODOs — the `Item` variant is precisely that path.
+Migrated so far (~120 nodes): the graphical element-wise batch (Bounding Box, Close Path, Blur, Median Filter, etc.), the attribute-manipulating nodes (Blend Mode, Opacity, Clipping Mask, Reset/Replace Transform), Transform itself (including the flagship lazy-primary zip that broadcasts `Item<Vector>` content across a `List<DVec2>` frame), the string and math families, the expanders (string split, regex, JSON query, Separate Subpaths, Image Color Palette), and the raster adjustment/blending/GPU chunk (16 adjustments plus Mix, Color Overlay, Gradient Map). The attribute-manipulating nodes became one-line kernels (`content.set_attribute(ATTR_BLEND_MODE, blend_mode)`), which deleted the ~180 lines of `SetBlendMode`/`MultiplyAlpha`/`MultiplyFill`/`SetClip` trait impls in the blending crate and resolved its three "apply once to the list's parent" TODOs — the `Item` variant is precisely that path.
 
 ### Supporting changes
 
@@ -28,13 +28,18 @@ Migrated so far: Bounding Box, Close Path, Blur, Median Filter, Blend Mode, Opac
 fn blend_mode<T>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
-	mut content: Item<T>,
-	blend_mode: BlendMode,
+	content: Item<T>,
+	blend_mode: Item<BlendMode>,
 ) -> Item<T> {
+	let mut content = content;
+	let blend_mode = blend_mode.into_element();
+
 	content.set_attribute(ATTR_BLEND_MODE, blend_mode);
 	content
 }
 ```
+
+Owned parameters are never declared `mut` in the signature; shadow them with `let mut` at the top of the body. Ranked non-primary parameters are `Item`-typed too and are unwrapped with `into_element()` before use.
 
 Kernels that ignore attributes simply pass them through by mutating the element in place (`content.element_mut()`) or via `into_parts`/`from_parts` when the element type changes. Bare-`T` kernel sugar (macro-owned attribute plumbing) is deliberately deferred until the system is proven; `Item<T>` everywhere is the one authoring style.
 
@@ -46,4 +51,10 @@ Kernels that ignore attributes simply pass them through by mutating the element 
 4. **Generator flip + document migration.** Generators emit `Item<T>`; document upgrade inserts promotions where old documents expect lists; frontend displays `Item<T>` as `T`. Rank-0 wires begin flowing through real documents.
 5. **Parameter ranking.** Scalar connectors move to `Item<f64>`-style wires with TaggedValue promotion in the preprocessor, making every data connector frameable.
 6. **Node family completion.** Delete Copy to Points, Repeat on Points, Map, Map String, Attach Attribute, Extract Element, the As-type trio, and the Option debug trio; land the assign/spread family; add the companion nodes (Sum, Average, Minimum, Maximum, Any, All, Filter, Sort, Corners, Separate Glyphs).
-7. **Later horizons.** Data-tree spines (rank >= 2 as data), demand-driven broadcast-as-re-evaluation in the adapters, GPU/`shader_node` integration with element-typed implementations, and possibly bare-`T` kernel sugar once the semantics are settled.
+7. **Later horizons.** Data-tree spines (rank >= 2 as data), demand-driven broadcast-as-re-evaluation in the adapters, and possibly bare-`T` kernel sugar once the semantics are settled.
+
+### GPU shader kernels (`shader_node(PerPixelAdjust)`)
+
+Landed. The raster adjustment/blending kernels are ordinary `Item<T>` element-wise nodes, and their per-pixel logic is shared with the GPU by re-emitting the kernel body verbatim rather than hand-writing a second function or extracting a closure. The CPU compilation sees `core_types::list::Item` (real, attribute-carrying); the SPIR-V compilation sees `no_std_types::list::Item`, a `#[repr(transparent)]` stand-in exposing only element access, so every `Item<T>` wrapper and `.element()` call resolves to a zero-cost identity. A body that touches attribute APIs (meaningless per-pixel) fails the shader build loudly instead of misbehaving.
+
+`PerPixelAdjust` codegen peels `Item` off ranked uniform parameters so the `repr(C)` uniform buffer stays bare, wraps the fetched texel and uniform values at the fragment entry point, and unwraps the returned item. No per-node annotation is needed; plain `shader_node(PerPixelAdjust)` continues to work. The `Adjust`/`Blend` per-element seams live on the element types (`Color`, `Raster<CPU>`, `GradientStops`) rather than on `List`.
