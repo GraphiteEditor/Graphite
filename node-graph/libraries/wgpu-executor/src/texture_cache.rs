@@ -75,7 +75,6 @@ impl TextureCache {
 			}
 			if Arc::strong_count(texture) == 1 {
 				free_bytes -= texture.memory_size_estimate();
-				texture.destroy();
 				false
 			} else {
 				true

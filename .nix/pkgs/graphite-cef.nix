@@ -2,25 +2,10 @@
 
 let
   version = "149.0.5+g6770623+chromium-149.0.7827.197";
-  hashes = {
-    aarch64-linux = "sha256-cBAvcvs1rAg5EKJkCt81RZYupCWpUNIC/nLt3PJow7Q=";
-		x86_64-linux = "sha256-OPGMBJmvvLiLdBDniBQwx7LmTGGI59AcesJdILSeqcs=";
-  };
 
-  selectSystem =
-    attrs:
-    attrs.${pkgs.stdenv.hostPlatform.system}
-      or (throw "Unsupported system ${pkgs.stdenv.hostPlatform.system}");
-
-  src = pkgs.fetchurl {
-    url = "https://cef-builds.spotifycdn.com/cef_binary_${version}_${
-      selectSystem {
-        aarch64-linux = "linuxarm64";
-        x86_64-linux = "linux64";
-      }
-    }_minimal.tar.bz2";
-    hash = selectSystem hashes;
-  };
+  # Local custom CEF build (tarball) instead of the Spotify CDN download.
+  # Absolute path outside the flake source tree, so this needs `nix develop --impure`.
+  src = /home/timon/tmp/cef-build/dist/cef_149_7827_x86-64_linux_fixed_buffer_usage.tar.xz;
 in
 pkgs.cef-binary.overrideAttrs (finalAttrs: {
   version = builtins.head (builtins.split "\\+" version);
@@ -33,12 +18,14 @@ pkgs.cef-binary.overrideAttrs (finalAttrs: {
     mv ./Resources/* $out/
     mv ./include $out/
 
-    cat ./CREDITS.html | ${pkgs.xz}/bin/xz -9 -e -c > $out/CREDITS.html.xz
+    if [ -f ./CREDITS.html ]; then
+      cat ./CREDITS.html | ${pkgs.xz}/bin/xz -9 -e -c > $out/CREDITS.html.xz
+    fi
 
     echo '${
       builtins.toJSON {
         type = "minimal";
-        name = builtins.baseNameOf finalAttrs.src.url;
+        name = "cef_binary_${version}_linux64_minimal.tar.xz";
         sha1 = "";
       }
     }' > $out/archive.json

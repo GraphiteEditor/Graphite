@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_request_handler_t, cef_base_ref_counted_t};
-use cef::{AuthCallback, Browser, CefString, Frame, ImplRequest, ImplRequestHandler, Request, ResourceRequestHandler, WrapRequestHandler};
+use cef::{AuthCallback, Browser, CefString, Frame, ImplRequest, ImplRequestHandler, Request, ResourceRequestHandler, TerminationStatus, WrapRequestHandler};
 use std::ffi::c_int;
 
 use super::resource_request_handler::ResourceRequestHandlerImpl;
@@ -53,6 +53,13 @@ impl ImplRequestHandler for RequestHandlerImpl {
 		_callback: Option<&mut AuthCallback>,
 	) -> c_int {
 		0
+	}
+
+	fn on_render_process_terminated(&self, _browser: Option<&mut Browser>, status: TerminationStatus, error_code: c_int, error_string: Option<&CefString>) {
+		tracing::error!(
+			"CEF render process terminated: status={status:?}, error_code={error_code}, error={}",
+			error_string.map(|error| error.to_string()).unwrap_or_default()
+		);
 	}
 
 	fn get_raw(&self) -> *mut _cef_request_handler_t {
