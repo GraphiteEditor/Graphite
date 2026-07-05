@@ -247,13 +247,14 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<GradientType>,
 		List<GradientSpreadMethod>,
 	)]
-	mut content: List<T>,
+	content: List<T>,
 	/// The attribute name (key) to write or replace.
 	name: String,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
 	#[implementations(Context -> AttributeValueDyn)]
 	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
 ) -> List<T> {
+	let mut content = content;
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
 		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(List::new_from_item(row))).with_index(index);
@@ -284,13 +285,14 @@ fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<GradientType>,
 		List<GradientSpreadMethod>,
 	)]
-	mut content: List<T>,
+	content: List<T>,
 	/// The source values to attach.
 	#[expose]
 	source: AttributeDyn,
 	/// The name to assign to the new destination attribute.
 	name: String,
 ) -> List<T> {
+	let mut content = content;
 	if source.is_empty() {
 		return content;
 	}

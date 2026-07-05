@@ -195,7 +195,7 @@ fn query_json(
 	_: impl Ctx,
 	/// The JSON string to extract a value from.
 	#[name("JSON")]
-	mut json: Item<String>,
+	json: Item<String>,
 	/// Determines which contained value to extract from within the JSON.
 	///
 	/// The path syntax is like JavaScript's accessor syntax that follows an array/object value. It also supports negative indexing to count backwards from the end. Additionally, `[]` accesses all array and object values instead of just one.
@@ -210,6 +210,7 @@ fn query_json(
 	#[default(true)]
 	unquote_strings: Item<bool>,
 ) -> Item<String> {
+	let mut json = json;
 	let path = path.element().clone();
 	let unquote_strings = *unquote_strings.element();
 

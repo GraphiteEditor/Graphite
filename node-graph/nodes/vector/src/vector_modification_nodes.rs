@@ -8,7 +8,8 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
+async fn path_modify(_ctx: impl Ctx, vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
+	let mut vector = vector;
 	use core_types::list::Item;
 
 	if vector.is_empty() {
@@ -36,7 +37,8 @@ async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box
 
 /// Bakes the content's transform attribute into its underlying value, removing the attribute.
 #[node_macro::node(category("Vector"))]
-async fn bake_transform<T: BakeTransform + 'n + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] mut content: Item<T>) -> Item<T> {
+async fn bake_transform<T: BakeTransform + 'n + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] content: Item<T>) -> Item<T> {
+	let mut content = content;
 	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
 		content.element_mut().bake_transform(&transform);
 	}

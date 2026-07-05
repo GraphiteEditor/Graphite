@@ -17,10 +17,11 @@ async fn gradient_map<T: Adjust<Color>>(
 		List<Color>,
 		List<GradientStops>,
 	)]
-	mut image: T,
+	image: T,
 	gradient: List<GradientStops>,
 	reverse: bool,
 ) -> T {
+	let mut image = image;
 	let Some(gradient) = gradient.element(0) else { return image };
 
 	image.adjust(|color| {

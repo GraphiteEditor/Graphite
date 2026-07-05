@@ -201,13 +201,15 @@ async fn rasterize<T: WasmNotSend + Clone + 'n>(
 		List<Color>,
 		List<GradientStops>,
 	)]
-	mut data: List<T>,
+	data: List<T>,
 	footprint: Footprint,
-	mut canvas: CanvasHandle,
+	canvas: CanvasHandle,
 ) -> List<Raster<CPU>>
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
+	let mut data = data;
+	let mut canvas = canvas;
 	use glam::{DAffine2, DVec2};
 
 	if footprint.transform.matrix2.determinant() == 0. {

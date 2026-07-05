@@ -58,9 +58,10 @@ fn luminance<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
+	let mut input = input;
 	input.adjust(|color| {
 		let luminance = match luminance_calc {
 			LuminanceCalculation::SRGB => color.luminance_rec_709(),
@@ -83,7 +84,7 @@ fn gamma_correction<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	#[default(2.2)]
 	#[range]
 	#[hard(0.0001..)]
@@ -91,6 +92,7 @@ fn gamma_correction<T: Adjust<Color>>(
 	gamma: f32,
 	inverse: bool,
 ) -> T {
+	let mut input = input;
 	let exponent = if inverse { 1. / gamma } else { gamma };
 	input.adjust(|color| color.apply_gamma_exponent(exponent));
 	input
@@ -105,9 +107,10 @@ fn extract_channel<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	channel: RedGreenBlueAlpha,
 ) -> T {
+	let mut input = input;
 	input.adjust(|color| {
 		let extracted_value = match channel {
 			RedGreenBlueAlpha::Red => color.r(),
@@ -129,8 +132,9 @@ fn make_opaque<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 ) -> T {
+	let mut input = input;
 	input.adjust(|color| {
 		if color.a() == 0. {
 			return color.with_alpha(1.);
@@ -151,10 +155,11 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	brightness: SignedPercentageF32,
 	contrast: SignedPercentageF32,
 ) -> T {
+	let mut input = input;
 	let brightness = brightness / 255.;
 
 	let contrast = contrast / 100.;
@@ -182,11 +187,12 @@ fn brightness_contrast<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	brightness: SignedPercentageF32,
 	contrast: SignedPercentageF32,
 	use_classic: bool,
 ) -> T {
+	let mut input = input;
 	if use_classic {
 		return brightness_contrast_classic(_ctx, input, brightness, contrast);
 	}
@@ -263,13 +269,14 @@ fn levels<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 	#[default(0.)] shadows: PercentageF32,
 	#[default(50.)] midtones: PercentageF32,
 	#[default(100.)] highlights: PercentageF32,
 	#[default(0.)] output_minimums: PercentageF32,
 	#[default(100.)] output_maximums: PercentageF32,
 ) -> T {
+	let mut image = image;
 	image.adjust(|color| {
 		// Levels math operates in gamma space
 		let [mut r, mut g, mut b, a] = color.to_gamma_srgb_channels();
@@ -342,7 +349,7 @@ fn black_and_white<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 	#[default(Color::BLACK)] tint: Color,
 	#[default(40.)]
 	#[range]
@@ -369,6 +376,7 @@ fn black_and_white<T: Adjust<Color>>(
 	#[soft(-200..300)]
 	magentas: PercentageF32,
 ) -> T {
+	let mut image = image;
 	image.adjust(|color| {
 		// Black & White channel weights are tuned for gamma-space values
 		let [r, g, b, alpha_part] = color.to_gamma_srgb_channels();
@@ -425,11 +433,12 @@ fn hue_saturation<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	hue_shift: AngleF32,
 	saturation_shift: SignedPercentageF32,
 	lightness_shift: SignedPercentageF32,
 ) -> T {
+	let mut input = input;
 	input.adjust(|color| {
 		// HSL operates on gamma-space channels
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
@@ -457,8 +466,9 @@ fn invert<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 ) -> T {
+	let mut input = input;
 	input.adjust(|color| {
 		// Invert in gamma space relative to alpha
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
@@ -478,11 +488,12 @@ fn threshold<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 	#[default(50.)] min_luminance: PercentageF32,
 	#[default(100.)] max_luminance: PercentageF32,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
+	let mut image = image;
 	image.adjust(|color| {
 		let min_luminance = srgb_to_linear(min_luminance / 100.);
 		let max_luminance = srgb_to_linear(max_luminance / 100.);
@@ -524,9 +535,10 @@ fn vibrance<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 	vibrance: SignedPercentageF32,
 ) -> T {
+	let mut image = image;
 	image.adjust(|color| {
 		let r_raw = color.r();
 		let g_raw = color.g();
@@ -726,7 +738,7 @@ fn channel_mixer<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 
 	monochrome: bool,
 
@@ -785,6 +797,7 @@ fn channel_mixer<T: Adjust<Color>>(
 	// Display-only properties (not used within the node)
 	_output_channel: RedGreenBlue,
 ) -> T {
+	let mut image = image;
 	image.adjust(|color| {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
@@ -858,7 +871,7 @@ fn selective_color<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 
 	mode: RelativeAbsolute,
 
@@ -909,6 +922,7 @@ fn selective_color<T: Adjust<Color>>(
 
 	_colors: SelectiveColorChoice,
 ) -> T {
+	let mut image = image;
 	image.adjust(|color| {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
@@ -1002,11 +1016,12 @@ fn posterize<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	#[default(4)]
 	#[hard(2..)]
 	levels: u32,
 ) -> T {
+	let mut input = input;
 	let levels = levels as f32;
 	input.adjust(|color| {
 		let number_of_areas = levels.recip();
@@ -1031,7 +1046,7 @@ fn exposure<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut input: T,
+	input: T,
 	exposure: f32,
 	offset: f32,
 	#[default(1.)]
@@ -1040,6 +1055,7 @@ fn exposure<T: Adjust<Color>>(
 	#[soft(0.01..10)]
 	gamma_correction: f32,
 ) -> T {
+	let mut input = input;
 	input.adjust(|color| {
 		let adjusted = color
 			// Exposure

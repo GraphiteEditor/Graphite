@@ -93,7 +93,7 @@ async fn assign_colors<T>(
 	/// The content with vector paths to apply the fill and/or stroke style to.
 	#[implementations(List<Graphic>, List<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
-	mut content: T,
+	content: T,
 	/// Whether to style the fill.
 	#[default(true)]
 	fill: bool,
@@ -117,6 +117,7 @@ async fn assign_colors<T>(
 where
 	T: VectorListIterMut + 'n + Send,
 {
+	let mut content = content;
 	let Some(row) = gradient.into_iter().next() else { return content };
 
 	let length = content.vector_count();
@@ -163,20 +164,22 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
 		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
 	)]
-	mut content: V,
+	content: V,
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
 		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
 		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
-	mut fill: F,
+	fill: F,
 	_backup_color: List<Color>,
 	_backup_gradient: List<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
 ) -> V {
+	let mut content = content;
+	let mut fill = fill;
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
@@ -268,7 +271,7 @@ async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 		List<Graphic>, List<Graphic>, List<Graphic>,
 		List<Graphic>, List<Graphic>, List<Graphic>,
 	)]
-	mut content: List<V>,
+	content: List<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
@@ -325,6 +328,7 @@ async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 where
 	List<V>: VectorListIterMut + 'n + Send,
 {
+	let mut content = content;
 	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
 
 	let stroke = Stroke {
@@ -550,12 +554,13 @@ async fn round_corners(
 #[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), path(core_types::vector))]
 pub fn merge_by_distance(
 	_: impl Ctx,
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	#[default(0.1)]
 	#[hard(0.0001..)]
 	distance: Item<PixelLength>,
 	algorithm: Item<MergeByDistanceAlgorithm>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let (distance, algorithm) = (*distance.element(), *algorithm.element());
 
 	match algorithm {
@@ -767,7 +772,8 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn extrude(_: impl Ctx, mut source: Item<Vector>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<Vector> {
+async fn extrude(_: impl Ctx, source: Item<Vector>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<Vector> {
+	let mut source = source;
 	let (direction, joining_algorithm) = (*direction.element(), *joining_algorithm.element());
 
 	extrude_algorithms::extrude(source.element_mut(), direction, joining_algorithm);
@@ -1132,7 +1138,8 @@ async fn auto_tangents(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn bounding_box(_: impl Ctx, mut content: Item<Vector>) -> Item<Vector> {
+async fn bounding_box(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
+	let mut content = content;
 	let mut result = content
 		.element()
 		.bounding_box_rect()
@@ -1167,7 +1174,8 @@ fn as_vector(_: impl Ctx, value: List<Vector>) -> List<Vector> {
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-async fn points_to_polyline(_: impl Ctx, mut points: Item<Vector>, #[default(true)] closed: Item<bool>) -> Item<Vector> {
+async fn points_to_polyline(_: impl Ctx, points: Item<Vector>, #[default(true)] closed: Item<bool>) -> Item<Vector> {
+	let mut points = points;
 	let closed = *closed.element();
 
 	let vector = points.element_mut();
@@ -1197,7 +1205,8 @@ async fn points_to_polyline(_: impl Ctx, mut points: Item<Vector>, #[default(tru
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-async fn offset_path(_: impl Ctx, mut content: Item<Vector>, distance: Item<f64>, join: Item<StrokeJoin>, #[default(4.)] miter_limit: Item<f64>) -> Item<Vector> {
+async fn offset_path(_: impl Ctx, content: Item<Vector>, distance: Item<f64>, join: Item<StrokeJoin>, #[default(4.)] miter_limit: Item<f64>) -> Item<Vector> {
+	let mut content = content;
 	let (distance, join, miter_limit) = (*distance.element(), *join.element(), *miter_limit.element());
 
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -1468,7 +1477,7 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
 async fn sample_polyline(
 	_: impl Ctx,
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	spacing: Item<PointSpacingType>,
 	#[default(100.)]
 	#[hard(0..)]
@@ -1485,6 +1494,7 @@ async fn sample_polyline(
 	stop_offset: Item<f64>,
 	adaptive_spacing: Item<bool>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let (spacing, separation, quantity) = (*spacing.element(), *separation.element(), *quantity.element());
 	let (start_offset, stop_offset, adaptive_spacing) = (*start_offset.element(), *stop_offset.element(), *adaptive_spacing.element());
 
@@ -1553,12 +1563,13 @@ async fn sample_polyline(
 async fn simplify(
 	_: impl Ctx,
 	/// The vector paths to simplify.
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	/// The maximum distance the simplified path may deviate from the original.
 	#[default(5.)]
 	#[unit(" px")]
 	tolerance: Item<Length>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let tolerance = *tolerance.element();
 
 	if tolerance <= 0. {
@@ -1594,12 +1605,13 @@ async fn simplify(
 async fn decimate(
 	_: impl Ctx,
 	/// The vector paths to decimate.
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
 	#[default(5.)]
 	#[unit(" px")]
 	tolerance: Item<Length>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let tolerance = *tolerance.element();
 
 	// Tolerance of 0 means no simplification is possible, so return immediately
@@ -1719,7 +1731,7 @@ async fn decimate(
 async fn cut_path(
 	_: impl Ctx,
 	/// The path to insert a cut into.
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progression: Item<Progression>,
 	/// Swap the direction of the path.
@@ -1727,6 +1739,7 @@ async fn cut_path(
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
 	parameterized_distance: Item<bool>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let (progression, reverse, parameterized_distance) = (*progression.element(), *reverse.element(), *parameterized_distance.element());
 
 	let euclidian = !parameterized_distance;
@@ -1765,7 +1778,8 @@ async fn cut_path(
 
 /// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn cut_segments(_: impl Ctx, mut content: Item<Vector>) -> Item<Vector> {
+async fn cut_segments(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
+	let mut content = content;
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
 	let vector = content.element_mut();
 
@@ -1912,7 +1926,7 @@ async fn tangent_on_path(
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
 async fn scatter_points(
 	_: impl Ctx,
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	#[unit(" px")]
 	#[default(10.)]
 	#[range]
@@ -1921,6 +1935,7 @@ async fn scatter_points(
 	separation: Item<f64>,
 	seed: Item<SeedValue>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let (separation, seed) = (*separation.element(), *seed.element());
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -1957,7 +1972,8 @@ async fn scatter_points(
 }
 
 #[node_macro::node(name("Spline"), category("Vector: Modifier"), path(core_types::vector))]
-async fn spline(_: impl Ctx, mut content: Item<Vector>) -> Item<Vector> {
+async fn spline(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
+	let mut content = content;
 	// Exit early if there are no points to generate splines from.
 	if content.element().point_domain.positions().is_empty() {
 		return content;
@@ -2055,7 +2071,7 @@ fn apply_point_deltas(element: &mut Vector, deltas: &[DVec2], transform: DAffine
 async fn jitter_points(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	/// The maximum extent of the random distance each point can be offset.
 	#[default(5.)]
 	#[unit(" px")]
@@ -2066,6 +2082,7 @@ async fn jitter_points(
 	#[default(true)]
 	along_normals: Item<bool>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let (max_distance, seed, along_normals) = (*max_distance.element(), *seed.element(), *along_normals.element());
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -2106,12 +2123,13 @@ async fn jitter_points(
 async fn offset_points(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
-	mut content: Item<Vector>,
+	content: Item<Vector>,
 	/// The distance to offset each anchor point along its normal. Positive values move outward, negative values move inward.
 	#[default(10.)]
 	#[unit(" px")]
 	distance: Item<f64>,
 ) -> Item<Vector> {
+	let mut content = content;
 	let distance = *distance.element();
 	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
@@ -3064,7 +3082,8 @@ fn bevel(_: impl Ctx, source: Item<Vector>, #[default(10.)] distance: Item<Lengt
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn close_path(_: impl Ctx, mut source: Item<Vector>) -> Item<Vector> {
+fn close_path(_: impl Ctx, source: Item<Vector>) -> Item<Vector> {
+	let mut source = source;
 	source.element_mut().close_subpaths();
 	source
 }

@@ -174,11 +174,12 @@ fn color_overlay<T: Adjust<Color>>(
 		List<GradientStops>,
 	)]
 	#[gpu_image]
-	mut image: T,
+	image: T,
 	#[default(Color::BLACK)] color: Color,
 	blend_mode: BlendMode,
 	#[default(100.)] opacity: PercentageF32,
 ) -> T {
+	let mut image = image;
 	let opacity = (opacity / 100.).clamp(0., 1.);
 
 	image.adjust(|pixel| {

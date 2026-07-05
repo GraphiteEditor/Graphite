@@ -12,10 +12,11 @@ fn blend_mode<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
-	mut content: Item<T>,
+	content: Item<T>,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: Item<BlendMode>,
 ) -> Item<T> {
+	let mut content = content;
 	let blend_mode = *blend_mode.element();
 
 	content.set_attribute(ATTR_BLEND_MODE, blend_mode);
@@ -30,7 +31,7 @@ fn opacity<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
-	mut content: Item<T>,
+	content: Item<T>,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	#[default(true)]
@@ -49,6 +50,7 @@ fn opacity<T>(
 	#[default(100.)]
 	fill: Item<Percentage>,
 ) -> Item<T> {
+	let mut content = content;
 	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());
 
 	if has_opacity {
@@ -70,10 +72,11 @@ fn clipping_mask<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
-	mut content: Item<T>,
+	content: Item<T>,
 	/// Whether the content inherits the alpha of the content beneath it.
 	clip: Item<bool>,
 ) -> Item<T> {
+	let mut content = content;
 	let clip = *clip.element();
 
 	content.set_attribute(ATTR_CLIPPING_MASK, clip);

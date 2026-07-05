@@ -866,7 +866,8 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: List<GradientStops>) -> L
 
 /// Sets the type (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, mut gradient: List<GradientStops>, gradient_type: vector_types::GradientType) -> List<GradientStops> {
+fn gradient_type(_: impl Ctx, gradient: List<GradientStops>, gradient_type: vector_types::GradientType) -> List<GradientStops> {
+	let mut gradient = gradient;
 	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientType>(core_types::ATTR_GRADIENT_TYPE) {
 		*value = gradient_type;
 	}
@@ -875,7 +876,8 @@ fn gradient_type(_: impl Ctx, mut gradient: List<GradientStops>, gradient_type: 
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, mut gradient: List<GradientStops>, spread_method: vector_types::GradientSpreadMethod) -> List<GradientStops> {
+fn spread_method(_: impl Ctx, gradient: List<GradientStops>, spread_method: vector_types::GradientSpreadMethod) -> List<GradientStops> {
+	let mut gradient = gradient;
 	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientSpreadMethod>(core_types::ATTR_SPREAD_METHOD) {
 		*value = spread_method;
 	}

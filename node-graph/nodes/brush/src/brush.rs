@@ -83,10 +83,11 @@ fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f
 
 /// Used to efficiently paint brush strokes. Applies the same texture repeatedly at different positions with proper blending and boundary handling.
 #[node_macro::node(category(""), skip_impl)]
-fn blit<BlendFn>(mut target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>>
+fn blit<BlendFn>(target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>>
 where
 	BlendFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color>,
 {
+	let mut target = target;
 	if positions.is_empty() {
 		return target;
 	}
@@ -191,13 +192,14 @@ pub fn blend_with_mode(background: Item<Raster<CPU>>, foreground: Item<Raster<CP
 async fn brush(
 	_: impl Ctx,
 	/// Optional raster content that may be drawn onto.
-	mut background: List<Raster<CPU>>,
+	background: List<Raster<CPU>>,
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
 	trace: List<BrushStroke>,
 	/// Internal cache data used to accelerate rendering of the brush content.
 	#[data]
 	cache: BrushCache,
 ) -> List<Raster<CPU>> {
+	let mut background = background;
 	if background.is_empty() {
 		background.push(Item::default());
 	}
