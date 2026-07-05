@@ -1355,31 +1355,26 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
-	content
+async fn separate_subpaths(_: impl Ctx, content: Item<Vector>) -> List<Vector> {
+	let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
+
+	// Pass the original element through unchanged when it has no subpaths, so its attributes
+	// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
+	if bezpaths.is_empty() {
+		return List::new_from_item(content);
+	}
+
+	let stroke = content.element().stroke.clone();
+	let (_, attributes) = content.into_parts();
+
+	bezpaths
 		.into_iter()
-		.flat_map(|row| {
-			let bezpaths = row.element().stroke_bezpath_iter().collect::<Vec<_>>();
+		.map(|bezpath| {
+			let mut vector = Vector::default();
+			vector.append_bezpath(bezpath);
+			vector.stroke = stroke.clone();
 
-			// Pass the original element through unchanged when it has no subpaths, so its attributes
-			// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
-			if bezpaths.is_empty() {
-				return vec![row];
-			}
-
-			let stroke = row.element().stroke.clone();
-			let (_, attributes) = row.into_parts();
-
-			bezpaths
-				.into_iter()
-				.map(|bezpath| {
-					let mut vector = Vector::default();
-					vector.append_bezpath(bezpath);
-					vector.stroke = stroke.clone();
-
-					Item::from_parts(vector, attributes.clone())
-				})
-				.collect::<Vec<Item<Vector>>>()
+			Item::from_parts(vector, attributes.clone())
 		})
 		.collect()
 }

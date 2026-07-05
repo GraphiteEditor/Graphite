@@ -708,4 +708,51 @@ mod test {
 		let wrong_type: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
 		assert!(wrong_type.is_none(), "A List wire should not downcast as an Item");
 	}
+
+	#[test]
+	fn expander_flattens_under_the_frame() {
+		// A bare string wrapped onto an Item wire feeds String Split's expander primary; its parameters ride Item wires via promotion
+		let string_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("a,b".into()).into()), vec![NodeId(0)]);
+		let mut wrap_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		wrap_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::WrapItemNode<String>");
+
+		let delimiter_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(",".into()).into()), vec![NodeId(2)]);
+		let mut delimiter_promote_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
+		delimiter_promote_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::PromoteNode<String>");
+
+		let escaping_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(false).into()), vec![NodeId(4)]);
+		let mut escaping_promote_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(4)]), vec![NodeId(5)]);
+		escaping_promote_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::PromoteNode<bool>");
+
+		let output = NodeId(6);
+		let mut string_split_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(3), NodeId(5)]), vec![output]);
+		string_split_node.identifier = graphene_std::text_nodes::string_split::IDENTIFIER;
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output,
+			nodes: vec![
+				(NodeId(0), string_node),
+				(NodeId(1), wrap_node),
+				(NodeId(2), delimiter_node),
+				(NodeId(3), delimiter_promote_node),
+				(NodeId(4), escaping_node),
+				(NodeId(5), escaping_promote_node),
+				(output, string_split_node),
+			],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context
+			.update(&network)
+			.expect("All-Item connectors should resolve the expander's direct `Item -> List` variant");
+		assert!(typing_context.promotions(output).is_none(), "No promotion should be needed when every connector is already an Item");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The expander variant should instantiate");
+
+		let context: Context = None;
+		let result: Option<List<String>> = futures::executor::block_on(tree.eval(output, context));
+		let list = result.expect("An Item-wired expander should produce a List");
+		assert_eq!(list.len(), 2, "Splitting \"a,b\" on the comma should expand into two rows");
+		let substrings: Vec<_> = list.iter_element_values().map(|s| s.as_str()).collect();
+		assert_eq!(substrings, ["a", "b"], "The rows should hold the split substrings");
+	}
 }

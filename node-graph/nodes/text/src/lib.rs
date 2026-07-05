@@ -810,18 +810,19 @@ fn string_length(_: impl Ctx, string: Item<String>) -> Item<f64> {
 fn string_split(
 	_: impl Ctx,
 	/// The string to split into substrings.
-	string: String,
+	string: Item<String>,
 	/// The character(s) that separate the substrings. These are not included in the outputs.
 	#[default("\\n")]
-	delimiter: String,
+	delimiter: Item<String>,
 	/// Whether to convert escape sequences found in the delimiter into their corresponding characters:
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
-	delimiter_escaping: bool,
+	delimiter_escaping: Item<bool>,
 ) -> List<String> {
-	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
+	let delimiter = delimiter.element().clone();
+	let delimiter = if *delimiter_escaping.element() { unescape_string(delimiter) } else { delimiter };
 
-	string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
+	string.element().split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.

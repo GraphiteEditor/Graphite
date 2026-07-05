@@ -243,7 +243,7 @@ fn query_json_all(
 	_: impl Ctx,
 	/// The JSON string to extract values from.
 	#[name("JSON")]
-	json: String,
+	json: Item<String>,
 	/// Determines which contained values to extract from within the JSON.
 	///
 	/// The path syntax is like JavaScript's accessor syntax that follows an array/object value. It also supports negative indexing to count backwards from the end. Additionally, `[]` accesses all array and object values instead of just one.
@@ -253,17 +253,17 @@ fn query_json_all(
 	/// Use `.size` or `["size"]` to get the `size` property of `{ "size": 10 }`. The latter form is required if the key contains spaces or special characters like `["this key with spaces!"]`.
 	/// Use chained accessors like `.fonts[0].name` to query deeper.
 	/// Use the `[]` accessor to query all elements, like `.fonts[].weights[]` to get every weight of every font.
-	path: String,
+	path: Item<String>,
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
-	unquote_strings: bool,
+	unquote_strings: Item<bool>,
 ) -> List<String> {
-	let cleaned = strip_trailing_commas(&json);
+	let cleaned = strip_trailing_commas(json.element());
 	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return List::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return List::new() };
+	let Some(segments) = parse_json_path(path.element().trim()) else { return List::new() };
 
 	let mut results = Vec::new();
-	resolve_all(&value, &segments, !unquote_strings, &mut results);
+	resolve_all(&value, &segments, !*unquote_strings.element(), &mut results);
 
 	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
 }
