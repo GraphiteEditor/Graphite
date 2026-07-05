@@ -447,6 +447,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		StringCapitalization,
 		GradientType,
 		GradientSpreadMethod,
+		LuminanceCalculation,
+		RedGreenBlue,
+		RedGreenBlueAlpha,
+		RelativeAbsolute,
+		SelectiveColorChoice,
 	));
 	// =============
 	// CONVERT NODES

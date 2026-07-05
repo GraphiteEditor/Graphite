@@ -840,7 +840,7 @@ fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
 	}
 }
 
-fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+pub(crate) fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
 	peel_wrapper(ty, "Item")
 }
 

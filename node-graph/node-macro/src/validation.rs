@@ -78,10 +78,6 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		emit_error!(primary.pat_ident.span(), "The `Item<T>` primary input `{}` cannot be a #[data] field", primary.pat_ident.ident);
 	}
 
-	if parsed.attributes.shader_node.is_some() {
-		emit_error!(parsed.fn_name.span(), "An element-wise `Item<T>` primary input cannot be combined with `shader_node`");
-	}
-
 	if implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "Item")) {
 		emit_error!(
 			primary.pat_ident.span(),

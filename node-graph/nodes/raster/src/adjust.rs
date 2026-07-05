@@ -12,30 +12,13 @@ impl Adjust<Color> for Color {
 #[cfg(feature = "std")]
 mod adjust_std {
 	use super::*;
-	use core_types::list::List;
 	use raster_types::{CPU, Raster};
 	use vector_types::GradientStops;
 
-	impl Adjust<Color> for List<Raster<CPU>> {
+	impl Adjust<Color> for Raster<CPU> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for element in self.iter_element_values_mut() {
-				for color in element.data_mut().data.iter_mut() {
-					*color = map_fn(color);
-				}
-			}
-		}
-	}
-	impl Adjust<Color> for List<Color> {
-		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for element in self.iter_element_values_mut() {
-				*element = map_fn(element);
-			}
-		}
-	}
-	impl Adjust<Color> for List<GradientStops> {
-		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for element in self.iter_element_values_mut() {
-				element.adjust(&map_fn);
+			for color in self.data_mut().data.iter_mut() {
+				*color = map_fn(color);
 			}
 		}
 	}

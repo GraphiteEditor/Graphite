@@ -33,15 +33,21 @@ impl ShaderCodegen for PerPixelAdjust {
 					let ident = &f.pat_ident;
 					match &f.ty {
 						ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
-						ParsedFieldType::Regular(RegularParsedField { gpu_image: false, ty, .. }) => Ok(Param {
-							ident: Cow::Borrowed(&ident.ident),
-							ty: ty.to_token_stream(),
-							param_type: ParamType::Uniform,
-						}),
-						ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. }) => {
+						ParsedFieldType::Regular(RegularParsedField { gpu_image: false, ty, .. }) => {
+							// Ranked connectors carry their bare element type in the uniform buffer and get rewrapped in the entry point
+							let element_ty = crate::codegen::peel_item(ty);
+							Ok(Param {
+								ident: Cow::Borrowed(&ident.ident),
+								item_wrapped: element_ty.is_some(),
+								ty: element_ty.map(|element_ty| element_ty.to_token_stream()).unwrap_or_else(|| ty.to_token_stream()),
+								param_type: ParamType::Uniform,
+							})
+						}
+						ParsedFieldType::Regular(RegularParsedField { gpu_image: true, ty, .. }) => {
 							let param = Param {
 								ident: Cow::Owned(format_ident!("image_{}", &ident.ident)),
 								ty: quote!(Image2d),
+								item_wrapped: crate::codegen::peel_item(ty).is_some(),
 								param_type: ParamType::Image { binding: 0 },
 							};
 							Ok(param)
@@ -115,7 +121,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let uniform_members = self
 			.params
 			.iter()
-			.filter_map(|Param { ident, ty, param_type }| match param_type {
+			.filter_map(|Param { ident, ty, param_type, .. }| match param_type {
 				ParamType::Image { .. } => None,
 				ParamType::Uniform => Some(quote! {#ident: #ty}),
 			})
@@ -133,19 +139,24 @@ impl PerPixelAdjustCodegen<'_> {
 		let image_params = self
 			.params
 			.iter()
-			.filter_map(|Param { ident, ty, param_type }| match param_type {
+			.filter_map(|Param { ident, ty, param_type, .. }| match param_type {
 				ParamType::Image { binding } => Some(quote! {#[spirv(descriptor_set = 0, binding = #binding)] #ident: &#ty}),
 				ParamType::Uniform => None,
 			})
 			.collect::<Vec<_>>();
+		// Ranked connectors compile against the no_std `Item` stand-in on the GPU, so wrapping and unwrapping here is free
 		let call_args = self
 			.params
 			.iter()
-			.map(|Param { ident, param_type, .. }| match param_type {
-				ParamType::Image { .. } => quote!(Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)))),
-				ParamType::Uniform => quote!(uniform.#ident),
+			.map(|Param { ident, param_type, item_wrapped, .. }| {
+				let bare_value = match param_type {
+					ParamType::Image { .. } => quote!(Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)))),
+					ParamType::Uniform => quote!(uniform.#ident),
+				};
+				if *item_wrapped { quote!(Item::new_from_element(#bare_value)) } else { bare_value }
 			})
 			.collect::<Vec<_>>();
+		let unwrap_result = crate::codegen::peel_item(&self.parsed.output_type).map(|_| quote!(.into_element()));
 		let context = quote!(());
 
 		let entry_point_mod = &self.entry_point_mod;
@@ -173,7 +184,7 @@ impl PerPixelAdjustCodegen<'_> {
 				) {
 					let uniform = <Uniform as #gcore_shaders::shaders::buffer_struct::BufferStruct>::read(*uniform);
 					let texel_coord = frag_coord.xy().as_uvec2();
-					let color: Color = #fn_name(#context, #(#call_args),*);
+					let color: Color = #fn_name(#context, #(#call_args),*)#unwrap_result;
 					*color_out = color.to_vec4();
 				}
 			}
@@ -268,7 +279,10 @@ impl PerPixelAdjustCodegen<'_> {
 				.iter()
 				.filter_map(|p| match p.param_type {
 					ParamType::Image { .. } => None,
-					ParamType::Uniform => Some(p.ident.as_ref()),
+					ParamType::Uniform => {
+						let ident = p.ident.as_ref();
+						Some(if p.item_wrapped { quote!(#ident: #ident.into_element()) } else { quote!(#ident) })
+					}
 				})
 				.collect::<Vec<_>>();
 			quote!(Some(&super::#uniform_struct {
@@ -339,6 +353,7 @@ impl PerPixelAdjustCodegen<'_> {
 struct Param<'a> {
 	ident: Cow<'a, Ident>,
 	ty: TokenStream,
+	item_wrapped: bool,
 	param_type: ParamType,
 }
 

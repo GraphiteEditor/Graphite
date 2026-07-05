@@ -4,10 +4,12 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::list::List;
+use core_types::list::Item;
 use glam::Vec3;
 use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
+#[cfg(not(feature = "std"))]
+use no_std_types::list::Item;
 use no_std_types::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
@@ -53,16 +55,18 @@ pub enum LuminanceCalculation {
 fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-	luminance_calc: LuminanceCalculation,
-) -> T {
+	input: Item<T>,
+	luminance_calc: Item<LuminanceCalculation>,
+) -> Item<T> {
 	let mut input = input;
-	input.adjust(|color| {
+	let luminance_calc = luminance_calc.into_element();
+
+	input.element_mut().adjust(|color| {
 		let luminance = match luminance_calc {
 			LuminanceCalculation::SRGB => color.luminance_rec_709(),
 			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
@@ -79,22 +83,25 @@ fn luminance<T: Adjust<Color>>(
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
+	input: Item<T>,
 	#[default(2.2)]
 	#[range]
 	#[hard(0.0001..)]
 	#[soft(0.01..10)]
-	gamma: f32,
-	inverse: bool,
-) -> T {
+	gamma: Item<f32>,
+	inverse: Item<bool>,
+) -> Item<T> {
 	let mut input = input;
+	let gamma = gamma.into_element();
+	let inverse = inverse.into_element();
+
 	let exponent = if inverse { 1. / gamma } else { gamma };
-	input.adjust(|color| color.apply_gamma_exponent(exponent));
+	input.element_mut().adjust(|color| color.apply_gamma_exponent(exponent));
 	input
 }
 
@@ -102,16 +109,18 @@ fn gamma_correction<T: Adjust<Color>>(
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-	channel: RedGreenBlueAlpha,
-) -> T {
+	input: Item<T>,
+	channel: Item<RedGreenBlueAlpha>,
+) -> Item<T> {
 	let mut input = input;
-	input.adjust(|color| {
+	let channel = channel.into_element();
+
+	input.element_mut().adjust(|color| {
 		let extracted_value = match channel {
 			RedGreenBlueAlpha::Red => color.r(),
 			RedGreenBlueAlpha::Green => color.g(),
@@ -127,15 +136,15 @@ fn extract_channel<T: Adjust<Color>>(
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-) -> T {
+	input: Item<T>,
+) -> Item<T> {
 	let mut input = input;
-	input.adjust(|color| {
+	input.element_mut().adjust(|color| {
 		if color.a() == 0. {
 			return color.with_alpha(1.);
 		}
@@ -150,16 +159,19 @@ fn make_opaque<T: Adjust<Color>>(
 fn brightness_contrast_classic<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-	brightness: SignedPercentageF32,
-	contrast: SignedPercentageF32,
-) -> T {
+	input: Item<T>,
+	brightness: Item<SignedPercentageF32>,
+	contrast: Item<SignedPercentageF32>,
+) -> Item<T> {
 	let mut input = input;
+	let brightness = brightness.into_element();
+	let contrast = contrast.into_element();
+
 	let brightness = brightness / 255.;
 
 	let contrast = contrast / 100.;
@@ -167,7 +179,7 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 
 	let offset = brightness * contrast + brightness - contrast / 2.;
 
-	input.adjust(|color| color.map_gamma_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)));
+	input.element_mut().adjust(|color| color.map_gamma_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)));
 
 	input
 }
@@ -182,20 +194,24 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 fn brightness_contrast<T: Adjust<Color>>(
 	_ctx: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-	brightness: SignedPercentageF32,
-	contrast: SignedPercentageF32,
-	use_classic: bool,
-) -> T {
-	let mut input = input;
+	input: Item<T>,
+	brightness: Item<SignedPercentageF32>,
+	contrast: Item<SignedPercentageF32>,
+	use_classic: Item<bool>,
+) -> Item<T> {
+	let use_classic = use_classic.into_element();
 	if use_classic {
 		return brightness_contrast_classic(_ctx, input, brightness, contrast);
 	}
+
+	let mut input = input;
+	let brightness = brightness.into_element();
+	let contrast = contrast.into_element();
 
 	const WINDOW_SIZE: usize = 1024;
 
@@ -247,7 +263,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	});
 	let lut_max = (combined_lut.len() - 1) as f32;
 
-	input.adjust(|color| color.map_gamma_rgb(|c| combined_lut[(c * lut_max).round() as usize]));
+	input.element_mut().adjust(|color| color.map_gamma_rgb(|c| combined_lut[(c * lut_max).round() as usize]));
 
 	input
 }
@@ -264,20 +280,26 @@ fn brightness_contrast<T: Adjust<Color>>(
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: T,
-	#[default(0.)] shadows: PercentageF32,
-	#[default(50.)] midtones: PercentageF32,
-	#[default(100.)] highlights: PercentageF32,
-	#[default(0.)] output_minimums: PercentageF32,
-	#[default(100.)] output_maximums: PercentageF32,
-) -> T {
+	image: Item<T>,
+	#[default(0.)] shadows: Item<PercentageF32>,
+	#[default(50.)] midtones: Item<PercentageF32>,
+	#[default(100.)] highlights: Item<PercentageF32>,
+	#[default(0.)] output_minimums: Item<PercentageF32>,
+	#[default(100.)] output_maximums: Item<PercentageF32>,
+) -> Item<T> {
 	let mut image = image;
-	image.adjust(|color| {
+	let shadows = shadows.into_element();
+	let midtones = midtones.into_element();
+	let highlights = highlights.into_element();
+	let output_minimums = output_minimums.into_element();
+	let output_maximums = output_maximums.into_element();
+
+	image.element_mut().adjust(|color| {
 		// Levels math operates in gamma space
 		let [mut r, mut g, mut b, a] = color.to_gamma_srgb_channels();
 
@@ -339,45 +361,52 @@ fn levels<T: Adjust<Color>>(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-// TODO: Currently the un-List-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
-#[node_macro::node(name("Black & White"), category(""), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Black & White"), category("Raster: Adjustment"), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: T,
-	#[default(Color::BLACK)] tint: Color,
+	image: Item<T>,
+	#[default(Color::BLACK)] tint: Item<Color>,
 	#[default(40.)]
 	#[range]
 	#[soft(-200..300)]
-	reds: PercentageF32,
+	reds: Item<PercentageF32>,
 	#[default(60.)]
 	#[range]
 	#[soft(-200..300)]
-	yellows: PercentageF32,
+	yellows: Item<PercentageF32>,
 	#[default(40.)]
 	#[range]
 	#[soft(-200..300)]
-	greens: PercentageF32,
+	greens: Item<PercentageF32>,
 	#[default(60.)]
 	#[range]
 	#[soft(-200..300)]
-	cyans: PercentageF32,
+	cyans: Item<PercentageF32>,
 	#[default(20.)]
 	#[range]
 	#[soft(-200..300)]
-	blues: PercentageF32,
+	blues: Item<PercentageF32>,
 	#[default(80.)]
 	#[range]
 	#[soft(-200..300)]
-	magentas: PercentageF32,
-) -> T {
+	magentas: Item<PercentageF32>,
+) -> Item<T> {
 	let mut image = image;
-	image.adjust(|color| {
+	let tint = tint.into_element();
+	let reds = reds.into_element();
+	let yellows = yellows.into_element();
+	let greens = greens.into_element();
+	let cyans = cyans.into_element();
+	let blues = blues.into_element();
+	let magentas = magentas.into_element();
+
+	image.element_mut().adjust(|color| {
 		// Black & White channel weights are tuned for gamma-space values
 		let [r, g, b, alpha_part] = color.to_gamma_srgb_channels();
 
@@ -428,18 +457,22 @@ fn black_and_white<T: Adjust<Color>>(
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-	hue_shift: AngleF32,
-	saturation_shift: SignedPercentageF32,
-	lightness_shift: SignedPercentageF32,
-) -> T {
+	input: Item<T>,
+	hue_shift: Item<AngleF32>,
+	saturation_shift: Item<SignedPercentageF32>,
+	lightness_shift: Item<SignedPercentageF32>,
+) -> Item<T> {
 	let mut input = input;
-	input.adjust(|color| {
+	let hue_shift = hue_shift.into_element();
+	let saturation_shift = saturation_shift.into_element();
+	let lightness_shift = lightness_shift.into_element();
+
+	input.element_mut().adjust(|color| {
 		// HSL operates on gamma-space channels
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
 
@@ -461,15 +494,15 @@ fn hue_saturation<T: Adjust<Color>>(
 fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-) -> T {
+	input: Item<T>,
+) -> Item<T> {
 	let mut input = input;
-	input.adjust(|color| {
+	input.element_mut().adjust(|color| {
 		// Invert in gamma space relative to alpha
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 		Color::from_gamma_srgb_channels(a - r, a - g, a - b, a)
@@ -483,18 +516,22 @@ fn invert<T: Adjust<Color>>(
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: T,
-	#[default(50.)] min_luminance: PercentageF32,
-	#[default(100.)] max_luminance: PercentageF32,
-	luminance_calc: LuminanceCalculation,
-) -> T {
+	image: Item<T>,
+	#[default(50.)] min_luminance: Item<PercentageF32>,
+	#[default(100.)] max_luminance: Item<PercentageF32>,
+	luminance_calc: Item<LuminanceCalculation>,
+) -> Item<T> {
 	let mut image = image;
-	image.adjust(|color| {
+	let min_luminance = min_luminance.into_element();
+	let max_luminance = max_luminance.into_element();
+	let luminance_calc = luminance_calc.into_element();
+
+	image.element_mut().adjust(|color| {
 		let min_luminance = srgb_to_linear(min_luminance / 100.);
 		let max_luminance = srgb_to_linear(max_luminance / 100.);
 
@@ -530,16 +567,18 @@ fn threshold<T: Adjust<Color>>(
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: T,
-	vibrance: SignedPercentageF32,
-) -> T {
+	image: Item<T>,
+	vibrance: Item<SignedPercentageF32>,
+) -> Item<T> {
 	let mut image = image;
-	image.adjust(|color| {
+	let vibrance = vibrance.into_element();
+
+	image.element_mut().adjust(|color| {
 		let r_raw = color.r();
 		let g_raw = color.g();
 		let b_raw = color.b();
@@ -733,72 +772,78 @@ pub enum DomainWarpType {
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: T,
+	image: Item<T>,
 
-	monochrome: bool,
+	monochrome: Item<bool>,
 
 	#[default(40.)]
 	#[name("Red")]
-	monochrome_r: f32,
+	monochrome_r: Item<f32>,
 	#[default(40.)]
 	#[name("Green")]
-	monochrome_g: f32,
+	monochrome_g: Item<f32>,
 	#[default(20.)]
 	#[name("Blue")]
-	monochrome_b: f32,
+	monochrome_b: Item<f32>,
 	#[default(0.)]
 	#[name("Constant")]
-	monochrome_c: f32,
+	monochrome_c: Item<f32>,
 
 	#[default(100.)]
 	#[name("(Red) Red")]
-	red_r: f32,
+	red_r: Item<f32>,
 	#[default(0.)]
 	#[name("(Red) Green")]
-	red_g: f32,
+	red_g: Item<f32>,
 	#[default(0.)]
 	#[name("(Red) Blue")]
-	red_b: f32,
+	red_b: Item<f32>,
 	#[default(0.)]
 	#[name("(Red) Constant")]
-	red_c: f32,
+	red_c: Item<f32>,
 
 	#[default(0.)]
 	#[name("(Green) Red")]
-	green_r: f32,
+	green_r: Item<f32>,
 	#[default(100.)]
 	#[name("(Green) Green")]
-	green_g: f32,
+	green_g: Item<f32>,
 	#[default(0.)]
 	#[name("(Green) Blue")]
-	green_b: f32,
+	green_b: Item<f32>,
 	#[default(0.)]
 	#[name("(Green) Constant")]
-	green_c: f32,
+	green_c: Item<f32>,
 
 	#[default(0.)]
 	#[name("(Blue) Red")]
-	blue_r: f32,
+	blue_r: Item<f32>,
 	#[default(0.)]
 	#[name("(Blue) Green")]
-	blue_g: f32,
+	blue_g: Item<f32>,
 	#[default(100.)]
 	#[name("(Blue) Blue")]
-	blue_b: f32,
+	blue_b: Item<f32>,
 	#[default(0.)]
 	#[name("(Blue) Constant")]
-	blue_c: f32,
+	blue_c: Item<f32>,
 
 	// Display-only properties (not used within the node)
-	_output_channel: RedGreenBlue,
-) -> T {
+	_output_channel: Item<RedGreenBlue>,
+) -> Item<T> {
 	let mut image = image;
-	image.adjust(|color| {
+	let monochrome = monochrome.into_element();
+	let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r.into_element(), monochrome_g.into_element(), monochrome_b.into_element(), monochrome_c.into_element());
+	let (red_r, red_g, red_b, red_c) = (red_r.into_element(), red_g.into_element(), red_b.into_element(), red_c.into_element());
+	let (green_r, green_g, green_b, green_c) = (green_r.into_element(), green_g.into_element(), green_b.into_element(), green_c.into_element());
+	let (blue_r, blue_g, blue_b, blue_c) = (blue_r.into_element(), blue_g.into_element(), blue_b.into_element(), blue_c.into_element());
+
+	image.element_mut().adjust(|color| {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
 		let (out_r, out_g, out_b) = if monochrome {
@@ -866,64 +911,75 @@ pub enum SelectiveColorChoice {
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: T,
+	image: Item<T>,
 
-	mode: RelativeAbsolute,
+	mode: Item<RelativeAbsolute>,
 
-	#[name("(Reds) Cyan")] r_c: f32,
-	#[name("(Reds) Magenta")] r_m: f32,
-	#[name("(Reds) Yellow")] r_y: f32,
-	#[name("(Reds) Black")] r_k: f32,
+	#[name("(Reds) Cyan")] r_c: Item<f32>,
+	#[name("(Reds) Magenta")] r_m: Item<f32>,
+	#[name("(Reds) Yellow")] r_y: Item<f32>,
+	#[name("(Reds) Black")] r_k: Item<f32>,
 
-	#[name("(Yellows) Cyan")] y_c: f32,
-	#[name("(Yellows) Magenta")] y_m: f32,
-	#[name("(Yellows) Yellow")] y_y: f32,
-	#[name("(Yellows) Black")] y_k: f32,
+	#[name("(Yellows) Cyan")] y_c: Item<f32>,
+	#[name("(Yellows) Magenta")] y_m: Item<f32>,
+	#[name("(Yellows) Yellow")] y_y: Item<f32>,
+	#[name("(Yellows) Black")] y_k: Item<f32>,
 
-	#[name("(Greens) Cyan")] g_c: f32,
-	#[name("(Greens) Magenta")] g_m: f32,
-	#[name("(Greens) Yellow")] g_y: f32,
-	#[name("(Greens) Black")] g_k: f32,
+	#[name("(Greens) Cyan")] g_c: Item<f32>,
+	#[name("(Greens) Magenta")] g_m: Item<f32>,
+	#[name("(Greens) Yellow")] g_y: Item<f32>,
+	#[name("(Greens) Black")] g_k: Item<f32>,
 
-	#[name("(Cyans) Cyan")] c_c: f32,
-	#[name("(Cyans) Magenta")] c_m: f32,
-	#[name("(Cyans) Yellow")] c_y: f32,
-	#[name("(Cyans) Black")] c_k: f32,
+	#[name("(Cyans) Cyan")] c_c: Item<f32>,
+	#[name("(Cyans) Magenta")] c_m: Item<f32>,
+	#[name("(Cyans) Yellow")] c_y: Item<f32>,
+	#[name("(Cyans) Black")] c_k: Item<f32>,
 
-	#[name("(Blues) Cyan")] b_c: f32,
-	#[name("(Blues) Magenta")] b_m: f32,
-	#[name("(Blues) Yellow")] b_y: f32,
-	#[name("(Blues) Black")] b_k: f32,
+	#[name("(Blues) Cyan")] b_c: Item<f32>,
+	#[name("(Blues) Magenta")] b_m: Item<f32>,
+	#[name("(Blues) Yellow")] b_y: Item<f32>,
+	#[name("(Blues) Black")] b_k: Item<f32>,
 
-	#[name("(Magentas) Cyan")] m_c: f32,
-	#[name("(Magentas) Magenta")] m_m: f32,
-	#[name("(Magentas) Yellow")] m_y: f32,
-	#[name("(Magentas) Black")] m_k: f32,
+	#[name("(Magentas) Cyan")] m_c: Item<f32>,
+	#[name("(Magentas) Magenta")] m_m: Item<f32>,
+	#[name("(Magentas) Yellow")] m_y: Item<f32>,
+	#[name("(Magentas) Black")] m_k: Item<f32>,
 
-	#[name("(Whites) Cyan")] w_c: f32,
-	#[name("(Whites) Magenta")] w_m: f32,
-	#[name("(Whites) Yellow")] w_y: f32,
-	#[name("(Whites) Black")] w_k: f32,
+	#[name("(Whites) Cyan")] w_c: Item<f32>,
+	#[name("(Whites) Magenta")] w_m: Item<f32>,
+	#[name("(Whites) Yellow")] w_y: Item<f32>,
+	#[name("(Whites) Black")] w_k: Item<f32>,
 
-	#[name("(Neutrals) Cyan")] n_c: f32,
-	#[name("(Neutrals) Magenta")] n_m: f32,
-	#[name("(Neutrals) Yellow")] n_y: f32,
-	#[name("(Neutrals) Black")] n_k: f32,
+	#[name("(Neutrals) Cyan")] n_c: Item<f32>,
+	#[name("(Neutrals) Magenta")] n_m: Item<f32>,
+	#[name("(Neutrals) Yellow")] n_y: Item<f32>,
+	#[name("(Neutrals) Black")] n_k: Item<f32>,
 
-	#[name("(Blacks) Cyan")] k_c: f32,
-	#[name("(Blacks) Magenta")] k_m: f32,
-	#[name("(Blacks) Yellow")] k_y: f32,
-	#[name("(Blacks) Black")] k_k: f32,
+	#[name("(Blacks) Cyan")] k_c: Item<f32>,
+	#[name("(Blacks) Magenta")] k_m: Item<f32>,
+	#[name("(Blacks) Yellow")] k_y: Item<f32>,
+	#[name("(Blacks) Black")] k_k: Item<f32>,
 
-	_colors: SelectiveColorChoice,
-) -> T {
+	_colors: Item<SelectiveColorChoice>,
+) -> Item<T> {
 	let mut image = image;
-	image.adjust(|color| {
+	let mode = mode.into_element();
+	let (r_c, r_m, r_y, r_k) = (r_c.into_element(), r_m.into_element(), r_y.into_element(), r_k.into_element());
+	let (y_c, y_m, y_y, y_k) = (y_c.into_element(), y_m.into_element(), y_y.into_element(), y_k.into_element());
+	let (g_c, g_m, g_y, g_k) = (g_c.into_element(), g_m.into_element(), g_y.into_element(), g_k.into_element());
+	let (c_c, c_m, c_y, c_k) = (c_c.into_element(), c_m.into_element(), c_y.into_element(), c_k.into_element());
+	let (b_c, b_m, b_y, b_k) = (b_c.into_element(), b_m.into_element(), b_y.into_element(), b_k.into_element());
+	let (m_c, m_m, m_y, m_k) = (m_c.into_element(), m_m.into_element(), m_y.into_element(), m_k.into_element());
+	let (w_c, w_m, w_y, w_k) = (w_c.into_element(), w_m.into_element(), w_y.into_element(), w_k.into_element());
+	let (n_c, n_m, n_y, n_k) = (n_c.into_element(), n_m.into_element(), n_y.into_element(), n_k.into_element());
+	let (k_c, k_m, k_y, k_k) = (k_c.into_element(), k_m.into_element(), k_y.into_element(), k_k.into_element());
+
+	image.element_mut().adjust(|color| {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
 		let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
@@ -1011,19 +1067,20 @@ fn selective_color<T: Adjust<Color>>(
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
+	input: Item<T>,
 	#[default(4)]
 	#[hard(2..)]
-	levels: u32,
-) -> T {
+	levels: Item<u32>,
+) -> Item<T> {
 	let mut input = input;
-	let levels = levels as f32;
-	input.adjust(|color| {
+	let levels = levels.into_element() as f32;
+
+	input.element_mut().adjust(|color| {
 		let number_of_areas = levels.recip();
 		let size_of_areas = (levels - 1.).recip();
 		color.map_gamma_rgb(|c| (c / number_of_areas).floor() * size_of_areas)
@@ -1041,22 +1098,26 @@ fn posterize<T: Adjust<Color>>(
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		GradientStops,
 	)]
 	#[gpu_image]
-	input: T,
-	exposure: f32,
-	offset: f32,
+	input: Item<T>,
+	exposure: Item<f32>,
+	offset: Item<f32>,
 	#[default(1.)]
 	#[range]
 	#[hard(0.0001..)]
 	#[soft(0.01..10)]
-	gamma_correction: f32,
-) -> T {
+	gamma_correction: Item<f32>,
+) -> Item<T> {
 	let mut input = input;
-	input.adjust(|color| {
+	let exposure = exposure.into_element();
+	let offset = offset.into_element();
+	let gamma_correction = gamma_correction.into_element();
+
+	input.element_mut().adjust(|color| {
 		let adjusted = color
 			// Exposure
 			.map_rgb(|c: f32| c * 2_f32.powf(exposure))
