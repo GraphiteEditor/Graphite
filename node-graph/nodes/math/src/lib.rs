@@ -579,13 +579,16 @@ fn absolute_value<T: AbsoluteValue>(
 fn min<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, &str)]
-	value: T,
+	#[implementations(f64, f32, u32, String)]
+	value: Item<T>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, &str)]
-	other_value: T,
-) -> T {
-	if value < other_value { value } else { other_value }
+	#[implementations(f64, f32, u32, String)]
+	other_value: Item<T>,
+) -> Item<T> {
+	let (value, attributes) = value.into_parts();
+	let other_value = other_value.into_element();
+
+	Item::from_parts(if value < other_value { value } else { other_value }, attributes)
 }
 
 /// The maximum function (`max`) picks the larger of two numbers.
@@ -593,13 +596,16 @@ fn min<T: std::cmp::PartialOrd>(
 fn max<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, &str)]
-	value: T,
+	#[implementations(f64, f32, u32, String)]
+	value: Item<T>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, &str)]
-	other_value: T,
-) -> T {
-	if value > other_value { value } else { other_value }
+	#[implementations(f64, f32, u32, String)]
+	other_value: Item<T>,
+) -> Item<T> {
+	let (value, attributes) = value.into_parts();
+	let other_value = other_value.into_element();
+
+	Item::from_parts(if value > other_value { value } else { other_value }, attributes)
 }
 
 /// The clamp function (`clamp`) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
@@ -607,24 +613,29 @@ fn max<T: std::cmp::PartialOrd>(
 fn clamp<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, &str)]
-	value: T,
+	#[implementations(f64, f32, u32, String)]
+	value: Item<T>,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, f32, u32, &str)]
-	min: T,
+	#[implementations(f64, f32, u32, String)]
+	min: Item<T>,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	#[default(1)]
-	max: T,
-) -> T {
+	max: Item<T>,
+) -> Item<T> {
+	let (value, attributes) = value.into_parts();
+	let (min, max) = (min.into_element(), max.into_element());
+
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
-	if value < min {
+	let result = if value < min {
 		min
 	} else if value > max {
 		max
 	} else {
 		value
-	}
+	};
+
+	Item::from_parts(result, attributes)
 }
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
@@ -755,13 +766,15 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str, String)]
-	value: T,
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	value: Item<T>,
 	/// The other of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str, String)]
-	other_value: T,
-) -> bool {
-	other_value == value
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	other_value: Item<T>,
+) -> Item<bool> {
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(other_value.into_element() == value, attributes)
 }
 
 /// The inequality operation (`!=`, `XOR`) compares two values and returns true if they are not equal, or false if they are.
@@ -769,13 +782,15 @@ fn equals<T: std::cmp::PartialEq<T>>(
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str)]
-	value: T,
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	value: Item<T>,
 	/// The other of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str)]
-	other_value: T,
-) -> bool {
-	other_value != value
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	other_value: Item<T>,
+) -> Item<bool> {
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(other_value.into_element() != value, attributes)
 }
 
 /// The logical OR operation (`||`) returns true if either of the two inputs are true, or false if both are false.
