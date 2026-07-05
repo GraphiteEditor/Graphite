@@ -193,10 +193,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.enumerate()
 		.map(|(index, field)| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => match implementations.first() {
-				Some(ty) if index == 0 && element_wise => quote!(Some(concrete!(#core_types::list::List<#ty>))),
-				Some(ty) => quote!(Some(concrete!(#ty))),
-				_ => quote!(None),
+			ParsedFieldType::Regular(RegularParsedField { implementations, ty, .. }) => match implementations.first() {
+				Some(implementation_ty) if index == 0 && element_wise => quote!(Some(concrete!(#core_types::list::List<#implementation_ty>))),
+				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
+				// A concrete ranked `Item<T>` param's default is a bare `T` value (unranked, promoted at resolution), so key its default off `T`
+				None => match peel_item(ty) {
+					Some(element_ty)
+						if !fn_generics
+							.iter()
+							.any(|generic| matches!(generic, syn::GenericParam::Type(param) if type_contains_ident(&element_ty, &param.ident))) =>
+					{
+						quote!(Some(concrete!(#element_ty)))
+					}
+					_ => quote!(None),
+				},
 			},
 			_ => quote!(None),
 		})
