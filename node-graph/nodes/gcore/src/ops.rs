@@ -1,3 +1,4 @@
+use core_types::list::Item;
 use core_types::{Ctx, ExtractFootprint, ops::Convert, transform::Footprint};
 use std::marker::PhantomData;
 
@@ -13,6 +14,12 @@ fn passthrough<'i, T: 'i + Send>(_: impl Ctx, content: T) -> T {
 #[node_macro::node(category(""), skip_impl)]
 fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
 	value.into()
+}
+
+/// Unwraps a ranked wire's item into its bare element for a legacy connector that predates ranked wires, discarding attributes.
+#[node_macro::node(category(""), skip_impl)]
+fn unwrap_item<'i, T: 'i + Send>(_: impl Ctx, value: Item<T>) -> T {
+	value.into_element()
 }
 
 /// Wraps a bare value onto a ranked wire as an `Item`, or passes an already ranked `Item` or `List` wire through unchanged.

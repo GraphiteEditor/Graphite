@@ -383,6 +383,30 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
+	// A legacy unwrap adapter inserted by type resolution when an Item wire feeds a bare connector predating ranked wires
+	macro_rules! unwrap_item_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::UnwrapItemNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::UnwrapItemNode::new(graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()));
+						let any: DynAnyNode<Context, $element, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::UnwrapItemNode::new(graphene_std::any::PanicNode::<
+						Context,
+						core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>,
+					>::new());
+					let params = vec![fn_type_fut!(Context, Item<$element>)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
@@ -394,6 +418,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				entries.extend(promote_node!(element: $element));
 				entries.push(item_to_list_node!(element: $element));
 				entries.push(wrap_item_node!(element: $element));
+				entries.push(unwrap_item_node!(element: $element));
 			)*
 			entries
 		}};
@@ -406,6 +431,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		GradientStops,
 		String,
 		f64,
+		f32,
+		u64,
 		DVec2,
 		DAffine2,
 		bool,
@@ -458,7 +485,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		let mut new_name = id.as_str().replace('\n', " ");
 
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode") || new_name.contains("PromoteNode") || new_name.contains("ItemToListNode") || new_name.contains("WrapItemNode"))
+		if !(new_name.contains("IntoNode")
+			|| new_name.contains("ConvertNode")
+			|| new_name.contains("PromoteNode")
+			|| new_name.contains("ItemToListNode")
+			|| new_name.contains("WrapItemNode")
+			|| new_name.contains("UnwrapItemNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
 		{
 			new_name = path.to_string();

@@ -55,6 +55,10 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 }
 
 fn validate_element_wise(parsed: &ParsedNodeFn) {
+	if parsed.attributes.skip_impl {
+		return;
+	}
+
 	let Some(primary) = parsed.fields.first() else { return };
 	let ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) = &primary.ty else {
 		return;

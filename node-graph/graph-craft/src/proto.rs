@@ -817,6 +817,14 @@ impl TypingContext {
 						return Some(format!("graphene_core::ops::WrapItemNode<{element}>"));
 					}
 
+					// An `Item<X>` wire may feed a bare legacy connector via an unwrap, since bare connectors are attribute-blind
+					if let (Some(item_inner), Type::Concrete(to_descriptor)) = (wrapped_name(from_output, "Item"), to_output.nested_type())
+						&& item_inner == to_descriptor.name
+					{
+						let element = peel_identifier(from_output, "Item")?;
+						return Some(format!("graphene_core::ops::UnwrapItemNode<{element}>"));
+					}
+
 					None
 				}
 
