@@ -1,4 +1,4 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
@@ -10,16 +10,16 @@ use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId, StrokeId};
 
 trait CornerRadius {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector>;
+	fn generate(self, size: DVec2, clamped: bool) -> Vector;
 }
 impl CornerRadius for f64 {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector> {
+	fn generate(self, size: DVec2, clamped: bool) -> Vector {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4])))
+		Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4]))
 	}
 }
 impl CornerRadius for List<f64> {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector> {
+	fn generate(self, size: DVec2, clamped: bool) -> Vector {
 		// Expand to four corners using the CSS `border-radius` shorthand rules.
 		// - `[a]` → `[a, a, a, a]`
 		// - `[a, b]` → `[a, b, a, b]`
@@ -50,7 +50,7 @@ impl CornerRadius for List<f64> {
 		} else {
 			radii
 		};
-		List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius)))
+		Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius))
 	}
 }
 
@@ -62,9 +62,9 @@ fn circle(
 	#[unit(" px")]
 	#[default(50.)]
 	radius: f64,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let radius = radius.abs();
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
@@ -81,8 +81,8 @@ fn arc(
 	#[soft(0..360)]
 	sweep_angle: Angle,
 	arc_type: ArcType,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
+) -> Item<Vector> {
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -105,8 +105,8 @@ fn spiral(
 	#[default(0.)] inner_radius: f64,
 	#[default(25)] outer_radius: f64,
 	#[default(90.)] angular_resolution: f64,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+) -> Item<Vector> {
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
@@ -127,7 +127,7 @@ fn ellipse(
 	#[unit(" px")]
 	#[default(25)]
 	radius_y: f64,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -141,7 +141,7 @@ fn ellipse(
 			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
 	}
 
-	List::new_from_element(ellipse)
+	Item::new_from_element(ellipse)
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
@@ -158,8 +158,8 @@ fn rectangle<T: CornerRadius>(
 	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
 	#[implementations(f64, List<f64>)] corner_radius: T,
 	#[default(true)] clamped: bool,
-) -> List<Vector> {
-	corner_radius.generate(DVec2::new(width, height), clamped)
+) -> Item<Vector> {
+	Item::new_from_element(corner_radius.generate(DVec2::new(width, height), clamped))
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
@@ -174,10 +174,10 @@ fn regular_polygon<T: AsU64>(
 	#[unit(" px")]
 	#[default(50)]
 	radius: f64,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -195,12 +195,12 @@ fn star<T: AsU64>(
 	#[unit(" px")]
 	#[default(25)]
 	radius_2: f64,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let points = sides.as_u64();
 	let diameter: f64 = radius_1 * 2.;
 	let inner_diameter = radius_2 * 2.;
 
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -234,7 +234,7 @@ fn qr_code(
 	size: f64,
 	error_correction: QRCodeErrorCorrectionLevel,
 	#[default(false)] individual_squares: bool,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let ecc = match error_correction {
 		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
 		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
@@ -242,7 +242,9 @@ fn qr_code(
 		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return List::default() };
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
+		return Item::new_from_element(Vector::default());
+	};
 
 	let mut vector = match individual_squares {
 		true => {
@@ -271,7 +273,7 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	List::new_from_element(vector)
+	Item::new_from_element(vector)
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
@@ -283,13 +285,13 @@ fn arrow(
 	#[default(10)] shaft_width: PixelLength,
 	#[default(30)] head_width: PixelLength,
 	#[default(20)] head_length: PixelLength,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+) -> Item<Vector> {
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> Item<Vector> {
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
 }
 
 trait GridSpacing {
@@ -320,7 +322,7 @@ fn grid<T: GridSpacing>(
 	#[default(10)] columns: u32,
 	#[default(10)] rows: u32,
 	#[default(30., 30.)] angles: DVec2,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
@@ -402,7 +404,7 @@ fn grid<T: GridSpacing>(
 		}
 	}
 
-	List::new_from_element(vector)
+	Item::new_from_element(vector)
 }
 
 #[cfg(test)]
@@ -416,9 +418,9 @@ mod tests {
 
 		// Works properly
 		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
-		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
+		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			assert!(
 				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -431,9 +433,9 @@ mod tests {
 	#[test]
 	fn skew_isometric_grid_test() {
 		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
-		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
+		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
@@ -444,7 +446,7 @@ mod tests {
 	#[test]
 	fn qr_code_test() {
 		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
-		assert!(qr.element(0).unwrap().point_domain.ids().len() > 0);
-		assert!(qr.element(0).unwrap().segment_domain.ids().len() > 0);
+		assert!(qr.element().point_domain.ids().len() > 0);
+		assert!(qr.element().segment_domain.ids().len() > 0);
 	}
 }

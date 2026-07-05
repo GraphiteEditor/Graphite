@@ -188,6 +188,7 @@ mod test {
 	use super::*;
 	use core_types::Ctx;
 	use core_types::Node;
+	use core_types::list::Item;
 	use core_types::transform::Footprint;
 	use glam::DVec2;
 	use graphene_core::ReadPositionNode;
@@ -215,6 +216,21 @@ mod test {
 		}
 	}
 
+	// Raises a generator's rank-0 `Item<Vector>` output to a singleton `List<Vector>` for the still-list-typed Repeat on Points content connector
+	#[derive(Clone)]
+	pub struct RaiseToListNode<N>(N);
+
+	impl<'i, I: 'i, N> Node<'i, I> for RaiseToListNode<N>
+	where
+		N: Node<'i, I, Output = Pin<Box<dyn Future<Output = Item<Vector>> + 'i + Send>>>,
+	{
+		type Output = Pin<Box<dyn Future<Output = List<Vector>> + 'i + Send>>;
+		fn eval(&'i self, input: I) -> Self::Output {
+			let future = self.0.eval(input);
+			Box::pin(async move { future.await.into() })
+		}
+	}
+
 	#[tokio::test]
 	async fn repeat_on_points_test() {
 		let context = OwnedContextImpl::default().into_context();
@@ -229,7 +245,7 @@ mod test {
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
 		let points = List::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
-		let generated = super::repeat_on_points(context, points, &rect, false).await;
+		let generated = super::repeat_on_points(context, points, &RaiseToListNode(rect), false).await;
 		assert_eq!(generated.len(), positions.len());
 		for (position, index) in positions.into_iter().zip(0..generated.len()) {
 			let bounds = generated

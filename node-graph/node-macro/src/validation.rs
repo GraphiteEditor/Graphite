@@ -65,7 +65,8 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 	};
 
 	if !outer_wrapper_is(ty, "Item") {
-		if outer_wrapper_is(&parsed.output_type, "Item") {
+		// A `()` primary is a generator with no input, which may emit a rank-0 `Item<T>` without being element-wise
+		if outer_wrapper_is(&parsed.output_type, "Item") && !is_unit_type(ty) {
 			emit_error!(
 				parsed.output_type.span(),
 				"Returning `Item<T>` requires the primary input to also be typed `Item<T>`, declaring an element-wise node"
@@ -98,6 +99,11 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 fn outer_wrapper_is(ty: &Type, wrapper: &str) -> bool {
 	let Type::Path(type_path) = ty else { return false };
 	type_path.path.segments.last().is_some_and(|segment| segment.ident == wrapper)
+}
+
+/// Returns whether the type is the unit type `()`, which marks a generator with no primary input.
+fn is_unit_type(ty: &Type) -> bool {
+	matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
 }
 
 fn validate_min_max(parsed: &ParsedNodeFn) {
