@@ -460,10 +460,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			false => quote!(__input.clone()),
 		};
 
-		let list_element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+		// An expander kernel (returning `List<U>`) flat-maps under the frame per the rank-2 force-flatten rule; a map kernel pushes one item per slot
+		let (mapped_output_type, initial_output, collect_result) = match peel_item(output_type) {
+			Some(element_ty) => (
+				quote!(#core_types::list::List<#element_ty>),
+				quote!(#core_types::list::List::with_capacity(__frame_length)),
+				quote!(__output.push(__result);),
+			),
+			None => (quote!(#output_type), quote!(#core_types::list::List::new()), quote!(__output.extend(__result);)),
+		};
 
 		quote! {
-			type Output = #core_types::registry::DynFuture<'n, #core_types::list::List<#list_element_ty>>;
+			type Output = #core_types::registry::DynFuture<'n, #mapped_output_type>;
 			#[inline]
 			#[allow(clippy::clone_on_copy)]
 			fn eval(&'n self, __input: #input_type) -> Self::Output {
@@ -475,11 +483,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						return #core_types::list::List::new();
 					}
 
-					let mut __output = #core_types::list::List::with_capacity(__frame_length);
+					let mut __output = #initial_output;
 					for __slot_index in 0..__frame_length {
 						let __slot_context = #slot_context;
 						let __result = self::#fn_name(__slot_context #(, &self.#data_field_names)* #(, #per_slot_args)*) #await_keyword;
-						__output.push(__result);
+						#collect_result
 					}
 
 					__output
@@ -817,11 +825,11 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	}
 }
 
-/// Extracts `T` from an `Item<T>` type, if the type is one.
-fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+/// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
+fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
 	let syn::Type::Path(type_path) = ty else { return None };
 	let segment = type_path.path.segments.last()?;
-	if segment.ident != "Item" {
+	if segment.ident != wrapper {
 		return None;
 	}
 
@@ -830,6 +838,14 @@ fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
 		GenericArgument::Type(inner) => Some(inner.clone()),
 		_ => None,
 	}
+}
+
+fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "Item")
+}
+
+fn peel_list(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "List")
 }
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, mapped_struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {

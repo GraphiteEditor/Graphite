@@ -90,8 +90,11 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		);
 	}
 
-	if !outer_wrapper_is(&parsed.output_type, "Item") {
-		emit_error!(parsed.output_type.span(), "An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`");
+	if !outer_wrapper_is(&parsed.output_type, "Item") && !outer_wrapper_is(&parsed.output_type, "List") {
+		emit_error!(
+			parsed.output_type.span(),
+			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, or `List<U>` for an expander"
+		);
 	}
 }
 
