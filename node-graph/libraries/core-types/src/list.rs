@@ -58,6 +58,8 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+/// Gradient's SVG coordinate system (`userSpaceOnUse` or `objectBoundingBox`).
+pub const ATTR_GRADIENT_UNITS: &str = "gradient_units";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.

@@ -14,6 +14,25 @@ pub enum GradientType {
 	Radial,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum GradientUnits {
+	#[default]
+	UserSpaceOnUse,
+	ObjectBoundingBox,
+}
+
+impl GradientUnits {
+	pub fn svg_name(self) -> &'static str {
+		match self {
+			GradientUnits::UserSpaceOnUse => "userSpaceOnUse",
+			GradientUnits::ObjectBoundingBox => "objectBoundingBox",
+		}
+	}
+}
+
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 /// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
 ///
