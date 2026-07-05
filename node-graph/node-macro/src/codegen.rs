@@ -844,10 +844,6 @@ fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
 	peel_wrapper(ty, "Item")
 }
 
-fn peel_list(ty: &syn::Type) -> Option<syn::Type> {
-	peel_wrapper(ty, "List")
-}
-
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, mapped_struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
 	// On native, `register_node` and `register_metadata` run automatically via `#[ctor]`.
 	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
