@@ -569,6 +569,7 @@ tagged_value! {
 	GradientSpace(vector::style::GradientSpace),
 	GradientHueDirection(vector::style::GradientHueDirection),
 	GradientInterpolation(vector::style::GradientInterpolation),
+	GradientUnits(vector::style::GradientUnits),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),

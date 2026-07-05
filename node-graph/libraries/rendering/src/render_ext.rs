@@ -6,14 +6,23 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_FORM, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_UNITS, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
-use graphic_types::vector_types::gradient::GradientForm;
+use graphic_types::vector_types::gradient::{GradientForm, GradientUnits};
 use graphic_types::vector_types::vector::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
 use vector_types::gradient::GradientSpread;
+
+fn svg_gradient_transform(transform: DAffine2, bounds: DAffine2, units: GradientUnits) -> (GradientUnits, String) {
+	let (units, transform) = match units {
+		GradientUnits::UserSpaceOnUse => (GradientUnits::UserSpaceOnUse, transform),
+		GradientUnits::ObjectBoundingBox if transform_is_invertible(bounds) => (GradientUnits::ObjectBoundingBox, bounds.inverse() * transform),
+		GradientUnits::ObjectBoundingBox => (GradientUnits::UserSpaceOnUse, transform),
+	};
+	(units, format_transform_matrix(transform))
+}
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -90,6 +99,7 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 	let item = item?;
 	let stops = item.element()?;
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let gradient_units: GradientUnits = item.attribute_cloned_or_default(ATTR_GRADIENT_UNITS);
 	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(item);
 
@@ -155,15 +165,19 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 		GradientForm::Linear => {
 			let _ = write!(
 				svg_defs,
-				r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
-				gradient_id, stop
+				r#"<linearGradient id="{}" gradientUnits="{}" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
+				gradient_id,
+				gradient_units.svg_name(),
+				stop
 			);
 		}
 		GradientForm::Radial => {
 			let _ = write!(
 				svg_defs,
-				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
-				gradient_id, stop
+				r#"<radialGradient id="{}" gradientUnits="{}" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
+				gradient_id,
+				gradient_units.svg_name(),
+				stop
 			);
 		}
 	}
