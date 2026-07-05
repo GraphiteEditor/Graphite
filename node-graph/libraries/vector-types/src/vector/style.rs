@@ -390,7 +390,6 @@ impl Stroke {
 	}
 }
 
-// Having an alpha of 1 to start with leads to a better experience with the properties panel
 impl Default for Stroke {
 	fn default() -> Self {
 		Self {

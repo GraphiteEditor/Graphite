@@ -1378,7 +1378,7 @@ async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 				return vec![row];
 			}
 
-			let style = row.element().stroke.clone();
+			let stroke = row.element().stroke.clone();
 			let (_, attributes) = row.into_parts();
 
 			bezpaths
@@ -1386,7 +1386,7 @@ async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 				.map(|bezpath| {
 					let mut vector = Vector::default();
 					vector.append_bezpath(bezpath);
-					vector.stroke = style.clone();
+					vector.stroke = stroke.clone();
 
 					Item::from_parts(vector, attributes.clone())
 				})
@@ -1453,8 +1453,8 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		output.concat(element, source_transform, collision_hash_seed);
 
-		// TODO: Make this instead use the first encountered style
-		// Use the last encountered style as the output style
+		// TODO: Make this instead use the first encountered stroke
+		// Use the last encountered stroke as the output stroke
 		output.stroke = element.stroke.clone();
 
 		primary_source = Some((index, source_transform));
