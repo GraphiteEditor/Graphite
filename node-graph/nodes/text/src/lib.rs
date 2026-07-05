@@ -383,11 +383,13 @@ fn format_number(
 fn string_to_number(
 	_: impl Ctx,
 	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, and scientific notation (e.g. "1e-3") is supported.
-	string: String,
+	string: Item<String>,
 	/// The value of the result if the string cannot be parsed as a valid number.
-	fallback: f64,
-) -> f64 {
-	string.trim().parse::<f64>().unwrap_or(fallback)
+	fallback: Item<f64>,
+) -> Item<f64> {
+	let (string, attributes) = string.into_parts();
+
+	Item::from_parts(string.trim().parse::<f64>().unwrap_or(*fallback.element()), attributes)
 }
 
 /// Removes leading and/or trailing whitespace from a string. Common whitespace characters include spaces, tabs, and newlines.
@@ -571,20 +573,26 @@ fn string_pad(
 fn string_contains(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The substring to search for.
-	substring: String,
+	substring: Item<String>,
 	/// Only match if the substring appears at the start of the string.
-	at_start: bool,
+	at_start: Item<bool>,
 	/// Only match if the substring appears at the end of the string.
-	at_end: bool,
-) -> bool {
-	match (at_start, at_end) {
-		(true, true) => string.starts_with(&*substring) && string.ends_with(&*substring),
-		(true, false) => string.starts_with(&*substring),
-		(false, true) => string.ends_with(&*substring),
-		(false, false) => string.contains(&*substring),
-	}
+	at_end: Item<bool>,
+) -> Item<bool> {
+	let (string, attributes) = string.into_parts();
+	let substring = substring.element().as_str();
+	let (at_start, at_end) = (*at_start.element(), *at_end.element());
+
+	let result = match (at_start, at_end) {
+		(true, true) => string.starts_with(substring) && string.ends_with(substring),
+		(true, false) => string.starts_with(substring),
+		(false, true) => string.ends_with(substring),
+		(false, false) => string.contains(substring),
+	};
+
+	Item::from_parts(result, attributes)
 }
 
 /// Similar to the **String Contains** node, this searches within the input string for the first (or last) occurrence of a substring and returns the index of where that begins, or -1 if not found.
@@ -592,28 +600,35 @@ fn string_contains(
 fn string_find_index(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The substring to search for.
-	substring: String,
+	substring: Item<String>,
 	/// Find the start index of the last occurrence instead of the first.
-	from_end: bool,
-) -> f64 {
+	from_end: Item<bool>,
+) -> Item<f64> {
+	let (string, attributes) = string.into_parts();
+	let substring = substring.element().as_str();
+	let from_end = *from_end.element();
+
 	if substring.is_empty() {
-		return if from_end { string.graphemes(true).count() as f64 } else { 0. };
+		let result = if from_end { string.graphemes(true).count() as f64 } else { 0. };
+		return Item::from_parts(result, attributes);
 	}
 
-	if from_end {
+	let result = if from_end {
 		// Search backwards by finding all byte-level matches and taking the last one
 		string
-			.rmatch_indices(&*substring)
+			.rmatch_indices(substring)
 			.next()
 			.map_or(-1., |(byte_index, _)| string[..byte_index].graphemes(true).count() as f64)
 	} else {
 		string
-			.match_indices(&*substring)
+			.match_indices(substring)
 			.next()
 			.map_or(-1., |(byte_index, _)| string[..byte_index].graphemes(true).count() as f64)
-	}
+	};
+
+	Item::from_parts(result, attributes)
 }
 
 /// Counts the number of occurrences of a substring within the string.
@@ -621,22 +636,25 @@ fn string_find_index(
 fn string_occurrences(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The substring to count occurrences of.
-	substring: String,
+	substring: Item<String>,
 	/// Whether to count overlapping occurrences, using the substring as a sliding window.
 	///
 	/// For example, "aa" occurs twice in "aaaa" without overlapping but three times with overlapping.
-	overlapping: bool,
-) -> f64 {
+	overlapping: Item<bool>,
+) -> Item<f64> {
+	let (string, attributes) = string.into_parts();
+	let substring = substring.element().as_str();
+
 	if substring.is_empty() {
-		return 0.;
+		return Item::from_parts(0., attributes);
 	}
 
 	// NON-OVERLAPPING: Simple linear scan.
 	// O(n), where n = string length
-	if !overlapping {
-		return string.matches(&*substring).count() as f64;
+	if !*overlapping.element() {
+		return Item::from_parts(string.matches(substring).count() as f64, attributes);
 	}
 
 	// OVERLAPPING: KMP (Knuth-Morris-Pratt) algorithm.
@@ -682,7 +700,7 @@ fn string_occurrences(
 		}
 	}
 
-	count as f64
+	Item::from_parts(count as f64, attributes)
 }
 
 /// Converts a string's capitalization style to another of the common upper and lower case patterns, optionally joining words with a chosen separator.
@@ -779,8 +797,10 @@ fn string_capitalization(
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts the number of characters in a string.
 #[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, string: String) -> f64 {
-	string.graphemes(true).count() as f64
+fn string_length(_: impl Ctx, string: Item<String>) -> Item<f64> {
+	let (string, attributes) = string.into_parts();
+
+	Item::from_parts(string.graphemes(true).count() as f64, attributes)
 }
 
 /// Splits a string into a list of substrings based on the specified delimiter. This is the inverse of the **String Join** node.
