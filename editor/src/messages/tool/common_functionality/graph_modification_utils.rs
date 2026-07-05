@@ -14,7 +14,7 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
+use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
 use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
@@ -330,8 +330,8 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 }
 
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<GradientStops>`
-/// layer this is the layer's incoming footprint transform; for the legacy `Fill::Gradient` path it composes the layer's
-/// viewport transform with the [0,1]² → bounding-box mapping.
+/// layer this is the layer's incoming footprint transform; for a Fill-owned gradient value it composes the layer's viewport
+/// transform with the [0,1]² → bounding-box mapping.
 pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
@@ -350,9 +350,9 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
 /// vertical lines we fall back to a stable tiebreaker on (x + y) so the choice doesn't flicker between equal alternatives.
-pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, transform: glam::DAffine2) -> bool {
-	let viewport_start = transform.transform_point2(start);
-	let viewport_end = transform.transform_point2(end);
+pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
+	let viewport_start = transform.transform_point2(DVec2::ZERO);
+	let viewport_end = transform.transform_point2(DVec2::X);
 	if (viewport_end.x - viewport_start.x).abs() > f64::EPSILON * 1e6 {
 		viewport_end.x > viewport_start.x
 	} else {
@@ -617,8 +617,9 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 			let value = TaggedValue::F64(weight);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else if weight > 0. {
+			let color = Some(Color::BLACK);
 			let stroke = graphene_std::vector::style::Stroke::default().with_weight(weight);
-			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 		}
 	}
 }
@@ -662,32 +663,6 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		transform_is_value: transform_input.is_some(),
 	})
 }
-
-// TODO: Update this to return Graphic once the legacy `Fill` enum has been eliminated
-/// Returns the `Fill` value from a layer's upstream Fill node.
-pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
-	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-
-	match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
-		&TaggedValue::Color(color) => Some(color.map_or(Fill::None, Fill::Solid)),
-		TaggedValue::Gradient(_) => {
-			let gradient = read_fill_node_gradient(fill_node, || network_interface.document_metadata().nonzero_bounding_box(layer))?;
-			Some(Fill::Gradient(Gradient {
-				stops: gradient.stops,
-				gradient_type: gradient.gradient_type,
-				spread_method: gradient.spread_method,
-				start: gradient.transform.transform_point2(DVec2::ZERO),
-				end: gradient.transform.transform_point2(DVec2::X),
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			}))
-		}
-		_ => None,
-	}
-}
-
 /// Returns the stroke color from a layer's upstream Stroke node.
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
 	let color_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
@@ -717,10 +692,21 @@ pub struct SelectedStrokeState {
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
 	let selected_nodes = document.network_interface.selected_nodes();
 	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
-		if get_fill_id(layer, &document.network_interface).is_none() {
+		let Some(fill_node_id) = get_fill_id(layer, &document.network_interface) else {
 			return (false, FillChoice::None);
-		}
-		let fill_choice = get_fill_value(layer, &document.network_interface).map_or(FillChoice::None, FillChoice::from);
+		};
+
+		let fill_choice = (|| {
+			let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
+
+			match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
+				&TaggedValue::Color(color) => Some(color.map_or(FillChoice::None, FillChoice::Solid)),
+				TaggedValue::Gradient(stops) => Some(FillChoice::Gradient(stops.clone())),
+				_ => None,
+			}
+		})()
+		.unwrap_or(FillChoice::None);
+
 		(true, fill_choice)
 	});
 
@@ -795,12 +781,40 @@ pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<Select
 pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
-		let existing_gradient = get_fill_value(layer, &document.network_interface).and_then(|f| match f {
-			Fill::Gradient(g) => Some(g),
-			_ => None,
-		});
-		let fill = fill_choice.clone().to_fill(existing_gradient.as_ref());
-		responses.add(GraphOperationMessage::FillSet { layer, fill });
+		match &fill_choice {
+			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
+			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
+			FillChoice::Gradient(stops) => {
+				let fill_node = NodeGraphLayer::new(layer, &document.network_interface)
+					.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
+					.and_then(|id| document.network_interface.document_network().nodes.get(&id));
+
+				let read = |index: usize| fill_node.and_then(|node| node.inputs.get(index)).and_then(|input| input.as_value());
+
+				let gradient_type = match read(graphene_std::vector::fill::GradientTypeInput::INDEX) {
+					Some(TaggedValue::GradientType(value)) => *value,
+					_ => GradientType::default(),
+				};
+				let spread_method = match read(graphene_std::vector::fill::SpreadMethodInput::INDEX) {
+					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
+					_ => GradientSpreadMethod::default(),
+				};
+				let transform = match read(graphene_std::vector::fill::TransformInput::INDEX) {
+					Some(TaggedValue::OptionalDAffine2(value)) => {
+						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
+					}
+					_ => DAffine2::IDENTITY,
+				};
+
+				responses.add(GraphOperationMessage::FillGradientSet {
+					layer,
+					gradient: stops.clone(),
+					gradient_type,
+					spread_method,
+					transform,
+				});
+			}
+		}
 	}
 }
 
@@ -815,8 +829,8 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 			let value = TaggedValue::Color(color);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else {
-			let stroke = graphene_std::vector::style::Stroke::new(color, weight);
-			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+			let stroke = graphene_std::vector::style::Stroke::new(weight);
+			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 		}
 	}
 }

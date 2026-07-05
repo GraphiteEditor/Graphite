@@ -16,7 +16,6 @@ use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
 use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 pub use vector_types::vector::misc::BooleanOperation;
-use vector_types::vector::style::Fill;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
@@ -50,7 +49,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 
 		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
-		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
+		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
@@ -148,16 +147,10 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
 		let copy_from = vector.element(index).unwrap();
-		let mut element = Vector {
-			style: copy_from.style.clone(),
+		let element = Vector {
+			stroke: copy_from.stroke.clone(),
 			..Default::default()
 		};
-		// Legacy Fill fallback: An absolute gradient lives in the geometry's space, so bake the same transform into it to track the baked points
-		if let Fill::Gradient(gradient) = element.style.fill_mut()
-			&& gradient.absolute
-		{
-			gradient.transform = copy_from_transform * gradient.transform;
-		}
 		Item::from_parts(element, attributes)
 	} else {
 		Item::<Vector>::default()
@@ -288,7 +281,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						set_paint_attribute(&mut attributes, ATTR_FILL, List::new_from_element(color));
 
 						let mut element = Vector::default();
-						element.style.set_stroke_transform(DAffine2::IDENTITY);
+						element.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)
 					})
@@ -311,7 +304,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
 
 						let mut element = Vector::default();
-						element.style.set_stroke_transform(DAffine2::IDENTITY);
+						element.set_stroke_transform(DAffine2::IDENTITY);
 
 						Item::from_parts(element, attributes)
 					})

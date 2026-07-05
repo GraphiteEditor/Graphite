@@ -14,7 +14,8 @@ use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::style::{Fill, PaintOrder, StrokeAlign};
+use graphene_std::vector::graphic_types;
+use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1583,19 +1584,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		// Fill: a literal Fill value is decomposed, and a wired input (`List<GradientStops> / List<Color>`) is kept as-is
 		match old_inputs[1].as_value() {
-			Some(TaggedValue::Fill(old_fill)) => {
+			Some(TaggedValue::LegacyFill(old_fill)) => {
 				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
-					Fill::None => TaggedValue::Color(None),
-					Fill::Solid(color) => TaggedValue::Color(Some(*color)),
-					Fill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
+					graphic_types::migrations::legacy::Fill::None => TaggedValue::Color(None),
+					graphic_types::migrations::legacy::Fill::Solid(color) => TaggedValue::Color(Some(*color)),
+					graphic_types::migrations::legacy::Fill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
 				};
 				document
 					.network_interface
 					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
 				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
-				if let Fill::Gradient(gradient) = old_fill {
+				if let graphic_types::migrations::legacy::Fill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
 						&InputConnector::node(*node_id, 4),
 						NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
@@ -1620,7 +1621,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				}
 			}
 			// Wired/exposed fill keeps the connection.
-			// The generic paint connector accepts `List<Color>`/`List<GradientStops>` sources directly, and there were no other nodes which can generate output type that implements `From` for `Fill`.
+			// The generic paint connector accepts the existing `List<Color>`/`List<GradientStops>` paint sources directly.
 			_ => {
 				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 			}
@@ -1630,13 +1631,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
 
 		// Gradient backup: extract stops
-		if let Some(TaggedValue::FillGradient(g)) = old_inputs[3].as_value() {
+		if let Some(TaggedValue::LegacyGradient(g)) = old_inputs[3].as_value() {
 			document
 				.network_interface
 				.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(g.stops.clone()), false), network_path);
 
 			// A solid/no-fill node leaves the gradient metadata inputs unused, so seed them from the backup gradient for a later Solid -> Gradient toggle to restore
-			if matches!(old_inputs[1].as_value(), Some(TaggedValue::Fill(Fill::None | Fill::Solid(_)))) {
+			if matches!(
+				old_inputs[1].as_value(),
+				Some(TaggedValue::LegacyFill(
+					graphic_types::migrations::legacy::Fill::None | graphic_types::migrations::legacy::Fill::Solid(_)
+				))
+			) {
 				document
 					.network_interface
 					.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::GradientType(g.gradient_type), false), network_path);

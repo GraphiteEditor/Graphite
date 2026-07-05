@@ -2428,10 +2428,10 @@ fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContex
 
 /// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
 /// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
-fn gradient_orientation_in_fill_node(node_id: NodeId, start: DVec2, end: DVec2, context: &mut NodePropertiesContext) -> Option<bool> {
+fn gradient_orientation_in_fill_node(node_id: NodeId, gradient_transform: DAffine2, context: &mut NodePropertiesContext) -> Option<bool> {
 	let layer = root_layer_for_chain_node(node_id, context)?;
 	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
-	Some(graph_modification_utils::gradient_orientation_rightward(start, end, transform))
+	Some(graph_modification_utils::gradient_orientation_rightward(transform * gradient_transform))
 }
 
 /// Fill Node Widgets LayoutGroup
@@ -2659,7 +2659,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let start = transform.transform_point2(DVec2::ZERO);
 			let end = transform.transform_point2(DVec2::X);
 			let new_transform = build_transform_with_y_preservation(transform, end, start);
-			let orientation_rightward = gradient_orientation_in_fill_node(node_id, start, end, context).unwrap_or(true);
+			let orientation_rightward = gradient_orientation_in_fill_node(node_id, transform, context).unwrap_or(true);
 
 			let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
 				.tooltip_label("Reverse Direction")
