@@ -193,8 +193,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.enumerate()
 		.map(|(index, field)| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { implementations, ty, .. }) => match implementations.first() {
-				Some(implementation_ty) if index == 0 && element_wise => quote!(Some(concrete!(#core_types::list::List<#implementation_ty>))),
+			ParsedFieldType::Regular(RegularParsedField {
+				implementations, ty, value_source, ..
+			}) => match implementations.first() {
+				// A primary's scalar `#[default]` parses as a bare element (unranked, promoted at resolution); without one it defaults to an empty List
+				Some(implementation_ty) if index == 0 && element_wise => match value_source {
+					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
+					_ => quote!(Some(concrete!(#core_types::list::List<#implementation_ty>))),
+				},
 				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
 				// A concrete ranked `Item<T>` param's default is a bare `T` value (unranked, promoted at resolution), so key its default off `T`
 				None => match peel_item(ty) {
