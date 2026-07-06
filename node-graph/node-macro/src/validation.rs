@@ -23,8 +23,9 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
-	let primary_is_item = match parsed.fields.first().map(|field| &field.ty) {
-		Some(ParsedFieldType::Regular(RegularParsedField { ty, .. })) => outer_wrapper_is(ty, "Item"),
+	// An `Item` primary shares its element-wise frame with ranked parameters; a `List`/`ListDyn` aggregation primary accepts them as fixed ranked inputs
+	let primary_permits_item_params = match parsed.fields.first().map(|field| &field.ty) {
+		Some(ParsedFieldType::Regular(RegularParsedField { ty, .. })) => outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"),
 		Some(ParsedFieldType::Node(NodeParsedField { output_type, .. })) => outer_wrapper_is(output_type, "Item"),
 		None => false,
 	};
@@ -39,11 +40,11 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 			continue;
 		};
 
-		// Ranked parameters join the element-wise frame, so they require an element-wise (Item-primary) node
-		if outer_wrapper_is(ty, "Item") && !primary_is_item {
+		// A ranked parameter requires a ranked primary: `Item<T>` (element-wise frame) or `List<T>`/`ListDyn` (aggregation)
+		if outer_wrapper_is(ty, "Item") && !primary_permits_item_params {
 			emit_error!(
 				pat_ident.span(),
-				"The `Item<T>` parameter `{}` requires the node's primary input to also be typed `Item<T>`",
+				"The `Item<T>` parameter `{}` requires the primary input to be ranked (`Item<T>`, `List<T>`, or `ListDyn`)",
 				pat_ident.ident
 			);
 		}

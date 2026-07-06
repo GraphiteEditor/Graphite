@@ -1129,12 +1129,14 @@ async fn bounding_box(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn dimensions(_: impl Ctx, content: List<Vector>) -> DVec2 {
-	(0..content.len())
+async fn dimensions(_: impl Ctx, content: List<Vector>) -> Item<DVec2> {
+	let dimensions = (0..content.len())
 		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM, index)))
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
-		.unwrap_or_default()
+		.unwrap_or_default();
+
+	Item::new_from_element(dimensions)
 }
 
 /// Type-asserts a value to be vector data.
@@ -1358,16 +1360,18 @@ async fn path_is_closed(
 	content: List<Vector>,
 	/// The index of the subpath to check, counting across subpaths in all vector elements.
 	index: f64,
-) -> bool {
-	content
+) -> Item<bool> {
+	let closed = content
 		.iter_element_values()
 		.flat_map(|vector| vector.build_stroke_path_iter().map(|(_, closed)| closed))
 		.nth(index.max(0.) as usize)
-		.unwrap_or(false)
+		.unwrap_or(false);
+
+	Item::new_from_element(closed)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> List<Vector> {
+async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vector>, mapped: impl Node<Context<'static>, Output = Item<DVec2>>) -> List<Vector> {
 	let mut content = content;
 	let mut index = 0;
 
@@ -1376,7 +1380,7 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vec
 			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
 			index += 1;
 
-			*position = mapped.eval(owned_ctx.into_context()).await;
+			*position = mapped.eval(owned_ctx.into_context()).await.into_element();
 		}
 	}
 
@@ -3055,23 +3059,27 @@ fn close_path(_: impl Ctx, source: Item<Vector>) -> Item<Vector> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn point_inside(_: impl Ctx, source: List<Vector>, point: DVec2) -> bool {
-	source.into_iter().any(|row| {
+fn point_inside(_: impl Ctx, source: List<Vector>, point: DVec2) -> Item<bool> {
+	let inside = source.into_iter().any(|row| {
 		let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		row.element().check_point_inside_shape(transform, point)
-	})
+	});
+
+	Item::new_from_element(inside)
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements(_: impl Ctx, content: ListDyn) -> f64 {
-	content.len() as f64
+async fn count_elements(_: impl Ctx, content: ListDyn) -> Item<f64> {
+	Item::new_from_element(content.len() as f64)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn count_points(_: impl Ctx, content: List<Vector>) -> f64 {
-	content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum()
+async fn count_points(_: impl Ctx, content: List<Vector>) -> Item<f64> {
+	let count = content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum();
+
+	Item::new_from_element(count)
 }
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `List` of vector elements.
@@ -3083,11 +3091,11 @@ async fn index_points(
 	content: List<Vector>,
 	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
 	index: f64,
-) -> DVec2 {
+) -> Item<DVec2> {
 	let points_count = content.iter_element_values().map(|vector| vector.point_domain.positions().len()).sum::<usize>();
 
 	if points_count == 0 {
-		return DVec2::ZERO;
+		return Item::new_from_element(DVec2::ZERO);
 	}
 	// Clamp and allow negative indexing from the end
 	let index = index as isize;
@@ -3102,17 +3110,17 @@ async fn index_points(
 	for vector in content.iter_element_values() {
 		let row_point_count = vector.point_domain.positions().len();
 		if index - accumulated < row_point_count {
-			return vector.point_domain.positions()[index - accumulated];
+			return Item::new_from_element(vector.point_domain.positions()[index - accumulated]);
 		}
 		accumulated += row_point_count;
 	}
 
-	DVec2::ZERO
+	Item::new_from_element(DVec2::ZERO)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
-	(0..source.len())
+async fn path_length(_: impl Ctx, source: List<Vector>) -> Item<f64> {
+	let length = (0..source.len())
 		.map(|index| {
 			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
@@ -3126,30 +3134,34 @@ async fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
 				})
 				.sum::<f64>()
 		})
-		.sum()
+		.sum();
+
+	Item::new_from_element(length)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> f64 {
+async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> Item<f64> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
-	(0..vector.len())
+	let area = (0..vector.len())
 		.map(|index| {
 			let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let area_scale = transform.matrix2.determinant().abs();
 			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
 		})
-		.sum()
+		.sum();
+
+	Item::new_from_element(area)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: CentroidType) -> DVec2 {
+async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: CentroidType) -> Item<DVec2> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
 	if vector.is_empty() {
-		return DVec2::ZERO;
+		return Item::new_from_element(DVec2::ZERO);
 	}
 
 	// All subpath centroid positions added together as if they were vectors from the origin.
@@ -3174,7 +3186,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 		}
 	}
 
-	if sum > 0. {
+	let centroid_position = if sum > 0. {
 		centroid / sum
 	}
 	// Without a summed denominator, return the average of all positions instead
@@ -3197,7 +3209,9 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 			.sum::<DVec2>();
 
 		if count != 0 { summed_positions / (count as f64) } else { DVec2::ZERO }
-	}
+	};
+
+	Item::new_from_element(centroid_position)
 }
 
 #[cfg(test)]
@@ -3364,7 +3378,7 @@ mod test {
 		let length = super::path_length(Footprint::default(), list).await;
 
 		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
-		assert_eq!(length, 101. * 4. * 2. * 5.);
+		assert_eq!(length.into_element(), 101. * 4. * 2. * 5.);
 	}
 	#[tokio::test]
 	async fn spline() {

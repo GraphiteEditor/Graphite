@@ -231,12 +231,30 @@ mod test {
 		}
 	}
 
+	// Lowers a rank-0 `Item<T>` to its bare `T` element for a connector that predates ranked wires
+	#[derive(Clone)]
+	pub struct UnwrapElementNode<N>(N);
+
+	impl<'i, I: 'i, T: 'i + Send, N> Node<'i, I> for UnwrapElementNode<N>
+	where
+		N: Node<'i, I, Output = Pin<Box<dyn Future<Output = Item<T>> + 'i + Send>>>,
+	{
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
+		fn eval(&'i self, input: I) -> Self::Output {
+			let future = self.0.eval(input);
+			Box::pin(async move { future.await.into_element() })
+		}
+	}
+
 	#[tokio::test]
 	async fn repeat_on_points_test() {
 		let context = OwnedContextImpl::default().into_context();
 		let rect = RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(0)), FutureWrapperNode(XY::Y)),
+			UnwrapElementNode(ExtractXyNode::new(
+				ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(0)),
+				FutureWrapperNode(Item::new_from_element(XY::Y)),
+			)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),

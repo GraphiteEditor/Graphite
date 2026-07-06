@@ -184,8 +184,8 @@ pub enum StringCapitalization {
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
-	string
+fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> Item<String> {
+	Item::new_from_element(string)
 }
 
 /// Type-asserts a value to be a string.
@@ -379,7 +379,7 @@ fn format_number(
 }
 
 /// Parses a string into a number. Falls back to the chosen value if the string is not a valid number.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Text"), name("String to Number"))]
 fn string_to_number(
 	_: impl Ctx,
 	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, and scientific notation (e.g. "1e-3") is supported.
@@ -840,10 +840,12 @@ fn string_join(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	separator_escaping: bool,
-) -> String {
+) -> Item<String> {
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
-	strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator)
+	let joined = strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator);
+
+	Item::new_from_element(joined)
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
@@ -852,8 +854,8 @@ async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	strings: List<String>,
 	#[expose]
-	#[implementations(Context -> String)]
-	mapped: impl Node<Context<'static>, Output = String>,
+	#[implementations(Context -> Item<String>)]
+	mapped: impl Node<Context<'static>, Output = Item<String>>,
 ) -> List<String> {
 	let mut result = List::new();
 
@@ -863,7 +865,7 @@ async fn map_string(
 		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
 		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
 
-		result.push(Item::new_from_element(mapped_string));
+		result.push(mapped_string);
 	}
 
 	result
@@ -871,15 +873,19 @@ async fn map_string(
 
 /// Reads the current string from within a **Map String** node's loop.
 #[node_macro::node(category("Context"))]
-fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
-	let Ok(var_arg) = ctx.vararg(0) else { return String::new() };
+fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Item::new_from_element(String::new()) };
 	let var_arg = var_arg as &dyn std::any::Any;
 
-	var_arg.downcast_ref::<String>().cloned().unwrap_or_default()
+	Item::new_from_element(var_arg.downcast_ref::<String>().cloned().unwrap_or_default())
 }
 
 /// Converts a value to a JSON string representation.
 #[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: T) -> String {
-	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
+fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: Item<T>) -> Item<String> {
+	let (value, attributes) = value.into_parts();
+
+	let result = serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string());
+
+	Item::from_parts(result, attributes)
 }

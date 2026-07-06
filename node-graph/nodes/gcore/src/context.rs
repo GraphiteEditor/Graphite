@@ -1,4 +1,4 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
@@ -54,8 +54,8 @@ async fn read_position(
 	///
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
 	loop_level: u32,
-) -> DVec2 {
-	ctx.try_position().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(DVec2::ZERO)
+) -> Item<DVec2> {
+	Item::new_from_element(ctx.try_position().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(DVec2::ZERO))
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
@@ -71,6 +71,6 @@ async fn read_index(
 	///
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
 	loop_level: u32,
-) -> f64 {
-	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(0) as f64
+) -> Item<f64> {
+	Item::new_from_element(ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(0) as f64)
 }

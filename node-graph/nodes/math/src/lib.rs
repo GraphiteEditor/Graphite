@@ -465,11 +465,11 @@ fn random(
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
 	max: f64,
-) -> f64 {
+) -> Item<f64> {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 	let result = rng.random::<f64>();
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
-	result * (max - min) + min
+	Item::new_from_element(result * (max - min) + min)
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
@@ -884,26 +884,26 @@ async fn switch<T, C: Send + 'n + Clone>(
 
 /// Constructs a bool value which may be set to true or false.
 #[node_macro::node(category("Value"))]
-fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: bool) -> bool {
-	bool_value
+fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: bool) -> Item<bool> {
+	Item::new_from_element(bool_value)
 }
 
 /// Constructs a number value which may be set to any real number.
 #[node_macro::node(category("Value"))]
-fn number_value(_: impl Ctx, _primary: (), number: f64) -> f64 {
-	number
+fn number_value(_: impl Ctx, _primary: (), number: f64) -> Item<f64> {
+	Item::new_from_element(number)
 }
 
 /// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
 #[node_macro::node(category("Value"))]
-fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
-	percentage
+fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> Item<f64> {
+	Item::new_from_element(percentage)
 }
 
 /// Constructs a two-dimensional vector value which may be set to any XY pair.
 #[node_macro::node(category("Value"), name("Vec2 Value"))]
-fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
-	DVec2::new(x, y)
+fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> Item<DVec2> {
+	Item::new_from_element(DVec2::new(x, y))
 }
 
 /// Constructs a color value which may be set to any color, or no color.
@@ -989,12 +989,12 @@ fn sample_gradient(_: impl Ctx, _primary: (), gradient: List<GradientStops>, pos
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
 #[node_macro::node(category("Value"))]
-fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Footprint {
-	Footprint {
+fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Item<Footprint> {
+	Item::new_from_element(Footprint {
 		transform,
 		resolution: resolution.max(DVec2::ONE).as_uvec2(),
 		..Default::default()
-	}
+	})
 }
 
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.

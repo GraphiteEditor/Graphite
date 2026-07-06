@@ -121,41 +121,62 @@ fn replace_transform<T>(
 // TODO: Figure out how this node should behave once #2982 is implemented.
 /// Obtains the transform of the first item in the input `List`, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-async fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
-	content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default()
+async fn extract_transform(_: impl Ctx, content: ListDyn) -> Item<DAffine2> {
+	Item::new_from_element(content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default())
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.
 #[node_macro::node(category("Math: Transform"))]
-fn invert_transform(_: impl Ctx, transform: DAffine2) -> DAffine2 {
-	transform.inverse()
+fn invert_transform(_: impl Ctx, transform: Item<DAffine2>) -> Item<DAffine2> {
+	let (transform, attributes) = transform.into_parts();
+
+	let result = transform.inverse();
+
+	Item::from_parts(result, attributes)
 }
 
 /// Extracts the translation component from the input transform.
 #[node_macro::node(category("Math: Transform"))]
-fn decompose_translation(_: impl Ctx, transform: DAffine2) -> DVec2 {
-	transform.translation
+fn decompose_translation(_: impl Ctx, transform: Item<DAffine2>) -> Item<DVec2> {
+	let (transform, attributes) = transform.into_parts();
+
+	let result = transform.translation;
+
+	Item::from_parts(result, attributes)
 }
 
 /// Extracts the rotation component (in degrees) from the input transform.
 #[node_macro::node(category("Math: Transform"))]
-fn decompose_rotation(_: impl Ctx, transform: DAffine2) -> f64 {
-	transform.decompose_rotation().to_degrees()
+fn decompose_rotation(_: impl Ctx, transform: Item<DAffine2>) -> Item<f64> {
+	let (transform, attributes) = transform.into_parts();
+
+	let result = transform.decompose_rotation().to_degrees();
+
+	Item::from_parts(result, attributes)
 }
 
 /// Extracts the scale component from the input transform.
 /// **Magnitude** returns the visual length of each axis (always positive, includes any skew contribution).
 /// **Pure** returns the isolated scale factors with rotation and skew stripped away (can be negative for flipped axes).
 #[node_macro::node(category("Math: Transform"))]
-fn decompose_scale(_: impl Ctx, transform: DAffine2, scale_type: ScaleType) -> DVec2 {
-	match scale_type {
+fn decompose_scale(_: impl Ctx, transform: Item<DAffine2>, scale_type: Item<ScaleType>) -> Item<DVec2> {
+	let (transform, attributes) = transform.into_parts();
+	let scale_type = scale_type.into_element();
+
+	let result = match scale_type {
 		ScaleType::Magnitude => transform.scale_magnitudes(),
 		ScaleType::Pure => transform.decompose_scale(),
-	}
+	};
+
+	Item::from_parts(result, attributes)
 }
 
 /// Extracts the skew angle (in degrees) from the input transform.
 #[node_macro::node(category("Math: Transform"))]
-fn decompose_skew(_: impl Ctx, transform: DAffine2) -> f64 {
-	transform.decompose_skew().atan().to_degrees()
+fn decompose_skew(_: impl Ctx, transform: Item<DAffine2>) -> Item<f64> {
+	let (transform, attributes) = transform.into_parts();
+
+	let result = transform.decompose_skew().atan().to_degrees();
+
+	Item::from_parts(result, attributes)
 }

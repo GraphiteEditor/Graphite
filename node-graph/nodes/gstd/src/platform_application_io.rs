@@ -202,7 +202,7 @@ async fn rasterize<T: WasmNotSend + Clone + 'n>(
 		List<GradientStops>,
 	)]
 	data: List<T>,
-	footprint: Footprint,
+	footprint: Item<Footprint>,
 	canvas: CanvasHandle,
 ) -> List<Raster<CPU>>
 where
@@ -211,6 +211,8 @@ where
 	let mut data = data;
 	let mut canvas = canvas;
 	use glam::{DAffine2, DVec2};
+
+	let footprint = footprint.into_element();
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
