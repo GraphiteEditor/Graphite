@@ -9,7 +9,7 @@ use graph_craft::document::NodeId;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::gradient::GradientStops;
-use graphene_std::list::List;
+use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
@@ -197,6 +197,21 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<BlendMode>,
 		List<GradientType>,
 		List<GradientSpreadMethod>,
+		Item<Artboard>,
+		Item<Graphic>,
+		Item<Vector>,
+		Item<Raster<CPU>>,
+		Item<Raster<GPU>>,
+		Item<Color>,
+		Item<GradientStops>,
+		Item<String>,
+		Item<f64>,
+		Item<u8>,
+		Item<bool>,
+		Item<DAffine2>,
+		Item<BlendMode>,
+		Item<GradientType>,
+		Item<GradientSpreadMethod>,
 		GradientStops,
 		f64,
 		u32,
@@ -243,6 +258,57 @@ trait TableItemLayout {
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![]
+	}
+}
+
+impl<T: TableItemLayout> TableItemLayout for Item<T> {
+	fn type_name() -> &'static str {
+		T::type_name()
+	}
+	fn identifier(&self) -> String {
+		self.element().identifier()
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
+			match step {
+				PathStep::Element(_) => {
+					data.current_depth += 1;
+					let result = self.element().layout_with_breadcrumb(data);
+					data.current_depth -= 1;
+					return result;
+				}
+				PathStep::Attribute { key, .. } => {
+					if let Some(any) = self.attributes().get_any(&key) {
+						data.current_depth += 1;
+						if let Some(result) = drilldown_attribute_layout(any, data) {
+							data.current_depth -= 1;
+							return result;
+						}
+						data.current_depth -= 1;
+						warn!("Drilldown unsupported for attribute {key:?}");
+					}
+					data.desired_path.truncate(data.current_depth);
+				}
+			}
+		}
+
+		let attribute_keys: Vec<String> = self.attributes().keys().map(str::to_string).collect();
+
+		// A single element, so no leading ID column, unlike the `List` table
+		let mut values = vec![self.element().value_widget(PathStep::Element(0), data)];
+		for key in &attribute_keys {
+			let target = PathStep::Attribute { row: 0, key: key.clone() };
+			let widget = self.attributes().get_any(key).and_then(|any| dispatch_value_widget(any, target, data)).unwrap_or_else(|| {
+				let text = self.attributes().display_value(key, display_value_override).unwrap_or_else(|| "-".to_string());
+				TextLabel::new(text).narrow(true).widget_instance()
+			});
+			values.push(widget);
+		}
+
+		let mut column_names = vec!["element"];
+		column_names.extend(attribute_keys.iter().map(|s| s.as_str()));
+
+		vec![LayoutGroup::table(vec![column_headings(&column_names), values], false)]
 	}
 }
 
