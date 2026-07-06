@@ -10,12 +10,13 @@ use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, 
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graphene_std::NodeInputDecleration;
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{DashPattern, PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1375,6 +1376,18 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 }
 
+/// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
+fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
+	let NodeInput::Value { tagged_value, exposed } = input else { return None };
+	let pattern = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(lengths) => DashPattern(lengths.clone()),
+		TaggedValue::F64(length) => DashPattern(vec![*length]),
+		TaggedValue::String(text) => DashPattern::from(text.as_str()),
+		_ => return None,
+	};
+	Some(NodeInput::value(TaggedValue::DashPattern(pattern), *exposed))
+}
+
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
 	// Must run before the reset block below: a node referencing a removed catalog entry would otherwise abort
 	// `migrate_node` via the `?` on `resolve_document_node_type`, preventing subsequent migration blocks from running.
@@ -1687,8 +1700,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[6].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[7].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 8), old_inputs[3].clone(), network_path);
+		let dash_input = migrate_dash_input(&old_inputs[3]).unwrap_or_else(|| old_inputs[3].clone());
+		document.network_interface.set_input(&InputConnector::node(*node_id, 8), dash_input, network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
+	}
+
+	// The stroke dash sequence became the `DashPattern` value type; convert any already-shaped stroke that still stores a legacy dash input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER)
+		&& let Some(dash_input) = node.inputs.get(graphene_std::vector::stroke::DashLengthsInput::INDEX)
+		&& let Some(migrated) = migrate_dash_input(dash_input)
+	{
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashLengthsInput::INDEX), migrated, network_path);
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016

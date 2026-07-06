@@ -31,31 +31,19 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{GradientSpreadMethod, GradientType};
 
-/// Implemented for types that contain vector items reachable via mutable access.
-/// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
+/// Implemented for `List` types that contain vector items reachable via mutable access.
+/// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
 trait VectorListIterMut {
-	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
-
 	fn for_each_vector_list_mut(&mut self, f: impl FnMut(&mut List<Vector>));
 
 	fn vector_count(&self) -> usize;
 }
 
 impl VectorListIterMut for List<Graphic> {
-	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		for graphic in self.iter_element_values_mut() {
-			let Some(vector_list) = graphic.as_vector_mut() else { continue };
-			let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-			for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-				f(vector, *transform);
-			}
-		}
-	}
-
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		for graphic in self.iter_element_values_mut() {
 			if let Some(vector_list) = graphic.as_vector_mut() {
@@ -70,19 +58,48 @@ impl VectorListIterMut for List<Graphic> {
 }
 
 impl VectorListIterMut for List<Vector> {
-	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let (elements, transforms) = self.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
-		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
-			f(vector, *transform);
-		}
-	}
-
 	fn for_each_vector_list_mut(&mut self, mut f: impl FnMut(&mut List<Vector>)) {
 		f(self);
 	}
 
 	fn vector_count(&self) -> usize {
 		self.len()
+	}
+}
+
+/// Element-level analog of [`VectorListIterMut`] for the element-wise fill and stroke nodes, operating on a
+/// single `Item<Vector>` or `Item<Graphic>`.
+trait VectorItemMut {
+	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
+
+	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>);
+}
+
+impl VectorItemMut for Item<Vector> {
+	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
+		let transform = self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+		f(self.element_mut(), transform);
+	}
+
+	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>) {
+		self.set_attribute(key, paint);
+	}
+}
+
+impl VectorItemMut for Item<Graphic> {
+	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
+		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
+		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
+		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
+			f(vector, *transform);
+		}
+	}
+
+	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>) {
+		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
+		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(key) {
+			*slot = paint.clone();
+		}
 	}
 }
 
@@ -157,14 +174,11 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send + 'static>(
+async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(
-		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
-		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
-	)]
-	content: V,
+	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	content: Item<V>,
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
@@ -177,7 +191,10 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
-) -> V {
+) -> Item<V>
+where
+	Item<V>: VectorItemMut + 'n + Send,
+{
 	let mut content = content;
 	let mut fill = fill;
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
@@ -224,112 +241,60 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	}
 
 	let fill = fill.into_graphic_list();
-	content.for_each_vector_list_mut(|vector_list| {
-		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
-		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_FILL) {
-			*slot = fill.clone();
-		}
-	});
+	content.set_vector_paint(ATTR_FILL, fill);
 	content
-}
-
-trait IntoF64Vec {
-	fn into_vec(self) -> Vec<f64>;
-}
-impl IntoF64Vec for f64 {
-	fn into_vec(self) -> Vec<f64> {
-		vec![self]
-	}
-}
-impl IntoF64Vec for List<f64> {
-	fn into_vec(self) -> Vec<f64> {
-		self.into_iter().map(|row| row.into_element()).collect()
-	}
-}
-impl IntoF64Vec for String {
-	fn into_vec(self) -> Vec<f64> {
-		self.split(&[',', ' ']).filter(|s| !s.is_empty()).filter_map(|s| s.parse::<f64>().ok()).collect()
-	}
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
+async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-	)]
-	content: List<V>,
+	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	content: Item<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Color>, List<Color>, List<Color>,
-		List<GradientStops>, List<GradientStops>, List<GradientStops>,
-		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
-		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Color>, List<Color>, List<Color>,
-		List<GradientStops>, List<GradientStops>, List<GradientStops>,
-		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
-		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
-	weight: f64,
+	weight: Item<f64>,
 	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
-	align: StrokeAlign,
+	align: Item<StrokeAlign>,
 	/// The shape of the stroke at open endpoints.
-	cap: StrokeCap,
+	cap: Item<StrokeCap>,
 	/// The curvature of the bent stroke at sharp corners.
-	join: StrokeJoin,
+	join: Item<StrokeJoin>,
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	#[default(4.)]
-	miter_limit: f64,
+	miter_limit: Item<f64>,
 	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
-	paint_order: PaintOrder,
+	paint_order: Item<PaintOrder>,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-	)]
-	dash_lengths: L,
+	dash_lengths: Item<DashPattern>,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
-	dash_offset: f64,
-) -> List<V>
+	dash_offset: Item<f64>,
+) -> Item<V>
 where
-	List<V>: VectorListIterMut + 'n + Send,
+	Item<V>: VectorItemMut + 'n + Send,
 {
 	let mut content = content;
-	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
+	let (weight, align, cap, join, miter_limit, paint_order, dash_offset) = (
+		weight.into_element(),
+		align.into_element(),
+		cap.into_element(),
+		join.into_element(),
+		miter_limit.into_element(),
+		paint_order.into_element(),
+		dash_offset.into_element(),
+	);
+	let dash_lengths = dash_lengths.into_element().clamped_lengths();
 
 	let stroke = Stroke {
 		weight,
@@ -350,12 +315,7 @@ where
 	});
 
 	let paint = paint.into_graphic_list();
-	content.for_each_vector_list_mut(|vector_list| {
-		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
-		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_STROKE) {
-			*slot = paint.clone();
-		}
-	});
+	content.set_vector_paint(ATTR_STROKE, paint);
 	content
 }
 

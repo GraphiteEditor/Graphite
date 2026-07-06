@@ -570,8 +570,8 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		Some(TaggedValue::PaintOrder(value)) => *value,
 		_ => PaintOrder::default(),
 	};
-	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::<List<f64>>::INDEX) {
-		Some(TaggedValue::F64Array(value)) => value.clone(),
+	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::INDEX) {
+		Some(TaggedValue::DashPattern(value)) => value.0.clone(),
 		_ => Vec::new(),
 	};
 	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX) {

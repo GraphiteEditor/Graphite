@@ -5,7 +5,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::choice_type::ChoiceTypeStatic;
-use graphene_std::list::List;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// All non-color stroke-related options surfaced in the control bar popover.
@@ -215,7 +214,7 @@ pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, docu
 
 pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.dash_lengths = Some(lengths.clone());
-	set_stroke_input_for_selected(document, graphene_std::vector::stroke::DashLengthsInput::<List<f64>>::INDEX, TaggedValue::F64Array(lengths), responses);
+	set_stroke_input_for_selected(document, graphene_std::vector::stroke::DashLengthsInput::INDEX, TaggedValue::DashPattern(lengths.into()), responses);
 }
 
 pub fn apply_dash_offset(drawing: &mut DrawingToolState, offset: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
