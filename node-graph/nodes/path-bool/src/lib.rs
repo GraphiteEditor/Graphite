@@ -232,13 +232,13 @@ fn cascading_subtract(vector: &List<Vector>, boolean_operation: BooleanOperation
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
 
 		let mut element = Vector {
-			style: source.style.clone(),
+			stroke: source.stroke.clone(),
 			..Default::default()
 		};
 
 		if boolean_operation == BooleanOperation::Crop && i == vector.len() - 1 {
-			element.style.clear_fill();
-			element.style.clear_stroke();
+			attributes.remove::<List<Graphic>>(ATTR_FILL);
+			element.stroke = None;
 		}
 
 		append_linesweeper_contours(&mut element, &contours);
