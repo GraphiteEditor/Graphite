@@ -2175,7 +2175,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
+				// Hidden passthrough nodes let a wire borrow its color and rank from an upstream node, so any type change can restyle wires whose own node is unchanged; invalidate the whole displayed network and let the SendGraph below rebuild them
+				let types_changed = !resolved_types.add.is_empty() || !resolved_types.remove.is_empty();
 				network_interface.resolved_types.update(resolved_types, node_graph_errors);
+
+				if types_changed {
+					for input in network_interface.node_graph_input_connectors(breadcrumb_network_path) {
+						network_interface.unload_wire(&input, breadcrumb_network_path);
+					}
+				}
+
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {

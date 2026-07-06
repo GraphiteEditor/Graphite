@@ -317,6 +317,11 @@ impl NodeNetworkInterface {
 	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
+				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
+				if *output_index == 0 && !self.is_visible(node_id, network_path) {
+					return self.input_type(&InputConnector::node(*node_id, 0), network_path);
+				}
+
 				// First try iterating upstream to the first protonode and try get its compiled type
 				let Some(implementation) = self.implementation(node_id, network_path) else {
 					return TypeSource::Error("Could not get implementation");

@@ -450,7 +450,6 @@ impl NodeGraphExecutor {
 								resolved_types: incomplete_delta,
 								node_graph_errors,
 							});
-							responses.add(NodeGraphMessage::SendGraph);
 
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -461,7 +460,6 @@ impl NodeGraphExecutor {
 						resolved_types: type_delta,
 						node_graph_errors,
 					});
-					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
