@@ -48,6 +48,13 @@ struct CurveBounds {
 	y_max: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PlotTransform {
+	scale: f64,
+	x_center: f64,
+	y_center: f64,
+}
+
 struct PlotContext<'a> {
 	values: &'a HashMap<String, f64>,
 }
@@ -145,6 +152,9 @@ fn function_plot(
 	/// Auto close
 	#[default(true)]
 	auto_close: bool,
+	/// Plot Axes
+	#[default(true)]
+	plot_axes: bool,
 ) -> List<Vector> {
 	let mut plots = List::new();
 	let (x_node, y_node, variable_name) = match parse_plot_expressions(&x_expression, &y_expression) {
@@ -157,10 +167,12 @@ fn function_plot(
 		None => return plots,
 	};
 
+	let plot_transform = calculate_plot_transform(&bounds, width, height);
+
 	let segments = detect_curve_segments(sample_points, discontinuity_sensitivity);
 
 	for mut segment_anchors in segments {
-		fit_plot_to_bounds(&mut segment_anchors, &bounds, width, height);
+		fit_plot_to_bounds(&mut segment_anchors, &plot_transform);
 
 		let mut closed = false;
 
@@ -179,6 +191,19 @@ fn function_plot(
 			plots = List::new_from_element(shape);
 		} else {
 			plots.push(Item::new_from_element(shape));
+		}
+	}
+
+	if plot_axes {
+		let axes = build_plot_axes(&bounds, &plot_transform);
+		for axis in axes {
+			let shape = Vector::from_subpath(subpath::Subpath::from_anchors(axis, false));
+
+			if plots.is_empty() {
+				plots = List::new_from_element(shape);
+			} else {
+				plots.push(Item::new_from_element(shape));
+			}
 		}
 	}
 
@@ -228,6 +253,7 @@ fn sample_interval(
 	max_depth: u32,
 ) {
 	if current_depth >= max_depth {
+		update_bounds(&begin_point, bounds);
 		sample_points.push(begin_point);
 		return;
 	}
@@ -238,9 +264,6 @@ fn sample_interval(
 	let Some(point_mid) = evaluate_expressions(t_mid, x_node, y_node, variable_name) else {
 		return;
 	};
-	if let SamplePoint::Valid { .. } = point_mid {
-		update_bounds(&point_mid, bounds);
-	}
 
 	if current_depth > min_depth && begin_point.is_valid() && end_point.is_valid() {
 		let t_quarter = t_begin + (t_end - t_begin) * 0.25;
@@ -253,14 +276,6 @@ fn sample_interval(
 		let Some(point_q3) = evaluate_expressions(t_q3, x_node, y_node, variable_name) else {
 			return;
 		};
-
-		if let SamplePoint::Valid { .. } = point_q1 {
-			update_bounds(&point_q1, bounds);
-		}
-
-		if let SamplePoint::Valid { .. } = point_q3 {
-			update_bounds(&point_q3, bounds);
-		}
 
 		let Some(begin_coord) = begin_point.coord() else { return };
 		let Some(end_coord) = end_point.coord() else { return };
@@ -285,6 +300,7 @@ fn sample_interval(
 		}
 
 		if max_error < tolerance {
+			update_bounds(&begin_point, bounds);
 			sample_points.push(begin_point);
 			return;
 		}
@@ -463,7 +479,7 @@ fn extrapolate_limit(p_coord: DVec2, p1_coord: DVec2, p2_coord: DVec2) -> f64 {
 	}
 }
 
-fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &CurveBounds, width: f64, height: f64) {
+fn calculate_plot_transform(bounds: &CurveBounds, width: f64, height: f64) -> PlotTransform {
 	let x_scale = width / (bounds.x_max - bounds.x_min).max(f64::EPSILON);
 	let y_scale = height / (bounds.y_max - bounds.y_min).max(f64::EPSILON);
 
@@ -472,10 +488,35 @@ fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &CurveBounds, widt
 	let x_center = (bounds.x_min + bounds.x_max) / 2.;
 	let y_center = (bounds.y_min + bounds.y_max) / 2.;
 
+	PlotTransform { scale, x_center, y_center }
+}
+
+fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], plot_transform: &PlotTransform) {
 	for anchor_position in anchor_positions {
-		anchor_position.x = (anchor_position.x - x_center) * scale;
-		anchor_position.y = (y_center - anchor_position.y) * scale;
+		*anchor_position = fit_point_to_bounds(*anchor_position, plot_transform);
 	}
+}
+
+fn fit_point_to_bounds(point: DVec2, plot_transform: &PlotTransform) -> DVec2 {
+	DVec2::new((point.x - plot_transform.x_center) * plot_transform.scale, (plot_transform.y_center - point.y) * plot_transform.scale)
+}
+
+fn build_plot_axes(bounds: &CurveBounds, plot_transform: &PlotTransform) -> Vec<CurveSegment> {
+	let axis_x = if bounds.x_min <= 0. && bounds.x_max >= 0. { 0. } else { (bounds.x_min + bounds.x_max) / 2. };
+
+	let axis_y = if bounds.y_min <= 0. && bounds.y_max >= 0. { 0. } else { (bounds.y_min + bounds.y_max) / 2. };
+
+	let horizontal = vec![
+		fit_point_to_bounds(DVec2::new(bounds.x_min, axis_y), plot_transform),
+		fit_point_to_bounds(DVec2::new(bounds.x_max, axis_y), plot_transform),
+	];
+
+	let vertical = vec![
+		fit_point_to_bounds(DVec2::new(axis_x, bounds.y_min), plot_transform),
+		fit_point_to_bounds(DVec2::new(axis_x, bounds.y_max), plot_transform),
+	];
+
+	vec![horizontal, vertical]
 }
 
 fn parse_plot_expressions(x_expression: &str, y_expression: &str) -> Option<(ast::Node, ast::Node, String)> {
