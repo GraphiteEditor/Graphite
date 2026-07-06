@@ -1179,6 +1179,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							data_type: self.wire_in_progress_type,
 							thick: false,
 							dashed: false,
+							is_list: false,
+							center_path_string: String::new(),
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
@@ -1431,7 +1433,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 											return None;
 										}
 
-										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
+										let (wire, _center_line, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
 
 										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
 										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
@@ -1726,7 +1728,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						continue;
 					};
 
-					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
+					// Expand the cull box by a grid cell so a node stays rendered until its connectors, which reach beyond its bounding box, also leave the viewport
+					let cull_margin = 24.;
+					if node_bbox[1].x + cull_margin >= document_bbox[0].x
+						&& node_bbox[0].x - cull_margin <= document_bbox[1].x
+						&& node_bbox[1].y + cull_margin >= document_bbox[0].y
+						&& node_bbox[0].y - cull_margin <= document_bbox[1].y
+					{
 						nodes.push(*node_id);
 					}
 					for error in &network_interface.resolved_types.node_graph_errors {

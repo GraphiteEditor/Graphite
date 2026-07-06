@@ -371,12 +371,13 @@ pub fn make_type_user_readable(ty: &str) -> String {
 		.replace("UVec2", "Vec2")
 		.replace("&str", "String");
 
-	rewrite_list_as_array_brackets(&ty)
+	rewrite_ranked_type_wrappers(&ty)
 }
 
-/// Rewrites `List<T>` as `T[]`. Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
-/// Respects word boundaries so unrelated identifiers that happen to end in `List` are not affected.
-fn rewrite_list_as_array_brackets(input: &str) -> String {
+/// Rewrites `List<T>` as `T[]` (rank 1) and unwraps `Item<T>` to `T` (rank 0), so ranked wires read as their element type.
+/// Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
+/// Respects word boundaries so unrelated identifiers that happen to end in `List` or `Item` are not affected.
+fn rewrite_ranked_type_wrappers(input: &str) -> String {
 	let bytes = input.as_bytes();
 	let mut result = String::with_capacity(input.len());
 	let mut i = 0;
@@ -387,8 +388,17 @@ fn rewrite_list_as_array_brackets(input: &str) -> String {
 			let inner_start = i + b"List<".len();
 			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
 				let inner = &input[inner_start..close];
-				result.push_str(&rewrite_list_as_array_brackets(inner));
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
 				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if at_word_boundary && bytes[i..].starts_with(b"Item<") {
+			let inner_start = i + b"Item<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
 				i = close + 1;
 				continue;
 			}

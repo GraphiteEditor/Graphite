@@ -320,7 +320,7 @@
 	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<svg>
 			{#each $nodeGraphWires.values() as map}
-				{#each map.values() as { pathString, dataType, thick, dashed }}
+				{#each map.values() as { pathString, centerPathString, dataType, thick, dashed }}
 					{#if thick}
 						<path
 							d={pathString}
@@ -329,6 +329,8 @@
 							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
 						/>
+						<!-- A thin inner line splits the layer-stack wire down the middle reaching past the ends into the cleaved connector slots -->
+						<path d={centerPathString} style:--data-line-width="1px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
 					{/if}
 				{/each}
 			{/each}
@@ -561,7 +563,10 @@
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if node.primaryOutputConnectedToLayer}
-									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
+									<path
+										d="M0,4.5 C0,4.5 0,-3.5 0,-3.5 C0,-3.5 3.5,-3.5 3.5,-3.5 C3.5,-3.5 3.5,0.047575320373205 3.5,2.417936731806612 C3.156299874178738,2.483412460471433 2.822651790991059,2.6171002198691578 2.52,2.819 C2.52,2.819 0,4.5 0,4.5 ZM4.5,2.4181274482792303 C4.5,0.04776561459968809 4.5,-3.5 4.5,-3.5 C4.5,-3.5 8,-3.5 8,-3.5 C8,-3.5 8,4.5 8,4.5 C8,4.5 5.479,2.819 5.479,2.819 C5.1766417575955055,2.6172960519564556 4.843347279510559,2.4836718647162654 4.5,2.4181274482792303 Z"
+										fill="var(--data-color-dim)"
+									/>
 								{/if}
 							{:else}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
@@ -583,7 +588,10 @@
 						{#if node.primaryInput?.connectedTo !== "Connected to nothing."}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if node.primaryInputConnectedToLayer}
-								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
+								<path
+									d="M2.52,9.26 C2.821640963284329,9.056646654474491 3.155445066633785,8.92221416309731 3.5,8.856702755868458 C3.5,10.347203231540409 3.5,16 3.5,16 C3.5,16 0,16 0,16 C0,16 0,10.95 0,10.95 C0,10.95 2.52,9.26 2.52,9.26 ZM4.5,16 C4.5,16 4.5,10.35044378356205 4.5,8.857985643789576 C4.843281250149186,8.9239602014643 5.176947428562441,9.05796506353444 5.48,9.26 C5.48,9.26 8,10.95 8,10.95 C8,10.95 8,16 8,16 C8,16 4.5,16 4.5,16 Z"
+									fill="var(--data-color-dim)"
+								/>
 							{/if}
 						{:else}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
@@ -679,15 +687,27 @@
 		<div class="wires">
 			<svg>
 				{#each $nodeGraphWires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed }}
+					{#each map.values() as { pathString, dataType, thick, dashed, isList }}
 						{#if !thick}
-							<path
-								d={pathString}
-								style:--data-line-width="2px"
-								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-							/>
+							{#if isList}
+								<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
+								<path
+									d={pathString}
+									style:--data-line-width="3px"
+									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+								/>
+								<path d={pathString} style:--data-line-width="1px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+							{:else}
+								<path
+									d={pathString}
+									style:--data-line-width="2px"
+									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+								/>
+							{/if}
 						{/if}
 					{/each}
 				{/each}
