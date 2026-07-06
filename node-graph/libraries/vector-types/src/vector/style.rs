@@ -236,6 +236,12 @@ impl From<&str> for DashPattern {
 	}
 }
 
+impl From<String> for DashPattern {
+	fn from(text: String) -> Self {
+		Self::from(text.as_str())
+	}
+}
+
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]

@@ -275,8 +275,8 @@ async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: Item<PaintOrder>,
-	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: Item<DashPattern>,
+	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
+	dash_pattern: Item<DashPattern>,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: Item<f64>,
@@ -294,7 +294,7 @@ where
 		paint_order.into_element(),
 		dash_offset.into_element(),
 	);
-	let dash_lengths = dash_lengths.into_element().clamped_lengths();
+	let dash_lengths = dash_pattern.into_element().clamped_lengths();
 
 	let stroke = Stroke {
 		weight,
@@ -317,6 +317,17 @@ where
 	let paint = paint.into_graphic_list();
 	content.set_vector_paint(ATTR_STROKE, paint);
 	content
+}
+
+/// Builds a stroke dash pattern from a list of lengths that alternate between dash and gap, starting with a dash.
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+fn dash_pattern(
+	_: impl Ctx,
+	/// The dash and gap lengths, alternating and starting with a dash.
+	lengths: List<f64>,
+) -> Item<DashPattern> {
+	let lengths: Vec<f64> = lengths.iter_element_values().copied().collect();
+	Item::new_from_element(DashPattern::from(lengths))
 }
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]

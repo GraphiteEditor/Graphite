@@ -2738,7 +2738,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::INDEX].as_value() {
+	let has_dash_lengths = match &document_node.inputs[DashPatternInput::INDEX].as_value() {
 		Some(TaggedValue::DashPattern(pattern)) => pattern.0.is_empty(),
 		_ => true,
 	};
@@ -2765,7 +2765,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
-	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashLengthsInput::INDEX, true, context), TextInput::default().centered(true));
+	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput::INDEX, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
 	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
 

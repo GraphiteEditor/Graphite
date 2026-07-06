@@ -35,10 +35,15 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// ==========
 		// INTO NODES
 		// ==========
-		into_node!(from: List<Graphic>, to: List<Graphic>),
-		into_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>),
+		#[cfg(feature = "gpu")]
+		into_node!(from: &PlatformEditorApi, to: &WgpuExecutor),
 		#[cfg(feature = "gpu")]
 		into_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>),
+		into_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>),
+		into_node!(from: List<Graphic>, to: List<Graphic>),
+		// =============
+		// CONVERT NODES
+		// =============
 		convert_node!(from: List<Vector>, to: List<Graphic>),
 		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
 		#[cfg(feature = "gpu")]
@@ -94,9 +99,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<Raster<CPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Graphic>, to: AttributeValueDyn),
-		// into_node!(from: List<Raster<CPU>>, to: List<Raster<SRGBA8>>),
-		#[cfg(feature = "gpu")]
-		into_node!(from: &PlatformEditorApi, to: &WgpuExecutor),
 		convert_node!(from: DVec2, to: DVec2),
 		convert_node!(from: List<Vector>, to: List<Vector>),
 		convert_node!(from: DVec2, to: List<Vector>),
@@ -132,6 +134,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<GradientStops>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<String>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<f64>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DAffine2>]),
@@ -343,6 +346,41 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
+	// A conversion adapter registered under the same `PromoteNode<$element>` identifier so a convertible-but-not-identical
+	// ranked wire can feed an `Item<$element>` connector, converting each element via `Into`
+	macro_rules! promote_convert_node {
+		(from_element: $from:ty, element: $element:ty) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				promote_convert_node!(node: PromoteConvertNode, from: Item<$from>, to: Item<$element>, element: $element),
+				promote_convert_node!(node: PromoteConvertListNode, from: List<$from>, to: List<$element>, element: $element),
+			];
+			entries
+		}};
+		(node: $node:ident, from: $from:ty, to: $to:ty, element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::PromoteNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::$node::new(
+							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
+						);
+						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::$node::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
+					);
+					let params = vec![fn_type_fut!(Context, $from)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
 	// A singleton raise adapter inserted by type resolution when an Item wire feeds a List connector
 	macro_rules! item_to_list_node {
 		(element: $element:ty) => {
@@ -471,6 +509,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		SelectiveColorChoice,
 		DashPattern,
 	));
+	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
+	node_types.extend(promote_convert_node!(from_element: String, element: DashPattern));
+	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
+	node_types.extend(promote_convert_node!(from_element: f64, element: DashPattern));
 	// =============
 	// CONVERT NODES
 	// =============

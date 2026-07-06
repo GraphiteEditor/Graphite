@@ -1707,12 +1707,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// The stroke dash sequence became the `DashPattern` value type; convert any already-shaped stroke that still stores a legacy dash input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER)
-		&& let Some(dash_input) = node.inputs.get(graphene_std::vector::stroke::DashLengthsInput::INDEX)
+		&& let Some(dash_input) = node.inputs.get(graphene_std::vector::stroke::DashPatternInput::INDEX)
 		&& let Some(migrated) = migrate_dash_input(dash_input)
 	{
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashLengthsInput::INDEX), migrated, network_path);
+			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput::INDEX), migrated, network_path);
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016

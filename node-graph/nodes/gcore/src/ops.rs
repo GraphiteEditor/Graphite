@@ -1,4 +1,4 @@
-use core_types::list::Item;
+use core_types::list::{Item, List};
 use core_types::{Ctx, ExtractFootprint, ops::Convert, transform::Footprint};
 use std::marker::PhantomData;
 
@@ -26,6 +26,26 @@ fn unwrap_item<'i, T: 'i + Send>(_: impl Ctx, value: Item<T>) -> T {
 #[node_macro::node(category(""), skip_impl)]
 fn promote<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
 	value.into()
+}
+
+/// Converts an `Item` wire's element to a different element type it can produce, letting a convertible wire feed an
+/// `Item` connector whose element type it does not match by identity.
+#[node_macro::node(category(""), skip_impl)]
+fn promote_convert<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+	let (value, attributes) = value.into_parts();
+	Item::from_parts(value.into(), attributes)
+}
+
+/// The `List` counterpart of `promote_convert`, converting every element to a different element type it can produce.
+#[node_macro::node(category(""), skip_impl)]
+fn promote_convert_list<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+	value
+		.into_iter()
+		.map(|item| {
+			let (value, attributes) = item.into_parts();
+			Item::from_parts(value.into(), attributes)
+		})
+		.collect()
 }
 
 #[node_macro::node(category(""), skip_impl)]

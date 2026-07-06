@@ -65,11 +65,13 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 	};
 
 	if !outer_wrapper_is(ty, "Item") {
-		// A `()` primary is a generator with no input, which may emit a rank-0 `Item<T>` without being element-wise
-		if outer_wrapper_is(&parsed.output_type, "Item") && !is_unit_type(ty) {
+		// A non-`Item` primary may still emit a rank-0 `Item<T>`: a `()` generator has no input, and a `List<T>` or
+		// `ListDyn` aggregation reduces a whole list down to a single item.
+		let primary_reduces_or_generates = is_unit_type(ty) || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
+		if outer_wrapper_is(&parsed.output_type, "Item") && !primary_reduces_or_generates {
 			emit_error!(
 				parsed.output_type.span(),
-				"Returning `Item<T>` requires the primary input to also be typed `Item<T>`, declaring an element-wise node"
+				"Returning `Item<T>` requires the primary input to be `Item<T>` (element-wise), `List<T>`/`ListDyn` (aggregation), or `()` (generator)"
 			);
 		}
 		return;
