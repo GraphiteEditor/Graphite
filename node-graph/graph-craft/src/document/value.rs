@@ -14,6 +14,7 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -445,6 +446,7 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
+	DashPattern(vector::style::DashPattern),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
@@ -591,6 +593,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
 					() if ty == TypeId::of::<List<GradientStops>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
 					_ => return None,
 				};
 				Some(ty)

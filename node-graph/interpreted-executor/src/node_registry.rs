@@ -22,7 +22,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::vector::misc::{ExtrudeJoiningAlgorithm, MergeByDistanceAlgorithm, PointSpacingType};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, StrokeJoin};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
 use std::collections::HashMap;
@@ -452,6 +452,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		RedGreenBlueAlpha,
 		RelativeAbsolute,
 		SelectiveColorChoice,
+		DashPattern,
 	));
 	// =============
 	// CONVERT NODES

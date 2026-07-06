@@ -201,6 +201,41 @@ fn daffine2_identity() -> DAffine2 {
 	DAffine2::IDENTITY
 }
 
+/// A stroke's dash pattern: a sequence of lengths that alternate dash, gap, dash, gap, and so on. An odd-length
+/// sequence repeats with the dash and gap roles swapped.
+///
+/// This is a rank-0 value type rather than a `List<f64>` because its lengths never carry attributes and the whole
+/// pattern is a single value, which keeps its connector frameable.
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct DashPattern(pub Vec<f64>);
+
+impl DashPattern {
+	/// Returns the dash lengths with any negative values clamped to zero.
+	pub fn clamped_lengths(&self) -> Vec<f64> {
+		self.0.iter().map(|length| length.max(0.)).collect()
+	}
+}
+
+impl From<f64> for DashPattern {
+	fn from(length: f64) -> Self {
+		Self(vec![length])
+	}
+}
+
+impl From<Vec<f64>> for DashPattern {
+	fn from(lengths: Vec<f64>) -> Self {
+		Self(lengths)
+	}
+}
+
+impl From<&str> for DashPattern {
+	fn from(text: &str) -> Self {
+		Self(text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(|piece| piece.parse::<f64>().ok()).collect())
+	}
+}
+
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
