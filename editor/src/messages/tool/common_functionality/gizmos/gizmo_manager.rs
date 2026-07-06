@@ -3,6 +3,7 @@ use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
+use crate::messages::tool::common_functionality::gizmos::generic_gizmos::GenericGizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
@@ -34,6 +35,9 @@ pub enum ShapeGizmoHandlers {
 	Grid(GridGizmoHandler),
 	Spiral(SpiralGizmoHandler),
 	Heart(HeartGizmoHandler),
+	/// Registry-driven generic handler. Used for nodes that declare their gizmos in the
+	/// [gizmo registry](super::gizmo_registry) rather than via a hand-written handler.
+	Generic(GenericGizmoManager),
 }
 
 impl ShapeGizmoHandlers {
@@ -48,6 +52,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(_) => "grid",
 			Self::Spiral(_) => "spiral",
 			Self::Heart(_) => "heart",
+			Self::Generic(_) => "generic",
 			Self::None => "none",
 		}
 	}
@@ -62,6 +67,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Heart(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Generic(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
 	}
@@ -76,6 +82,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.is_any_gizmo_hovered(),
 			Self::Spiral(h) => h.is_any_gizmo_hovered(),
 			Self::Heart(h) => h.is_any_gizmo_hovered(),
+			Self::Generic(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
 	}
@@ -90,6 +97,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.handle_click(),
 			Self::Spiral(h) => h.handle_click(),
 			Self::Heart(h) => h.handle_click(),
+			Self::Generic(h) => h.handle_click(),
 			Self::None => {}
 		}
 	}
@@ -104,6 +112,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Heart(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Generic(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -118,6 +127,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.cleanup(),
 			Self::Spiral(h) => h.cleanup(),
 			Self::Heart(h) => h.cleanup(),
+			Self::Generic(h) => h.cleanup(),
 			Self::None => {}
 		}
 	}
@@ -140,6 +150,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Spiral(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Heart(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Generic(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -161,6 +172,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Spiral(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Heart(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Generic(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -174,6 +186,7 @@ impl ShapeGizmoHandlers {
 			Self::Grid(h) => h.mouse_cursor_icon(),
 			Self::Spiral(h) => h.mouse_cursor_icon(),
 			Self::Heart(h) => h.mouse_cursor_icon(),
+			Self::Generic(h) => h.mouse_cursor_icon(),
 			Self::None => None,
 		}
 	}
