@@ -620,6 +620,26 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		transform_list_node!(element: Gradient),
 	];
 	node_types.extend(transform_list_rows);
+	macro_rules! transform_list_zip_node {
+		(element: $element:ty) => {
+			async_node!(
+				identifier: ProtoNodeIdentifier::new("transform_nodes::transform_nodes::TransformNode"),
+				graphene_std::transform_nodes::TransformListZipNode<_, _, _, _, _>,
+				input: Context,
+				fn_params: [Context => List<$element>, Context => List<DVec2>, Context => List<f64>, Context => List<DVec2>, Context => List<DVec2>]
+			)
+		};
+	}
+	let transform_list_zip_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+		transform_list_zip_node!(element: Graphic),
+		transform_list_zip_node!(element: String),
+		transform_list_zip_node!(element: Vector),
+		transform_list_zip_node!(element: Raster<CPU>),
+		transform_list_zip_node!(element: Raster<GPU>),
+		transform_list_zip_node!(element: Color),
+		transform_list_zip_node!(element: Gradient),
+	];
+	node_types.extend(transform_list_zip_rows);
 	// =============
 	// CONVERT NODES
 	// =============
