@@ -2,21 +2,19 @@ use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::descriptor;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::NodeInputDecleration;
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{Artboard, Color, Graphic};
+use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -51,10 +49,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
 				}
-			}
-			GraphOperationMessage::InitializeFillGradientMetadata { fill_node_id } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				modify_inputs.initialize_fill_gradient_metadata(fill_node_id);
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
@@ -484,32 +478,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
 				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
-			}
-			GraphOperationMessage::NormalizeAfterInputConnection { output_connector, input_connector } => {
-				let InputConnector::Node { node_id, input_index } = input_connector else { return };
-
-				// Fill node: When a Gradient Value chain is connected to a Fill node's paint input, reset the hidden gradient metadata.
-				// This prevents the rendered gradient and Gradient tool state from getting out of sync.
-				if let Some(def_id) = network_interface.reference(&node_id, &[]).as_ref()
-					&& def_id == &DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)
-					&& input_index == graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX
-				{
-					let Some(walk_from) = output_connector.node_id() else { return };
-
-					let is_gradient_value_connected = network_interface
-						.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::PrimaryFlow)
-						.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
-						.any(|node_id| {
-							let reference = network_interface.reference(&node_id, &[]);
-							reference.as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))
-						});
-
-					if !is_gradient_value_connected {
-						return;
-					}
-
-					responses.add(GraphOperationMessage::InitializeFillGradientMetadata { fill_node_id: node_id });
-				};
 			}
 		}
 	}

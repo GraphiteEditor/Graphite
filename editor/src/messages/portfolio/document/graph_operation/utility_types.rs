@@ -508,33 +508,6 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	// Reset all gradient-related metadata on the target Fill node.
-	pub fn initialize_fill_gradient_metadata(&mut self, fill_node_id: NodeId) {
-		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX),
-			NodeInput::value(TaggedValue::Gradient(Default::default()), false),
-			true,
-		);
-
-		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
-			NodeInput::value(TaggedValue::GradientType(Default::default()), false),
-			true,
-		);
-
-		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::SpreadMethodInput::INDEX),
-			NodeInput::value(TaggedValue::GradientSpreadMethod(Default::default()), false),
-			true,
-		);
-
-		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-			NodeInput::value(TaggedValue::OptionalDAffine2(None), false),
-			false,
-		);
-	}
-
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
 		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
 			return;

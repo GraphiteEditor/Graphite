@@ -1,6 +1,6 @@
 use super::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
@@ -26,9 +26,6 @@ pub enum GraphOperationMessage {
 		gradient_type: GradientType,
 		spread_method: GradientSpreadMethod,
 		transform: DAffine2,
-	},
-	InitializeFillGradientMetadata {
-		fill_node_id: NodeId,
 	},
 	BlendingFillSet {
 		layer: LayerNodeIdentifier,
@@ -159,9 +156,5 @@ pub enum GraphOperationMessage {
 		insert_index: usize,
 		/// When true, centers the SVG at the transform origin (clipboard paste / drag-drop). When false, keeps natural SVG coordinates (file-open flow).
 		center: bool,
-	},
-	NormalizeAfterInputConnection {
-		output_connector: OutputConnector,
-		input_connector: InputConnector,
 	},
 }
