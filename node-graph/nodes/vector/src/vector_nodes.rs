@@ -25,7 +25,7 @@ use vector_types::gradient::{build_transform_with_y_preservation, initial_gradie
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
-use vector_types::vector::algorithms::convex_hull::convex_hull_of_geometry;
+use vector_types::vector::algorithms::convex_hull::{SubpathRun, convex_hull_of_geometry, partial_convex_hull_of_geometry};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
@@ -581,7 +581,7 @@ pub fn merge_by_distance(
 	}
 }
 
-/// Wraps all of the input geometry in its convex hull: the shape a taut rubber band would form when stretched around it.
+/// Wraps all of the input geometry in its convex hull: the shape a taut rubber band would form when stretched around it. Dents in the geometry may optionally be kept based on how sharply their boundary turns backward.
 ///
 /// Convex portions of curved segments are kept exactly as they are, and the boundary departs from a curve only where it must, continuing along a straight bridging line that leaves and rejoins the curves at perfect tangents. The anchor points, floating points, and subpaths (open or closed) of all the input shapes are wrapped together into one combined hull.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
@@ -590,12 +590,21 @@ async fn convex_hull<I: IntoGraphicList>(
 	/// The `List` of vector paths to wrap in the convex hull. Nested `List`s are automatically flattened.
 	#[implementations(List<Graphic>, List<Vector>)]
 	content: I,
+	/// The maximum backward turning, in degrees, of a dent that still gets flattened by the hull.
+	///
+	/// At the maximum of 360°, the result is the fully convex hull. Lower values keep any dent whose boundary turns backward by more than this angle, so decreasing the value preserves progressively more concave detail, and at 0° every dent survives. Bridges between separate subpaths always apply, and interior geometry (such as holes) never survives.
+	#[range]
+	#[hard(0..360)]
+	#[default(360.)]
+	max_concavity: Angle,
 ) -> List<Vector> {
 	let content = content.into_graphic_list();
 	let flattened: List<Vector> = content.clone().into_flattened_list();
 
-	// Gather the world-space segments and floating anchor points of every input item
+	// Gather the world-space segments and floating anchor points of every input item, remembering
+	// which contiguous run of segments forms each subpath
 	let mut segments = Vec::new();
+	let mut runs = Vec::new();
 	let mut loose_points = Vec::new();
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
@@ -603,7 +612,15 @@ async fn convex_hull<I: IntoGraphicList>(
 		let affine = Affine::new(transform.to_cols_array());
 
 		for bezpath in element.stroke_bezpath_iter() {
+			let start = segments.len();
 			segments.extend(bezpath.segments().map(|segment| affine * segment));
+			if segments.len() > start {
+				let closed = matches!(bezpath.elements().last(), Some(kurbo::PathEl::ClosePath));
+				runs.push(SubpathRun {
+					segments: start..segments.len(),
+					closed,
+				});
+			}
 		}
 
 		// Anchor points not connected to any segment still participate in the hull
@@ -615,7 +632,12 @@ async fn convex_hull<I: IntoGraphicList>(
 		}
 	}
 
-	let hull = convex_hull_of_geometry(&segments, &loose_points);
+	// The maximum angle means unlimited: the fully convex hull
+	let hull = if max_concavity >= 360. {
+		convex_hull_of_geometry(&segments, &loose_points)
+	} else {
+		partial_convex_hull_of_geometry(&segments, &runs, &loose_points, max_concavity.to_radians())
+	};
 
 	// Carry over the attributes and stroke of the last input item, matching the Boolean Operation node
 	let Some(last_index) = flattened.len().checked_sub(1) else { return List::new() };
@@ -3425,7 +3447,7 @@ mod test {
 		floating.point_domain.push(PointId::generate(), DVec2::new(50., 200.));
 		content.push(Item::new_from_element(floating));
 
-		let hull = super::convex_hull(Footprint::default(), content).await;
+		let hull = super::convex_hull(Footprint::default(), content, 360.).await;
 		let element = hull.element(0).unwrap();
 
 		// The hull is the pentagon spanning both squares' outer corners and the floating point
@@ -3438,6 +3460,27 @@ mod test {
 		// The hull geometry is emitted in world space with no residual transform
 		let transform: DAffine2 = hull.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		assert_eq!(transform, DAffine2::IDENTITY);
+	}
+
+	#[tokio::test]
+	async fn convex_hull_max_concavity_keeps_dents() {
+		// A square with a rectangular notch in its top edge (180 degrees of backward turning)
+		let mut notched = BezPath::new();
+		notched.move_to(Point::new(0., 0.));
+		for point in [(100., 0.), (100., 100.), (60., 100.), (60., 60.), (40., 60.), (40., 100.), (0., 100.)] {
+			notched.line_to(Point::new(point.0, point.1));
+		}
+		notched.close_path();
+		let content = List::new_from_element(Vector::from_bezpath(notched));
+
+		// Below the notch's corner turning nothing flattens; at the maximum the hull is fully convex
+		let kept = super::convex_hull(Footprint::default(), content.clone(), 80.).await;
+		let kept_area: f64 = kept.element(0).unwrap().stroke_bezpath_iter().map(|bezpath| bezpath.area().abs()).sum();
+		assert!((kept_area - 9200.).abs() < 1., "the notch must survive at 80 degrees, got area {kept_area}");
+
+		let convex = super::convex_hull(Footprint::default(), content, 360.).await;
+		let convex_area: f64 = convex.element(0).unwrap().stroke_bezpath_iter().map(|bezpath| bezpath.area().abs()).sum();
+		assert!((convex_area - 10_000.).abs() < 1., "the hull must be fully convex at 360 degrees, got area {convex_area}");
 	}
 
 	#[tokio::test]
