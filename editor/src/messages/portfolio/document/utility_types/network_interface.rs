@@ -4174,6 +4174,37 @@ impl NodeNetworkInterface {
 			return;
 		}
 
+		// Reject a change that would create a cycle before any side effects run (only Node connections can create cycles).
+		// The new input is swapped in just for this test, then restored so the layout logic below sees the unmodified network.
+		if matches!(new_input, NodeInput::Node { .. }) {
+			let Some(network) = self.network_mut(network_path) else {
+				log::error!("Could not get nested network in set_input");
+				return;
+			};
+			fn get_input<'a>(network: &'a mut NodeNetwork, input_connector: &InputConnector) -> Option<&'a mut NodeInput> {
+				match input_connector {
+					InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
+					InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+				}
+			}
+
+			let Some(input) = get_input(network, input_connector) else {
+				log::error!("Could not get input in set_input");
+				return;
+			};
+			let old_input = std::mem::replace(input, new_input.clone());
+			let is_acyclic = network.is_acyclic();
+			let Some(input) = get_input(network, input_connector) else {
+				log::error!("Could not get input in set_input");
+				return;
+			};
+			*input = old_input;
+
+			if !is_acyclic {
+				return;
+			}
+		}
+
 		// If the previous input is connected to a chain node, then set all upstream chain nodes to absolute position
 		if let NodeInput::Node { node_id: previous_upstream_id, .. } = &previous_input
 			&& self.is_chain(previous_upstream_id, network_path)
@@ -4217,13 +4248,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Ensure the network is not cyclic (only Node connections can create cycles)
-		if matches!(new_input, NodeInput::Node { .. }) && !network.is_acyclic() {
-			self.set_input(input_connector, old_input, network_path);
-			return;
-		}
-
-		// It is necessary to ensure the grpah is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
+		// It is necessary to ensure the graph is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
 		let previous_metadata = match &previous_input {
 			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
 			_ => None,
