@@ -6586,13 +6586,11 @@ pub struct NodeNetworkPersistentMetadata {
 	pub previewing: Previewing,
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
-	/// Stack of selection snapshots for previous history states.
-	// TODO: Use `#[serde(skip)]` here instead? @TrueDoctor claims this isn't valid but hasn't satisfactorily explained how it differs from the situation where `#[serde(default)]` fills in the default value. From brief testing, skip seems to work without issue.
-	#[serde(default)]
+	/// Stack of selection snapshots for previous history states. Session state that is not persisted into saved documents.
+	#[serde(skip)]
 	pub selection_undo_history: VecDeque<SelectedNodes>,
 	/// Stack of selection snapshots for future history states.
-	// TODO: Use `#[serde(skip)]` here instead? See above.
-	#[serde(default)]
+	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 }
 
