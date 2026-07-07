@@ -24,9 +24,10 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 	// An `Item` primary shares its element-wise frame with ranked parameters; a `List`/`ListDyn` aggregation primary accepts them as fixed ranked inputs
+	let ranked = |ty: &Type| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
 	let primary_permits_item_params = match parsed.fields.first().map(|field| &field.ty) {
-		Some(ParsedFieldType::Regular(RegularParsedField { ty, .. })) => outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"),
-		Some(ParsedFieldType::Node(NodeParsedField { output_type, .. })) => outer_wrapper_is(output_type, "Item"),
+		Some(ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) => ranked(ty) || implementations.iter().any(ranked),
+		Some(ParsedFieldType::Node(NodeParsedField { output_type, implementations, .. })) => ranked(output_type) || implementations.iter().any(|implementation| ranked(&implementation.output)),
 		None => false,
 	};
 
@@ -67,8 +68,9 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 
 	if !outer_wrapper_is(ty, "Item") {
 		// A non-`Item` primary may still emit a rank-0 `Item<T>`: a `()` generator has no input, and a `List<T>` or
-		// `ListDyn` aggregation reduces a whole list down to a single item.
-		let primary_reduces_or_generates = is_unit_type(ty) || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
+		// `ListDyn` aggregation (declared directly or via a generic primary's implementation rows) reduces a whole list down to a single item.
+		let primary_reduces_or_generates =
+			is_unit_type(ty) || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn") || implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"));
 		if outer_wrapper_is(&parsed.output_type, "Item") && !primary_reduces_or_generates {
 			emit_error!(
 				parsed.output_type.span(),

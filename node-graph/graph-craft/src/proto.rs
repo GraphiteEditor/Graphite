@@ -843,7 +843,15 @@ impl TypingContext {
 					})
 					.collect::<Vec<_>>();
 
-				if promotable_matches.len() == 1 {
+				// Prefer the variant needing the fewest promotions, so a rank-0 wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous
+				promotable_matches.sort_by_key(|(_, required_promotions)| required_promotions.len());
+				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| required_promotions.len());
+				let tied_at_minimum = promotable_matches
+					.iter()
+					.take_while(|(_, required_promotions)| Some(required_promotions.len()) == minimum_promotions)
+					.count();
+
+				if tied_at_minimum == 1 {
 					let (node_io, required_promotions) = promotable_matches.remove(0);
 					let node_io = node_io.clone();
 

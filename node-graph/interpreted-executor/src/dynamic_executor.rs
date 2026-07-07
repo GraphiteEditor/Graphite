@@ -501,13 +501,13 @@ mod test {
 	fn item_wire_promotes_to_list_connector() {
 		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
 
-		let mut flatten_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-		flatten_node.identifier = ProtoNodeIdentifier::new("graphene_core::vector::FlattenPathNode");
+		let mut path_length_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		path_length_node.identifier = ProtoNodeIdentifier::new("core_types::vector::PathLengthNode");
 
 		let network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(1),
-			nodes: vec![(NodeId(0), value_node), (NodeId(1), flatten_node)],
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), path_length_node)],
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("An Item wire should resolve a List connector via promotion");
@@ -515,7 +515,7 @@ mod test {
 		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapter should instantiate");
 
 		let context: Context = None;
-		let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
 		assert!(result.is_some(), "The promoted wire should execute end-to-end");
 	}
 

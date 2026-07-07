@@ -1,6 +1,7 @@
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::PlatformEditorApi;
+use graph_craft::application_io::resource::Resource;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
@@ -19,10 +20,10 @@ use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::render_node::RenderIntermediate;
 use graphene_std::text_nodes::StringCapitalization;
-use graphene_std::transform::{Footprint, ScaleType};
+use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
-use graphene_std::vector::misc::{ExtrudeJoiningAlgorithm, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::misc::{BooleanOperation, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns};
 use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
@@ -128,6 +129,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientStops>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Artboard>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Graphic>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Vector>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Raster<CPU>>]),
@@ -515,6 +517,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		XY,
 		ScaleType,
 		Footprint,
+		ReferencePoint,
+		CentroidType,
+		BooleanOperation,
+		InterpolationDistribution,
+		RowsOrColumns,
+		Artboard,
+		Resource,
 	));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
 	node_types.extend(promote_convert_node!(from_element: String, element: DashPattern));
