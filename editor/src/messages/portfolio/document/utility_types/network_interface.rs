@@ -946,15 +946,11 @@ impl NodeNetworkInterface {
 					log::error!("Could not get reference for node in reference: {node_id:?}");
 					return None;
 				};
-				node_metadata
-					.persistent_metadata
-					.network_metadata
-					.as_ref()
-					.expect("Network metadata must exist for network node in reference")
-					.persistent_metadata
-					.reference
-					.clone()
-					.map(DefinitionIdentifier::Network)
+				let Some(network_metadata) = node_metadata.persistent_metadata.network_metadata.as_ref() else {
+					log::error!("Network metadata must exist for network node in reference: {node_id:?}");
+					return None;
+				};
+				network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network)
 			}
 			DocumentNodeImplementation::ProtoNode(protonode_id) => Some(DefinitionIdentifier::ProtoNode(protonode_id.clone())),
 			_ => None,
@@ -1454,7 +1450,7 @@ impl NodeNetworkInterface {
 				let mut node_metadata = DocumentNodeMetadata::default();
 
 				node.inputs = old_node.inputs;
-				node.call_argument = old_node.manual_composition.unwrap();
+				node.call_argument = old_node.manual_composition.unwrap_or_default();
 				node.visible = old_node.visible;
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
@@ -2106,39 +2102,28 @@ impl NodeNetworkInterface {
 			outward_wires.insert(OutputConnector::Import(import_index), Vec::new());
 		}
 		// Collect wires between all nodes and the Imports
+		// A missing entry means a wire references a node output or import that does not exist, so log it and register the connector anyway rather than crashing
+		let push_outward_wire = |outward_wires: &mut HashMap<OutputConnector, Vec<InputConnector>>, output_connector: OutputConnector, input_connector: InputConnector| {
+			let outward_wires_entry = outward_wires.entry(output_connector).or_insert_with(|| {
+				log::error!("Output connector {output_connector:?} should be initialized in load_outward_wires");
+				Vec::new()
+			});
+			outward_wires_entry.push(input_connector);
+		};
 		for (current_node_id, node) in network.nodes.iter() {
 			for (input_index, input) in node.inputs.iter().enumerate() {
 				if let NodeInput::Node { node_id, output_index, .. } = input {
-					// If this errors then there is an input to a node that does not exist
-					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).unwrap_or_else(|| {
-						panic!(
-							"Output connector {:?} should be initialized for each node output from a node",
-							OutputConnector::node(*node_id, *output_index)
-						)
-					});
-					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(&mut outward_wires, OutputConnector::node(*node_id, *output_index), InputConnector::node(*current_node_id, input_index));
 				} else if let NodeInput::Import { import_index, .. } = input {
-					let outward_wires_entry = outward_wires
-						.get_mut(&OutputConnector::Import(*import_index))
-						.unwrap_or_else(|| panic!("Output connector {:?} should be initialized for each import from a node", OutputConnector::Import(*import_index)));
-					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::node(*current_node_id, input_index));
 				}
 			}
 		}
 		for (export_index, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).unwrap_or_else(|| {
-					panic!(
-						"Output connector {:?} should be initialized for each node input from exports",
-						OutputConnector::node(*node_id, *output_index)
-					)
-				});
-				outward_wires_entry.push(InputConnector::Export(export_index));
+				push_outward_wire(&mut outward_wires, OutputConnector::node(*node_id, *output_index), InputConnector::Export(export_index));
 			} else if let NodeInput::Import { import_index, .. } = export {
-				let outward_wires_entry = outward_wires
-					.get_mut(&OutputConnector::Import(*import_index))
-					.unwrap_or_else(|| panic!("Output connector {:?} should be initialized between imports and exports", OutputConnector::Import(*import_index)));
-				outward_wires_entry.push(InputConnector::Export(export_index));
+				push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::Export(export_index));
 			}
 		}
 
@@ -3552,14 +3537,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
-		let Some(node) = self.network_mut(&[]).unwrap().nodes.get_mut(node_id) else {
+		let Some(node) = self.network_mut(&[]).and_then(|network| network.nodes.get_mut(node_id)) else {
 			log::error!("Could not get node in vector_modification");
 			return;
 		};
 		{
 			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
 			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
-				panic!("Path node does not have modification input");
+				log::error!("Path node {node_id} does not have a modification input");
+				return;
 			};
 
 			modification.modify(&modification_type);
@@ -5445,8 +5431,8 @@ impl NodeNetworkInterface {
 						log::error!("Could not get outward wires in shift_selected_nodes");
 						return;
 					};
-					if let Some(upstream_node) = outward_wires.first()
-						&& node_ids.contains(&upstream_node.node_id().expect("Stack layer should have downstream layer"))
+					if let Some(downstream_node_id) = outward_wires.first().and_then(|input_connector| input_connector.node_id())
+						&& node_ids.contains(&downstream_node_id)
 					{
 						continue;
 					}
