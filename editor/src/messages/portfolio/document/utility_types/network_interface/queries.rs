@@ -289,16 +289,14 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn position(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		let top_left_position = self
-			.node_click_targets(node_id, network_path)
-			.and_then(|click_targets| click_targets.node_click_target.bounding_box())
-			.map(|mut bounding_box| {
-				if !self.is_layer(node_id, network_path) {
-					bounding_box[0] -= DVec2::new(0., 12.);
-				}
-				(bounding_box[0] / 24.).as_ivec2()
-			});
+	pub fn position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+		self.try_load_node_click_targets(node_id, network_path);
+		let top_left_position = self.try_get_node_bounding_box(node_id, network_path).map(|mut bounding_box| {
+			if !self.is_layer(node_id, network_path) {
+				bounding_box[0] -= DVec2::new(0., 12.);
+			}
+			(bounding_box[0] / 24.).as_ivec2()
+		});
 		top_left_position.map(|position| {
 			if self.is_layer(node_id, network_path) {
 				position + IVec2::new(self.chain_width(node_id, network_path) as i32, 0)
@@ -550,10 +548,10 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	pub fn height_from_click_target(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+	pub fn height_from_click_target(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+		self.try_load_node_click_targets(node_id, network_path);
 		let mut node_height: Option<u32> = self
-			.node_click_targets(node_id, network_path)
-			.and_then(|click_targets: &DocumentNodeClickTargets| click_targets.node_click_target.bounding_box())
+			.try_get_node_bounding_box(node_id, network_path)
 			.map(|bounding_box| ((bounding_box[1].y - bounding_box[0].y) / 24.) as u32);
 		if !self.is_layer(node_id, network_path) {
 			node_height = node_height.map(|height| height + 1);
