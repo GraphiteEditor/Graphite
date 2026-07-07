@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::color::Color;
-use core_types::list::{Item, ListDyn};
+use core_types::list::{Item, List, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
@@ -51,6 +51,38 @@ async fn transform<T: 'n + Send + 'static>(
 	item.left_apply_transform(&matrix);
 
 	item
+}
+
+/// The whole-`List` counterpart of `transform`, composing the matrix onto every item of a rank-1 content wire.
+/// Registered under the `TransformNode` identifier by manual registry rows, since the macro's element-wise variants require an `Item`-peeling primary.
+#[node_macro::node(category(""), skip_impl)]
+async fn transform_list<T: 'n + Send + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
+	content: impl Node<Context<'static>, Output = List<T>>,
+	translation: Item<DVec2>,
+	rotation: Item<f64>,
+	scale: Item<DVec2>,
+	skew: Item<DVec2>,
+) -> List<T> {
+	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
+
+	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
+	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
+	let matrix = trs * skew;
+
+	let footprint = ctx.try_footprint().copied();
+
+	let mut ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		footprint.apply_transform(&matrix);
+		ctx = ctx.with_footprint(footprint);
+	}
+
+	let mut list = content.eval(ctx.into_context()).await;
+
+	list.left_apply_transform(&matrix);
+
+	list
 }
 
 /// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.

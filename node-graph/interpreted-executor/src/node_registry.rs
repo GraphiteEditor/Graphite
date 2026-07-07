@@ -529,6 +529,27 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(field_adapter_convert_node!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
 	node_types.extend(field_adapter_convert_node!(from_element: f64, element: DashPattern));
+	// Whole-List Transform companion rows: a rank-1 content wire composes the matrix onto every item
+	macro_rules! transform_list_node {
+		(element: $element:ty) => {
+			async_node!(
+				identifier: ProtoNodeIdentifier::new("transform_nodes::transform_nodes::TransformNode"),
+				graphene_std::transform_nodes::TransformListNode<_, _, _, _, _>,
+				input: Context,
+				fn_params: [Context => List<$element>, Context => Item<DVec2>, Context => Item<f64>, Context => Item<DVec2>, Context => Item<DVec2>]
+			)
+		};
+	}
+	let transform_list_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+		transform_list_node!(element: Graphic),
+		transform_list_node!(element: String),
+		transform_list_node!(element: Vector),
+		transform_list_node!(element: Raster<CPU>),
+		transform_list_node!(element: Raster<GPU>),
+		transform_list_node!(element: Color),
+		transform_list_node!(element: Gradient),
+	];
+	node_types.extend(transform_list_rows);
 	// =============
 	// CONVERT NODES
 	// =============
@@ -600,8 +621,11 @@ mod node_registry_macros {
 			async_node!($path, input: $input, fn_params: [ $(() => $type),*])
 		};
 		($path:ty, input: $input:ty, fn_params: [$($arg:ty => $type:ty),*]) => {
+			async_node!(identifier: ProtoNodeIdentifier::new(stringify!($path)), $path, input: $input, fn_params: [$($arg => $type),*])
+		};
+		(identifier: $identifier:expr, $path:ty, input: $input:ty, fn_params: [$($arg:ty => $type:ty),*]) => {
 			(
-				ProtoNodeIdentifier::new(stringify!($path)),
+				$identifier,
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
