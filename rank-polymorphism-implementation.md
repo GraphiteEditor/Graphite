@@ -27,7 +27,7 @@ Migrated so far (~120 nodes): the graphical element-wise batch (Bounding Box, Cl
 #[node_macro::node(category("Blending"))]
 fn blend_mode<T>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)]
 	content: Item<T>,
 	blend_mode: Item<BlendMode>,
 ) -> Item<T> {
@@ -50,11 +50,12 @@ Kernels that ignore attributes simply pass them through by mutating the element 
 3. **Multi-connector zip.** Extend the mapped variant to zip all ranked connectors sharing the frame (longest-list, last-element repeats; attribute merge primary-first), replacing the single-mapped-input limitation. This delivers `Item<Vector>` content x `List<DVec2>` translations -> `List<Vector>` through Transform.
 4. **Generator flip + document migration.** Generators emit `Item<T>`; document upgrade inserts promotions where old documents expect lists; frontend displays `Item<T>` as `T`. Rank-0 wires begin flowing through real documents.
 5. **Parameter ranking.** Scalar connectors move to `Item<f64>`-style wires with TaggedValue promotion in the preprocessor, making every data connector frameable.
-6. **Node family completion.** Delete Copy to Points, Repeat on Points, Map, Map String, Attach Attribute, Extract Element, the As-type trio, and the Option debug trio; land the assign/spread family; add the companion nodes (Sum, Average, Minimum, Maximum, Any, All, Filter, Sort, Corners, Separate Glyphs).
-7. **Later horizons.** Data-tree spines (rank >= 2 as data), demand-driven broadcast-as-re-evaluation in the adapters, and possibly bare-`T` kernel sugar once the semantics are settled.
+6. **Generator parameter ranking (frame-from-params).** `()`-primary generators currently force bare params because validation requires an `Item` primary before params may rank; that is transitional, not a rule. Add a unit-primary mapped variant whose frame comes from the ranked params (the same machinery the Transform lazy-primary variant proved), so `Circle(radius: List<f64>) -> List<Vector>` emits one shape per slot. Until this lands, the signatures report exempts generator params from flagging.
+7. **Node family completion.** Delete Copy to Points, Repeat on Points, Map, Map String, Attach Attribute, Extract Element, the As-type trio, and the Option debug trio; land the assign/spread family; add the companion nodes (Sum, Average, Minimum, Maximum, Any, All, Filter, Sort, Corners, Separate Glyphs).
+8. **Later horizons.** Data-tree spines (rank >= 2 as data), demand-driven broadcast-as-re-evaluation in the adapters, and possibly bare-`T` kernel sugar once the semantics are settled.
 
 ### GPU shader kernels (`shader_node(PerPixelAdjust)`)
 
 Landed. The raster adjustment/blending kernels are ordinary `Item<T>` element-wise nodes, and their per-pixel logic is shared with the GPU by re-emitting the kernel body verbatim rather than hand-writing a second function or extracting a closure. The CPU compilation sees `core_types::list::Item` (real, attribute-carrying); the SPIR-V compilation sees `no_std_types::list::ShaderItem`, imported `as Item`, a `#[repr(transparent)]` stand-in exposing only element access, so every `Item<T>` wrapper and `.element()` call resolves to a zero-cost identity. It is named distinctly from the canonical `Item` so a codebase search for the real type is unambiguous. A body that touches attribute APIs (meaningless per-pixel) fails the shader build loudly instead of misbehaving.
 
-`PerPixelAdjust` codegen peels `Item` off ranked uniform parameters so the `repr(C)` uniform buffer stays bare, wraps the fetched texel and uniform values at the fragment entry point, and unwraps the returned item. No per-node annotation is needed; plain `shader_node(PerPixelAdjust)` continues to work. The `Adjust`/`Blend` per-element seams live on the element types (`Color`, `Raster<CPU>`, `GradientStops`) rather than on `List`.
+`PerPixelAdjust` codegen peels `Item` off ranked uniform parameters so the `repr(C)` uniform buffer stays bare, wraps the fetched texel and uniform values at the fragment entry point, and unwraps the returned item. No per-node annotation is needed; plain `shader_node(PerPixelAdjust)` continues to work. The `Adjust`/`Blend` per-element seams live on the element types (`Color`, `Raster<CPU>`, `Gradient`) rather than on `List`.
