@@ -77,6 +77,10 @@ impl EditorTestUtils {
 			panic!("Failed to evaluate graph: {e}");
 		}
 
+		// Sweep the network interface's structural invariants so any desync fails at the message that caused it
+		let violations = self.active_document().network_interface.validate_invariants();
+		assert!(violations.is_empty(), "Network interface invariant violations:\n{}", violations.join("\n"));
+
 		frontend_messages_from_msg
 	}
 
