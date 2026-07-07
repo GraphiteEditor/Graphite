@@ -335,11 +335,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
 			};
 
-			if let Some(type_default) = TaggedValue::from_type(ty) {
-				return NodeInput::value(type_default, exposed);
-			}
-
-			// A ranked `Item<T>` type without its own type default falls back to a bare `T` value, promoted at resolution
+			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Properties panel widgets
 			if let Type::Concrete(descriptor) = ty
 				&& let Some(element_name) = descriptor.name.strip_prefix("core_types::list::Item<").and_then(|inner| inner.strip_suffix('>'))
 			{
@@ -353,6 +349,10 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				if let Some(type_default) = TaggedValue::from_type(&element_type) {
 					return NodeInput::value(type_default, exposed);
 				}
+			}
+
+			if let Some(type_default) = TaggedValue::from_type(ty) {
+				return NodeInput::value(type_default, exposed);
 			}
 
 			NodeInput::value(TaggedValue::None, true)
