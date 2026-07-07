@@ -484,18 +484,13 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		self.try_load_outward_wires(network_path);
+
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in outward_wires");
 			return None;
 		};
-
-		if !network_metadata.transient_metadata.outward_wires.is_loaded() {
-			self.load_outward_wires(network_path);
-		}
-
-		let network_metadata = self.network_metadata(network_path)?;
-
-		let TransientMetadata::Loaded(outward_wires) = &network_metadata.transient_metadata.outward_wires else {
+		let Some(outward_wires) = network_metadata.transient_metadata.outward_wires.get_loaded_mut() else {
 			log::error!("could not load outward wires");
 			return None;
 		};
@@ -503,7 +498,23 @@ impl NodeNetworkInterface {
 		Some(outward_wires)
 	}
 
-	fn load_outward_wires(&mut self, network_path: &[NodeId]) {
+	/// Reads the outward wires through &self, loading them first if needed.
+	pub(crate) fn with_outward_wires<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<OutputConnector, Vec<InputConnector>>) -> R) -> Option<R> {
+		self.try_load_outward_wires(network_path);
+		self.network_metadata(network_path)?.transient_metadata.outward_wires.with_loaded(read)
+	}
+
+	fn try_load_outward_wires(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in outward_wires");
+			return;
+		};
+		if !network_metadata.transient_metadata.outward_wires.is_loaded() {
+			self.load_outward_wires(network_path);
+		}
+	}
+
+	fn load_outward_wires(&self, network_path: &[NodeId]) {
 		let mut outward_wires = HashMap::new();
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in load_outward_wires");
@@ -546,13 +557,13 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
 
-		network_metadata.transient_metadata.outward_wires = TransientMetadata::Loaded(outward_wires);
+		network_metadata.transient_metadata.outward_wires.store(outward_wires);
 	}
 
 	pub(crate) fn unload_outward_wires(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_outward_wires");
 			return;
 		};
@@ -566,7 +577,7 @@ impl NodeNetworkInterface {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			return;
 		};
-		let TransientMetadata::Loaded(outward_wires) = &mut network_metadata.transient_metadata.outward_wires else {
+		let Some(outward_wires) = network_metadata.transient_metadata.outward_wires.get_loaded_mut() else {
 			return;
 		};
 

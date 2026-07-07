@@ -377,6 +377,40 @@ impl<T> TransientMetadata<T> {
 	}
 }
 
+/// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TransientCache<T>(std::cell::RefCell<TransientMetadata<T>>);
+
+impl<T> TransientCache<T> {
+	pub(crate) fn is_loaded(&self) -> bool {
+		self.0.borrow().is_loaded()
+	}
+
+	pub(crate) fn store(&self, value: T) {
+		*self.0.borrow_mut() = TransientMetadata::Loaded(value);
+	}
+
+	pub(crate) fn unload(&self) {
+		*self.0.borrow_mut() = TransientMetadata::Unloaded;
+	}
+
+	/// Runs `read` on the cached value if it is loaded.
+	pub(crate) fn with_loaded<R>(&self, read: impl FnOnce(&T) -> R) -> Option<R> {
+		match &*self.0.borrow() {
+			TransientMetadata::Loaded(value) => Some(read(value)),
+			TransientMetadata::Unloaded => None,
+		}
+	}
+
+	/// Direct access without runtime borrow tracking, for callers already holding exclusive access.
+	pub(crate) fn get_loaded_mut(&mut self) -> Option<&mut T> {
+		match self.0.get_mut() {
+			TransientMetadata::Loaded(value) => Some(value),
+			TransientMetadata::Unloaded => None,
+		}
+	}
+}
+
 /// If some network calculation is too slow to compute for every usage, cache the data here
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
@@ -389,7 +423,7 @@ pub struct NodeNetworkTransientMetadata {
 	// /// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
-	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
+	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
 	/// Click targets for adding, removing, and moving import/export ports
