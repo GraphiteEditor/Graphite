@@ -960,7 +960,13 @@ impl NodeNetworkInterface {
 
 	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
 		self.try_load_node_click_targets(node_id, network_path);
-		self.try_get_node_click_targets(node_id, network_path)
+
+		let node_metadata = self.node_metadata_mut(node_id, network_path)?;
+		let Some(click_targets) = node_metadata.transient_metadata.click_targets.get_loaded_mut() else {
+			log::error!("Could not load node type metadata when getting click targets");
+			return None;
+		};
+		Some(click_targets)
 	}
 
 	fn try_load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
@@ -973,13 +979,14 @@ impl NodeNetworkInterface {
 		};
 	}
 
-	fn try_get_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
+	/// Reads the node click targets through &self if they are already loaded.
+	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
 		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let TransientMetadata::Loaded(click_target) = &node_metadata.transient_metadata.click_targets else {
+		let result = node_metadata.transient_metadata.click_targets.with_loaded(read);
+		if result.is_none() {
 			log::error!("Could not load node type metadata when getting click targets");
-			return None;
-		};
-		Some(click_target)
+		}
+		result
 	}
 
 	pub fn load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
@@ -1150,7 +1157,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested node_metadata in load_node_click_targets");
 			return;
 		};
-		node_metadata.transient_metadata.click_targets = TransientMetadata::Loaded(document_node_click_targets);
+		node_metadata.transient_metadata.click_targets.store(document_node_click_targets);
 	}
 
 	pub fn node_bounding_box(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
@@ -1159,8 +1166,8 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn try_get_node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.try_get_node_click_targets(node_id, network_path)
-			.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
+		self.with_node_click_targets(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
+			.flatten()
 	}
 
 	pub fn try_load_all_node_click_targets(&mut self, network_path: &[NodeId]) {
