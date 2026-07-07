@@ -429,7 +429,7 @@ impl NodeNetworkInterface {
 							log::error!("Could not get nested network_metadata in export_ports");
 							continue;
 						};
-						if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents
+						if let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut()
 							&& let Some(LayerOwner::None(offset)) = stack_dependents.get_mut(node_id)
 						{
 							*offset += shift_sign;
@@ -530,7 +530,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in export_ports");
 			return;
 		};
-		let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents else {
+		let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() else {
 			log::error!("Stack dependents should be loaded in vertical_shift_with_push");
 			return;
 		};
@@ -576,53 +576,59 @@ impl NodeNetworkInterface {
 	pub(crate) fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
 		self.try_load_all_node_click_targets(network_path);
 		self.try_load_stack_dependents(network_path);
-		let Some(stack_dependents) = self.try_get_stack_dependents(network_path) else {
+
+		// Check collisions and for all owned nodes and recursively shift them
+		let nodes_to_shift = self.with_stack_dependents(network_path, |stack_dependents| {
+			let mut nodes_to_shift = Vec::new();
+
+			let default_hashset = HashSet::new();
+			let owned_nodes = self.owned_nodes(node_id, network_path).unwrap_or(&default_hashset);
+
+			for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
+				for node_to_check_collision in stack_dependents {
+					// Do not check collision between any of the owned nodes or the shifted node
+					if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
+						continue;
+					}
+
+					if node_to_check_collision.0 == current_node {
+						continue;
+					}
+					let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
+						log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
+						continue;
+					};
+
+					let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
+						log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
+						continue;
+					};
+					// If the nodes do not intersect horizontally, then there is no collision
+					if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
+						continue;
+					}
+					// Do not check collision if the nodes are currently intersecting
+					if current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1 {
+						continue;
+					}
+
+					current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
+					current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
+
+					let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
+					if collision {
+						nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
+					}
+				}
+			}
+
+			nodes_to_shift
+		});
+
+		let Some(nodes_to_shift) = nodes_to_shift else {
 			log::error!("Could not load stack dependents in shift_selected_nodes");
 			return Vec::new();
 		};
-		// Check collisions and for all owned nodes and recursively shift them
-		let mut nodes_to_shift = Vec::new();
-
-		let default_hashset = HashSet::new();
-		let owned_nodes = self.owned_nodes(node_id, network_path).unwrap_or(&default_hashset);
-
-		for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
-			for node_to_check_collision in stack_dependents {
-				// Do not check collision between any of the owned nodes or the shifted node
-				if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
-					continue;
-				}
-
-				if node_to_check_collision.0 == current_node {
-					continue;
-				}
-				let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
-					log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
-					continue;
-				};
-
-				let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
-					log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
-					continue;
-				};
-				// If the nodes do not intersect horizontally, then there is no collision
-				if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
-					continue;
-				}
-				// Do not check collision if the nodes are currently intersecting
-				if current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1 {
-					continue;
-				}
-
-				current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
-				current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
-
-				let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
-				if collision {
-					nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
-				}
-			}
-		}
 		nodes_to_shift
 	}
 

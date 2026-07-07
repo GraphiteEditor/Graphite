@@ -378,8 +378,14 @@ impl<T> TransientMetadata<T> {
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct TransientCache<T>(std::cell::RefCell<TransientMetadata<T>>);
+
+impl<T> Default for TransientCache<T> {
+	fn default() -> Self {
+		TransientCache(std::cell::RefCell::new(TransientMetadata::Unloaded))
+	}
+}
 
 impl<T> TransientCache<T> {
 	pub(crate) fn is_loaded(&self) -> bool {
@@ -417,17 +423,17 @@ pub struct NodeNetworkTransientMetadata {
 	pub selected_nodes: SelectedNodes,
 	/// Sole dependents of the top of the stacks of all selected nodes. Used to determine which nodes are checked for collision when shifting.
 	/// The LayerOwner is used to determine whether the collided node should be shifted, or the layer that owns it.
-	pub stack_dependents: TransientMetadata<HashMap<NodeId, LayerOwner>>,
+	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
-	pub all_nodes_bounding_box: TransientMetadata<[DVec2; 2]>,
+	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
 	// /// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
-	pub import_export_ports: TransientMetadata<Ports>,
+	pub(crate) import_export_ports: TransientCache<Ports>,
 	/// Click targets for adding, removing, and moving import/export ports
-	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
+	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
 	// Wires from the exports
 	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
