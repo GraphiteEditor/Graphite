@@ -62,6 +62,17 @@ impl TypeSource {
 		self.compiled_nested_type().is_some_and(|ty| ty.identifier_name().starts_with("List<"))
 	}
 
+	/// The element type's identifier name with any rank-0 `Item<>` or rank-1 `List<>` wrapper peeled, so semantic type checks can be rank-agnostic.
+	pub fn compiled_element_name(&self) -> Option<String> {
+		let name = self.compiled_nested_type()?.identifier_name();
+		let element = name
+			.strip_prefix("Item<")
+			.or_else(|| name.strip_prefix("List<"))
+			.and_then(|inner| inner.strip_suffix('>'))
+			.unwrap_or(&name);
+		Some(element.to_string())
+	}
+
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
 		match self {
 			TypeSource::Compiled(compiled_type) => Some(compiled_type.nested_type()),
