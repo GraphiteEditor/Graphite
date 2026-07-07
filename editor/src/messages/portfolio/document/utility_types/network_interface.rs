@@ -1181,12 +1181,16 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Whether the node is an Artboard node by identity, regardless of whether it currently participates in the scene.
+	/// Callers that care about scene membership should source their layers from the document structure or check connectivity separately.
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.reference(node_id, network_path)
-			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()) && self.connected_to_output(node_id, &[]))
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
 	}
 
+	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
+		// O(n * (nodes + wires)) since connected_to_output performs a graph walk per artboard candidate
 		self.document_network_metadata()
 			.persistent_metadata
 			.node_metadata
