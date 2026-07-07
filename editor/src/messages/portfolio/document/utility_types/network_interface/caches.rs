@@ -79,7 +79,7 @@ impl NodeNetworkInterface {
 		self.try_get_stack_dependents(network_path)
 	}
 
-	pub(crate) fn try_load_stack_dependents(&mut self, network_path: &[NodeId]) {
+	pub(crate) fn try_load_stack_dependents(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in stack_dependents");
 			return;
@@ -108,7 +108,7 @@ impl NodeNetworkInterface {
 	}
 
 	// This function always has to be in sync with the selected nodes.
-	fn load_stack_dependents(&mut self, network_path: &[NodeId]) {
+	fn load_stack_dependents(&self, network_path: &[NodeId]) {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in load_stack_dependents");
 			return;
@@ -139,15 +139,19 @@ impl NodeNetworkInterface {
 					stack_tops.insert(current_node);
 					break;
 				};
-				let Some(outward_wires) = self.outward_wires(network_path) else {
+				let Some(first_downstream_input) = self.with_outward_wires(network_path, |outward_wires| {
+					outward_wires
+						.get(&OutputConnector::node(current_node, 0))
+						.map(|layer_outward_wires| layer_outward_wires.first().copied())
+				}) else {
 					log::error!("Cannot load outward wires in load_stack_dependents");
 					return;
 				};
-				let Some(layer_outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+				let Some(first_downstream_input) = first_downstream_input else {
 					log::error!("Could not get outward_wires for layer {current_node}");
 					break;
 				};
-				match layer_outward_wires.first() {
+				match first_downstream_input {
 					Some(downstream_input) => {
 						let Some(downstream_node) = downstream_input.node_id() else {
 							log::error!("Node connected to export should be absolute");
@@ -223,8 +227,8 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get current network in load_export_ports");
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get current network in load_stack_dependents");
 			return;
 		};
 
@@ -453,7 +457,7 @@ impl NodeNetworkInterface {
 		Some(bounding_box)
 	}
 
-	pub fn load_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
+	pub fn load_all_nodes_bounding_box(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in load_all_nodes_bounding_box");
 			return;
@@ -462,14 +466,11 @@ impl NodeNetworkInterface {
 
 		let all_nodes_bounding_box = nodes
 			.iter()
-			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
-			})
+			.filter_map(|node_id| self.node_bounding_box(node_id, network_path))
 			.reduce(Quad::combine_bounds)
 			.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
 		network_metadata.transient_metadata.all_nodes_bounding_box.store(all_nodes_bounding_box);
 	}
 
@@ -902,7 +903,7 @@ impl NodeNetworkInterface {
 		Some(click_targets)
 	}
 
-	fn try_load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub(crate) fn try_load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in node_click_targets");
 			return;
@@ -922,7 +923,7 @@ impl NodeNetworkInterface {
 		result
 	}
 
-	pub fn load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub fn load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_position) = self.position_from_downstream_node(node_id, network_path) else {
 			log::error!("Could not get node position in load_node_click_targets for node {node_id}");
 			return;
@@ -1086,16 +1087,16 @@ impl NodeNetworkInterface {
 			}
 		};
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in load_node_click_targets");
 			return;
 		};
 		node_metadata.transient_metadata.click_targets.store(document_node_click_targets);
 	}
 
-	pub fn node_bounding_box(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.node_click_targets(node_id, network_path)
-			.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
+	pub fn node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		self.try_load_node_click_targets(node_id, network_path);
+		self.try_get_node_bounding_box(node_id, network_path)
 	}
 
 	pub fn try_get_node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
@@ -1103,7 +1104,7 @@ impl NodeNetworkInterface {
 			.flatten()
 	}
 
-	pub fn try_load_all_node_click_targets(&mut self, network_path: &[NodeId]) {
+	pub fn try_load_all_node_click_targets(&self, network_path: &[NodeId]) {
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in load_all_node_click_targets");
 			return;
@@ -1114,7 +1115,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the top left position in node graph coordinates for a node by recursively iterating downstream through cached positions, which means the iteration can be broken once a known position is reached.
-	pub fn position_from_downstream_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+	pub fn position_from_downstream_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in position_from_downstream_node");
 			return None;
@@ -1125,9 +1126,8 @@ impl NodeNetworkInterface {
 					LayerPosition::Absolute(position) => Some(position),
 					LayerPosition::Stack(y_offset) => {
 						let Some(downstream_node_connectors) = self
-							.outward_wires(network_path)
-							.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
-							.cloned()
+							.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned())
+							.flatten()
 						else {
 							log::error!("Could not get downstream node in position_from_downstream_node");
 							return None;
@@ -1160,9 +1160,8 @@ impl NodeNetworkInterface {
 						loop {
 							// TODO: Use root node to restore if previewing
 							let Some(downstream_node_connectors) = self
-								.outward_wires(network_path)
-								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(current_node_id, 0)))
-								.cloned()
+								.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(current_node_id, 0)).cloned())
+								.flatten()
 							else {
 								log::error!("Could not get downstream node for node {node_id} with Position::Chain");
 								return None;
