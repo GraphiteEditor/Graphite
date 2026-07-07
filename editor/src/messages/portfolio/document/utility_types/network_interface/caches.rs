@@ -90,12 +90,17 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub(crate) fn try_get_stack_dependents(&self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+	/// Reads the stack dependents through &self if they are already loaded.
+	pub(crate) fn with_stack_dependents<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<NodeId, LayerOwner>) -> R) -> Option<R> {
+		self.network_metadata(network_path)?.transient_metadata.stack_dependents.with_loaded(read)
+	}
+
+	pub(crate) fn try_get_stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in try_get_stack_dependents");
 			return None;
 		};
-		let TransientMetadata::Loaded(stack_dependents) = &network_metadata.transient_metadata.stack_dependents else {
+		let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() else {
 			log::error!("could not load stack_dependents");
 			return None;
 		};
@@ -227,7 +232,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		network_metadata.transient_metadata.stack_dependents = TransientMetadata::Loaded(stack_dependents);
+		network_metadata.transient_metadata.stack_dependents.store(stack_dependents);
 	}
 
 	pub fn unload_stack_dependents(&mut self, network_path: &[NodeId]) {
@@ -245,7 +250,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents {
+		if let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() {
 			for layer_owner in stack_dependents.values_mut() {
 				if let LayerOwner::None(offset) = layer_owner {
 					*offset = 0;
@@ -263,11 +268,11 @@ impl NodeNetworkInterface {
 			self.load_import_export_ports(network_path);
 		}
 
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
 			return None;
 		};
-		let TransientMetadata::Loaded(ports) = &network_metadata.transient_metadata.import_export_ports else {
+		let Some(ports) = network_metadata.transient_metadata.import_export_ports.get_loaded_mut() else {
 			log::error!("could not load import ports");
 			return None;
 		};
@@ -299,7 +304,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		network_metadata.transient_metadata.import_export_ports = TransientMetadata::Loaded(import_export_ports);
+		network_metadata.transient_metadata.import_export_ports.store(import_export_ports);
 	}
 
 	pub(crate) fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
@@ -342,11 +347,11 @@ impl NodeNetworkInterface {
 		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
 			self.load_modify_import_export(network_path);
 		}
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in modify_import_export");
 			return None;
 		};
-		let TransientMetadata::Loaded(click_targets) = &network_metadata.transient_metadata.modify_import_export else {
+		let Some(click_targets) = network_metadata.transient_metadata.modify_import_export.get_loaded_mut() else {
 			log::error!("could not load modify import export ports");
 			return None;
 		};
@@ -409,7 +414,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		network_metadata.transient_metadata.modify_import_export = TransientMetadata::Loaded(ModifyImportExportClickTarget {
+		network_metadata.transient_metadata.modify_import_export.store(ModifyImportExportClickTarget {
 			remove_imports_exports,
 			reorder_imports_exports,
 		});
@@ -444,9 +449,9 @@ impl NodeNetworkInterface {
 			self.load_all_nodes_bounding_box(network_path);
 		}
 
-		let network_metadata = self.network_metadata(network_path)?;
+		let network_metadata = self.network_metadata_mut(network_path)?;
 
-		let TransientMetadata::Loaded(bounding_box) = &network_metadata.transient_metadata.all_nodes_bounding_box else {
+		let Some(bounding_box) = network_metadata.transient_metadata.all_nodes_bounding_box.get_loaded_mut() else {
 			log::error!("could not load all nodes bounding box");
 			return None;
 		};
@@ -471,7 +476,7 @@ impl NodeNetworkInterface {
 			.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
-		network_metadata.transient_metadata.all_nodes_bounding_box = TransientMetadata::Loaded(all_nodes_bounding_box);
+		network_metadata.transient_metadata.all_nodes_bounding_box.store(all_nodes_bounding_box);
 	}
 
 	pub fn unload_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
