@@ -9,7 +9,7 @@ use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::Texture;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::extract_xy::XY;
-use graphene_std::gradient::GradientStops;
+use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 #[cfg(target_family = "wasm")]
 use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
@@ -56,7 +56,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<Vector>, to: AttributeDyn),
 		convert_node!(from: List<Raster<CPU>>, to: AttributeDyn),
 		convert_node!(from: List<Color>, to: AttributeDyn),
-		convert_node!(from: List<GradientStops>, to: AttributeDyn),
+		convert_node!(from: List<Gradient>, to: AttributeDyn),
 		convert_node!(from: List<f64>, to: AttributeDyn),
 		convert_node!(from: List<bool>, to: AttributeDyn),
 		convert_node!(from: List<String>, to: AttributeDyn),
@@ -71,7 +71,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<GPU>>, to: ListDyn),
 		convert_node!(from: List<Color>, to: ListDyn),
-		convert_node!(from: List<GradientStops>, to: ListDyn),
+		convert_node!(from: List<Gradient>, to: ListDyn),
 		convert_node!(from: List<f64>, to: ListDyn),
 		convert_node!(from: List<bool>, to: ListDyn),
 		convert_node!(from: List<String>, to: ListDyn),
@@ -96,7 +96,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<String>, to: AttributeValueDyn),
 		convert_node!(from: List<NodeId>, to: AttributeValueDyn),
 		convert_node!(from: List<Color>, to: AttributeValueDyn),
-		convert_node!(from: List<GradientStops>, to: AttributeValueDyn),
+		convert_node!(from: List<Gradient>, to: AttributeValueDyn),
 		convert_node!(from: List<Vector>, to: AttributeValueDyn),
 		convert_node!(from: List<Raster<CPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
@@ -128,7 +128,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientStops>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Gradient>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Artboard>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Graphic>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Vector>]),
@@ -136,7 +136,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<GradientStops>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Gradient>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<String>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<f64>]),
@@ -241,7 +241,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Raster<CPU>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Color>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientStops>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Gradient>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<String>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<NodeId>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<f64>]),
@@ -486,7 +486,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Raster<CPU>,
 		Graphic,
 		Color,
-		GradientStops,
+		Gradient,
 		String,
 		f64,
 		f32,

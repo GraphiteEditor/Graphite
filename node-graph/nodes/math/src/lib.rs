@@ -13,7 +13,7 @@ use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Div, Mul, Rem, Sub};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -856,7 +856,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	if_true: impl Node<C, Output = T>,
 	#[expose]
@@ -875,7 +875,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	if_false: impl Node<C, Output = T>,
 ) -> T {
@@ -957,13 +957,13 @@ fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Item<GradientStops> {
+fn gradient_value(_: impl Ctx, _primary: (), gradient: Gradient) -> Item<Gradient> {
 	Item::new_from_element(gradient)
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, gradient: Item<GradientStops>, gradient_type: Item<vector_types::GradientType>) -> Item<GradientStops> {
+fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vector_types::GradientType>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_TYPE, *gradient_type.element());
 	gradient
@@ -971,7 +971,7 @@ fn gradient_type(_: impl Ctx, gradient: Item<GradientStops>, gradient_type: Item
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, gradient: Item<GradientStops>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<GradientStops> {
+fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
 	gradient
@@ -979,7 +979,7 @@ fn spread_method(_: impl Ctx, gradient: Item<GradientStops>, spread_method: Item
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Item<Color> {
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: Gradient, position: Fraction) -> Item<Color> {
 	let position = position.clamp(0., 1.);
 	let color = gradient.evaluate(position);
 	Item::new_from_element(color)

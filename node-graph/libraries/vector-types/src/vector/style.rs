@@ -11,7 +11,7 @@ use std::f64::consts::{PI, TAU};
 
 /// Describes an editable fill choice, storing color or gradient stops without gradient placement metadata.
 ///
-/// Can be None, a solid [Color], or a linear/radial [GradientStops].
+/// Can be None, a solid [Color], or a linear/radial [Gradient].
 ///
 /// In the future we'll probably also add a pattern fill.
 ///
@@ -23,7 +23,7 @@ pub enum FillChoice {
 	#[default]
 	None,
 	Solid(Color),
-	Gradient(GradientStops),
+	Gradient(Gradient),
 }
 
 // TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
@@ -53,7 +53,7 @@ impl From<&FillChoiceUI> for FillChoice {
 		match value {
 			FillChoiceUI::None => Self::None,
 			FillChoiceUI::Solid(srgba) => Self::Solid(Color::from(*srgba)),
-			FillChoiceUI::Gradient(stops) => Self::Gradient(GradientStops::from(stops)),
+			FillChoiceUI::Gradient(stops) => Self::Gradient(Gradient::from(stops)),
 		}
 	}
 }
@@ -89,7 +89,7 @@ impl FillChoice {
 		Some(*color)
 	}
 
-	pub fn as_gradient(&self) -> Option<&GradientStops> {
+	pub fn as_gradient(&self) -> Option<&Gradient> {
 		let Self::Gradient(gradient) = self else { return None };
 		Some(gradient)
 	}

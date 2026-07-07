@@ -20,11 +20,11 @@ pub mod migrations {
 		use dyn_any::DynAny;
 		use glam::{DAffine2, DVec2};
 		use vector_types::vector::{PointDomain, RegionDomain, SegmentDomain, misc::HandleId, style::Stroke};
-		use vector_types::{GradientStops, Vector, vector};
+		use vector_types::{Gradient, Vector, vector};
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-		pub struct Gradient {
-			pub stops: GradientStops,
+		pub struct LegacyGradient {
+			pub stops: Gradient,
 			pub gradient_type: vector::style::GradientType,
 			pub start: DVec2,
 			pub end: DVec2,
@@ -36,11 +36,11 @@ pub mod migrations {
 			pub transform: DAffine2,
 		}
 
-		impl Gradient {
+		impl LegacyGradient {
 			/// Converts a legacy bounding-box-relative gradient (`start`/`end` in [0,1]) into an absolute one in the geometry's local space.
 			/// `bounding_box` maps [0,1] onto the geometry's bounding box; `layer_transform` is the layer's own transform,
 			/// used to bake the elliptical adjustment that reproduces the legacy isotropic radial through a non-uniform layer.
-			pub fn to_absolute(&self, bounding_box: DAffine2, layer_transform: DAffine2) -> Gradient {
+			pub fn to_absolute(&self, bounding_box: DAffine2, layer_transform: DAffine2) -> LegacyGradient {
 				let start = bounding_box.transform_point2(self.start);
 				let end = bounding_box.transform_point2(self.end);
 				let direction = end - start;
@@ -63,7 +63,7 @@ pub mod migrations {
 					DAffine2::IDENTITY
 				};
 
-				Gradient {
+				LegacyGradient {
 					start,
 					end,
 					transform,
@@ -80,15 +80,15 @@ pub mod migrations {
 		}
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-		pub enum Fill {
+		pub enum LegacyFill {
 			#[default]
 			None,
 			Solid(Color),
-			Gradient(Gradient),
+			Gradient(LegacyGradient),
 		}
 
 		/// The legacy `fill` field is intentionally omitted because vector payload migration only
-		/// recovers editable vector data. The fill/stroke paints are migrated from the the node inputs.
+		/// recovers editable vector data. The fill/stroke paints are migrated from the node inputs.
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
 		pub(super) struct PathStyle {
@@ -162,7 +162,7 @@ pub mod migrations {
 				.unwrap()
 				.as_object_mut()
 				.unwrap()
-				.insert("fill".into(), serde_json::to_value(legacy::Fill::default()).unwrap());
+				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
 			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
 
 			assert_eq!(migrated.stroke.unwrap().weight, 12.);

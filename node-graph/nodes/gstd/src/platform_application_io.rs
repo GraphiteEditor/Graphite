@@ -25,7 +25,7 @@ use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 #[cfg(target_family = "wasm")]
-use graphic_types::vector_types::gradient::GradientStops;
+use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
@@ -200,7 +200,7 @@ async fn rasterize<T: WasmNotSend + Clone + 'n>(
 		List<Raster<CPU>>,
 		List<Graphic>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 	)]
 	data: List<T>,
 	footprint: Item<Footprint>,

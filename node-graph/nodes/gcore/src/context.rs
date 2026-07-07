@@ -2,7 +2,7 @@ use core_types::list::Item;
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
@@ -39,7 +39,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Item<Color> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Item<GradientStops> {
+fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Item<Gradient> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 

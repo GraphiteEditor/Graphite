@@ -18,7 +18,7 @@ use num_traits::float::Float;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 // TODO: Implement the following:
 // Color Balance
@@ -57,7 +57,7 @@ fn luminance<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -85,7 +85,7 @@ fn gamma_correction<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -111,7 +111,7 @@ fn extract_channel<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -138,7 +138,7 @@ fn make_opaque<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -161,7 +161,7 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -196,7 +196,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -282,7 +282,7 @@ fn levels<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	image: Item<T>,
@@ -367,7 +367,7 @@ fn black_and_white<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	image: Item<T>,
@@ -459,7 +459,7 @@ fn hue_saturation<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -496,7 +496,7 @@ fn invert<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -518,7 +518,7 @@ fn threshold<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	image: Item<T>,
@@ -569,7 +569,7 @@ fn vibrance<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	image: Item<T>,
@@ -774,7 +774,7 @@ fn channel_mixer<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	image: Item<T>,
@@ -913,7 +913,7 @@ fn selective_color<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	image: Item<T>,
@@ -1069,7 +1069,7 @@ fn posterize<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,
@@ -1100,7 +1100,7 @@ fn exposure<T: Adjust<Color>>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	input: Item<T>,

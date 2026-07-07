@@ -35,6 +35,9 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("\"OptionalF64\":", "\"F64\":"),
 	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
 	("\"core_types::table::Table<", "\"core_types::list::List<"),
+	// The `GradientStops` type was renamed to `Gradient`; stale stored output names are cleared so the display falls back to the live type name
+	("\"output_names\":[\"GradientStops\"]", "\"output_names\":[\"\"]"),
+	("vector_types::gradient::GradientStops", "vector_types::gradient::Gradient"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -1602,21 +1605,21 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Content: no change
 		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 
-		// Fill: a literal Fill value is decomposed, and a wired input (`List<GradientStops> / List<Color>`) is kept as-is
+		// Fill: a literal Fill value is decomposed, and a wired input (`List<Gradient> / List<Color>`) is kept as-is
 		match old_inputs[1].as_value() {
 			Some(TaggedValue::LegacyFill(old_fill)) => {
 				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
-					graphic_types::migrations::legacy::Fill::None => TaggedValue::FillChoice(FillChoice::None),
-					graphic_types::migrations::legacy::Fill::Solid(color) => TaggedValue::FillChoice(FillChoice::Solid(*color)),
-					graphic_types::migrations::legacy::Fill::Gradient(gradient) => TaggedValue::FillChoice(FillChoice::Gradient(gradient.stops.clone())),
+					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::FillChoice(FillChoice::None),
+					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::FillChoice(FillChoice::Solid(*color)),
+					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::FillChoice(FillChoice::Gradient(gradient.stops.clone())),
 				};
 				document
 					.network_interface
 					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
 				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
-				if let graphic_types::migrations::legacy::Fill::Gradient(gradient) = old_fill {
+				if let graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
 						&InputConnector::node(*node_id, 4),
 						NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
@@ -1641,7 +1644,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				}
 			}
 			// Wired/exposed fill keeps the connection.
-			// The generic paint connector accepts the existing `List<Color>`/`List<GradientStops>` paint sources directly.
+			// The generic paint connector accepts the existing `List<Color>`/`List<Gradient>` paint sources directly.
 			_ => {
 				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 			}
@@ -1660,7 +1663,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if matches!(
 				old_inputs[1].as_value(),
 				Some(TaggedValue::LegacyFill(
-					graphic_types::migrations::legacy::Fill::None | graphic_types::migrations::legacy::Fill::Solid(_)
+					graphic_types::migrations::legacy::LegacyFill::None | graphic_types::migrations::legacy::LegacyFill::Solid(_)
 				))
 			) {
 				document

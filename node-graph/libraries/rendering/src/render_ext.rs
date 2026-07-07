@@ -9,7 +9,7 @@ use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 use vector_types::gradient::GradientSpreadMethod;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -76,7 +76,7 @@ impl RenderExt for List<Color> {
 	}
 }
 
-impl RenderExt for List<GradientStops> {
+impl RenderExt for List<Gradient> {
 	type Output = u64;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.

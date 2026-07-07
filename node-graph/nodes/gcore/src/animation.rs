@@ -2,7 +2,7 @@ use core_types::list::Item;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
@@ -80,7 +80,7 @@ async fn quantize_real_time<T>(
 		Context -> Item<Raster<CPU>>,
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
-		Context -> Item<GradientStops>,
+		Context -> Item<Gradient>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
@@ -117,7 +117,7 @@ async fn quantize_animation_time<T>(
 		Context -> Item<Raster<CPU>>,
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
-		Context -> Item<GradientStops>,
+		Context -> Item<Gradient>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]

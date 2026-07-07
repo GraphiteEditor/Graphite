@@ -82,7 +82,7 @@ struct ExecutionContext {
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
 	/// gradient; such runs never touch the visible artwork. Carrying the entry keeps a stale re-dispatched response paired with the fill it measured.
-	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -92,7 +92,7 @@ struct ExecutionContext {
 #[derive(Debug, Clone)]
 struct GradientMigration {
 	document_id: DocumentId,
-	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 	resolution: UVec2,
 	scale: f64,
 }
@@ -490,7 +490,7 @@ impl NodeGraphExecutor {
 		}
 
 		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above); each entry is removed from the document as its bake lands.
-		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
+		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
 		let Some((first_network_path, first_fill, first_gradient)) = remaining.front().cloned() else {
 			return false;
 		};
@@ -517,7 +517,7 @@ impl NodeGraphExecutor {
 		document_id: DocumentId,
 		network_path: Vec<NodeId>,
 		fill_node_id: NodeId,
-		gradient: graphic_types::migrations::legacy::Gradient,
+		gradient: graphic_types::migrations::legacy::LegacyGradient,
 		resolution: UVec2,
 		scale: f64,
 		responses: &mut VecDeque<Message>,
@@ -586,7 +586,7 @@ impl NodeGraphExecutor {
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
-		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient),
+		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient),
 		inspect_result: Option<InspectResult>,
 		responses: &mut VecDeque<Message>,
 	) {

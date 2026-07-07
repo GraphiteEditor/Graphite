@@ -31,7 +31,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{GradientSpreadMethod, GradientType};
 
@@ -118,7 +118,7 @@ async fn assign_colors<T>(
 	stroke: Item<bool>,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: Item<GradientStops>,
+	gradient: Item<Gradient>,
 	/// Whether to reverse the gradient.
 	reverse: Item<bool>,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -183,12 +183,12 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
-	_backup_gradient: Item<GradientStops>,
+	_backup_gradient: Item<Gradient>,
 	_gradient_type: Item<GradientType>,
 	_spread_method: Item<GradientSpreadMethod>,
 	_transform: Option<DAffine2>,
@@ -261,8 +261,8 @@ async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
@@ -342,7 +342,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
 	#[expose]
-	#[implementations(List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Color>, List<Gradient>)]
 	content: List<I>,
 	/// Minimum range of randomized sizes given to each placed copy.
 	#[default(1)]
@@ -2262,7 +2262,7 @@ async fn morph<I: IntoGraphicList>(
 		}
 	}
 
-	fn lerp_gradient_transform(gradient_list_a: &List<GradientStops>, gradient_list_b: &List<GradientStops>, time: f64) -> DAffine2 {
+	fn lerp_gradient_transform(gradient_list_a: &List<Gradient>, gradient_list_b: &List<Gradient>, time: f64) -> DAffine2 {
 		let transform_a = gradient_list_a.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
 		let transform_b = gradient_list_b.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
 
@@ -2293,7 +2293,7 @@ async fn morph<I: IntoGraphicList>(
 		};
 
 		// This keeps the gradient metadata attributes
-		let gradient_with_stops = |mut gradient_list: List<GradientStops>, stops: GradientStops| -> Graphic {
+		let gradient_with_stops = |mut gradient_list: List<Gradient>, stops: Gradient| -> Graphic {
 			if let Some(target) = gradient_list.element_mut(0) {
 				*target = stops;
 			} else {

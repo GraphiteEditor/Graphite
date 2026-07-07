@@ -1,10 +1,10 @@
-//! Not immediately shader compatible due to needing [`GradientStops`] as a param, which needs [`Vec`]
+//! Not immediately shader compatible due to needing [`Gradient`] as a param, which needs [`Vec`]
 
 use crate::adjust::Adjust;
 use core_types::list::Item;
 use core_types::{Color, Ctx};
 use raster_types::{CPU, Raster};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
@@ -15,10 +15,10 @@ async fn gradient_map<T: Adjust<Color> + Send>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	image: Item<T>,
-	gradient: Item<GradientStops>,
+	gradient: Item<Gradient>,
 	reverse: Item<bool>,
 ) -> Item<T> {
 	let mut image = image;

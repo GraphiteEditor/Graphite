@@ -6,7 +6,7 @@ use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVar
 use glam::{DAffine2, DVec2};
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 #[node_macro::node(category("Repeat"))]
 async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
@@ -16,7 +16,7 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(1)]
@@ -53,7 +53,7 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(100., 100.)]
@@ -102,7 +102,7 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	start_angle: Item<Angle>,
@@ -149,7 +149,7 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	reverse: Item<bool>,

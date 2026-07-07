@@ -16,7 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStopsUI, GradientType, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -146,7 +146,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 			}
 			ToolMessage::Gradient(GradientToolMessage::UpdateStops { stops }) => {
-				apply_stops_update(&mut self.data, context, responses, GradientStops::from(&stops));
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&stops));
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -264,7 +264,7 @@ impl LayoutHolder for GradientTool {
 			.or_else(|| self.data.default_gradient_stops.clone())
 			.map(FillChoice::Gradient)
 			.unwrap_or_else(|| {
-				FillChoice::Gradient(GradientStops::new([
+				FillChoice::Gradient(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -389,7 +389,7 @@ enum GradientSource {
 }
 
 /// Get the gradient with appearance information from Fill node values, or the chain connected to Fill node / layer.
-fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(GradientStops, GradientAppearance, GradientSource)> {
+fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(Gradient, GradientAppearance, GradientSource)> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
 		// A Fill node holding a direct gradient value decodes through the shared reader
 		if let Some(fill_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
@@ -521,15 +521,15 @@ struct SelectedGradient {
 	dragging: GradientDragTarget,
 	/// Transform from the geometry's local gradient space to viewport space.
 	gradient_space_transform: DAffine2,
-	gradient: GradientStops,
+	gradient: Gradient,
 	appearance: GradientAppearance,
-	initial_gradient: GradientStops,
+	initial_gradient: Gradient,
 	/// Transform from unit [0, 1] line to the geometry's local gradient space, the snapshot from `GradientAppearance.transform`.
 	initial_gradient_transform: DAffine2,
 	is_gradient_chain: bool,
 }
 
-fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: DVec2) -> Option<f64> {
+fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2) -> Option<f64> {
 	let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 	let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
@@ -568,7 +568,7 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 }
 
 impl SelectedGradient {
-	pub fn new(gradient: GradientStops, appearance: GradientAppearance, source: GradientSource, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
+	pub fn new(gradient: Gradient, appearance: GradientAppearance, source: GradientSource, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
 		let gradient_space_transform = gradient_space_transform(layer, document);
 		Self {
 			layer: Some(layer),
@@ -820,7 +820,7 @@ impl SelectedGradient {
 }
 
 /// Send the four per-attribute graph operations that mirror the in-memory `Gradient` onto the chain feeding the layer.
-fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &GradientStops, appearance: GradientAppearance, responses: &mut VecDeque<Message>) {
+fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradient, appearance: GradientAppearance, responses: &mut VecDeque<Message>) {
 	responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: gradient.clone() });
 	responses.add(GraphOperationMessage::GradientTransformSet {
 		layer,
@@ -868,11 +868,11 @@ struct GradientToolData {
 	has_selected_gradient: bool,
 	/// Cached stops of the currently selected layer's gradient, mirrored into the control-bar widget.
 	/// Independent of any in-progress drag (which uses `selected_gradient`) so it stays current after selection changes too.
-	current_gradient_stops: Option<GradientStops>,
+	current_gradient_stops: Option<Gradient>,
 	/// User-customized default gradient stop colors: used when nothing that has a gradient is selected.
 	/// `None` means to follow the working colors.
 	/// Cleared on tool deactivation so each fresh activation starts from the working colors again.
-	default_gradient_stops: Option<GradientStops>,
+	default_gradient_stops: Option<Gradient>,
 	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
 	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
 	gradient_orientation_rightward: bool,
@@ -1496,7 +1496,7 @@ impl Fsm for GradientToolFsmState {
 							// Generate a new gradient running primary → secondary so the default working colors
 							// (primary = black, secondary = white) produce the expected black-to-white gradient
 							None => (
-								GradientStops::new([
+								Gradient::new([
 									GradientStop {
 										position: 0.,
 										midpoint: 0.5,
@@ -1738,7 +1738,7 @@ impl Fsm for GradientToolFsmState {
 	}
 }
 
-fn insert_stop_at_point(gradient: &mut GradientStops, point: DVec2, unit_to_viewport: DAffine2) -> Option<usize> {
+fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2) -> Option<usize> {
 	let (start, end) = gradient_handle_positions(unit_to_viewport);
 	let t = ((end - start).angle_to(point - start)).cos() * start.distance(point) / start.distance(end);
 	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t))
@@ -1831,8 +1831,8 @@ fn apply_gradient_update(
 	data: &mut GradientToolData,
 	context: &mut ToolActionMessageContext,
 	responses: &mut VecDeque<Message>,
-	condition: impl Fn((&GradientStops, &GradientAppearance)) -> bool,
-	update: impl Fn((&mut GradientStops, &mut GradientAppearance)),
+	condition: impl Fn((&Gradient, &GradientAppearance)) -> bool,
+	update: impl Fn((&mut Gradient, &mut GradientAppearance)),
 ) {
 	let selected_layers: Vec<_> = context
 		.document
@@ -1888,7 +1888,7 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: GradientStops) {
+fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -1933,7 +1933,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 }
 
 /// Find the first selected visible layer that has a gradient and return both the layer ID and its resolved gradient.
-fn current_layer_and_gradient(document: &DocumentMessageHandler) -> (Option<LayerNodeIdentifier>, Option<(GradientStops, GradientAppearance)>) {
+fn current_layer_and_gradient(document: &DocumentMessageHandler) -> (Option<LayerNodeIdentifier>, Option<(Gradient, GradientAppearance)>) {
 	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 		if let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) {
 			return (Some(layer), Some((gradient, appearance)));
@@ -1942,7 +1942,7 @@ fn current_layer_and_gradient(document: &DocumentMessageHandler) -> (Option<Laye
 	(None, None)
 }
 
-fn get_gradient_on_selected_layer(document: &DocumentMessageHandler) -> Option<(GradientStops, GradientAppearance, GradientSource)> {
+fn get_gradient_on_selected_layer(document: &DocumentMessageHandler) -> Option<(Gradient, GradientAppearance, GradientSource)> {
 	document
 		.network_interface
 		.selected_nodes()
@@ -2015,19 +2015,19 @@ mod test_gradient {
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::List;
 	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
-	use graphene_std::vector::{GradientStop, GradientStops, fill};
+	use graphene_std::vector::{Gradient, GradientStop, fill};
 	use graphene_std::{Graphic, NodeInputDecleration};
 
 	use super::gradient_space_transform;
 
 	struct ResolvedGradient {
-		stops: GradientStops,
+		stops: Gradient,
 		spread_method: GradientSpreadMethod,
 		transform: DAffine2,
 	}
 
 	impl ResolvedGradient {
-		fn new(stops: GradientStops, appearance: super::GradientAppearance) -> Self {
+		fn new(stops: Gradient, appearance: super::GradientAppearance) -> Self {
 			Self {
 				stops,
 				spread_method: appearance.spread_method,
@@ -2147,7 +2147,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientStops::new([
+				value: TaggedValue::Gradient(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2184,7 +2184,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientStops::new([
+				value: TaggedValue::Gradient(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2655,7 +2655,7 @@ mod test_gradient {
 		// Create original transform for the control geometry and apply it
 		let initial_start = DVec2::new(10., 50.);
 		let initial_end = DVec2::new(200., 50.);
-		let stops = GradientStops::new([
+		let stops = Gradient::new([
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -2726,7 +2726,7 @@ mod test_gradient {
 		let layer = create_gradient_list_layer(&mut editor).await;
 
 		// Set up a 3-stop gradient with distinct colors
-		let original_stops = GradientStops::new([
+		let original_stops = Gradient::new([
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -2827,7 +2827,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_value_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientStops::new([
+				value: TaggedValue::Gradient(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,

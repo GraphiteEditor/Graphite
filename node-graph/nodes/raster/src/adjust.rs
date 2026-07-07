@@ -13,7 +13,7 @@ impl Adjust<Color> for Color {
 mod adjust_std {
 	use super::*;
 	use raster_types::{CPU, Raster};
-	use vector_types::GradientStops;
+	use vector_types::Gradient;
 
 	impl Adjust<Color> for Raster<CPU> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
@@ -22,7 +22,7 @@ mod adjust_std {
 			}
 		}
 	}
-	impl Adjust<Color> for GradientStops {
+	impl Adjust<Color> for Gradient {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
 			for color in self.color.iter_mut() {
 				*color = map_fn(color);

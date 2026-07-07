@@ -13,7 +13,7 @@ pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
-use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::vector_types::vector::style::Gradient;
 use graphic_types::vector_types::vector::style::{DashPattern, FillChoice};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -39,7 +39,7 @@ macro_rules! for_each_type_default {
 		$action!(List<Vector>);
 		$action!(List<String>);
 		$action!(List<Color>);
-		$action!(List<GradientStops>);
+		$action!(List<Gradient>);
 		$action!(Item<Vector>);
 		$action!(DocumentNode);
 		$action!(Resource);
@@ -69,11 +69,11 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
-			/// Stored compactly as a `GradientStops`, materializing as the bare stops at runtime. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Gradient`, materializing as the bare stops at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
-			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
-			Gradient(GradientStops),
+			Gradient(Gradient),
 			/// The state of a Fill or Stroke node's paint picker: no paint, a solid color, or a gradient.
 			/// Materializes as the canonical single-graphic `List<Graphic>` paint at runtime via `to_dynany`/`to_any`.
 			FillChoice(FillChoice),
@@ -246,7 +246,7 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					Self::F64Array(_) => concrete!(List<f64>),
 					Self::Color(_) => concrete!(Color),
-					Self::Gradient(_) => concrete!(GradientStops),
+					Self::Gradient(_) => concrete!(Gradient),
 					Self::FillChoice(_) => concrete!(List<Graphic>),
 					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
 					// =======================
@@ -321,7 +321,7 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
-						if name == std::any::type_name::<GradientStops>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::Gradient(Gradient::default())) }
 						if name == std::any::type_name::<List<Graphic>>() { return Some(TaggedValue::FillChoice(FillChoice::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
@@ -411,7 +411,7 @@ tagged_value! {
 	DAffine2(DAffine2),
 	OptionalDAffine2(Option<DAffine2>),
 	#[serde(alias = "FillGradient")]
-	LegacyGradient(graphic_types::migrations::legacy::Gradient),
+	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
@@ -421,7 +421,7 @@ tagged_value! {
 	// ENUM TYPES
 	// ==========
 	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::Fill),
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
@@ -520,11 +520,11 @@ impl TaggedValue {
 			None
 		}
 
-		fn to_gradient(input: &str) -> Option<GradientStops> {
+		fn to_gradient(input: &str) -> Option<Gradient> {
 			// String syntax: (e.g. "000000ff, ff0000ff")
 			let stops = input.split(',').filter_map(|s| to_color(s.trim())).collect::<Vec<_>>();
 			if stops.len() == 1 {
-				Some(GradientStops::new(vec![
+				Some(Gradient::new(vec![
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -538,7 +538,7 @@ impl TaggedValue {
 				]))
 			} else if stops.len() >= 2 {
 				let step = 1. / (stops.len() - 1) as f64;
-				Some(GradientStops::new(stops.into_iter().enumerate().map(|(i, color)| GradientStop {
+				Some(Gradient::new(stops.into_iter().enumerate().map(|(i, color)| GradientStop {
 					position: i as f64 * step,
 					midpoint: 0.5,
 					color,
@@ -595,7 +595,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
 					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
 					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(|color| TaggedValue::FillChoice(FillChoice::Solid(color)))?,
-					() if ty == TypeId::of::<List<GradientStops>>() => to_gradient(string).map(TaggedValue::Gradient)?,
+					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
 					_ => return None,
@@ -668,10 +668,10 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable" if content.is_null() => {
 				return Ok(MemoHash::new(TaggedValue::FillChoice(FillChoice::None)));
 			}
-			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<GradientStops>`.
-			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `GradientStops` has none of those (it has `position`/`midpoint`/`color`).
+			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<Gradient>`.
+			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `Gradient` has none of those (it has `position`/`midpoint`/`color`).
 			"Gradient" if content.as_object().is_some_and(|c| c.contains_key("start") && c.contains_key("end")) => {
-				let gradient: graphic_types::migrations::legacy::Gradient = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
+				let gradient: graphic_types::migrations::legacy::LegacyGradient = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
 				return Ok(MemoHash::new(TaggedValue::LegacyGradient(gradient)));
 			}
 			_ => {}
