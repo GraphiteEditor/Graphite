@@ -248,6 +248,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
+
+				responses.add(GraphOperationMessage::NormalizeAfterInputConnection { output_connector, input_connector });
 			}
 			NodeGraphMessage::Copy => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);

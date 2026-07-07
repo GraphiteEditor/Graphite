@@ -9,14 +9,16 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, gradient_fill_chain_needs_transform_node,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{
+	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box,
+};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -1119,6 +1121,16 @@ impl Fsm for GradientToolFsmState {
 					tool_data.color_picker_editing_color_stop = None;
 				}
 				tool_data.selected_gradient = None;
+
+				// Insert a Transform node if a chain-backed gradient does not have one yet. This prevents the rendered gradient and Gradient tool state from getting out of sync.
+				let network_interface = &document.network_interface;
+				for layer in network_interface.selected_nodes().selected_visible_layers(network_interface) {
+					if gradient_fill_chain_needs_transform_node(layer, network_interface) {
+						let transform = initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer));
+						responses.add(GraphOperationMessage::GradientTransformSet { layer, transform });
+					}
+				}
+
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
 					selected: GradientSelectedTarget::None,
@@ -1490,7 +1502,7 @@ impl Fsm for GradientToolFsmState {
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 						}
 
-						let (gradient, appearance, source) = match resolve_gradient(layer, &document.network_interface) {
+						let (gradient, mut appearance, source) = match resolve_gradient(layer, &document.network_interface) {
 							// Use the already existing gradient if it exists
 							Some(gradient) => gradient,
 							// Generate a new gradient running primary → secondary so the default working colors
@@ -1516,6 +1528,16 @@ impl Fsm for GradientToolFsmState {
 								GradientSource::Direct,
 							),
 						};
+
+						// Insert a Transform node if a chain-backed gradient does not have one yet. This prevents the rendered gradient and Gradient tool state from getting out of sync.
+						if matches!(source, GradientSource::Chain) && gradient_fill_chain_needs_transform_node(layer, &document.network_interface) {
+							let transform = initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer));
+
+							responses.add(GraphOperationMessage::GradientTransformSet { layer, transform });
+
+							// GraphOperation is queued, so it won't affect this PointerDown immediately. Patch the local tool state too.
+							appearance.transform = transform;
+						}
 						let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
 						selected_gradient.dragging = GradientDragTarget::New;
 

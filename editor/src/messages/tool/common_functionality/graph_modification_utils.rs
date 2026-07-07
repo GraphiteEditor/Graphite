@@ -818,6 +818,33 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 	}
 }
 
+/// Check if a gradient chain feeding a Fill node needs a Transform node.
+pub fn gradient_fill_chain_needs_transform_node(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let InputConnector::Node { node_id: fill_id, .. } = target_input else {
+		return false;
+	};
+
+	// Only handle the case where a Gradient Value node is connected to a Fill node
+	if network_interface.reference(&fill_id, &[]).as_ref() != Some(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
+		|| get_upstream_gradient_value_node_id(layer, network_interface).is_none()
+	{
+		return false;
+	}
+
+	// Skip chains that already have a Transform node
+	let Some(walk_from) = network_interface.upstream_output_connector(&target_input, &[]).and_then(|output| output.node_id()) else {
+		return false;
+	};
+
+	let has_transform_node = network_interface
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+		.any(|node_id| network_interface.reference(&node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)));
+
+	!has_transform_node
+}
+
 /// Sets the stroke color on all selected non-artboard layers. Layers without an existing Stroke node get one created using
 /// the provided `weight`, so picking any color (including `None`) from an unticked stroke control bar entry both attaches
 /// the Stroke node and applies the chosen color.
