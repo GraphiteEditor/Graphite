@@ -54,6 +54,37 @@ async fn convert<'i, T: 'i + Send + Convert<O, C>, O: 'i + Send, C: 'i + Send>(c
 	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter).await
 }
 
+/// The `Convert`-based counterpart of `field_adapter_convert`, casting an `Item` wire's element to a connector's numeric element type.
+#[node_macro::node(category(""), skip_impl)]
+async fn field_adapter_cast<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(value.convert(footprint, ()).await, attributes)
+}
+
+/// The bare-wire counterpart of `field_adapter_cast`, wrapping a value onto the ranked wire as an `Item` of the connector's element type.
+#[node_macro::node(category(""), skip_impl)]
+async fn field_adapter_cast_wrap<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, _element_ty: PhantomData<E>) -> Item<E> {
+	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
+
+	Item::new_from_element(value.convert(footprint, ()).await)
+}
+
+/// The `List` counterpart of `field_adapter_cast`, casting every element to the connector's numeric element type.
+#[node_macro::node(category(""), skip_impl)]
+async fn field_adapter_cast_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
+
+	let mut result = List::default();
+	for item in value.into_iter() {
+		let (value, attributes) = item.into_parts();
+		result.push(Item::from_parts(value.convert(footprint, ()).await, attributes));
+	}
+
+	result
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

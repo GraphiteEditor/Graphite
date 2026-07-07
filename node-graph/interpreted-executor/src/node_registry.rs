@@ -547,6 +547,30 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(field_adapter_convert_node!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
 	node_types.extend(field_adapter_convert_node!(from_element: f64, element: DashPattern));
+	// Numeric wires cast between element types at a ranked connector, as `Convert` does for bare numeric wires
+	macro_rules! field_adapter_cast_node {
+		(from_element: $from:ty, element: $element:ty) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				field_adapter_convert_node!(node: FieldAdapterCastWrapNode, from: $from, to: Item<$element>, element: $element),
+				field_adapter_convert_node!(node: FieldAdapterCastNode, from: Item<$from>, to: Item<$element>, element: $element),
+				field_adapter_convert_node!(node: FieldAdapterCastListNode, from: List<$from>, to: List<$element>, element: $element),
+			];
+			entries
+		}};
+	}
+	macro_rules! field_adapter_cast_star {
+		(from: $from:ty, to: [$($to:ty),*]) => {{
+			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
+			$(entries.extend(field_adapter_cast_node!(from_element: $from, element: $to));)*
+			entries
+		}};
+	}
+	node_types.extend(field_adapter_cast_star!(from: f64, to: [f32, u32, u64, i32, i64]));
+	node_types.extend(field_adapter_cast_star!(from: f32, to: [f64, u32, u64, i32, i64]));
+	node_types.extend(field_adapter_cast_star!(from: u32, to: [f64, f32, u64, i32, i64]));
+	node_types.extend(field_adapter_cast_star!(from: u64, to: [f64, f32, u32, i32, i64]));
+	node_types.extend(field_adapter_cast_star!(from: i32, to: [f64, f32, u32, u64, i64]));
+	node_types.extend(field_adapter_cast_star!(from: i64, to: [f64, f32, u32, u64, i32]));
 	// Whole-List Transform companion rows: a rank-1 content wire composes the matrix onto every item
 	macro_rules! transform_list_node {
 		(element: $element:ty) => {

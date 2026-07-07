@@ -184,6 +184,25 @@ impl Preprocessor {
 						match single_wire_type {
 							Some(input) => {
 								let input_ty = input.nested_type();
+
+								// A single-registered ranked field also gets the field adapter, so bare values wrap and convertible elements cast
+								if let Some(element_name) = input_ty.identifier_name().strip_prefix("Item<").and_then(|rest| rest.strip_suffix('>')) {
+									let field_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::FieldAdapterNode<{element_name}>"));
+									if into_node_registry.keys().any(|ident| ident.as_str() == field_adapter_identifier.as_str()) {
+										generated_nodes += 1;
+										let mut original_location = OriginalLocation::default();
+										original_location.auto_convert_index = Some(i);
+										let document_node = DocumentNode {
+											inputs: vec![NodeInput::import(generic!(X), i)],
+											implementation: DocumentNodeImplementation::ProtoNode(field_adapter_identifier),
+											visible: true,
+											original_location,
+											..Default::default()
+										};
+										return (NodeId(i as u64), document_node);
+									}
+								}
+
 								let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
 								let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", input_ty.identifier_name()));
@@ -319,6 +338,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			if let Some(type_default) = TaggedValue::from_type(ty) {
 				return NodeInput::value(type_default, exposed);
 			}
+
 			NodeInput::value(TaggedValue::None, true)
 		})
 		.collect()
