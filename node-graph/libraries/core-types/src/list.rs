@@ -1297,6 +1297,18 @@ impl<T: Default> Default for Item<T> {
 	}
 }
 
+impl<T: CacheHash> CacheHash for Item<T> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.element.cache_hash(state);
+
+		// Hash every attribute (key + value) so attribute changes invalidate downstream caches, mirroring `List`
+		for (key, attribute) in &self.attributes.0 {
+			std::hash::Hash::hash(key.as_str(), state);
+			attribute.display_string().cache_hash(state);
+		}
+	}
+}
+
 impl<T: PartialEq> PartialEq for Item<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.element == other.element

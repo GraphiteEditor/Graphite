@@ -1,4 +1,4 @@
-use core_types::list::{Item, List};
+use core_types::list::Item;
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
@@ -7,7 +7,7 @@ use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic> {
+fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Item<Graphic> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -15,7 +15,7 @@ fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> List<Vector> {
+fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Item<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -23,7 +23,7 @@ fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> List<Vector> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> List<Raster<CPU>> {
+fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Item<Raster<CPU>> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -31,7 +31,7 @@ fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> List<Raster<CPU>> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
+fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Item<Color> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -39,7 +39,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<GradientStops> {
+fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Item<GradientStops> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 

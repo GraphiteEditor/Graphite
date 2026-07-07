@@ -860,9 +860,8 @@ async fn map_string(
 	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
-		let string = row.into_element();
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
+		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
 		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
 
 		result.push(mapped_string);
@@ -877,7 +876,7 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Item::new_from_element(String::new()) };
 	let var_arg = var_arg as &dyn std::any::Any;
 
-	Item::new_from_element(var_arg.downcast_ref::<String>().cloned().unwrap_or_default())
+	var_arg.downcast_ref::<Item<String>>().cloned().unwrap_or_default()
 }
 
 /// Converts a value to a JSON string representation.

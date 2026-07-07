@@ -133,7 +133,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(List::new_from_item(row))).with_index(i);
+		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
 		let list = mapped.eval(owned_ctx.into_context()).await;
 
 		rows.extend(list);
@@ -257,7 +257,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	let mut content = content;
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(List::new_from_item(row))).with_index(index);
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(row)).with_index(index);
 		let v = value.eval(owned_ctx.into_context()).await;
 		content.set_attribute_value_dyn(&name, index, v);
 	}
