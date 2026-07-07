@@ -21,6 +21,7 @@ graphic-types = { workspace = true }
 vector-types = { workspace = true }
 
 # Workspace dependencies
+dyn-any = { workspace = true }
 glam = { workspace = true }
 rand = { workspace = true }
 math-parser = { workspace = true }

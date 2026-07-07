@@ -58,6 +58,10 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) memoize: bool,
 	/// Whether this node provides a scope
 	pub(crate) inject_scope: bool,
+	/// Whether the node returns a `Destructure` struct of wires, with each field becoming one of its output connectors.
+	pub(crate) destructure_output: bool,
+	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct of wires rather than a ranked wire. Not parsed from source.
+	pub(crate) destructure_extractor: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -413,6 +417,7 @@ impl Parse for NodeFnAttributes {
 		let mut serialize = None;
 		let mut memoize = false;
 		let mut inject_scope = false;
+		let mut destructure_output = false;
 
 		let content = input;
 		// let content;
@@ -555,13 +560,25 @@ impl Parse for NodeFnAttributes {
 					}
 					inject_scope = true;
 				}
+				// Declares the node as multi-output: it returns a struct deriving `node_macro::Destructure` directly, and each of
+				// the struct's `Item`/`List` fields becomes one output connector (see the derive's documentation).
+				//
+				// Example usage:
+				// #[node_macro::node(..., destructure_output, ...)]
+				"destructure_output" => {
+					let path = meta.require_path_only()?;
+					if destructure_output {
+						return Err(Error::new_spanned(path, "Multiple 'destructure_output' attributes are not allowed"));
+					}
+					destructure_output = true;
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', and 'destructure_output'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -584,6 +601,10 @@ impl Parse for NodeFnAttributes {
 			));
 		}
 
+		if destructure_output && shader_node.is_some() {
+			return Err(Error::new_spanned(nested, "The 'destructure_output' and 'shader_node' attributes cannot be combined"));
+		}
+
 		Ok(NodeFnAttributes {
 			category,
 			display_name,
@@ -595,6 +616,8 @@ impl Parse for NodeFnAttributes {
 			serialize,
 			memoize,
 			inject_scope,
+			destructure_output,
+			destructure_extractor: false,
 		})
 	}
 }
@@ -1111,8 +1134,20 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 
 // Modify the new_node_fn function to use the code generation
 pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let parsed_node = parse_node_fn(attr, item).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
+	generate_parsed_node_fn(parsed_node)
+}
+
+/// Builds one of the `Destructure` derive's extractor nodes, which take the struct of wires itself rather than a ranked wire,
+/// so they are exempt from the ranked-input validation.
+pub(crate) fn new_destructure_extractor_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let mut parsed_node = parse_node_fn(attr, item).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
+	parsed_node.attributes.destructure_extractor = true;
+	generate_parsed_node_fn(parsed_node)
+}
+
+fn generate_parsed_node_fn(mut parsed_node: ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let crate_ident = CrateIdent::default();
-	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
 	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation error:\n{e}")))?;
 	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code:\n{e}")))
@@ -1271,6 +1306,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1345,6 +1382,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1436,6 +1475,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1506,6 +1547,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1588,6 +1631,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1673,6 +1718,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1743,6 +1790,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				destructure_output: false,
+				destructure_extractor: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
@@ -1809,6 +1858,18 @@ mod tests {
 		let input = quote!(
 			fn test_node(input: i32) -> i32 {
 				input
+			}
+		);
+		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "The 'destructure_output' and 'shader_node' attributes cannot be combined")]
+	fn test_destructure_output_with_shader_node() {
+		let attr = quote!(category("Test"), shader_node(PerPixelAdjust), destructure_output);
+		let input = quote!(
+			fn test_node(_: impl Ctx, input: Item<f64>) -> Pair {
+				Pair { first: input.clone(), second: input }
 			}
 		);
 		parse_node_fn(attr, input).unwrap();

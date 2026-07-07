@@ -7,7 +7,6 @@ use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
-use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
 #[cfg(target_family = "wasm")]
@@ -143,6 +142,20 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<&wgpu_executor::WgpuExecutor>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Option<&wgpu_executor::WgpuExecutor>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>]),
+		// Destructure structs of multi-output nodes and their rank-lifted twins, memoized so the struct is computed once rather than once per output (see the Graphene preprocessor)
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::math_nodes::Vec2Components]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::math_nodes::Vec2ComponentsMapped]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster_nodes::adjustments::ImageChannels]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster_nodes::adjustments::ImageChannelsMapped]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::PathEvaluation]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::PathEvaluationMapped]),
+		// Monitor rows for the hidden struct primary output of multi-output nodes, so inspecting one resolves
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::math_nodes::Vec2Components]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::math_nodes::Vec2ComponentsMapped]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::raster_nodes::adjustments::ImageChannels]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::raster_nodes::adjustments::ImageChannelsMapped]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::PathEvaluation]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::PathEvaluationMapped]),
 	];
 	// The per-connector input adapter, registered per element type: an `Item` or `List` wire passes through unchanged.
 	// The `name` arm registers an `Into`-based whole-wire shift under the given identifier, serving the `ListDyn` erasure rows.
@@ -344,14 +357,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				TextDenomination,
 				DesaturateMethod,
 				RedGreenBlue,
-				RedGreenBlueAlpha,
 				RelativeAbsolute,
 				SelectiveColorChoice,
 				TonalRange,
 				AdjustmentChannel,
 				HueSaturationRange,
 				Stroke,
-				XY,
 				ScaleType,
 				ReferencePoint,
 				CentroidType,
@@ -666,4 +677,38 @@ mod node_registry_macros {
 	}
 
 	pub(crate) use async_node;
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// Each struct a multi-output node returns, in every rank form it is registered with, needs a Memoize row so its outputs share one
+	/// evaluation and a Monitor row so its hidden struct output can be inspected. These are written by hand in `node_registry()` above.
+	#[test]
+	fn multi_output_structs_have_memoize_and_monitor_rows() {
+		// Built first because building it locks the macro registry, which would otherwise deadlock
+		let node_registry = &*NODE_REGISTRY;
+		let macro_registry = graphene_std::registry::NODE_REGISTRY.lock().unwrap();
+		assert!(!graphene_std::registry::MULTI_OUTPUT_NODES.is_empty(), "No multi-output nodes are registered, so nothing is checked");
+
+		let mut missing_rows = Vec::new();
+		for identifier in graphene_std::registry::MULTI_OUTPUT_NODES.keys() {
+			let Some(implementations) = macro_registry.get(identifier) else { continue };
+
+			for (_, node_io) in implementations {
+				let struct_type = node_io.return_value.nested_type();
+				for row_identifier in [graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::monitor::IDENTIFIER] {
+					let has_row = node_registry
+						.get(&row_identifier)
+						.is_some_and(|rows| rows.keys().any(|row| row.return_value.nested_type() == struct_type));
+					if !has_row {
+						missing_rows.push(format!("{} for {struct_type}", row_identifier.as_str()));
+					}
+				}
+			}
+		}
+
+		assert!(missing_rows.is_empty(), "Add these rows to `node_registry()` for multi-output node structs: {missing_rows:#?}");
+	}
 }

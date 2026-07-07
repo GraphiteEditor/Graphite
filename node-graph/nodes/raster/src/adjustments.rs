@@ -22,7 +22,7 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 #[cfg(feature = "std")]
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, Image, Raster};
 #[cfg(feature = "std")]
 use vector_types::Gradient;
 
@@ -138,27 +138,47 @@ fn gamma_correction<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
-fn extract_channel<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
-	channel: Item<RedGreenBlueAlpha>,
-) -> Item<T> {
-	let mut input = input;
-	let channel = channel.into_element();
+/// The red, green, blue, and alpha channels of an image, split into separate node outputs.
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destructure)]
+pub struct ImageChannels {
+	/// The red channel of the image, as a grayscale image.
+	pub red: Item<Raster<CPU>>,
+	/// The green channel of the image, as a grayscale image.
+	pub green: Item<Raster<CPU>>,
+	/// The blue channel of the image, as a grayscale image.
+	pub blue: Item<Raster<CPU>>,
+	/// The alpha channel of the image, as a grayscale image.
+	pub alpha: Item<Raster<CPU>>,
+}
 
-	input.element_mut().adjust(|color| {
-		let extracted_value = match channel {
-			RedGreenBlueAlpha::Red => color.r(),
-			RedGreenBlueAlpha::Green => color.g(),
-			RedGreenBlueAlpha::Blue => color.b(),
-			RedGreenBlueAlpha::Alpha => color.a(),
+/// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
+#[cfg(feature = "std")]
+#[node_macro::node(name("Split Channels"), category("Raster: Channels"), destructure_output)]
+fn split_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
+	let (image, attributes) = image.into_parts();
+	let (width, height) = (image.width, image.height);
+
+	// O(4 × pixels), since all four channels are written even when only some outputs are connected
+	let mut channels: [Vec<Color>; 4] = core::array::from_fn(|_| Vec::with_capacity(image.data.len()));
+	for color in &image.data {
+		for (channel, value) in channels.iter_mut().zip([color.r(), color.g(), color.b(), color.a()]) {
+			channel.push(Color::from_rgbaf32_unchecked(value, value, value, 1.));
+		}
+	}
+
+	// Each channel image keeps the source image's attributes, such as its transform
+	let [red, green, blue, alpha] = channels.map(|data| {
+		let channel_image = Image {
+			width,
+			height,
+			data,
+			base64_string: None,
 		};
-		color.map_rgb(|_| extracted_value).with_alpha(1.)
+		Item::from_parts(Raster::new_cpu(channel_image), attributes.clone())
 	});
-	input
+
+	ImageChannels { red, green, blue, alpha }
 }
 
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
@@ -1551,12 +1571,10 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+// Kept only to deserialize the channel input of old Extract Channel nodes for document migration
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[widget(Radio)]
-#[repr(u32)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,

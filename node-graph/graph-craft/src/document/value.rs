@@ -552,10 +552,8 @@ tagged_value! {
 	#[serde(alias = "LuminanceCalculation")]
 	DesaturateMethod(raster_nodes::adjustments::DesaturateMethod),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
-	XY(graphene_core::extract_xy::XY),
 	StringCapitalization(text_nodes::StringCapitalization),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
-	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
 	NoiseType(raster_nodes::adjustments::NoiseType),
 	FractalType(raster_nodes::adjustments::FractalType),
@@ -597,6 +595,8 @@ tagged_value! {
 	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
 	#[serde(alias = "Fill")]
 	LegacyFill(graphic_types::migrations::legacy::LegacyFill), // TODO: Eventually remove this document upgrade code
+	XY(graphene_core::extract_xy::XY), // TODO: Eventually remove this document upgrade code
+	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha), // TODO: Eventually remove this document upgrade code
 }
 
 impl TaggedValue {
