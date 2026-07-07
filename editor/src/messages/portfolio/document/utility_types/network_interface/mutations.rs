@@ -1096,10 +1096,19 @@ impl NodeNetworkInterface {
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
 	pub fn delete_nodes(&mut self, nodes_to_delete: Vec<NodeId>, delete_children: bool, network_path: &[NodeId]) {
-		let Some(outward_wires) = self.outward_wires(network_path).cloned() else {
+		if self.outward_wires(network_path).is_none() {
 			log::error!("Could not get outward wires in delete_nodes");
 			return;
-		};
+		}
+
+		// Layer membership is fixed during the expansion phase, so gather it once for the sole-dependent closure
+		let layer_nodes = self
+			.nested_network(network_path)
+			.map(|network| network.nodes.keys().copied().collect::<Vec<_>>())
+			.unwrap_or_default()
+			.into_iter()
+			.filter(|candidate| self.is_layer(candidate, network_path))
+			.collect::<HashSet<_>>();
 
 		let mut delete_nodes = HashSet::new();
 		for node_id in &nodes_to_delete {
@@ -1120,45 +1129,18 @@ impl NodeNetworkInterface {
 						upstream_nodes.push(upstream_node);
 					}
 				}
-				// For each potential child perform a complete downstream traversal, ending at either a node in the `delete_nodes` set (excluding layer bottom inputs), the output, or a dead end.
-				// If the output node is eventually reached, then it is not a sole dependent and will not be deleted
-				let mut stack = vec![upstream_node];
-				let mut can_delete = true;
-				while let Some(current_node) = stack.pop() {
-					let mut is_dead_end = true;
-					for output_connector in (0..self.number_of_outputs(&current_node, network_path)).map(|output_index| OutputConnector::node(current_node, output_index)) {
-						let Some(downstream_nodes) = outward_wires.get(&output_connector) else { continue };
-						if !downstream_nodes.is_empty() {
-							is_dead_end = false
-						}
-						for downstream_node in downstream_nodes {
-							if let InputConnector::Node { node_id: downstream_id, input_index } = downstream_node {
-								// If the downstream node is not in the delete nodes set, then continue iterating
-								// If the downstream node is the bottom input of a layer then continue iterating
-								if !delete_nodes.contains(downstream_id) || (*input_index == 0 && self.is_layer(downstream_id, network_path)) {
-									stack.push(*downstream_id);
-								}
-								// If the traversal reaches the primary input of the node to delete then do not delete it
-								if node_id == downstream_id && *input_index == 0 {
-									can_delete = false;
-									stack = Vec::new();
-									break;
-								}
-							}
-							// If the traversal reaches the export, then the current node is not a sole dependent and cannot be deleted
-							else {
-								can_delete = false;
-								stack = Vec::new();
-								break;
-							}
-						}
+
+				// A path terminates when absorbed by another node marked for deletion, except through a layer's bottom input, which is stack flow to walk through.
+				// Reaching the primary input of the node being deleted means this is the stack continuation rather than a child, so it must survive.
+				let can_delete = self.is_sole_dependent(upstream_node, network_path, |downstream_node, input_index| {
+					if downstream_node == *node_id && input_index == 0 {
+						SoleDependentStep::Escape
+					} else if delete_nodes.contains(&downstream_node) && !(input_index == 0 && layer_nodes.contains(&downstream_node)) {
+						SoleDependentStep::Terminate
+					} else {
+						SoleDependentStep::Continue
 					}
-					// If there are no outward wires, then we have reached a dead end, and the node cannot be deleted
-					if is_dead_end {
-						can_delete = false;
-						stack = Vec::new();
-					}
-				}
+				});
 
 				if can_delete {
 					delete_nodes.insert(upstream_node);

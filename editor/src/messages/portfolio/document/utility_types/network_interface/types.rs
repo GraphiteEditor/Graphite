@@ -822,6 +822,17 @@ pub enum TransactionStatus {
 	Finished,
 }
 
+/// How [`NodeNetworkInterface::is_sole_dependent`] should treat a downstream connector it encounters.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SoleDependentStep {
+	/// The downstream path ends here, inside the dependent set.
+	Terminate,
+	/// Keep walking downstream through this node.
+	Continue,
+	/// The path leaves the dependent set, so the candidate is not a sole dependent.
+	Escape,
+}
+
 pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
 	for node in network.nodes.values() {
 		collect_node_resources(node, out);
