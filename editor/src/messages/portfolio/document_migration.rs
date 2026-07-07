@@ -94,10 +94,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::animation::AnimationTimeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::extract_xy::extract_xy::IDENTIFIER,
-		aliases: &["graphene_core::ops::ExtractXyNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::ops::passthrough::IDENTIFIER,
 		aliases: &[
 			"graphene_core::ops::IdentityNode",
@@ -520,14 +516,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::std_nodes::ExtendImageToBoundsNode", "graphene_std::raster::ExtendImageToBoundsNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::extract_channel::IDENTIFIER,
-		aliases: &[
-			"graphene_raster_nodes::adjustments::ExtractChannelNode",
-			"graphene_core::raster::adjustments::ExtractChannelNode",
-			"graphene_core::raster::ExtractChannelNode",
-		],
-	},
-	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::gamma_correction::IDENTIFIER,
 		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
 	},
@@ -929,10 +917,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::PoissonDiskPointsNode", "core_types::vector::PoissonDiskPointsNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::position_on_path::IDENTIFIER,
-		aliases: &["graphene_core::vector::PositionOnPathNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::vector::round_corners::IDENTIFIER,
 		aliases: &["graphene_core::vector::RoundCornersNode"],
 	},
@@ -963,10 +947,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::vector::stroke::IDENTIFIER,
 		aliases: &["graphene_core::vector::StrokeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::tangent_on_path::IDENTIFIER,
-		aliases: &["graphene_core::vector::TangentOnPathNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::as_vector::IDENTIFIER,
@@ -1269,6 +1249,96 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
 		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
 			document.network_interface.set_input(&InputConnector::node(*node_id, 0), image_input, network_path);
+		}
+	}
+
+	// The "Split Vec2" and "Split Channels" wrapper networks were replaced with the multi-output `split_vec2` and `split_channels` proto nodes.
+	// Convert old instances to the proto node, forwarding the single input. Output indices are unchanged: the hidden primary output stays at
+	// index 0 (now carrying the destructured struct) and the field outputs keep their old indices, so downstream wires stay connected.
+	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: replacing the outer network impl orphans its child paths.
+	let split_wrapper_replacements = [
+		("Split Vec2", graphene_std::extract_xy::split_vec_2::IDENTIFIER),
+		("Split Channels", graphene_std::raster_nodes::adjustments::split_channels::IDENTIFIER),
+	];
+	for (old_reference, new_identifier) in split_wrapper_replacements {
+		let split_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+			.network_interface
+			.document_network()
+			.recursive_nodes()
+			.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network(old_reference.into()))).then_some((*node_id, path)))
+			.collect();
+		for (node_id, network_path) in &split_nodes {
+			// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
+			// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
+			let _ = document.network_interface.outward_wires(network_path);
+			let new_reference = DefinitionIdentifier::ProtoNode(new_identifier.clone());
+			let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+			let mut node_template = definition.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+				continue;
+			};
+			if let Some(input) = old_inputs.first() {
+				document.network_interface.set_input(&InputConnector::node(*node_id, 0), input.clone(), network_path);
+			}
+		}
+	}
+
+	// The "Position on Path" and "Tangent on Path" nodes were combined into a single multi-output "Evaluate Path" node whose primary
+	// output (index 0) is the position and whose secondary output (index 1) is the tangent angle. Convert old instances to the new node,
+	// forwarding the shared inputs. Tangent instances additionally have their downstream connections remapped from output 0 to output 1,
+	// and default their radians input to true to match the old "Tangent on Path" behavior where radians was the only option.
+	const POSITION_ON_PATH: &str = "graphene_core::vector::PositionOnPathNode";
+	const TANGENT_ON_PATH: &str = "graphene_core::vector::TangentOnPathNode";
+	let evaluate_path_nodes: Vec<(NodeId, Vec<NodeId>, bool)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return None };
+			match identifier.as_str() {
+				POSITION_ON_PATH => Some((*node_id, path, false)),
+				TANGENT_ON_PATH => Some((*node_id, path, true)),
+				_ => None,
+			}
+		})
+		.collect();
+	for (node_id, network_path, is_tangent) in &evaluate_path_nodes {
+		// Capture the old output's downstream connections before mutating, so a tangent node's wires can be remapped to output index 1
+		let _ = document.network_interface.outward_wires(network_path);
+		let downstream_from_output = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
+			.cloned()
+			.unwrap_or_default();
+
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::evaluate_path::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		let output_names = definition.node_template.persistent_node_metadata.output_names.clone();
+
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		// The old single-output nodes have no output names, so set them to match the new multi-output node's "Position" and "Tangent" ports
+		document.network_interface.set_output_names(node_id, output_names, network_path);
+
+		// Forward the shared inputs: content, progression, reverse, and parameterized distance
+		for (index, input) in old_inputs.iter().take(4).enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+
+		if *is_tangent {
+			// Forward the radians input if the tangent node already had it, otherwise default it to true to preserve the old behavior
+			let radians = old_inputs.get(4).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::Bool(true), false));
+			document.network_interface.set_input(&InputConnector::node(*node_id, 4), radians, network_path);
+
+			// Remap the tangent node's downstream connections from the old single output to the new tangent output at index 1
+			for input_connector in &downstream_from_output {
+				document.network_interface.set_input(input_connector, NodeInput::node(*node_id, 1), network_path);
+			}
 		}
 	}
 
@@ -1991,22 +2061,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
-	}
-
-	// Upgrade the 'Tangent on Path' node to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::tangent_on_path::IDENTIFIER) && inputs_count == 4 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option

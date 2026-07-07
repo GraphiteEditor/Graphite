@@ -232,7 +232,27 @@ impl Preprocessor {
 				})
 				.collect();
 
-			if generated_nodes == 0 && !memoize && !inject_scope {
+			// Nodes returning a `#[node_macro::destructure]` struct are multi-output: they always need a substitution
+			// so their generated network can export each struct field through a hidden extractor node
+			let destructure = destructure_metadata_for_type(&first_node_io.return_value);
+
+			// A multi-output node is otherwise evaluated once per connected output, so when a Memoize implementation
+			// is registered for its struct type, wrap the struct in one so all the extractors share a single evaluation.
+			// Rows are matched by element type name, since the executor registry's structural rows carry no element TypeId.
+			let memoize_row_for_struct = |ty: &Type| {
+				let element_type = match ty.nested_type() {
+					Type::Item(inner) | Type::List(inner) => inner.nested_type(),
+					other => other,
+				};
+				let Type::Concrete(descriptor) = element_type else { return false };
+				destructure.as_ref().is_some_and(|metadata| descriptor.name == metadata.struct_name)
+			};
+			let memoize = *memoize
+				|| into_node_registry
+					.get(&graphene_core::memo::memoize::IDENTIFIER)
+					.is_some_and(|implementations| implementations.keys().any(|node_io| memoize_row_for_struct(&node_io.return_value)));
+
+			if generated_nodes == 0 && !memoize && !inject_scope && destructure.is_none() {
 				continue;
 			}
 
@@ -249,7 +269,7 @@ impl Preprocessor {
 			nodes.insert(NodeId(input_count as u64), document_node);
 
 			// If memoize is requested, append a Memoize node after the main node and redirect the export through it
-			let export_node_id = if *memoize {
+			let export_node_id = if memoize {
 				let memoize_node_id = NodeId(input_count as u64 + 1);
 				let memoize_node = DocumentNode {
 					inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
@@ -263,14 +283,35 @@ impl Preprocessor {
 				NodeId(input_count as u64)
 			};
 
+			// A multi-output node exports each struct field through that field's generated extractor node. When one
+			// field is marked `#[primary]` its extractor becomes export 0; otherwise export 0 carries the struct
+			// itself, which stays hidden in the UI as the node's primary output
+			let mut exports = Vec::new();
+			if destructure.as_ref().is_none_or(|destructure| !destructure.has_primary) {
+				exports.push(NodeInput::Node {
+					node_id: export_node_id,
+					output_index: 0,
+				});
+			}
+			if let Some(destructure) = &destructure {
+				for (field_index, field) in destructure.fields.iter().enumerate() {
+					let extractor_node_id = NodeId(export_node_id.0 + 1 + field_index as u64);
+					let extractor_node = DocumentNode {
+						inputs: vec![NodeInput::node(export_node_id, 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(field.extractor.clone()),
+						visible: true,
+						..Default::default()
+					};
+					nodes.insert(extractor_node_id, extractor_node);
+					exports.push(NodeInput::node(extractor_node_id, 0));
+				}
+			}
+
 			let node = DocumentNode {
 				inputs,
 				call_argument: input_type.clone(),
 				implementation: DocumentNodeImplementation::Network(NodeNetwork {
-					exports: vec![NodeInput::Node {
-						node_id: export_node_id,
-						output_index: 0,
-					}],
+					exports,
 					nodes,
 					scope_injections: Default::default(),
 					generated: true,
@@ -348,6 +389,172 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 #[derive(Debug)]
 pub enum PreprocessorError {
 	ResourceNotFound(ResourceId),
+}
+
+#[cfg(test)]
+mod destructure_tests {
+	use super::*;
+	use core_types::list::Item;
+	use glam::DVec2;
+	use graph_craft::graphene_compiler::Compiler;
+	use interpreted_executor::dynamic_executor::DynamicExecutor;
+
+	/// Test-only multi-output struct with a `#[primary]` field, exercising the primary-output layout and the
+	/// unmemoized path (no Memoize implementation is registered for this struct type).
+	#[node_macro::destructure]
+	#[derive(Debug, Clone, Copy, dyn_any::DynAny)]
+	pub struct SumProduct {
+		/// The sum of the two inputs.
+		#[primary]
+		sum: f64,
+		/// The product of the two inputs.
+		product: f64,
+	}
+
+	#[node_macro::node(category(""))]
+	fn sum_product(_: impl core_types::Ctx, a: Item<f64>, b: Item<f64>) -> Item<SumProduct> {
+		let (a, b) = (a.into_element(), b.into_element());
+
+		Item::new_from_element(SumProduct { sum: a + b, product: a * b })
+	}
+
+	/// A network where the outputs of the given multi-output node feed an Add node.
+	/// Includes a stub "editor-api" scope injection, which preprocessing requires and `wrap_network_in_scope` normally provides.
+	fn multi_output_into_add_network(node: DocumentNode, added_output_indices: [usize; 2]) -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [
+				(NodeId(0), node),
+				(
+					NodeId(1),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(0), added_output_indices[0]), NodeInput::node(NodeId(0), added_output_indices[1])],
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::add::IDENTIFIER),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(2),
+					DocumentNode {
+						inputs: vec![NodeInput::value(TaggedValue::EditorApi(std::sync::Arc::default()), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&graph_craft::application_io::PlatformEditorApi)))]
+				.into_iter()
+				.collect(),
+			..Default::default()
+		}
+	}
+
+	/// A network where a multi-output Split Vec2 node's X and Y outputs (indices 1 and 2, after the hidden primary) feed an Add node.
+	fn split_vec2_network() -> NodeNetwork {
+		let split_vec2 = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::new(3., 5.)), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::extract_xy::split_vec_2::IDENTIFIER),
+			..Default::default()
+		};
+		multi_output_into_add_network(split_vec2, [1, 2])
+	}
+
+	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
+		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed");
+		let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).expect("The executor should type check and build");
+
+		let context: core_types::Context = None;
+		let result = futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), context)).expect("Execution should succeed");
+		assert_eq!(result, expected);
+	}
+
+	#[test]
+	fn multi_output_node_expands_into_generated_destructure_network() {
+		let split_vec2_identifier = graphene_std::extract_xy::split_vec_2::IDENTIFIER;
+		let destructure = registry::MULTI_OUTPUT_NODES
+			.get(&split_vec2_identifier)
+			.expect("Split Vec2 should be registered as a multi-output node");
+		assert_eq!(destructure.fields.iter().map(|field| field.name).collect::<Vec<_>>(), vec!["X", "Y"]);
+		assert!(!destructure.has_primary);
+
+		let mut network = split_vec2_network();
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+
+		// The multi-output node is substituted with a transient generated network: the struct as the hidden primary export,
+		// followed by one export per field, each pulled out of the struct by that field's extractor node
+		let node = network.nodes.get(&NodeId(0)).unwrap();
+		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+			panic!("The multi-output node should be substituted with a generated network")
+		};
+		assert!(generated.generated, "The substituted network must be marked as generated so it stays out of node paths");
+		assert_eq!(generated.exports.len(), 1 + destructure.fields.len());
+
+		// A Memoize implementation is registered for Vec2Components, so the struct is computed once and shared through it
+		let Some(NodeInput::Node { node_id: struct_source_id, .. }) = generated.exports.first() else {
+			panic!("Export 0 should come from a node")
+		};
+		let struct_source = generated.nodes.get(struct_source_id).unwrap();
+		assert_eq!(struct_source.implementation, DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER));
+
+		let Some(NodeInput::Node { node_id: main_node_id, .. }) = struct_source.inputs.first() else {
+			panic!("The Memoize node should pull from the struct-producing node")
+		};
+		let main_node = generated.nodes.get(main_node_id).unwrap();
+		assert_eq!(main_node.implementation, DocumentNodeImplementation::ProtoNode(split_vec2_identifier));
+
+		for (field, export) in destructure.fields.iter().zip(&generated.exports[1..]) {
+			let NodeInput::Node { node_id: extractor_id, .. } = export else {
+				panic!("Each field export should come from an extractor node")
+			};
+			let extractor = generated.nodes.get(extractor_id).unwrap();
+			assert_eq!(extractor.implementation, DocumentNodeImplementation::ProtoNode(field.extractor.clone()));
+			assert_eq!(extractor.inputs, vec![NodeInput::node(*struct_source_id, 0)], "Each extractor should share the memoized struct");
+		}
+	}
+
+	#[test]
+	fn multi_output_node_compiles_and_executes() {
+		let mut network = split_vec2_network();
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+
+		// X + Y of (3, 5) should be 8
+		assert_execution_result(network, TaggedValue::F64(8.));
+	}
+
+	#[test]
+	fn primary_field_becomes_the_primary_output() {
+		let identifier = sum_product::IDENTIFIER;
+		let destructure = registry::MULTI_OUTPUT_NODES.get(&identifier).expect("Sum Product should be registered as a multi-output node");
+		assert!(destructure.has_primary);
+		assert_eq!(destructure.fields.iter().map(|field| field.name).collect::<Vec<_>>(), vec!["Sum", "Product"]);
+
+		let node = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::F64(3.), false), NodeInput::value(TaggedValue::F64(5.), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(identifier),
+			..Default::default()
+		};
+		let mut network = multi_output_into_add_network(node, [0, 1]);
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+
+		// With a `#[primary]` field there is no hidden struct export: one export per field, with the primary field first
+		let node = network.nodes.get(&NodeId(0)).unwrap();
+		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+			panic!("The multi-output node should be substituted with a generated network")
+		};
+		assert_eq!(generated.exports.len(), destructure.fields.len());
+		for (field, export) in destructure.fields.iter().zip(&generated.exports) {
+			let NodeInput::Node { node_id: extractor_id, .. } = export else {
+				panic!("Each field export should come from an extractor node")
+			};
+			let extractor = generated.nodes.get(extractor_id).unwrap();
+			assert_eq!(extractor.implementation, DocumentNodeImplementation::ProtoNode(field.extractor.clone()));
+		}
+
+		// Sum + product of (3, 5) should be 8 + 15 = 23
+		assert_execution_result(network, TaggedValue::F64(23.));
+	}
 }
 
 impl std::fmt::Display for PreprocessorError {

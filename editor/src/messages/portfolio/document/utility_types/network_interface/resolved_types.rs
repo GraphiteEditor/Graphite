@@ -355,10 +355,37 @@ impl NodeNetworkInterface {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
 					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
 					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => self.input_type(&InputConnector::node(*node_id, 0), network_path),
-					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
-						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
-						None => TypeSource::Unknown,
-					},
+					DocumentNodeImplementation::ProtoNode(identifier) => {
+						// The field outputs of a multi-output proto node have their element types recorded in the registry, and
+						// ride the struct's resolved rank since a framed multi-output node emits one list per field. Without a
+						// `#[primary]` field, output 0 is the hidden struct output, which falls through to the compiled types below.
+						if let Some(metadata) = graphene_std::registry::MULTI_OUTPUT_NODES.get(identifier) {
+							let field_index = if metadata.has_primary { Some(*output_index) } else { output_index.checked_sub(1) };
+							if let Some(field_index) = field_index {
+								return match metadata.fields.get(field_index) {
+									Some(field) => {
+										let struct_is_rank_1 = self
+											.resolved_types
+											.types
+											.get(&[network_path, &[*node_id]].concat())
+											.is_some_and(|resolved_type| matches!(resolved_type.output.nested_type(), Type::List(_)));
+										let field_wire = if struct_is_rank_1 {
+											Type::List(Box::new(field.ty.clone()))
+										} else {
+											Type::Item(Box::new(field.ty.clone()))
+										};
+										TypeSource::Compiled(field_wire)
+									}
+									None => TypeSource::Error("Output index out of range for proto node"),
+								};
+							}
+						}
+
+						match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
+							Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
+							None => TypeSource::Unknown,
+						}
+					}
 					DocumentNodeImplementation::Extract => TypeSource::Compiled(concrete!(())),
 				}
 			}

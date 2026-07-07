@@ -105,22 +105,10 @@ fn gamma_correction<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
-fn extract_channel<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
-	#[gpu_image]
-	input: Item<T>,
-	channel: Item<RedGreenBlueAlpha>,
-) -> Item<T> {
-	let mut input = input;
-	let channel = channel.into_element();
-
-	input.element_mut().adjust(|color| {
+/// Extracts one color channel as a grayscale image. Used internally by the `split_channels` node.
+#[cfg(feature = "std")]
+fn extract_channel<T: Adjust<Color>>(mut input: T, channel: RedGreenBlueAlpha) -> T {
+	input.adjust(|color| {
 		let extracted_value = match channel {
 			RedGreenBlueAlpha::Red => color.r(),
 			RedGreenBlueAlpha::Green => color.g(),
@@ -130,6 +118,37 @@ fn extract_channel<T: Adjust<Color>>(
 		color.map_rgb(|_| extracted_value).with_alpha(1.)
 	});
 	input
+}
+
+/// The red, green, blue, and alpha channels of an image, split into separate node outputs.
+#[cfg(feature = "std")]
+#[node_macro::destructure]
+#[derive(Debug, Clone, dyn_any::DynAny)]
+pub struct ImageChannels {
+	/// The red channel of the image, as a grayscale image.
+	pub red: Raster<CPU>,
+	/// The green channel of the image, as a grayscale image.
+	pub green: Raster<CPU>,
+	/// The blue channel of the image, as a grayscale image.
+	pub blue: Raster<CPU>,
+	/// The alpha channel of the image, as a grayscale image.
+	pub alpha: Raster<CPU>,
+}
+
+/// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
+#[cfg(feature = "std")]
+#[node_macro::node(name("Split Channels"), category("Raster: Channels"))]
+fn split_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<ImageChannels> {
+	let (image, attributes) = image.into_parts();
+
+	let channels = ImageChannels {
+		red: extract_channel(image.clone(), RedGreenBlueAlpha::Red),
+		green: extract_channel(image.clone(), RedGreenBlueAlpha::Green),
+		blue: extract_channel(image.clone(), RedGreenBlueAlpha::Blue),
+		alpha: extract_channel(image, RedGreenBlueAlpha::Alpha),
+	};
+
+	Item::from_parts(channels, attributes)
 }
 
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]

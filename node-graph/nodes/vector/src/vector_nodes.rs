@@ -1974,48 +1974,22 @@ async fn cut_segments(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
 	content
 }
 
-/// Determines the position of a point on the path, given by its progression from 0 to 1 along the path.
-///
-/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
-async fn position_on_path(
-	_: impl Ctx,
-	/// The path to traverse.
-	content: Item<Vector>,
-	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
-	/// Swap the direction of the path.
-	reverse: Item<bool>,
-	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
-	parameterized_distance: Item<bool>,
-) -> Item<DVec2> {
-	let (progression, reverse, parameterized_distance) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element());
-	let euclidian = !parameterized_distance;
-
-	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let mut bezpaths: Vec<_> = content.element().stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect();
-	let bezpath_count = bezpaths.len() as f64;
-	let progression = progression.clamp(0., bezpath_count);
-	let progression = if reverse { bezpath_count - progression } else { progression };
-	let index = if progression >= bezpath_count { (bezpath_count - 1.) as usize } else { progression as usize };
-
-	let position = bezpaths.get_mut(index).map_or(DVec2::ZERO, |(bezpath, transform)| {
-		let t = if progression == bezpath_count { 1. } else { progression.fract() };
-		let t = if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
-
-		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-
-		point_to_dvec2(evaluate_bezpath(bezpath, t, None))
-	});
-
-	Item::new_from_element(position)
+/// The position and tangent angle at a point along a path, split into separate node outputs.
+#[node_macro::destructure]
+#[derive(Debug, Clone, Copy, PartialEq, dyn_any::DynAny)]
+pub struct PathEvaluation {
+	/// The position of the point on the path.
+	#[primary]
+	position: DVec2,
+	/// The angle of the tangent at the point on the path.
+	tangent: f64,
 }
 
-/// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
+/// Determines the position and tangent angle at a point on the path, given by its progression from 0 to 1 along the path.
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
-async fn tangent_on_path(
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
+async fn evaluate_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Item<Vector>,
@@ -2025,9 +1999,9 @@ async fn tangent_on_path(
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
 	parameterized_distance: Item<bool>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting tangent angle should be given in radians instead of degrees.
 	radians: Item<bool>,
-) -> Item<f64> {
+) -> Item<PathEvaluation> {
 	let (progression, reverse, parameterized_distance, radians) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element(), radians.into_element());
 	let euclidian = !parameterized_distance;
 
@@ -2038,25 +2012,31 @@ async fn tangent_on_path(
 	let progression = if reverse { bezpath_count - progression } else { progression };
 	let index = if progression >= bezpath_count { (bezpath_count - 1.) as usize } else { progression as usize };
 
-	let angle = bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
-		let t = if progression == bezpath_count { 1. } else { progression.fract() };
-		let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
+	let Some((bezpath, transform)) = bezpaths.get_mut(index) else {
+		return Item::new_from_element(PathEvaluation { position: DVec2::ZERO, tangent: 0. });
+	};
 
-		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+	let t = if progression == bezpath_count { 1. } else { progression.fract() };
+	let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
-		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
-		if tangent == DVec2::ZERO {
-			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
-			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
-		}
-		if tangent == DVec2::ZERO {
-			return 0.;
-		}
+	// Apply the transform once so both the position and tangent are computed on the transformed path
+	bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 
+	let position = point_to_dvec2(evaluate_bezpath(bezpath, t_value(t), None));
+
+	let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
+	if tangent == DVec2::ZERO {
+		let t = t + if t > 0.5 { -0.001 } else { 0.001 };
+		tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
+	}
+	let angle = if tangent == DVec2::ZERO {
+		0.
+	} else {
 		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
-	});
+	};
+	let tangent = if radians { angle } else { angle.to_degrees() };
 
-	Item::new_from_element(if radians { angle } else { angle.to_degrees() })
+	Item::new_from_element(PathEvaluation { position, tangent })
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
@@ -2527,7 +2507,7 @@ async fn morph<I: IntoGraphicList>(
 		if paths.is_empty() { default_polyline() } else { paths }
 	};
 
-	// Select which subpath to use based on the integer part of progression (like the 'Position on Path' node)
+	// Select which subpath to use based on the integer part of progression (like the 'Evaluate Path' node)
 	let progression = progression.max(0.);
 	let subpath_count = control_bezpaths.len() as f64;
 	let progression = if reverse { subpath_count - progression } else { progression };

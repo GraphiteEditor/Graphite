@@ -1,23 +1,7 @@
 use core_types::list::Item;
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
-use glam::{DVec2, IVec2, UVec2};
-
-/// Obtains the X or Y component of a vec2.
-///
-/// The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.
-#[node_macro::node(name("Extract XY"), category("Math: Vec2"))]
-fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: Item<T>, axis: Item<XY>) -> Item<f64> {
-	let vector = vector.into_element();
-	let axis = axis.into_element();
-
-	let result = match axis {
-		XY::X => vector.into().x,
-		XY::Y => vector.into().y,
-	};
-
-	Item::new_from_element(result)
-}
+use glam::DVec2;
 
 /// The X or Y component of a vec2.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -28,4 +12,24 @@ pub enum XY {
 	#[default]
 	X,
 	Y,
+}
+
+/// The X and Y components of a vec2, split into separate node outputs.
+#[node_macro::destructure]
+#[derive(Debug, Clone, Copy, PartialEq, DynAny)]
+pub struct Vec2Components {
+	/// The X component of the vec2.
+	pub x: f64,
+	/// The Y component of the vec2.
+	pub y: f64,
+}
+
+/// Decomposes the X and Y components of a vec2.
+///
+/// The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.
+#[node_macro::node(name("Split Vec2"), category("Math: Vec2"))]
+fn split_vec2(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Item<Vec2Components> {
+	let vec2 = vec2.into_element();
+
+	Item::new_from_element(Vec2Components { x: vec2.x, y: vec2.y })
 }

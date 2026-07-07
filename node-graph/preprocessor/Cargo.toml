@@ -14,3 +14,11 @@ log = { workspace = true }
 graphene-std = { workspace = true, features = ["gpu"] }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
+
+[dev-dependencies]
+# Workspace dependencies
+core-types = { workspace = true }
+dyn-any = { workspace = true }
+futures = { workspace = true }
+glam = { workspace = true }
+node-macro = { workspace = true }

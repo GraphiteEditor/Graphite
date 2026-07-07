@@ -28,6 +28,8 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	// `interpreted_executor::node_registry::NODE_REGISTRY` via `async_node!`. We consult that extended registry as a
 	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
 	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
+	// Pre-initialize the multi-output node map here since its initializer locks NODE_REGISTRY, which would deadlock once we hold the lock below
+	let multi_output_nodes = &*MULTI_OUTPUT_NODES;
 	let node_registry = NODE_REGISTRY.lock().unwrap();
 	let empty_implementations: Vec<(NodeConstructor, NodeIOTypes)> = Vec::new();
 	let context_type = concrete!(Context);
@@ -67,6 +69,17 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		};
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
+
+		// A multi-output node (returning a `#[node_macro::destructure]` struct) names each output after its struct field,
+		// preceded by an unnamed entry for the hidden primary output unless one field is marked `#[primary]`
+		let output_names = multi_output_nodes
+			.get(id)
+			.map(|metadata| {
+				let hidden_primary_name = (!metadata.has_primary).then(String::new);
+				hidden_primary_name.into_iter().chain(metadata.fields.iter().map(|field| field.name.to_string())).collect()
+			})
+			.unwrap_or_default();
+
 		definitions_map.insert(
 			identifier,
 			DocumentNodeDefinition {
@@ -92,6 +105,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 								RegistryWidgetOverride::Custom(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
 							})
 							.collect(),
+						output_names,
 						locked: false,
 						..Default::default()
 					},

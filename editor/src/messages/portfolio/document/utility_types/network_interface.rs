@@ -28,6 +28,7 @@ use graphene_std::ContextDependencies;
 use graphene_std::Graphic;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
+use graphene_std::registry::MULTI_OUTPUT_NODES;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
@@ -365,7 +366,12 @@ impl NodeNetworkInterface {
 			return 0;
 		};
 		match &implementation {
-			DocumentNodeImplementation::ProtoNode(_) => 1,
+			// A multi-output proto node (returning a `#[node_macro::destructure]` struct) has one output per field,
+			// preceded by a hidden primary output carrying the struct itself unless one field is marked `#[primary]`
+			DocumentNodeImplementation::ProtoNode(identifier) => match MULTI_OUTPUT_NODES.get(identifier) {
+				Some(metadata) => metadata.fields.len() + if metadata.has_primary { 0 } else { 1 },
+				None => 1,
+			},
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
 			DocumentNodeImplementation::Extract => 1,
 		}
@@ -1140,6 +1146,9 @@ impl NodeNetworkInterface {
 	pub fn hidden_primary_output(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		match self.implementation(node_id, network_path) {
 			Some(DocumentNodeImplementation::Network(network)) => network.exports.first().is_none_or(|input| !input.is_exposed()),
+			// A multi-output proto node's primary output carries the whole struct, hidden so only the destructured field
+			// outputs are shown, unless a field marked `#[primary]` takes its place as the primary output
+			Some(DocumentNodeImplementation::ProtoNode(identifier)) => MULTI_OUTPUT_NODES.get(identifier).is_some_and(|metadata| !metadata.has_primary),
 			_ => false,
 		}
 	}
@@ -2618,10 +2627,7 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			let number_of_outputs = match &document_node.implementation {
-				DocumentNodeImplementation::Network(network) => network.exports.len(),
-				_ => 1,
-			};
+			let number_of_outputs = self.number_of_outputs(node_id, network_path);
 			// If the node has a hidden primary output, do not display the first output
 			let start_index = if self.hidden_primary_output(node_id, network_path) { 1 } else { 0 };
 			for output_index in start_index..number_of_outputs {
@@ -4789,6 +4795,20 @@ impl NodeNetworkInterface {
 		self.transaction_modified();
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
+	}
+
+	/// Replaces the full list of output port names for a node. Used by document migrations that turn a single-output node
+	/// into a multi-output one, since the port labels are otherwise unnamed and fall back to the type name.
+	pub fn set_output_names(&mut self, node_id: &NodeId, output_names: Vec<String>, network_path: &[NodeId]) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node {node_id} in set_output_names");
+			return;
+		};
+		if node_metadata.persistent_metadata.output_names == output_names {
+			return;
+		}
+		node_metadata.persistent_metadata.output_names = output_names;
+		self.transaction_modified();
 	}
 
 	pub fn set_import_export_name(&mut self, mut name: String, index: ImportOrExport, network_path: &[NodeId]) {

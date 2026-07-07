@@ -1,6 +1,7 @@
 use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
 pub use no_std_types::registry::types;
+use std::any::TypeId;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -57,11 +58,65 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
+/// Metadata for a struct tagged with `#[node_macro::destructure]`, describing how its fields are broken out into individual node connectors.
+/// Registered by the macro into [`DESTRUCTURE_METADATA`], keyed by the [`TypeId`] of the struct and of its `Item`/`List` wire forms.
+///
+/// Currently used for node outputs: a node function returning such a struct becomes a multi-output node whose outputs are the struct's fields.
+/// The same registration is intended to eventually also drive destructured inputs, where a single struct parameter expands into one input connector per field.
+#[derive(Clone, Debug)]
+pub struct DestructureMetadata {
+	/// The fields in output-connector order. When `has_primary` is true the first entry is the field marked `#[primary]`,
+	/// exposed as the node's primary output at index 0 with the remaining fields following it. Otherwise a hidden primary
+	/// output carrying the whole struct occupies index 0 and the fields are the secondary outputs at indices 1 and up.
+	pub fields: Vec<DestructureFieldMetadata>,
+	pub has_primary: bool,
+	/// The struct's canonical type name from [`std::any::type_name`], used to match registry rows whose element descriptors carry no [`TypeId`].
+	pub struct_name: &'static str,
+}
+
+// Translation struct between macro and definition
+#[derive(Clone, Debug)]
+pub struct DestructureFieldMetadata {
+	pub name: &'static str,
+	pub description: &'static str,
+	/// The generated proto node that extracts this field from the struct value.
+	pub extractor: ProtoNodeIdentifier,
+	/// The concrete type of the field.
+	pub ty: Type,
+}
+
 type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub static DESTRUCTURE_METADATA: LazyLock<Mutex<HashMap<TypeId, DestructureMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Looks up the [`DestructureMetadata`] registered for a node's return type, if that type is a `#[node_macro::destructure]` struct.
+/// Accepts the type as stored in [`NodeIOTypes::return_value`], unwrapping any `Future` wrapper and the `Item`/`List` rank around the concrete element type.
+pub fn destructure_metadata_for_type(return_type: &Type) -> Option<DestructureMetadata> {
+	let element_type = match return_type.nested_type() {
+		Type::Item(inner) | Type::List(inner) => inner.nested_type(),
+		other => other,
+	};
+	let Type::Concrete(descriptor) = element_type else { return None };
+	let type_id = descriptor.id?;
+	DESTRUCTURE_METADATA.lock().unwrap().get(&type_id).cloned()
+}
+
+/// All multi-output proto nodes (those whose return type is a `#[node_macro::destructure]` struct), keyed by their identifier.
+/// Snapshotted on first access, which must happen after startup registration of the node and destructure registries completes.
+pub static MULTI_OUTPUT_NODES: LazyLock<HashMap<ProtoNodeIdentifier, DestructureMetadata>> = LazyLock::new(|| {
+	let node_registry = NODE_REGISTRY.lock().unwrap();
+	node_registry
+		.iter()
+		.filter_map(|(identifier, implementations)| {
+			let (_, node_io) = implementations.first()?;
+			destructure_metadata_for_type(&node_io.return_value).map(|metadata| (identifier.clone(), metadata))
+		})
+		.collect()
+});
 
 #[cfg(not(target_family = "wasm"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
