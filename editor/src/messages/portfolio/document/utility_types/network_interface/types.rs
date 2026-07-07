@@ -775,8 +775,8 @@ pub struct DocumentNodeTransientMetadata {
 	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
 	/// All nodes that should be moved when this layer is moved, kept here since only layers own nodes.
 	pub(crate) owned_nodes: TransientCache<HashSet<NodeId>>,
-	// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_metadata: NodeTypeTransientMetadata,
+	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.
+	pub(crate) layer_width: TransientCache<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -788,23 +788,6 @@ pub struct DocumentNodeClickTargets {
 	pub port_click_targets: Ports,
 	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	pub node_type_metadata: NodeTypeClickTargets,
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum NodeTypeTransientMetadata {
-	Layer(LayerTransientMetadata),
-	#[default]
-	Node, // No transient data is stored exclusively for nodes
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct LayerTransientMetadata {
-	// Stores the width in grid units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the left end of the node
-	/// This is necessary since calculating the layer width through web_sys is very slow
-	pub layer_width: TransientMetadata<u32>,
-	// Should not be a performance concern to calculate when needed with chain_width.
-	// Stores the width in grid units for layer nodes from the left edge of the thumbnail to the end of the chain
-	// chain_width: u32,
 }
 
 #[derive(Debug, Clone)]
