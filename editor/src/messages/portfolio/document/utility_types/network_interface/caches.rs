@@ -664,41 +664,43 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn get_input_center(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		let (ports, index) = match input {
+	pub fn get_input_center(&self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
+		fn port_center(ports: &Ports, index: usize) -> Option<DVec2> {
+			ports
+				.input_ports
+				.iter()
+				.find_map(|(input_index, click_target)| if index == *input_index { click_target.bounding_box_center() } else { None })
+		}
+
+		match input {
 			InputConnector::Node { node_id, input_index } => {
-				let node_click_target = self.node_click_targets(node_id, network_path)?;
-				(&node_click_target.port_click_targets, input_index)
+				self.try_load_node_click_targets(node_id, network_path);
+				self.with_node_click_targets(node_id, network_path, |click_targets| port_center(&click_targets.port_click_targets, *input_index))
+					.flatten()
 			}
-			InputConnector::Export(export_index) => {
-				let ports = self.import_export_ports(network_path)?;
-				(ports, export_index)
-			}
-		};
-		ports
-			.input_ports
-			.iter()
-			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
+			InputConnector::Export(export_index) => self.with_import_export_ports(network_path, |ports| port_center(ports, *export_index)).flatten(),
+		}
 	}
 
-	pub fn get_output_center(&mut self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		let (ports, index) = match output {
+	pub fn get_output_center(&self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
+		fn port_center(ports: &Ports, index: usize) -> Option<DVec2> {
+			ports
+				.output_ports
+				.iter()
+				.find_map(|(output_index, click_target)| if index == *output_index { click_target.bounding_box_center() } else { None })
+		}
+
+		match output {
 			OutputConnector::Node { node_id, output_index } => {
-				let node_click_target = self.node_click_targets(node_id, network_path)?;
-				(&node_click_target.port_click_targets, output_index)
+				self.try_load_node_click_targets(node_id, network_path);
+				self.with_node_click_targets(node_id, network_path, |click_targets| port_center(&click_targets.port_click_targets, *output_index))
+					.flatten()
 			}
-			OutputConnector::Import(import_index) => {
-				let ports = self.import_export_ports(network_path)?;
-				(ports, import_index)
-			}
-		};
-		ports
-			.output_ports
-			.iter()
-			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
+			OutputConnector::Import(import_index) => self.with_import_export_ports(network_path, |ports| port_center(ports, *import_index)).flatten(),
+		}
 	}
 
-	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	pub fn newly_loaded_input_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		if !self.wire_is_loaded(input, network_path) {
 			self.load_wire(input, graph_wire_style, network_path);
 		} else {
@@ -718,7 +720,7 @@ impl NodeNetworkInterface {
 			.is_some_and(|network_metadata| network_metadata.transient_metadata.wires.borrow().contains_key(input))
 	}
 
-	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
+	fn load_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
 		let dashed = match self.previewing(network_path) {
 			Previewing::Yes { .. } => match input {
 				InputConnector::Node { .. } => false,
@@ -809,7 +811,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	pub fn wire_to_root(&self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
 		let current_export = self.upstream_output_connector(&input, network_path)?;
 
@@ -858,7 +860,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the wire subpath, its thick center-line subpath, and whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
+	pub fn vector_wire_from_input(&self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {input:?}");
 			return None;
@@ -879,7 +881,7 @@ impl NodeNetworkInterface {
 		Some((vector_wire, center_line, thick))
 	}
 
-	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
+	pub fn wire_path_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
 		let (vector_wire, center_line, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
