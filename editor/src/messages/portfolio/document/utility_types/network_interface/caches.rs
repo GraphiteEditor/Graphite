@@ -923,6 +923,24 @@ impl NodeNetworkInterface {
 		};
 	}
 
+	/// Loads the node click targets if needed, then reads them through &self.
+	pub(crate) fn with_loaded_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
+		self.try_load_node_click_targets(node_id, network_path);
+		self.with_node_click_targets(node_id, network_path, read)
+	}
+
+	/// Reads the modify import/export click targets through &self, loading them first if needed.
+	pub(crate) fn with_modify_import_export<R>(&self, network_path: &[NodeId], read: impl FnOnce(&ModifyImportExportClickTarget) -> R) -> Option<R> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in modify_import_export");
+			return None;
+		};
+		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
+			self.load_modify_import_export(network_path);
+		}
+		self.network_metadata(network_path)?.transient_metadata.modify_import_export.with_loaded(read)
+	}
+
 	/// Reads the node click targets through &self if they are already loaded.
 	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
 		let node_metadata = self.node_metadata(node_id, network_path)?;
