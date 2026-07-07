@@ -89,7 +89,6 @@ vector-nodes = { path = "node-graph/nodes/vector" }
 repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
-convex-hull-nodes = { path = "node-graph/nodes/convex_hull" }
 graph-craft = { path = "node-graph/graph-craft" }
 graph-storage = { path = "document/graph-storage", default-features = false }
 document-format = { path = "document/document-format" }
