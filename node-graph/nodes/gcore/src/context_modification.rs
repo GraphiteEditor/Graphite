@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
+use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
@@ -26,6 +26,22 @@ async fn context_modification<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
+		Context -> Item<bool>,
+		Context -> Item<u32>,
+		Context -> Item<u64>,
+		Context -> Item<f32>,
+		Context -> Item<f64>,
+		Context -> Item<String>,
+		Context -> Item<DAffine2>,
+		Context -> Item<Footprint>,
+		Context -> Item<DVec2>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Artboard>,
+		Context -> Item<Gradient>,
 		Context -> List<String>,
 		Context -> List<NodeId>,
 		Context -> List<f64>,
