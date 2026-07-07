@@ -14,6 +14,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_no_item_parameters,
 		validate_element_wise,
 		validate_ranked_inputs,
+		validate_destructure_output,
 	];
 
 	for validator in validators {
@@ -107,10 +108,27 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		);
 	}
 
-	if !outer_wrapper_is(&parsed.output_type, "Item") && !outer_wrapper_is(&parsed.output_type, "List") {
+	if !parsed.attributes.destructure_output && !outer_wrapper_is(&parsed.output_type, "Item") && !outer_wrapper_is(&parsed.output_type, "List") {
 		emit_error!(
 			parsed.output_type.span(),
-			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, or `List<U>` for an expander"
+			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, `List<U>` for an expander, or a `Destructure` struct when declared `destructure_output`"
+		);
+	}
+}
+
+/// A `destructure_output` node returns its `Destructure` struct directly, since the struct's `Item`/`List` fields carry
+/// the wire types, so the return type itself must not be ranked, generic, or unit.
+fn validate_destructure_output(parsed: &ParsedNodeFn) {
+	if !parsed.attributes.destructure_output {
+		return;
+	}
+
+	let output_type = &parsed.output_type;
+	let ranked = outer_wrapper_is(output_type, "Item") || outer_wrapper_is(output_type, "List") || outer_wrapper_is(output_type, "ListDyn");
+	if ranked || is_unit_type(output_type) || contains_generic_param(output_type, &parsed.fn_generics) {
+		emit_error!(
+			output_type.span(),
+			"A `destructure_output` node must return its `Destructure` struct directly, since the struct's `Item`/`List` fields carry the wire types"
 		);
 	}
 }
@@ -126,7 +144,8 @@ fn validate_ranked_inputs(parsed: &ParsedNodeFn) {
 
 fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
 	let mut violations = Vec::new();
-	if parsed.attributes.skip_impl {
+	// A `Destructure` derive's extractor takes the struct of wires itself, which is never a ranked wire
+	if parsed.attributes.skip_impl || parsed.attributes.destructure_extractor {
 		return violations;
 	}
 

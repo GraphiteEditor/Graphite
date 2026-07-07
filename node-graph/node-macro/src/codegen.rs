@@ -7,7 +7,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
 use syn::{Error, Expr, ExprPath, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
-static NODE_ID: AtomicU64 = AtomicU64::new(0);
+pub(crate) static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
@@ -510,6 +510,37 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#serialize_impl
 	};
 
+	// The output a framed variant collects into: an expander kernel (returning `List<U>`) flat-maps under the frame per the
+	// rank-2 force-flatten rule, a map kernel pushes one item per slot, and a `destructure_output` kernel pushes each slot's
+	// struct of wires into the struct's rank-lifted twin. Returns the output type, its empty initial value sized for
+	// `__frame_length`, the per-slot collect statement, and the value returned for an empty frame.
+	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
+		if attributes.destructure_output {
+			let destructure = quote!(<#output_type as #core_types::registry::Destructure>);
+			return (
+				quote!(#destructure::Mapped),
+				quote!(#destructure::mapped_with_capacity(__frame_length)),
+				quote!(#core_types::registry::Destructure::push_into(__result, &mut __output);),
+				quote!(#destructure::mapped_with_capacity(0)),
+			);
+		}
+
+		match parsed.output_element.as_ref() {
+			Some(element_ty) => (
+				quote!(#core_types::list::List<#element_ty>),
+				quote!(#core_types::list::List::with_capacity(__frame_length)),
+				quote!(__output.push(__result);),
+				quote!(#core_types::list::List::new()),
+			),
+			None => (
+				quote!(#output_type),
+				quote!(#core_types::list::List::new()),
+				quote!(__output.extend(__result);),
+				quote!(#core_types::list::List::new()),
+			),
+		}
+	};
+
 	// The mapped variant zips every ranked connector by frame slot (longest-list, last-element repeats), broadcasting bare and environment parameters by clone
 	let mapped_eval_impl = mapped_variant.then(|| {
 		let ranked_names: Vec<_> = regular_fields
@@ -540,15 +571,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			false => quote!(__input.clone()),
 		};
 
-		// An expander kernel (returning `List<U>`) flat-maps under the frame per the rank-2 force-flatten rule; a map kernel pushes one item per slot
-		let (mapped_output_type, initial_output, collect_result) = match parsed.output_element.as_ref() {
-			Some(element_ty) => (
-				quote!(#core_types::list::List<#element_ty>),
-				quote!(#core_types::list::List::with_capacity(__frame_length)),
-				quote!(__output.push(__result);),
-			),
-			None => (quote!(#output_type), quote!(#core_types::list::List::new()), quote!(__output.extend(__result);)),
-		};
+		let (mapped_output_type, initial_output, collect_result, empty_output) = framed_output();
 
 		quote! {
 			type Output = #core_types::registry::DynFuture<'n, #mapped_output_type>;
@@ -560,7 +583,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 					let __frame_length = [#(#ranked_names.len()),*].into_iter().max().unwrap_or(0);
 					if [#(#ranked_names.len()),*].into_iter().any(|length| length == 0) {
-						return #core_types::list::List::new();
+						return #empty_output;
 					}
 
 					let mut __output = #initial_output;
@@ -608,19 +631,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect();
 
-		let (list_content_output_type, initial_output, collect_result) = match parsed.output_element.as_ref() {
-			Some(element_ty) => (
-				quote!(#core_types::list::List<#element_ty>),
-				quote!(#core_types::list::List::with_capacity(__frame_length)),
-				quote!(__output.push(__result);),
-			),
-			None => (quote!(#output_type), quote!(#core_types::list::List::new()), quote!(__output.extend(__result);)),
-		};
+		let (list_content_output_type, initial_output, collect_result, empty_output) = framed_output();
 
 		let empty_param_check = (!ranked_names.is_empty()).then(|| {
 			quote! {
 				if [#(#ranked_names.len()),*].into_iter().any(|__length| __length == 0) {
-					return #core_types::list::List::new();
+					return #empty_output;
 				}
 			}
 		});
@@ -671,6 +687,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
 	let inject_scope_flag = attributes.inject_scope;
+	// A `destructure_output` node records the fields of its returned struct of wires as its output connectors
+	let output_fields = match attributes.destructure_output {
+		true => quote!(Some(<#output_type as gcore::registry::Destructure>::metadata())),
+		false => quote!(None),
+	};
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, &field_idents, core_types, &identifier, &cfg);
@@ -864,6 +885,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
 					inject_scope: #inject_scope_flag,
+					output_fields: #output_fields,
 					fields: vec![
 						#(
 							FieldMetadata {

@@ -984,10 +984,7 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			let number_of_outputs = match &document_node.implementation {
-				DocumentNodeImplementation::Network(network) => network.exports.len(),
-				_ => 1,
-			};
+			let number_of_outputs = self.number_of_outputs(node_id, network_path);
 			// If the node has a hidden primary output, do not display the first output
 			let start_index = if self.hidden_primary_output(node_id, network_path) { 1 } else { 0 };
 			for output_index in start_index..number_of_outputs {

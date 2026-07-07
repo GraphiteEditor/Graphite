@@ -228,6 +228,12 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn number_of_outputs(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
+			// A multi-output proto node (declared `destructure_output`) has one output per field of the struct it returns,
+			// preceded by a hidden primary output carrying the struct itself unless one field is marked `#[primary]`
+			DocumentNodeImplementation::ProtoNode(identifier) => match MULTI_OUTPUT_NODES.get(identifier) {
+				Some(metadata) => metadata.fields.len() + if metadata.has_primary { 0 } else { 1 },
+				None => 1,
+			},
 			_ => 1,
 		})
 	}
@@ -248,6 +254,9 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn hidden_primary_output(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(network) => network.exports.first().is_none_or(|input| !input.is_exposed()),
+			// A multi-output proto node's primary output carries the whole struct, hidden so only the destructured field
+			// outputs are shown, unless a field marked `#[primary]` takes its place as the primary output
+			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).is_some_and(|metadata| !metadata.has_primary),
 			_ => false,
 		})
 	}
