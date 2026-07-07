@@ -185,7 +185,7 @@ impl NodeNetworkInterface {
 							log::error!("Could not get position in create_node_template");
 							return None;
 						};
-						match &mut node_template.persistent_node_metadata.node_type_metadata {
+						match &mut node_template.node_type_metadata {
 							NodeTypePersistentMetadata::Layer(layer_metadata) => layer_metadata.position = LayerPosition::Absolute(position),
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Absolute(position),
 						};
@@ -198,14 +198,14 @@ impl NodeNetworkInterface {
 							log::error!("Could not get position in create_node_template");
 							return None;
 						};
-						node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+						node_template.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
 							position: NodePosition::Absolute(position),
 						});
 					}
 
 					// Shift all absolute nodes 2 to the right and 2 down
 					// TODO: Remove 2x2 offset and replace with layout system to find space for new node
-					match &mut node_template.persistent_node_metadata.node_type_metadata {
+					match &mut node_template.node_type_metadata {
 						NodeTypePersistentMetadata::Layer(layer_metadata) => {
 							if let LayerPosition::Absolute(position) = &mut layer_metadata.position {
 								*position += IVec2::new(2, 2)
@@ -228,7 +228,7 @@ impl NodeNetworkInterface {
 			if self.is_layer(&old_id, network_path) {
 				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, 1), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
-						match &mut node_template.persistent_node_metadata.node_type_metadata {
+						match &mut node_template.node_type_metadata {
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
 							NodeTypePersistentMetadata::Layer(_) => log::error!("Node cannot be a layer"),
 						};
@@ -248,7 +248,7 @@ impl NodeNetworkInterface {
 	///
 	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
 	pub fn map_ids(&mut self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
-		for (input_index, input) in node_template.document_node.inputs.iter_mut().enumerate() {
+		for (input_index, input) in node_template.inputs.iter_mut().enumerate() {
 			if let &mut NodeInput::Node { node_id: id, output_index } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
 					*input = NodeInput::Node { node_id: new_id, output_index };
