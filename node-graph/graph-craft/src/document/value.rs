@@ -410,19 +410,19 @@ tagged_value! {
 	DVec2(DVec2),
 	#[serde(alias = "Affine2")]
 	DAffine2(DAffine2),
-	OptionalDAffine2(Option<DAffine2>),
-	#[serde(alias = "FillGradient")]
-	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(graphene_application_io::resource::ResourceId),
+	// Legacy
+	#[serde(alias = "OptionalDAffine2")]
+	LegacyOptionalDAffine2(Option<DAffine2>),
+	#[serde(alias = "FillGradient")]
+	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
 	// ==========
 	// ENUM TYPES
 	// ==========
-	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
@@ -460,6 +460,9 @@ tagged_value! {
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
+	// Legacy
+	#[serde(alias = "Fill")]
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 }
 
 impl TaggedValue {

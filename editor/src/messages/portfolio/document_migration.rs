@@ -1638,9 +1638,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
 						None
 					};
-					document
-						.network_interface
-						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+					document.network_interface.set_input(
+						&InputConnector::node(*node_id, 6),
+						NodeInput::value(TaggedValue::LegacyOptionalDAffine2(transform), false),
+						network_path,
+					);
 				}
 			}
 			// Wired/exposed fill keeps the connection.
@@ -1681,9 +1683,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
 					None
 				};
-				document
-					.network_interface
-					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+				document.network_interface.set_input(
+					&InputConnector::node(*node_id, 6),
+					NodeInput::value(TaggedValue::LegacyOptionalDAffine2(transform), false),
+					network_path,
+				);
 			}
 		}
 
@@ -1700,7 +1704,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 
 		match old_inputs.get(6).and_then(|input| input.as_value()) {
-			Some(TaggedValue::OptionalDAffine2(value)) => {
+			Some(TaggedValue::LegacyOptionalDAffine2(value)) => {
 				let has_transform = value.is_some();
 				let transform = value.unwrap_or(glam::DAffine2::IDENTITY);
 				document
