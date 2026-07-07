@@ -2,7 +2,7 @@ use super::*;
 
 impl NodeNetworkInterface {
 	/// Runs a query against a resolved [`NetworkView`], logging any error at this message-boundary wrapper and mapping it to None.
-	fn query<'a, 'p, T>(&'a self, network_path: &'p [NodeId], caller: &str, query: impl FnOnce(NetworkView<'a, 'p>) -> Result<T, NetworkError>) -> Option<T> {
+	pub(crate) fn query<'a, 'p, T>(&'a self, network_path: &'p [NodeId], caller: &str, query: impl FnOnce(NetworkView<'a, 'p>) -> Result<T, NetworkError>) -> Option<T> {
 		match self.view(network_path).and_then(query) {
 			Ok(value) => Some(value),
 			Err(error) => {
@@ -72,20 +72,7 @@ impl NodeNetworkInterface {
 
 	/// Get the selected nodes for the network at the network_path
 	pub fn selected_nodes_in_nested_network(&self, network_path: &[NodeId]) -> Option<SelectedNodes> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in selected_nodes");
-			return None;
-		};
-
-		Some(
-			network_metadata
-				.persistent_metadata
-				.selection_undo_history
-				.back()
-				.cloned()
-				.unwrap_or_default()
-				.filtered_selected_nodes(|node_id| network_metadata.persistent_metadata.node_metadata.contains_key(node_id)),
-		)
+		self.query(network_path, "selected_nodes_in_nested_network", |view| Ok(view.selected_nodes()))
 	}
 
 	/// Runs an encapsulating-node query, staying silent for the document network which has no encapsulating node.
@@ -749,32 +736,14 @@ impl NodeNetworkInterface {
 
 	/// Returns the display name of the node. If the display name is empty, it will return "Untitled Node" or "Untitled Layer" depending on the node type.
 	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		let is_layer = self.is_layer(node_id, network_path);
-
-		let display_name = if let Some(node_metadata) = self.node_metadata(node_id, network_path) {
-			node_metadata.persistent_metadata.display_name.clone()
-		} else {
-			log::error!("Could not get node_metadata in display_name");
-			String::new()
-		};
-
-		if display_name.is_empty() {
-			if is_layer {
-				"Untitled Layer".to_string()
-			} else {
-				// TODO: Have this displayed in italics in the UI
-				self.implementation_name(node_id, network_path)
-			}
-		} else {
-			display_name
-		}
+		self.query(network_path, "display_name", |view| Ok(view.display_name(node_id)))
+			.unwrap_or_else(|| "Custom Node".to_string())
 	}
 
 	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		self.reference(node_id, network_path)
-			.map(|identifier| identifier.implementation_name_from_identifier())
-			.unwrap_or("Custom Node".to_string())
+		self.query(network_path, "implementation_name", |view| Ok(view.implementation_name(node_id)))
+			.unwrap_or_else(|| "Custom Node".to_string())
 	}
 
 	pub fn is_locked(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -815,10 +784,9 @@ impl NodeNetworkInterface {
 		downstream_nodes.iter().any(|node_id| self.is_layer(node_id, network_path))
 	}
 
-	pub fn primary_input_connected_to_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.input_from_connector(&InputConnector::node(*node_id, 0), network_path)
-			.and_then(|input| input.as_node())
-			.is_some_and(|node_id| self.is_layer(&node_id, network_path))
+	pub fn primary_input_connected_to_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "primary_input_connected_to_layer", |view| Ok(view.primary_input_connected_to_layer(node_id)))
+			.unwrap_or_default()
 	}
 
 	pub fn hidden_primary_export(&self, network_path: &[NodeId]) -> bool {
@@ -848,8 +816,7 @@ impl NodeNetworkInterface {
 	/// Whether the node is an Artboard node by identity, regardless of whether it currently participates in the scene.
 	/// Callers that care about scene membership should source their layers from the document structure or check connectivity separately.
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.reference(node_id, network_path)
-			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
+		self.view(network_path).map(|view| view.is_artboard(node_id)).unwrap_or_default()
 	}
 
 	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.

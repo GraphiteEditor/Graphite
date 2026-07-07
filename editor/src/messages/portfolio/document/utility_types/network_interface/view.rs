@@ -126,6 +126,67 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(self.node_metadata(node_id)?.persistent_metadata.is_layer())
 	}
 
+	/// Whether the node is an Artboard node by identity, regardless of whether it currently participates in the scene.
+	pub fn is_artboard(&self, node_id: &NodeId) -> bool {
+		self.reference(node_id)
+			.ok()
+			.flatten()
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
+	}
+
+	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
+	pub fn implementation_name(&self, node_id: &NodeId) -> String {
+		self.reference(node_id)
+			.ok()
+			.flatten()
+			.map(|identifier| identifier.implementation_name_from_identifier())
+			.unwrap_or("Custom Node".to_string())
+	}
+
+	/// The display name of the node, falling back to "Untitled Layer" or the implementation name when unnamed.
+	pub fn display_name(&self, node_id: &NodeId) -> String {
+		let display_name = self.node_metadata(node_id).map(|metadata| metadata.persistent_metadata.display_name.clone()).unwrap_or_default();
+
+		if display_name.is_empty() {
+			if self.is_layer(node_id).unwrap_or_default() {
+				"Untitled Layer".to_string()
+			} else {
+				// TODO: Have this displayed in italics in the UI
+				self.implementation_name(node_id)
+			}
+		} else {
+			display_name
+		}
+	}
+
+	/// The current selection of this network, filtered to nodes that still exist.
+	pub fn selected_nodes(&self) -> SelectedNodes {
+		self.metadata
+			.persistent_metadata
+			.selection_undo_history
+			.back()
+			.cloned()
+			.unwrap_or_default()
+			.filtered_selected_nodes(|node_id| self.metadata.persistent_metadata.node_metadata.contains_key(node_id))
+	}
+
+	pub fn primary_input_connected_to_layer(&self, node_id: &NodeId) -> bool {
+		self.input(&InputConnector::node(*node_id, 0))
+			.ok()
+			.and_then(|input| input.as_node())
+			.is_some_and(|upstream_id| self.is_layer(&upstream_id).unwrap_or_default())
+	}
+
+	/// Whether the node's signature fits the layer form: one output, at most two exposed leading inputs, and no exposed parameters.
+	pub fn is_eligible_to_be_layer(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		let node = self.node(node_id)?;
+		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed()).count();
+		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed());
+		let output_count = self.number_of_outputs(node_id)?;
+
+		Ok(!self.hidden_primary_output(node_id)? && output_count == 1 && (input_count <= 2) && parameters_hidden)
+	}
+
 	pub fn is_locked(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(self.node_metadata(node_id)?.persistent_metadata.locked)
 	}
