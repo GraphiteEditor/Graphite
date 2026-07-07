@@ -117,7 +117,7 @@ impl NodeNetworkInterface {
 		// }
 	}
 
-	pub(crate) fn valid_upstream_chain_nodes(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<NodeId> {
+	pub(crate) fn valid_upstream_chain_nodes(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<NodeId> {
 		let InputConnector::Node {
 			node_id: input_connector_node_id,
 			input_index,
@@ -136,11 +136,16 @@ impl NodeNetworkInterface {
 				if self.is_layer(&upstream_node, network_path) || self.hidden_primary_output(&upstream_node, network_path) {
 					break;
 				}
-				let Some(outward_wires) = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(&OutputConnector::node(upstream_node, 0))) else {
+				let downstream_connection_count = self
+					.with_outward_wires(network_path, |outward_wires| {
+						outward_wires.get(&OutputConnector::node(upstream_node, 0)).map(|connections| connections.len())
+					})
+					.flatten();
+				let Some(downstream_connection_count) = downstream_connection_count else {
 					log::error!("Could not get outward wires in try_set_upstream_to_chain");
 					break;
 				};
-				if outward_wires.len() != 1 {
+				if downstream_connection_count != 1 {
 					break;
 				}
 				let downstream_position = self.position(&downstream_id, network_path);
