@@ -41,6 +41,23 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 					}));
 				}
 			}
+			InputPreprocessorMessage::TripleClick { editor_mouse_state, modifier_keys } => {
+				self.update_states_of_modifier_keys(modifier_keys, responses);
+
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
+				self.mouse.position = mouse_state.position;
+
+				for key in mouse_state.mouse_keys {
+					responses.add(InputMapperMessage::TripleClick(match key {
+						MouseKeys::LEFT => MouseButton::Left,
+						MouseKeys::RIGHT => MouseButton::Right,
+						MouseKeys::MIDDLE => MouseButton::Middle,
+						MouseKeys::BACK => MouseButton::Back,
+						MouseKeys::FORWARD => MouseButton::Forward,
+						_ => unimplemented!(),
+					}));
+				}
+			}
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);

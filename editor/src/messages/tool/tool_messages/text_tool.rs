@@ -2,6 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
+use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -21,7 +22,6 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::choice_type::ChoiceTypeStatic;
-use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
 use graphene_std::vector::style::{FillChoice, FillChoiceUI};
@@ -67,19 +67,41 @@ pub enum TextToolMessage {
 	Abort,
 	WorkingColorChanged,
 	Overlays { context: OverlayContext },
+	TimerTick { tick: u64 },
 
 	// Tool-specific messages
 	DragStart,
 	DragStop,
+	DoubleClick,
+	TripleClick,
 	EditSelected,
-	Interact,
 	PointerMove { center: Key, lock_ratio: Key },
 	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	SelectionChanged,
-	TextChange { new_text: String, is_left_or_right_click: bool },
-	UpdateBounds { new_text: String },
 	UpdateOptions { options: TextOptionsUpdate },
-	RefreshEditingFontData,
+	KeyboardInput { character: char },
+	BackspaceChar,
+	DeleteChar,
+	MoveCursorLeft { word: bool, select: bool },
+	MoveCursorRight { word: bool, select: bool },
+	MoveCursorUp { select: bool },
+	MoveCursorDown { select: bool },
+	MoveCursorHome { select: bool },
+	MoveCursorEnd { select: bool },
+	MoveCursorTop { select: bool },
+	MoveCursorBottom { select: bool },
+	InsertNewline,
+	CommitText,
+	Undo,
+	Redo,
+
+	// Text selection and clipboard
+	SelectAll,
+	DeletePreviousWord,
+	DeleteLine,
+	Copy,
+	Cut,
+	PasteText { text: String },
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -389,10 +411,38 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				DragStart,
 				PointerOutsideViewport,
 				PointerMove,
+				DoubleClick,
 			),
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
 				DragStart,
+				DragStop,
+				PointerMove,
 				Abort,
+				EditSelected,
+				KeyboardInput,
+				BackspaceChar,
+				DeleteChar,
+				MoveCursorLeft,
+				MoveCursorRight,
+				MoveCursorUp,
+				MoveCursorDown,
+				MoveCursorHome,
+				MoveCursorEnd,
+				MoveCursorTop,
+				MoveCursorBottom,
+				InsertNewline,
+				CommitText,
+				Undo,
+				Redo,
+				TimerTick,
+				DoubleClick,
+				TripleClick,
+				SelectAll,
+				DeletePreviousWord,
+				DeleteLine,
+				Copy,
+				Cut,
+				PasteText,
 			),
 			TextToolFsmState::Placing | TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
 				DragStop,
@@ -439,7 +489,6 @@ enum TextToolFsmState {
 
 #[derive(Clone, Debug)]
 pub struct EditingText {
-	text: String,
 	font: Font,
 	typesetting: TypesettingConfig,
 	color: Option<Color>,
@@ -451,6 +500,24 @@ struct ResizingLayer {
 	id: LayerNodeIdentifier,
 	/// The transform of the text layer in document space at the start of the transformation.
 	original_transform: DAffine2,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct TextToolHistoryState {
+	text: String,
+	cursor_byte_offset: usize,
+	selection_start_byte_offset: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum TextEditType {
+	#[default]
+	None,
+	InsertChar,
+	InsertWhitespace,
+	Delete,
+	Paste,
+	InsertNewline,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -468,12 +535,32 @@ struct TextToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<ResizingLayer>,
+	cursor_byte_offset: usize,
+	selection_start_byte_offset: Option<usize>,
+	cursor_visible: bool,
+	blink_tick: u64,
+	dragging_to_select: bool,
+	history: Vec<TextToolHistoryState>,
+	history_index: usize,
+	last_edit_type: TextEditType,
 }
 
 impl TextToolData {
-	fn delete_empty_layer(&mut self, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> TextToolFsmState {
+	fn get_selected_text(&self) -> Option<String> {
+		if let Some(start) = self.selection_start_byte_offset {
+			let end = self.cursor_byte_offset;
+			let min = start.min(end).min(self.new_text.len());
+			let max = start.max(end).min(self.new_text.len());
+			if min < max {
+				return Some(self.new_text[min..max].to_string());
+			}
+		}
+		None
+	}
+
+	fn delete_empty_layer(&mut self, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Remove the editable textbox UI first
-		self.set_editing(false, fonts, responses);
+		self.set_editing(false, responses);
 
 		// Delete the empty text layer and update the graph
 		responses.add(NodeGraphMessage::DeleteNodes {
@@ -485,75 +572,112 @@ impl TextToolData {
 		TextToolFsmState::Ready
 	}
 
-	/// Set the editing state of the currently modifying layer
-	fn set_editing(&self, editable: bool, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
-		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
-			let (align, align_last) = editing_text.typesetting.align.css();
-			let font_data = fonts.get_resource_or_queue_load(&editing_text.font, responses).as_ref().to_vec().into();
-			responses.add(FrontendMessage::DisplayEditableTextbox {
-				text: editing_text.text.clone(),
-				line_height_ratio: editing_text.typesetting.line_height_ratio,
-				font_size: editing_text.typesetting.font_size,
-				color: editing_text.color.map_or("#000000".to_string(), |color| SRGBA8::from(color).to_css_hex()),
-				font_data,
-				transform: editing_text.transform.to_cols_array(),
-				max_width: editing_text.typesetting.max_width,
-				max_height: editing_text.typesetting.max_height,
-				align: align.to_string(),
-				align_last: align_last.to_string(),
-			});
-		} else {
-			// Check if DisplayRemoveEditableTextbox is already in the responses queue
-			let has_remove_textbox = responses.iter().any(|msg| matches!(msg, Message::Frontend(FrontendMessage::DisplayRemoveEditableTextbox)));
-			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
-
-			if has_remove_textbox {
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
-			}
-		}
+	/// Set the editing state of the currently modifying layer.
+	fn set_editing(&self, editable: bool, responses: &mut VecDeque<Message>) {
+		responses.add(OverlaysMessage::Draw);
+		responses.add(FrontendMessage::UpdateTextEditingState { is_editing: editable });
 	}
 
-	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler) -> Option<()> {
+	fn reset_cursor_blink(&mut self, responses: &mut VecDeque<Message>) {
+		self.cursor_visible = true;
+		self.blink_tick += 1;
+		spawn_blink_timer(self.blink_tick, responses);
+		responses.add(OverlaysMessage::Draw);
+	}
+
+	/// Deletes the currently selected text and returns true if there was a selection to delete.
+	fn delete_selection(&mut self) -> bool {
+		let Some(sel_start) = self.selection_start_byte_offset.take() else { return false };
+		let start = sel_start.min(self.cursor_byte_offset);
+		let end = sel_start.max(self.cursor_byte_offset);
+		if start == end {
+			return false;
+		}
+		self.new_text.replace_range(start..end, "");
+		self.cursor_byte_offset = start;
+		true
+	}
+
+	fn commit_history_state(&mut self) {
+		let state = TextToolHistoryState {
+			text: self.new_text.clone(),
+			cursor_byte_offset: self.cursor_byte_offset,
+			selection_start_byte_offset: self.selection_start_byte_offset,
+		};
+		if let Some(last) = self.history.get_mut(self.history_index)
+			&& last.text == state.text
+		{
+			last.cursor_byte_offset = state.cursor_byte_offset;
+			last.selection_start_byte_offset = state.selection_start_byte_offset;
+			return;
+		}
+		self.history.truncate(self.history_index + 1);
+		self.history.push(state);
+		self.history_index = self.history.len() - 1;
+	}
+
+	fn find_closest_byte_offset(&self, document: &DocumentMessageHandler, mouse_viewport: DVec2, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Option<usize> {
+		let editing_text = self.editing_text.as_ref()?;
+		let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+		let layer_to_viewport = document.metadata().transform_to_viewport(self.layer);
+		let viewport_to_layer = layer_to_viewport.inverse();
+		let click_local = viewport_to_layer.transform_point2(mouse_viewport);
+
+		Some(graphene_std::text::hit_test_position(&self.new_text, &font_resource, editing_text.typesetting, click_local))
+	}
+
+	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>, mouse_viewport: Option<DVec2>) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
 		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface, fonts, &document.resources)?;
 		self.editing_text = Some(EditingText {
-			text: text.clone(),
 			font,
 			typesetting,
 			color: Some(color),
 			transform,
 		});
 		self.new_text.clone_from(text);
+		if let Some(mouse) = mouse_viewport {
+			self.cursor_byte_offset = self.find_closest_byte_offset(document, mouse, fonts, responses).unwrap_or(self.new_text.len());
+		} else {
+			self.cursor_byte_offset = self.new_text.len();
+		}
+		self.reset_cursor_blink(responses);
 		Some(())
 	}
 
-	fn start_editing_layer(&mut self, layer: LayerNodeIdentifier, tool_state: TextToolFsmState, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_editing_layer(
+		&mut self,
+		layer: LayerNodeIdentifier,
+		tool_state: TextToolFsmState,
+		document: &DocumentMessageHandler,
+		fonts: &FontsMessageHandler,
+		responses: &mut VecDeque<Message>,
+		mouse_viewport: Option<DVec2>,
+	) {
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Cannot edit ROOT_PARENT in TextTooLData")
 		}
 
 		if tool_state == TextToolFsmState::Editing {
-			self.set_editing(false, fonts, responses);
+			self.set_editing(false, responses);
 		}
 
 		self.layer = layer;
-		if self.load_layer_text_node(document, fonts).is_some() {
+		if self.load_layer_text_node(document, fonts, responses, mouse_viewport).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
-			self.set_editing(true, fonts, responses);
+			self.history.clear();
+			self.history_index = 0;
+			self.commit_history_state();
+
+			self.set_editing(true, responses);
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
-			// Make the rendered text invisible while editing
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
-				input: NodeInput::value(TaggedValue::String("".to_string()), false),
-			});
-			responses.add(NodeGraphMessage::RunDocumentGraph);
 		};
 	}
 
-	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
+	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, responses: &mut VecDeque<Message>) {
 		self.new_text = String::new();
 		responses.add(DocumentMessage::AddTransaction);
 
@@ -577,8 +701,15 @@ impl TextToolData {
 		});
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
+		self.cursor_byte_offset = 0;
+		self.selection_start_byte_offset = None;
+		self.reset_cursor_blink(responses);
 
-		self.set_editing(true, fonts, responses);
+		self.history.clear();
+		self.history_index = 0;
+		self.commit_history_state();
+
+		self.set_editing(true, responses);
 
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
@@ -601,7 +732,7 @@ impl TextToolData {
 	}
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
-		let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
+		let mouse = input.mouse.position;
 		document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).find(|&layer| {
 			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, fonts, responses);
 			transformed_quad.contains(mouse)
@@ -654,22 +785,45 @@ impl Fsm for TextToolFsmState {
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				// While editing, the text is blanked, so the layer's rendered transform metadata is absent; read the Transform node so the overlay tracks placement
-				let transform = document
-					.metadata()
-					.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
-					.to_cols_array();
-				responses.add(FrontendMessage::DisplayEditableTextboxTransform { transform });
-				if let Some(editing_text) = tool_data.editing_text.as_mut() {
+				if let Some(editing_text) = tool_data.editing_text.as_ref() {
 					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+					let layer_to_viewport = if !document.metadata().layer_exists(tool_data.layer) {
+						document.metadata().document_to_viewport * editing_text.transform
+					} else {
+						let t = document
+							.metadata()
+							.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface);
+						if t.matrix2.determinant() == 0. {
+							document.metadata().document_to_viewport * editing_text.transform
+						} else {
+							t
+						}
+					};
 					let far = graphene_std::text::bounding_box(&tool_data.new_text, &font_resource, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document
-							.metadata()
-							.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface)
-							* quad;
-						overlay_context.quad(transformed_quad, None, Some(fill_color));
+						overlay_context.quad(layer_to_viewport * quad, None, Some(fill_color));
+					}
+
+					if let Some(selection_start) = tool_data.selection_start_byte_offset {
+						let start = selection_start.min(tool_data.cursor_byte_offset);
+						let end = selection_start.max(tool_data.cursor_byte_offset);
+						if start != end {
+							let rects = graphene_std::text::selection_rectangles(&tool_data.new_text, &font_resource, editing_text.typesetting, start, end);
+							for [top_left, bottom_right] in rects {
+								let sel_quad = Quad::from_box([top_left, bottom_right]);
+								overlay_context.quad(layer_to_viewport * sel_quad, None, Some("#41414140"));
+							}
+						}
+					}
+
+					if tool_data.cursor_visible {
+						let cursor_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+						let [top_left, bottom_right] = graphene_std::text::cursor_rect(&tool_data.new_text, &font_resource, editing_text.typesetting, cursor_offset, 0.0);
+
+						let cursor_start = layer_to_viewport.transform_point2(DVec2::new(top_left.x, top_left.y));
+						let cursor_end = layer_to_viewport.transform_point2(DVec2::new(top_left.x, bottom_right.y));
+						overlay_context.line(cursor_start, cursor_end, Some("#000000"), Some(1.5));
 					}
 				}
 
@@ -727,11 +881,27 @@ impl Fsm for TextToolFsmState {
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
-					tool_data.start_editing_layer(layer, state, document, fonts, responses);
+					tool_data.start_editing_layer(layer, state, document, fonts, responses, None);
 					return TextToolFsmState::Editing;
 				}
 
 				state
+			}
+			(TextToolFsmState::Editing, TextToolMessage::DragStart) => {
+				if let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, fonts, responses)
+					&& clicked_text_layer_path == tool_data.layer
+				{
+					let click_offset = tool_data.find_closest_byte_offset(document, input.mouse.position, fonts, responses).unwrap_or(tool_data.new_text.len());
+					tool_data.cursor_byte_offset = click_offset;
+					tool_data.selection_start_byte_offset = Some(click_offset);
+					tool_data.dragging_to_select = true;
+					tool_data.last_edit_type = TextEditType::None;
+					tool_data.reset_cursor_blink(responses);
+					return TextToolFsmState::Editing;
+				}
+
+				let next_state = self.transition(ToolMessage::Text(TextToolMessage::CommitText), tool_data, transition_data, tool_options, responses);
+				next_state.transition(ToolMessage::Text(TextToolMessage::DragStart), tool_data, transition_data, tool_options, responses)
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
 				tool_data.resize.start(document, input, viewport);
@@ -787,6 +957,47 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Dragging;
 				}
 				TextToolFsmState::Placing
+			}
+			(TextToolFsmState::Ready, TextToolMessage::DoubleClick) => {
+				if let Some(clicked_layer) = TextToolData::check_click(document, input, fonts, responses) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					let selected = document.network_interface.selected_nodes();
+					let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
+					let selected = all_selected.find(|&layer| document.metadata().is_text_layer(layer));
+
+					if selected != Some(clicked_layer) {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![clicked_layer.to_node()] });
+					}
+
+					tool_data.start_editing_layer(clicked_layer, TextToolFsmState::Ready, document, fonts, responses, Some(input.mouse.position));
+
+					return TextToolFsmState::Editing;
+				}
+				TextToolFsmState::Ready
+			}
+			(TextToolFsmState::Editing, TextToolMessage::PointerMove { .. }) => {
+				if tool_data.dragging_to_select {
+					let new_offset = tool_data
+						.find_closest_byte_offset(document, input.mouse.position, fonts, responses)
+						.unwrap_or(tool_data.cursor_byte_offset);
+					tool_data.cursor_byte_offset = new_offset;
+					tool_data.last_edit_type = TextEditType::None;
+					responses.add(OverlaysMessage::Draw);
+				}
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::DragStop) => {
+				if tool_data.dragging_to_select {
+					if let Some(anchor) = tool_data.selection_start_byte_offset
+						&& anchor == tool_data.cursor_byte_offset
+					{
+						tool_data.selection_start_byte_offset = None;
+					}
+					tool_data.dragging_to_select = false;
+					tool_data.reset_cursor_blink(responses);
+				}
+				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
 				// This ensures the cursor only changes if a layer is selected
@@ -915,11 +1126,38 @@ impl Fsm for TextToolFsmState {
 				}
 				TextToolFsmState::ResizingBounds
 			}
-			(_, TextToolMessage::PointerMove { .. }) => {
-				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
-				responses.add(OverlaysMessage::Draw);
 
-				self
+			(TextToolFsmState::Editing, TextToolMessage::DoubleClick) => {
+				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				let prefix = &tool_data.new_text[..offset];
+				let suffix = &tool_data.new_text[offset..];
+
+				let word_start = prefix.rfind(|c: char| c.is_whitespace()).map(|i| i + prefix[i..].chars().next().unwrap().len_utf8()).unwrap_or(0);
+				let word_end = suffix.find(|c: char| c.is_whitespace()).map(|i| offset + i).unwrap_or(tool_data.new_text.len());
+
+				if word_start != word_end {
+					tool_data.selection_start_byte_offset = Some(word_start);
+					tool_data.cursor_byte_offset = word_end;
+					tool_data.last_edit_type = TextEditType::None;
+					tool_data.reset_cursor_blink(responses);
+				}
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::TripleClick) => {
+				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				let prefix = &tool_data.new_text[..offset];
+				let suffix = &tool_data.new_text[offset..];
+
+				let line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+				let line_end = suffix.find('\n').map(|i| offset + i).unwrap_or(tool_data.new_text.len());
+
+				if line_start != line_end {
+					tool_data.selection_start_byte_offset = Some(line_start);
+					tool_data.cursor_byte_offset = line_end;
+					tool_data.last_edit_type = TextEditType::None;
+					tool_data.reset_cursor_blink(responses);
+				}
+				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Placing, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning setup
@@ -967,14 +1205,13 @@ impl Fsm for TextToolFsmState {
 
 				// Check if the user has clicked (no dragging) on some existing text
 				if !has_dragged && let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, fonts, responses) {
-					tool_data.start_editing_layer(clicked_text_layer_path, self, document, fonts, responses);
+					tool_data.start_editing_layer(clicked_text_layer_path, self, document, fonts, responses, Some(input.mouse.position));
 					return TextToolFsmState::Editing;
 				}
 
 				// Otherwise create some new text. The window-aligned transform is in viewport space, so the editing overlay (a screen-space CSS matrix) carries the zoom.
 				let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
 				let editing_text = EditingText {
-					text: String::new(),
 					transform: window_aligned_transform(document, start, DVec2::ONE),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
@@ -988,7 +1225,7 @@ impl Fsm for TextToolFsmState {
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),
 				};
-				tool_data.new_text(document, editing_text, fonts, responses);
+				tool_data.new_text(document, editing_text, responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
@@ -1003,49 +1240,399 @@ impl Fsm for TextToolFsmState {
 				}
 
 				if drag_too_small && let Some(layer_info) = &tool_data.layer_dragging {
-					tool_data.start_editing_layer(layer_info.id, self, document, fonts, responses);
+					tool_data.start_editing_layer(layer_info.id, self, document, fonts, responses, Some(input.mouse.position));
 					return TextToolFsmState::Editing;
 				}
 				tool_data.layer_dragging.take();
 
 				TextToolFsmState::Ready
 			}
-			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
-				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
-				let font_resource = fonts.get_resource_or_queue_load(&font, responses);
-				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
-					font_data: font_resource.as_ref().to_vec().into(),
-				});
+			(TextToolFsmState::Editing, TextToolMessage::KeyboardInput { character }) => {
+				let current_edit_type = if character.is_whitespace() { TextEditType::InsertWhitespace } else { TextEditType::InsertChar };
+				if tool_data.last_edit_type != current_edit_type {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = current_edit_type;
 
-				TextToolFsmState::Editing
-			}
-			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
-				tool_data.new_text = new_text;
+				tool_data.delete_selection();
+				// Insert the character at the cursor position.
+				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				tool_data.new_text.insert(offset, character);
+				tool_data.cursor_byte_offset = offset + character.len_utf8();
 
-				if !is_left_or_right_click {
-					tool_data.set_editing(false, fonts, responses);
-
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
+						input_connector: InputConnector::node(text_node_id, 1),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-
-					TextToolFsmState::Ready
-				} else {
-					if tool_data.new_text.is_empty() {
-						return tool_data.delete_empty_layer(fonts, responses);
-					}
-
-					responses.add(FrontendMessage::TriggerTextCommit);
-
-					TextToolFsmState::Editing
 				}
-			}
-			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
-				tool_data.new_text = new_text;
-				responses.add(OverlaysMessage::Draw);
+				tool_data.reset_cursor_blink(responses);
 				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::BackspaceChar) => {
+				if tool_data.last_edit_type != TextEditType::Delete {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = TextEditType::Delete;
+
+				if !tool_data.delete_selection() {
+					let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+					if offset > 0 {
+						// Find the start of the previous UTF-8 character.
+						let prev = tool_data.new_text[..offset].char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
+						tool_data.new_text.remove(prev);
+						tool_data.cursor_byte_offset = prev;
+					}
+				}
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::DeleteChar) => {
+				if tool_data.last_edit_type != TextEditType::Delete {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = TextEditType::Delete;
+
+				if !tool_data.delete_selection() {
+					let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+					if offset < tool_data.new_text.len() {
+						tool_data.new_text.remove(offset);
+					}
+				}
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::MoveCursorLeft { word, select }) => {
+				let old_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(old_offset);
+				}
+				let offset = old_offset;
+				if word {
+					let prefix = &tool_data.new_text[..offset];
+					let trimmed = prefix.trim_end();
+					let word_end = trimmed.rfind(|c: char| c.is_whitespace()).map(|i| i + trimmed[i..].chars().next().unwrap().len_utf8()).unwrap_or(0);
+					tool_data.cursor_byte_offset = word_end;
+				} else if offset > 0 {
+					let prev = tool_data.new_text[..offset].char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
+					tool_data.cursor_byte_offset = prev;
+				}
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::MoveCursorRight { word, select }) => {
+				let old_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(old_offset);
+				}
+				let offset = old_offset;
+				if word {
+					let suffix = &tool_data.new_text[offset..];
+					let word_end_rel = suffix
+						.find(|c: char| c.is_whitespace())
+						.map(|i| i + suffix[i..].find(|c: char| !c.is_whitespace()).unwrap_or(suffix.len() - i))
+						.unwrap_or(suffix.len());
+					tool_data.cursor_byte_offset = offset + word_end_rel;
+				} else if offset < tool_data.new_text.len() {
+					let next_char = tool_data.new_text[offset..].chars().next().map(|c| c.len_utf8()).unwrap_or(0);
+					tool_data.cursor_byte_offset = offset + next_char;
+				}
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, msg @ (TextToolMessage::MoveCursorUp { .. } | TextToolMessage::MoveCursorDown { .. })) => {
+				let old_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				let select = matches!(msg, TextToolMessage::MoveCursorUp { select: true } | TextToolMessage::MoveCursorDown { select: true });
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(old_offset);
+				}
+				let offset = old_offset;
+
+				if let Some(editing_text) = tool_data.editing_text.as_ref() {
+					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+					let [top_left, bottom_right] = graphene_std::text::cursor_rect(&tool_data.new_text, &font_resource, editing_text.typesetting, offset, 0.0);
+					let current_x = top_left.x;
+					let current_y = (top_left.y + bottom_right.y) / 2.0;
+
+					let line_height = editing_text.typesetting.font_size * editing_text.typesetting.line_height_ratio;
+					let target_y = if matches!(msg, TextToolMessage::MoveCursorUp { .. }) {
+						current_y - line_height
+					} else {
+						current_y + line_height
+					};
+
+					let new_offset = graphene_std::text::hit_test_position(&tool_data.new_text, &font_resource, editing_text.typesetting, DVec2::new(current_x, target_y));
+					tool_data.cursor_byte_offset = new_offset;
+				}
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::MoveCursorHome { select }) => {
+				let old_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(old_offset);
+				}
+				let line_start = tool_data.new_text[..old_offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
+				tool_data.cursor_byte_offset = line_start;
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::MoveCursorEnd { select }) => {
+				let old_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(old_offset);
+				}
+				let line_end = tool_data.new_text[old_offset..].find('\n').map(|i| old_offset + i).unwrap_or(tool_data.new_text.len());
+				tool_data.cursor_byte_offset = line_end;
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::MoveCursorTop { select }) => {
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(tool_data.cursor_byte_offset.min(tool_data.new_text.len()));
+				}
+				tool_data.cursor_byte_offset = 0;
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::MoveCursorBottom { select }) => {
+				if !select {
+					tool_data.selection_start_byte_offset = None;
+				} else if tool_data.selection_start_byte_offset.is_none() {
+					tool_data.selection_start_byte_offset = Some(tool_data.cursor_byte_offset.min(tool_data.new_text.len()));
+				}
+				tool_data.cursor_byte_offset = tool_data.new_text.len();
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::SelectAll) => {
+				tool_data.selection_start_byte_offset = Some(0);
+				tool_data.cursor_byte_offset = tool_data.new_text.len();
+				tool_data.last_edit_type = TextEditType::None;
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::Copy) => {
+				if let Some(selected_text) = tool_data.get_selected_text() {
+					responses.add(ClipboardMessage::Write {
+						content: ClipboardContent::Text(selected_text),
+					});
+				}
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::Cut) => {
+				if let Some(selected_text) = tool_data.get_selected_text() {
+					responses.add(ClipboardMessage::Write {
+						content: ClipboardContent::Text(selected_text),
+					});
+					if tool_data.last_edit_type != TextEditType::Delete {
+						tool_data.commit_history_state();
+					}
+					tool_data.last_edit_type = TextEditType::Delete;
+					tool_data.delete_selection();
+
+					if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(text_node_id, 1),
+							input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+					tool_data.reset_cursor_blink(responses);
+				}
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::PasteText { text }) => {
+				if tool_data.last_edit_type != TextEditType::Paste {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = TextEditType::Paste;
+
+				tool_data.delete_selection();
+				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				tool_data.new_text.insert_str(offset, &text);
+				tool_data.cursor_byte_offset = offset + text.len();
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::DeletePreviousWord) => {
+				if tool_data.last_edit_type != TextEditType::Delete {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = TextEditType::Delete;
+
+				if !tool_data.delete_selection() {
+					let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+					if offset > 0 {
+						let prefix = &tool_data.new_text[..offset];
+						let trimmed_len = prefix.trim_end().len();
+						let search_end = trimmed_len;
+						let prev_word_start = prefix[..search_end]
+							.rfind(|c: char| c.is_whitespace())
+							.map(|i| i + prefix[i..].chars().next().unwrap().len_utf8())
+							.unwrap_or(0);
+
+						tool_data.new_text.replace_range(prev_word_start..offset, "");
+						tool_data.cursor_byte_offset = prev_word_start;
+					}
+				}
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::DeleteLine) => {
+				if tool_data.last_edit_type != TextEditType::Delete {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = TextEditType::Delete;
+
+				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				let start = tool_data.new_text[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
+				let end = tool_data.new_text[offset..].find('\n').map(|i| offset + i + 1).unwrap_or(tool_data.new_text.len());
+
+				tool_data.new_text.replace_range(start..end, "");
+				tool_data.cursor_byte_offset = start;
+				tool_data.selection_start_byte_offset = None;
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::InsertNewline) => {
+				if tool_data.last_edit_type != TextEditType::InsertNewline {
+					tool_data.commit_history_state();
+				}
+				tool_data.last_edit_type = TextEditType::InsertNewline;
+
+				tool_data.delete_selection();
+				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+				tool_data.new_text.insert(offset, '\n');
+				tool_data.cursor_byte_offset = offset + 1;
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				tool_data.reset_cursor_blink(responses);
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::Undo) => {
+				tool_data.commit_history_state();
+				if tool_data.history_index > 0 {
+					tool_data.history_index -= 1;
+					let state = &tool_data.history[tool_data.history_index];
+					tool_data.new_text.clone_from(&state.text);
+					tool_data.cursor_byte_offset = state.cursor_byte_offset;
+					tool_data.selection_start_byte_offset = state.selection_start_byte_offset;
+
+					if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(text_node_id, 1),
+							input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+					tool_data.reset_cursor_blink(responses);
+				}
+				tool_data.last_edit_type = TextEditType::None;
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::Redo) => {
+				if tool_data.history_index + 1 < tool_data.history.len() {
+					tool_data.history_index += 1;
+					let state = &tool_data.history[tool_data.history_index];
+					tool_data.new_text.clone_from(&state.text);
+					tool_data.cursor_byte_offset = state.cursor_byte_offset;
+					tool_data.selection_start_byte_offset = state.selection_start_byte_offset;
+
+					if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(text_node_id, 1),
+							input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+					tool_data.reset_cursor_blink(responses);
+				}
+				tool_data.last_edit_type = TextEditType::None;
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
+				if tool_data.new_text.is_empty() {
+					return tool_data.delete_empty_layer(responses);
+				}
+
+				tool_data.set_editing(false, responses);
+
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+
+				TextToolFsmState::Ready
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {
 				responses.add(TextToolMessage::UpdateOptions {
@@ -1055,10 +1642,26 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
 				if tool_data.new_text.is_empty() {
-					return tool_data.delete_empty_layer(fonts, responses);
+					return tool_data.delete_empty_layer(responses);
 				}
 
-				responses.add(FrontendMessage::TriggerTextCommit);
+				tool_data.set_editing(false, responses);
+				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(text_node_id, 1),
+						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				TextToolFsmState::Ready
+			}
+			(TextToolFsmState::Editing, TextToolMessage::TimerTick { tick }) => {
+				if tick == tool_data.blink_tick {
+					tool_data.cursor_visible = !tool_data.cursor_visible;
+					tool_data.blink_tick += 1;
+					spawn_blink_timer(tool_data.blink_tick, responses);
+					responses.add(OverlaysMessage::Draw);
+				}
 				TextToolFsmState::Editing
 			}
 			(state, TextToolMessage::Abort) => {
@@ -1117,4 +1720,24 @@ impl Fsm for TextToolFsmState {
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}
+}
+
+fn spawn_blink_timer(tick: u64, responses: &mut VecDeque<Message>) {
+	responses.add(FutureMessage::Await {
+		future: MessageFuture::new(async move {
+			#[cfg(target_family = "wasm")]
+			{
+				let mut cb = |resolve: js_sys::Function, _reject| {
+					web_sys::window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 500).unwrap();
+				};
+				let promise = js_sys::Promise::new(&mut cb);
+				wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+			}
+			#[cfg(not(target_family = "wasm"))]
+			{
+				tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+			}
+			Message::Tool(ToolMessage::Text(TextToolMessage::TimerTick { tick }))
+		}),
+	});
 }

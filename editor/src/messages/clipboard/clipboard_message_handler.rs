@@ -47,6 +47,8 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				ClipboardContentRaw::Text(text) => {
 					if let Some(graphite) = text.strip_prefix(CLIPBOARD_PREFIX) {
 						responses.add(ClipboardMessage::PasteItems { data: graphite.to_string() });
+					} else if current_tool == &ToolType::Text {
+						responses.add(TextToolMessage::PasteText { text });
 					} else {
 						responses.add(FrontendMessage::TriggerSelectionWrite { content: text });
 					}
@@ -98,6 +100,10 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			ClipboardMessage::CopyLayers => {
 				if current_tool == &ToolType::Path {
 					responses.add(PathToolMessage::Copy);
+					return;
+				}
+				if current_tool == &ToolType::Text {
+					responses.add(TextToolMessage::Copy);
 					return;
 				}
 
@@ -155,6 +161,10 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			ClipboardMessage::CutLayers => {
 				if current_tool == &ToolType::Path {
 					responses.add(PathToolMessage::Cut);
+					return;
+				}
+				if current_tool == &ToolType::Text {
+					responses.add(TextToolMessage::Cut);
 					return;
 				}
 

@@ -36,32 +36,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "panicInfo")]
 		panic_info: String,
 	},
-	DisplayEditableTextbox {
-		text: String,
-		#[serde(rename = "lineHeightRatio")]
-		line_height_ratio: f64,
-		#[serde(rename = "fontSize")]
-		font_size: f64,
-		color: String,
-		#[serde(rename = "fontData")]
-		font_data: serde_bytes::ByteBuf,
-		transform: [f64; 6],
-		#[serde(rename = "maxWidth")]
-		max_width: Option<f64>,
-		#[serde(rename = "maxHeight")]
-		max_height: Option<f64>,
-		align: String,
-		#[serde(rename = "alignLast")]
-		align_last: String,
-	},
-	DisplayEditableTextboxUpdateFontData {
-		#[serde(rename = "fontData")]
-		font_data: serde_bytes::ByteBuf,
-	},
-	DisplayEditableTextboxTransform {
-		transform: [f64; 6],
-	},
-	DisplayRemoveEditableTextbox,
 
 	// Send prefix: Send global, static data to the frontend that is never updated
 	SendUIMetadata {
@@ -135,7 +109,6 @@ pub enum FrontendMessage {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
 	},
-	TriggerTextCommit,
 	/// Asks the frontend to enter inline-rename mode for a layer in the graph view.
 	TriggerEditLayerNameInGraph {
 		#[serde(rename = "nodeId")]
@@ -205,6 +178,10 @@ pub enum FrontendMessage {
 	},
 	UpdateGraphViewOverlay {
 		open: bool,
+	},
+	UpdateTextEditingState {
+		#[serde(rename = "isEditing")]
+		is_editing: bool,
 	},
 	UpdateWorkspacePanelLayout {
 		#[serde(rename = "panelLayout")]

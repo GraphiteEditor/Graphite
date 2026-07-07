@@ -4,7 +4,9 @@ use core::cell::RefCell;
 use core_types::list::List;
 use glam::DVec2;
 use graphene_resource::{Resource, ResourceHash};
+use parley::editing::{Cursor, Selection};
 use parley::fontique::{Blob, FamilyId, FontInfo};
+use parley::layout::Affinity;
 use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
 use vector_types::Vector;
@@ -185,5 +187,54 @@ impl TextContext {
 		let Some(max_height) = typesetting.max_height else { return false };
 		let bounds = self.bounding_box(text, font, typesetting, true);
 		max_height < bounds.y
+	}
+
+	/// Returns the closest byte offset for a given X/Y position within the text layout.
+	pub fn hit_test_position(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, position: DVec2) -> usize {
+		let Some(layout) = self.layout_text(text, font, typesetting) else {
+			return 0;
+		};
+
+		let mut clamped_y = position.y as f32;
+		let height = layout.height();
+		if height > 0.0 {
+			if clamped_y < 0.0 {
+				clamped_y = 0.0;
+			} else if clamped_y >= height {
+				clamped_y = height - 0.001;
+			}
+		} else {
+			clamped_y = 0.0;
+		}
+
+		let cursor = Cursor::from_point(&layout, position.x as f32, clamped_y);
+		cursor.index()
+	}
+
+	/// Returns a list of bounding boxes for the selected text range.
+	pub fn selection_rectangles(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, start: usize, end: usize) -> Vec<[DVec2; 2]> {
+		let Some(layout) = self.layout_text(text, font, typesetting) else {
+			return Vec::new();
+		};
+
+		let anchor = Cursor::from_byte_index(&layout, start, Affinity::Downstream);
+		let focus = Cursor::from_byte_index(&layout, end, Affinity::Downstream);
+		let selection = Selection::new(anchor, focus);
+
+		let rects = selection.geometry(&layout);
+
+		rects.into_iter().map(|(rect, _)| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]).collect()
+	}
+
+	/// Returns the bounding box for the cursor.
+	pub fn cursor_rect(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, offset: usize, width: f64) -> [DVec2; 2] {
+		let Some(layout) = self.layout_text(text, font, typesetting) else {
+			return [DVec2::ZERO, DVec2::ZERO];
+		};
+
+		let cursor = Cursor::from_byte_index(&layout, offset, Affinity::Downstream);
+		let rect = cursor.geometry(&layout, width as f32);
+
+		[DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]
 	}
 }

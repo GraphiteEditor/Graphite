@@ -1722,7 +1722,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let mut nodes = Vec::new();
 				for node_id in &self.frontend_nodes {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
-						log::error!("Could not get bbox for node: {node_id:?}");
+						log::warn!("Could not get bbox for node: {node_id:?}");
 						continue;
 					};
 

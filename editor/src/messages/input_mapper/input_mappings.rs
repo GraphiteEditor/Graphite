@@ -168,10 +168,51 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// TextToolMessage
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=TextToolMessage::DoubleClick),
+		entry!(TripleClick(MouseButton::Left); action_dispatch=TextToolMessage::TripleClick),
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Backspace); action_dispatch=TextToolMessage::BackspaceChar),
+		entry!(KeyDown(Delete); action_dispatch=TextToolMessage::DeleteChar),
+		entry!(KeyDown(ArrowLeft); action_dispatch=TextToolMessage::MoveCursorLeft { word: false, select: false }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Alt], action_dispatch=TextToolMessage::MoveCursorLeft { word: true, select: false }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Control], action_dispatch=TextToolMessage::MoveCursorLeft { word: true, select: false }),
+		entry!(KeyDown(ArrowRight); action_dispatch=TextToolMessage::MoveCursorRight { word: false, select: false }),
+		entry!(KeyDown(ArrowRight); modifiers=[Alt], action_dispatch=TextToolMessage::MoveCursorRight { word: true, select: false }),
+		entry!(KeyDown(ArrowRight); modifiers=[Control], action_dispatch=TextToolMessage::MoveCursorRight { word: true, select: false }),
+		entry!(KeyDown(ArrowUp); action_dispatch=TextToolMessage::MoveCursorUp { select: false }),
+		entry!(KeyDown(ArrowUp); modifiers=[Command], action_dispatch=TextToolMessage::MoveCursorTop { select: false }),
+		entry!(KeyDown(ArrowUp); modifiers=[Control], action_dispatch=TextToolMessage::MoveCursorTop { select: false }),
+		entry!(KeyDown(ArrowDown); action_dispatch=TextToolMessage::MoveCursorDown { select: false }),
+		entry!(KeyDown(ArrowDown); modifiers=[Command], action_dispatch=TextToolMessage::MoveCursorBottom { select: false }),
+		entry!(KeyDown(ArrowDown); modifiers=[Control], action_dispatch=TextToolMessage::MoveCursorBottom { select: false }),
+		entry!(KeyDown(Home); action_dispatch=TextToolMessage::MoveCursorHome { select: false }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Command], action_dispatch=TextToolMessage::MoveCursorHome { select: false }),
+		entry!(KeyDown(End); action_dispatch=TextToolMessage::MoveCursorEnd { select: false }),
+		entry!(KeyDown(ArrowRight); modifiers=[Command], action_dispatch=TextToolMessage::MoveCursorEnd { select: false }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift], action_dispatch=TextToolMessage::MoveCursorLeft { word: false, select: true }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift, Alt], action_dispatch=TextToolMessage::MoveCursorLeft { word: true, select: true }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift, Control], action_dispatch=TextToolMessage::MoveCursorLeft { word: true, select: true }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=TextToolMessage::MoveCursorRight { word: false, select: true }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift, Alt], action_dispatch=TextToolMessage::MoveCursorRight { word: true, select: true }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift, Control], action_dispatch=TextToolMessage::MoveCursorRight { word: true, select: true }),
+		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=TextToolMessage::MoveCursorUp { select: true }),
+		entry!(KeyDown(ArrowDown); modifiers=[Shift], action_dispatch=TextToolMessage::MoveCursorDown { select: true }),
+		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=TextToolMessage::MoveCursorHome { select: true }),
+		entry!(KeyDown(End); modifiers=[Shift], action_dispatch=TextToolMessage::MoveCursorEnd { select: true }),
+		entry!(KeyDown(ArrowLeft); modifiers=[Shift, Command], action_dispatch=TextToolMessage::MoveCursorHome { select: true }),
+		entry!(KeyDown(ArrowRight); modifiers=[Shift, Command], action_dispatch=TextToolMessage::MoveCursorEnd { select: true }),
+		entry!(KeyDown(ArrowUp); modifiers=[Shift, Command], action_dispatch=TextToolMessage::MoveCursorTop { select: true }),
+		entry!(KeyDown(ArrowDown); modifiers=[Shift, Command], action_dispatch=TextToolMessage::MoveCursorBottom { select: true }),
+		entry!(KeyDown(Enter); action_dispatch=TextToolMessage::InsertNewline),
+		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=TextToolMessage::SelectAll),
+		entry!(KeyDown(Backspace); modifiers=[Alt], action_dispatch=TextToolMessage::DeletePreviousWord),
+		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=TextToolMessage::DeleteLine),
+		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], canonical, action_dispatch=TextToolMessage::Redo),
+		entry!(KeyDown(KeyY); modifiers=[Accel], action_dispatch=TextToolMessage::Redo),
+		entry!(KeyDown(KeyZ); modifiers=[Accel], action_dispatch=TextToolMessage::Undo),
 		//
 		// GradientToolMessage
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
@@ -463,7 +504,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
 		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
-	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut triple_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|a, b| b.modifiers.count_ones().cmp(&a.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
@@ -472,8 +513,11 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 			sort(sublist);
 		}
 	}
-	// Sort the sublists of `double_click`
+	// Sort the sublists of `double_click` and `triple_click`
 	for sublist in &mut double_click {
+		sort(sublist)
+	}
+	for sublist in &mut triple_click {
 		sort(sublist)
 	}
 	// Sort `wheel_scroll`
@@ -489,6 +533,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		key_up_no_repeat,
 		key_down_no_repeat,
 		double_click,
+		triple_click,
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,

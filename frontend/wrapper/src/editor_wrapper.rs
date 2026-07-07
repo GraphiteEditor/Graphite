@@ -623,6 +623,17 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	/// Mouse triple clicked
+	#[wasm_bindgen(js_name = onTripleClick)]
+	pub fn on_triple_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::TripleClick { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
 	/// A keyboard button depressed within screenspace the bounds of the viewport
 	#[wasm_bindgen(js_name = onKeyDown)]
 	pub fn on_key_down(&self, name: String, modifiers: u8, key_repeat: bool) {
@@ -647,12 +658,13 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
-	/// A text box was committed
-	#[wasm_bindgen(js_name = onChangeText)]
-	pub fn on_change_text(&self, new_text: String, is_left_or_right_click: bool) -> Result<(), JsValue> {
-		let message = TextToolMessage::TextChange { new_text, is_left_or_right_click };
-		self.dispatch(message);
-
+	/// A printable character was typed while editing text
+	#[wasm_bindgen(js_name = onTextInput)]
+	pub fn on_text_input(&self, character: String) -> Result<(), JsValue> {
+		if let Some(c) = character.chars().next() {
+			let message = TextToolMessage::KeyboardInput { character: c };
+			self.dispatch(message);
+		}
 		Ok(())
 	}
 
@@ -661,15 +673,6 @@ impl EditorWrapper {
 	pub fn on_dialog_dismiss(&self) {
 		let message = DialogMessage::Dismiss;
 		self.dispatch(message);
-	}
-
-	/// A text box was changed
-	#[wasm_bindgen(js_name = updateBounds)]
-	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextToolMessage::UpdateBounds { new_text };
-		self.dispatch(message);
-
-		Ok(())
 	}
 
 	/// Update primary color from sRGB bytes (the wire format at the JS boundary).

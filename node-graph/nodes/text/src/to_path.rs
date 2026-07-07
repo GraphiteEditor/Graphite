@@ -23,6 +23,18 @@ pub fn lines_clipping(text: &str, font: &Resource, typesetting: TypesettingConfi
 	TextContext::with_thread_local(|ctx| ctx.lines_clipping(text, font, typesetting))
 }
 
+pub fn hit_test_position(text: &str, font: &Resource, typesetting: TypesettingConfig, position: DVec2) -> usize {
+	TextContext::with_thread_local(|ctx| ctx.hit_test_position(text, font, typesetting, position))
+}
+
+pub fn selection_rectangles(text: &str, font: &Resource, typesetting: TypesettingConfig, start: usize, end: usize) -> Vec<[DVec2; 2]> {
+	TextContext::with_thread_local(|ctx| ctx.selection_rectangles(text, font, typesetting, start, end))
+}
+
+pub fn cursor_rect(text: &str, font: &Resource, typesetting: TypesettingConfig, offset: usize, width: f64) -> [DVec2; 2] {
+	TextContext::with_thread_local(|ctx| ctx.cursor_rect(text, font, typesetting, offset, width))
+}
+
 /// Shapes each string item of a styled `List<String>` into vector geometry, reading its font and typesetting
 /// from the item's attributes (as set by the 'Text' node) and re-applying its transform and blending
 /// attributes onto the produced paths. With `separate_glyphs`, each glyph becomes its own item.
