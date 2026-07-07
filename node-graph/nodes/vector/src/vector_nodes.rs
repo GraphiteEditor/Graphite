@@ -1138,14 +1138,16 @@ async fn bounding_box(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn dimensions(_: impl Ctx, content: List<Vector>) -> Item<DVec2> {
-	let dimensions = (0..content.len())
-		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM, index)))
-		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
+async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
+	let dimensions = content
+		.element()
+		.bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM))
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default();
 
-	Item::new_from_element(dimensions)
+	let (_, attributes) = content.into_parts();
+
+	Item::from_parts(dimensions, attributes)
 }
 
 /// Type-asserts a value to be vector data.
@@ -1364,23 +1366,21 @@ async fn separate_subpaths(_: impl Ctx, content: Item<Vector>) -> List<Vector> {
 		.collect()
 }
 
-/// Determines if the subpath at the given index (across all vector element subpaths) is closed, meaning its ends are connected together forming a loop.
+/// Determines if the subpath at the given index is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
 async fn path_is_closed(
 	_: impl Ctx,
 	/// The vector content whose subpaths are inspected.
-	content: List<Vector>,
-	/// The index of the subpath to check, counting across subpaths in all vector elements.
+	content: Item<Vector>,
+	/// The index of the subpath to check, counting across the element's subpaths.
 	index: Item<f64>,
 ) -> Item<bool> {
 	let index = index.into_element();
-	let closed = content
-		.iter_element_values()
-		.flat_map(|vector| vector.build_stroke_path_iter().map(|(_, closed)| closed))
-		.nth(index.max(0.) as usize)
-		.unwrap_or(false);
+	let closed = content.element().build_stroke_path_iter().map(|(_, closed)| closed).nth(index.max(0.) as usize).unwrap_or(false);
 
-	Item::new_from_element(closed)
+	let (_, attributes) = content.into_parts();
+
+	Item::from_parts(closed, attributes)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1827,7 +1827,7 @@ async fn cut_segments(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
 async fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
-	content: List<Vector>,
+	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progression: Item<Progression>,
 	/// Swap the direction of the path.
@@ -1838,12 +1838,8 @@ async fn position_on_path(
 	let (progression, reverse, parameterized_distance) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element());
 	let euclidian = !parameterized_distance;
 
-	let mut bezpaths: Vec<_> = (0..content.len())
-		.flat_map(|index| {
-			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
-		})
-		.collect();
+	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let mut bezpaths: Vec<_> = content.element().stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect();
 	let bezpath_count = bezpaths.len() as f64;
 	let progression = progression.clamp(0., bezpath_count);
 	let progression = if reverse { bezpath_count - progression } else { progression };
@@ -1858,7 +1854,9 @@ async fn position_on_path(
 		point_to_dvec2(evaluate_bezpath(bezpath, t, None))
 	});
 
-	Item::new_from_element(position)
+	let (_, attributes) = content.into_parts();
+
+	Item::from_parts(position, attributes)
 }
 
 /// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
@@ -1868,7 +1866,7 @@ async fn position_on_path(
 async fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
-	content: List<Vector>,
+	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
 	progression: Item<Progression>,
 	/// Swap the direction of the path.
@@ -1881,12 +1879,8 @@ async fn tangent_on_path(
 	let (progression, reverse, parameterized_distance, radians) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element(), radians.into_element());
 	let euclidian = !parameterized_distance;
 
-	let mut bezpaths: Vec<_> = (0..content.len())
-		.flat_map(|index| {
-			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
-		})
-		.collect();
+	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let mut bezpaths: Vec<_> = content.element().stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect();
 	let bezpath_count = bezpaths.len() as f64;
 	let progression = progression.clamp(0., bezpath_count);
 	let progression = if reverse { bezpath_count - progression } else { progression };
@@ -1910,7 +1904,9 @@ async fn tangent_on_path(
 		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
 	});
 
-	Item::new_from_element(if radians { angle } else { angle.to_degrees() })
+	let (_, attributes) = content.into_parts();
+
+	Item::from_parts(if radians { angle } else { angle.to_degrees() }, attributes)
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
@@ -3075,14 +3071,14 @@ fn close_path(_: impl Ctx, source: Item<Vector>) -> Item<Vector> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-fn point_inside(_: impl Ctx, source: List<Vector>, point: Item<DVec2>) -> Item<bool> {
+fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<bool> {
 	let point = point.into_element();
-	let inside = source.into_iter().any(|row| {
-		let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-		row.element().check_point_inside_shape(transform, point)
-	});
+	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let inside = source.element().check_point_inside_shape(transform, point);
 
-	Item::new_from_element(inside)
+	let (_, attributes) = source.into_parts();
+
+	Item::from_parts(inside, attributes)
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
@@ -3093,10 +3089,12 @@ async fn count_elements(_: impl Ctx, content: ListDyn) -> Item<f64> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn count_points(_: impl Ctx, content: List<Vector>) -> Item<f64> {
-	let count = content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum();
+async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
+	let count = content.element().point_domain.positions().len() as f64;
 
-	Item::new_from_element(count)
+	let (_, attributes) = content.into_parts();
+
+	Item::from_parts(count, attributes)
 }
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `List` of vector elements.
@@ -3137,100 +3135,114 @@ async fn index_points(
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn path_length(_: impl Ctx, source: List<Vector>) -> Item<f64> {
-	let length = (0..source.len())
-		.map(|index| {
-			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-
-			source
-				.element(index)
-				.unwrap()
-				.stroke_bezpath_iter()
-				.map(|mut bezpath| {
-					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.perimeter(DEFAULT_ACCURACY)
-				})
-				.sum::<f64>()
+async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
+	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let length = source
+		.element()
+		.stroke_bezpath_iter()
+		.map(|mut bezpath| {
+			bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+			bezpath.perimeter(DEFAULT_ACCURACY)
 		})
-		.sum();
+		.sum::<f64>();
 
-	Item::new_from_element(length)
+	let (_, attributes) = source.into_parts();
+
+	Item::from_parts(length, attributes)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> Item<f64> {
+async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Item<f64> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
-	let area = (0..vector.len())
-		.map(|index| {
-			let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let area_scale = transform.matrix2.determinant().abs();
-			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
-		})
-		.sum();
+	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let area_scale = transform.matrix2.determinant().abs();
+	let area = vector.element().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>();
 
-	Item::new_from_element(area)
+	let (_, attributes) = vector.into_parts();
+
+	Item::from_parts(area, attributes)
+}
+
+/// The whole-`List` counterpart of `area`, measuring each element of a rank-1 content wire.
+/// Registered under the `AreaNode` identifier by manual registry rows, like `transform_list`.
+#[node_macro::node(category(""), skip_impl)]
+async fn area_list(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> List<f64> {
+	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
+	let content = content.eval(new_ctx).await;
+
+	let mut result = List::default();
+	for item in content.into_iter() {
+		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let area_scale = transform.matrix2.determinant().abs();
+		let (vector, attributes) = item.into_parts();
+		let area = vector.stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>();
+		result.push(Item::from_parts(area, attributes));
+	}
+
+	result
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: Item<CentroidType>) -> Item<DVec2> {
+async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Item<DVec2> {
 	let centroid_type = centroid_type.into_element();
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
-	if vector.is_empty() {
-		return Item::new_from_element(DVec2::ZERO);
+	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let position = element_centroid(vector.element(), transform, centroid_type);
+
+	let (_, attributes) = vector.into_parts();
+
+	Item::from_parts(position, attributes)
+}
+
+/// The whole-`List` counterpart of `centroid`, measuring each element of a rank-1 content wire.
+/// Registered under the `CentroidNode` identifier by manual registry rows, like `transform_list`.
+#[node_macro::node(category(""), skip_impl)]
+async fn centroid_list(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: Item<CentroidType>) -> List<DVec2> {
+	let centroid_type = centroid_type.into_element();
+	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
+	let content = content.eval(new_ctx).await;
+
+	let mut result = List::default();
+	for item in content.into_iter() {
+		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let (vector, attributes) = item.into_parts();
+		result.push(Item::from_parts(element_centroid(&vector, transform, centroid_type), attributes));
 	}
 
-	// All subpath centroid positions added together as if they were vectors from the origin.
+	result
+}
+
+/// The area- or length-weighted centroid of one vector element's subpaths, averaging raw point positions when the weights all vanish.
+fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: CentroidType) -> DVec2 {
+	// All subpath centroid positions added together as if they were vectors from the origin, weighted by area or length
 	let mut centroid = DVec2::ZERO;
-	// Cumulative area or length of all subpaths
 	let mut sum = 0.;
 
-	for index in 0..vector.len() {
-		let Some(element) = vector.element(index) else { continue };
-		for subpath in element.stroke_bezier_paths() {
-			let partial = match centroid_type {
-				CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
-				CentroidType::Length => subpath.length_centroid_and_length(None, true),
-			};
-			if let Some((subpath_centroid, area_or_length)) = partial {
-				let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-				let subpath_centroid = transform.transform_point2(subpath_centroid);
-
-				sum += area_or_length;
-				centroid += area_or_length * subpath_centroid;
-			}
+	for subpath in element.stroke_bezier_paths() {
+		let partial = match centroid_type {
+			CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
+			CentroidType::Length => subpath.length_centroid_and_length(None, true),
+		};
+		if let Some((subpath_centroid, area_or_length)) = partial {
+			sum += area_or_length;
+			centroid += area_or_length * transform.transform_point2(subpath_centroid);
 		}
 	}
 
-	let centroid_position = if sum > 0. {
-		centroid / sum
+	if sum > 0. {
+		return centroid / sum;
 	}
+
 	// Without a summed denominator, return the average of all positions instead
-	else {
-		let mut count: usize = 0;
-
-		let summed_positions = (0..vector.len())
-			.flat_map(|index| {
-				let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-				vector
-					.element(index)
-					.unwrap()
-					.point_domain
-					.positions()
-					.iter()
-					.map(move |&p| transform.transform_point2(p))
-					.collect::<Vec<_>>()
-			})
-			.inspect(|_| count += 1)
-			.sum::<DVec2>();
-
-		if count != 0 { summed_positions / (count as f64) } else { DVec2::ZERO }
-	};
-
-	Item::new_from_element(centroid_position)
+	let positions = element.point_domain.positions();
+	if positions.is_empty() {
+		return DVec2::ZERO;
+	}
+	positions.iter().map(|&p| transform.transform_point2(p)).sum::<DVec2>() / (positions.len() as f64)
 }
 
 #[cfg(test)]
@@ -3402,13 +3414,12 @@ mod test {
 	async fn path_length() {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
-		let row = create_vector_item(bezpath, transform);
-		let list = (0..5).map(|_| row.clone()).collect::<List<Vector>>();
+		let item = create_vector_item(bezpath, transform);
 
-		let length = super::path_length(Footprint::default(), list).await;
+		let length = super::path_length(Footprint::default(), item).await;
 
-		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
-		assert_eq!(length.into_element(), 101. * 4. * 2. * 5.);
+		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale)
+		assert_eq!(length.into_element(), 101. * 4. * 2.);
 	}
 	#[tokio::test]
 	async fn spline() {

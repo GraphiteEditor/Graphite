@@ -45,6 +45,7 @@ async fn context_modification<T>(
 		Context -> List<String>,
 		Context -> List<NodeId>,
 		Context -> List<f64>,
+		Context -> List<DVec2>,
 		Context -> List<u8>,
 		Context -> List<Vector>,
 		Context -> List<Graphic>,

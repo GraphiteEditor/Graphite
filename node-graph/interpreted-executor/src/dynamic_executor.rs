@@ -499,15 +499,15 @@ mod test {
 
 	#[test]
 	fn item_wire_promotes_to_list_connector() {
-		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
+		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<f64>)).into()), vec![NodeId(0)]);
 
-		let mut path_length_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-		path_length_node.identifier = ProtoNodeIdentifier::new("core_types::vector::PathLengthNode");
+		let mut sum_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		sum_node.identifier = ProtoNodeIdentifier::new("math_nodes::SumNode");
 
 		let network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(1),
-			nodes: vec![(NodeId(0), value_node), (NodeId(1), path_length_node)],
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), sum_node)],
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("An Item wire should resolve a List connector via promotion");
