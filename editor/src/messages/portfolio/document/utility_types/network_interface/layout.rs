@@ -846,12 +846,9 @@ impl NodeNetworkInterface {
 
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
 		if let Some(upstream_node_id) = post_node_input.as_node() {
-			// Select the layer to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in move_layer_to_stack");
-				return;
-			};
-			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+			// Build the stack dependents from the upstream node rather than the selection so the shifting works correctly
+			self.unload_stack_dependents(network_path);
+			self.load_stack_dependents_for_nodes(vec![upstream_node_id], network_path);
 
 			// Create the minimum amount space for the moved layer
 			for _ in 0..STACK_VERTICAL_GAP {
@@ -860,6 +857,7 @@ impl NodeNetworkInterface {
 
 			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
 				log::error!("Could not get stack position in move_layer_to_stack");
+				self.unload_stack_dependents(network_path);
 				return;
 			};
 
@@ -870,7 +868,7 @@ impl NodeNetworkInterface {
 				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
 			}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			self.unload_stack_dependents(network_path);
 		}
 
 		// If true, this node should be inserted before the post node (toward root from the layer), and all outward wires from the pre node should be moved to its output.

@@ -113,8 +113,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in load_stack_dependents");
 			return;
 		};
+		self.load_stack_dependents_for_nodes(selected_nodes.selected_nodes().cloned().collect(), network_path);
+	}
 
-		let mut selected_layers = selected_nodes.selected_nodes().filter(|node_id| self.is_layer(node_id, network_path)).cloned().collect::<HashSet<_>>();
+	/// Builds the stack dependents as if `seed_nodes` were the selection, for shifts driven by a node set other than the selection.
+	pub(crate) fn load_stack_dependents_for_nodes(&self, seed_nodes: Vec<NodeId>, network_path: &[NodeId]) {
+		let mut selected_layers = seed_nodes.iter().filter(|node_id| self.is_layer(node_id, network_path)).copied().collect::<HashSet<_>>();
 
 		// Deselect all layers that are upstream of other selected layers
 		let mut removed_layers = Vec::new();
