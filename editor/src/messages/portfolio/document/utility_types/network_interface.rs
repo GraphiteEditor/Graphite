@@ -4653,7 +4653,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
 			return;
 		};
-		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
+		selected_nodes.retain_selected_nodes(|node_id| !delete_nodes.contains(node_id));
 	}
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
