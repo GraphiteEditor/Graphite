@@ -27,7 +27,7 @@ pub enum FillChoice {
 }
 
 // TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
-/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is [`GradientStopsUI`].
+/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is [`GradientUI`].
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Default, Debug, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -35,7 +35,7 @@ pub enum FillChoiceUI {
 	#[default]
 	None,
 	Solid(SRGBA8),
-	Gradient(GradientStopsUI),
+	Gradient(GradientUI),
 }
 
 impl From<&FillChoice> for FillChoiceUI {
@@ -43,7 +43,7 @@ impl From<&FillChoice> for FillChoiceUI {
 		match value {
 			FillChoice::None => Self::None,
 			FillChoice::Solid(color) => Self::Solid(SRGBA8::from(*color)),
-			FillChoice::Gradient(stops) => Self::Gradient(GradientStopsUI::from(stops)),
+			FillChoice::Gradient(stops) => Self::Gradient(GradientUI::from(stops)),
 		}
 	}
 }
@@ -64,7 +64,7 @@ impl FillChoiceUI {
 		Some(*c)
 	}
 
-	pub fn as_gradient(&self) -> Option<&GradientStopsUI> {
+	pub fn as_gradient(&self) -> Option<&GradientUI> {
 		let Self::Gradient(g) = self else { return None };
 		Some(g)
 	}

@@ -1,4 +1,4 @@
-import type { FillChoiceUI, GradientStopsUI, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FillChoiceUI, GradientUI, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };
@@ -182,7 +182,7 @@ export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: st
 
 // GRADIENT UTILITY FUNCTIONS
 
-export function isGradientStopsUI(value: unknown): value is GradientStopsUI {
+export function isGradientStopsUI(value: unknown): value is GradientUI {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
 }
 
@@ -193,7 +193,7 @@ export function fillChoiceUIColor(value: FillChoiceUI): SRGBA8 | undefined {
 	return undefined;
 }
 
-export function fillChoiceUIGradientStops(value: FillChoiceUI): GradientStopsUI | undefined {
+export function fillChoiceUIGradientStops(value: FillChoiceUI): GradientUI | undefined {
 	if (typeof value === "object" && "Gradient" in value) return value.Gradient;
 	return undefined;
 }

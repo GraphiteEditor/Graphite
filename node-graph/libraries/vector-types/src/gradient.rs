@@ -17,7 +17,7 @@ pub enum GradientType {
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 /// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
 ///
-/// Not exposed via Tsify; use [`GradientStopsUI`] at the JS boundary.
+/// Not exposed via Tsify; use [`GradientUI`] at the JS boundary.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Gradient {
@@ -33,13 +33,13 @@ pub struct Gradient {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Debug, Clone, PartialEq, Default, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GradientStopsUI {
+pub struct GradientUI {
 	pub position: Vec<f64>,
 	pub midpoint: Vec<f64>,
 	pub color: Vec<SRGBA8>,
 }
 
-impl From<&Gradient> for GradientStopsUI {
+impl From<&Gradient> for GradientUI {
 	fn from(s: &Gradient) -> Self {
 		Self {
 			position: s.position.clone(),
@@ -49,8 +49,8 @@ impl From<&Gradient> for GradientStopsUI {
 	}
 }
 
-impl From<&GradientStopsUI> for Gradient {
-	fn from(s: &GradientStopsUI) -> Self {
+impl From<&GradientUI> for Gradient {
+	fn from(s: &GradientUI) -> Self {
 		Self {
 			position: s.position.clone(),
 			midpoint: s.midpoint.clone(),
@@ -59,7 +59,7 @@ impl From<&GradientStopsUI> for Gradient {
 	}
 }
 
-impl GradientStopsUI {
+impl GradientUI {
 	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
 	pub fn to_css_linear_gradient(&self) -> String {
 		if self.position.len() <= 1 {

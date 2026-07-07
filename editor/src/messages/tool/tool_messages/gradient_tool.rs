@@ -16,7 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStopsUI, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientType, GradientUI, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -53,7 +53,7 @@ pub enum GradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
-	UpdateStops { stops: GradientStopsUI },
+	UpdateStops { stops: GradientUI },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
