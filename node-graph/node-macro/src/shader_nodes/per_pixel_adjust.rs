@@ -248,16 +248,15 @@ impl PerPixelAdjustCodegen<'_> {
 			is_data_field: false,
 		});
 
-		// find exactly one gpu_image field, runtime doesn't support more than 1 atm
-		let gpu_image_field = {
-			let mut iter = fields.iter().filter(|f| matches!(f.ty, ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. })));
-			match (iter.next(), iter.next()) {
-				(Some(v), None) => Ok(v),
-				(Some(_), Some(more)) => Err(syn::Error::new_spanned(&more.pat_ident, "No more than one parameter must be annotated with `#[gpu_image]`")),
-				(None, _) => Err(syn::Error::new_spanned(&self.parsed.fn_name, "At least one parameter must be annotated with `#[gpu_image]`")),
-			}?
-		};
-		let gpu_image = &gpu_image_field.pat_ident.ident;
+		// find gpu_image fields
+		let gpu_images = fields
+			.iter()
+			.filter_map(|f| match f.ty {
+				ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. }) => Some(&f.pat_ident.ident),
+				_ => None,
+			})
+			.collect::<Vec<_>>();
+		let input_images = gpu_images.len();
 
 		// uniform buffer struct construction
 		let has_uniform = self.has_uniform;
@@ -287,7 +286,8 @@ impl PerPixelAdjustCodegen<'_> {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
-				}, #gpu_image, #uniform_buffer).await
+					input_images: #input_images,
+				}, &[#(#gpu_images),*], #uniform_buffer).await
 			}
 		};
 
