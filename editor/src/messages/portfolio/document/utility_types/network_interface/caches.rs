@@ -593,7 +593,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+	pub fn layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in layer_width");
 			return None;
@@ -603,29 +603,15 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		let layer_width_loaded = if let NodeTypeTransientMetadata::Layer(layer_metadata) = &node_metadata.transient_metadata.node_type_metadata {
-			layer_metadata.layer_width.is_loaded()
-		} else {
-			false
-		};
-		if !layer_width_loaded {
+		if !node_metadata.transient_metadata.layer_width.is_loaded() {
 			self.load_layer_width(node_id, network_path);
 		}
 
 		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let NodeTypeTransientMetadata::Layer(layer_metadata) = &node_metadata.transient_metadata.node_type_metadata else {
-			log::error!("Transient metadata should be layer metadata when getting layer width");
-			return None;
-		};
-		let TransientMetadata::Loaded(layer_width) = layer_metadata.layer_width else {
-			log::error!("Transient metadata was not loaded when getting layer width");
-			return None;
-		};
-
-		Some(layer_width)
+		node_metadata.transient_metadata.layer_width.with_loaded(|layer_width| *layer_width)
 	}
 
-	pub fn load_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub fn load_layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		const GAP_WIDTH: f64 = 8.;
 		const FONT_SIZE: f64 = 14.;
 		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
@@ -642,21 +628,14 @@ impl NodeNetworkInterface {
 		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + lock_icon_width + icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in load_layer_width");
 			return;
 		};
 
 		// Ensure layer width is not loaded for a non layer node
 		if node_metadata.persistent_metadata.is_layer() {
-			if let NodeTypeTransientMetadata::Layer(layer_metadata) = &mut node_metadata.transient_metadata.node_type_metadata {
-				layer_metadata.layer_width = TransientMetadata::Loaded(layer_width);
-			} else {
-				// Set the entire transient node type metadata to be a layer, in case it was previously a node
-				node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata {
-					layer_width: TransientMetadata::Loaded(layer_width),
-				});
-			}
+			node_metadata.transient_metadata.layer_width.store(layer_width);
 		} else {
 			log::warn!("Tried loading layer width for non layer node");
 		}
@@ -671,8 +650,8 @@ impl NodeNetworkInterface {
 		};
 
 		// If the node is a layer, then the width and click targets need to be recalculated
-		if is_layer && let NodeTypeTransientMetadata::Layer(layer_metadata) = &mut node_metadata.transient_metadata.node_type_metadata {
-			layer_metadata.layer_width.unload();
+		if is_layer {
+			node_metadata.transient_metadata.layer_width.unload();
 		}
 	}
 

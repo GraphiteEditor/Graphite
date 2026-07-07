@@ -1523,11 +1523,7 @@ impl NodeNetworkInterface {
 			})
 		}
 
-		if is_layer {
-			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata::default());
-		} else {
-			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Node;
-		}
+		node_metadata.transient_metadata.layer_width.unload();
 
 		self.transaction_modified();
 		self.unload_stack_dependents(network_path);
