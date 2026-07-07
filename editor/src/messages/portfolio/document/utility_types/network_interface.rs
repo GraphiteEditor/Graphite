@@ -6119,6 +6119,19 @@ impl NodeNetworkInterface {
 
 		// Chain is empty: wire the node as the first (and only) entry in the chain
 		if matches!(current_input, NodeInput::Value { .. }) {
+			// A node whose exposed primary defaults to no value inherits the layer's content value, so the chain keeps producing the layer's content type
+			let node_primary = InputConnector::node(*node_id, 0);
+			let default_is_valueless = self
+				.input_from_connector(&node_primary, network_path)
+				.is_some_and(|input| matches!(input, NodeInput::Value { tagged_value, exposed: true } if matches!(**tagged_value, TaggedValue::None)));
+			if default_is_valueless {
+				if import {
+					self.set_input_for_import(&node_primary, current_input.clone(), network_path);
+				} else {
+					self.set_input(&node_primary, current_input.clone(), network_path);
+				}
+			}
+
 			// Wire: [parent] -> [new node]
 			if import {
 				self.set_input_for_import(&parent_input, NodeInput::node(*node_id, 0), network_path);
