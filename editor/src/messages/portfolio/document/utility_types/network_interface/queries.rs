@@ -339,8 +339,8 @@ impl NodeNetworkInterface {
 		frontend_exports
 	}
 
-	pub fn import_export_position(&mut self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
-		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path).cloned() else {
+	pub fn import_export_position(&self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
+		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path) else {
 			log::error!("Could not get all nodes bounding box in load_export_ports");
 			return None;
 		};

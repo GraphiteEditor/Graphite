@@ -1712,7 +1712,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
+					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path)
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};

@@ -79,7 +79,7 @@ impl NodeNetworkInterface {
 			}
 		});
 
-		let bounds = self.all_nodes_bounding_box(network_path).cloned().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+		let bounds = self.all_nodes_bounding_box(network_path).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 		let rect = Subpath::<PointId>::new_rectangle(bounds[0], bounds[1]);
 		let all_nodes_bounding_box = rect.to_bezpath().to_svg();
 
@@ -329,7 +329,7 @@ impl NodeNetworkInterface {
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
 	pub fn graph_bounds_viewport_space(&mut self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		let bounds = *self.all_nodes_bounding_box(network_path)?;
+		let bounds = self.all_nodes_bounding_box(network_path)?;
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in graph_bounds_viewport_space");
 			return None;
