@@ -72,7 +72,6 @@ impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersisten
 					input_name: properties_row.input_name,
 					input_description: properties_row.input_description,
 				},
-				..Default::default()
 			})
 		}
 		DocumentNodePersistentMetadataHasPrimaryOutput {

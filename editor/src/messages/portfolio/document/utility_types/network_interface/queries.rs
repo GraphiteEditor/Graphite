@@ -722,10 +722,6 @@ impl NodeNetworkInterface {
 		self.view(network_path).ok().and_then(|view| view.persistent_input_metadata(node_id, index).ok())
 	}
 
-	pub(crate) fn transient_input_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&InputTransientMetadata> {
-		self.view(network_path).ok().and_then(|view| view.transient_input_metadata(node_id, index).ok())
-	}
-
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
 		let Some(metadata) = self
 			.node_metadata_mut(node_id, network_path)

@@ -297,14 +297,6 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(&input_metadata.persistent_metadata)
 	}
 
-	pub(crate) fn transient_input_metadata(&self, node_id: &NodeId, index: usize) -> Result<&'a InputTransientMetadata, NetworkError> {
-		let metadata = self.node_metadata(node_id)?;
-		let input_metadata = metadata.persistent_metadata.input_metadata.get(index).ok_or(NetworkError::InputNotFound {
-			connector: InputConnector::node(*node_id, index),
-		})?;
-		Ok(&input_metadata.transient_metadata)
-	}
-
 	pub fn upstream_output_connector(&self, input_connector: &InputConnector) -> Result<Option<OutputConnector>, NetworkError> {
 		Ok(match self.input(input_connector)? {
 			NodeInput::Node { node_id, output_index, .. } => Some(OutputConnector::node(*node_id, *output_index)),
