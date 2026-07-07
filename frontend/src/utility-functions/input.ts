@@ -4,7 +4,7 @@ import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
+import { makeKeyboardModifiersBitfield, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -20,9 +20,11 @@ let inPointerLock = false;
 let isEditingText = false;
 
 export function initInput() {
-	window.addEventListener("updateTextEditingState", ((e: CustomEvent<boolean>) => {
-		isEditingText = e.detail;
-	}) as EventListener);
+	window.addEventListener("updateTextEditingState", (e: Event) => {
+		if (e instanceof CustomEvent) {
+			isEditingText = Boolean(e.detail);
+		}
+	});
 }
 
 let lastShakeTime = 0;
@@ -242,7 +244,6 @@ export function onWheelScroll(e: WheelEvent, editor: EditorWrapper) {
 		editor.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 	}
 }
-
 
 // Window events
 

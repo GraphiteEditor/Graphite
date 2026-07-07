@@ -18,9 +18,9 @@ import {
 	onContextMenu,
 	onPaste,
 	onPointerLockChange,
+	initInput,
 } from "/src/utility-functions/input";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
-import { initInput } from "/src/utility-functions/input";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {

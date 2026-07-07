@@ -12,10 +12,8 @@
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceUIColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
-	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -29,9 +27,6 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
-
-	// Interactive text editing
-	let isEditingText = false;
 
 	// Scrollbars
 	let scrollbarPos = { x: 0.5, y: 0.5 };
@@ -345,7 +340,6 @@
 		canvasCursor = cursorString;
 	}
 
-
 	function updateViewportInfo() {
 		if (!viewport) return;
 		// Resize the canvas
@@ -445,7 +439,6 @@
 
 		// Text entry
 		subscriptions.subscribeFrontendMessage("UpdateTextEditingState", async (data) => {
-			isEditingText = data.isEditing;
 			window.dispatchEvent(new CustomEvent("updateTextEditingState", { detail: data.isEditing }));
 		});
 
