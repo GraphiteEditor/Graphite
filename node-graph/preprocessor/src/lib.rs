@@ -339,6 +339,22 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				return NodeInput::value(type_default, exposed);
 			}
 
+			// A ranked `Item<T>` type without its own type default falls back to a bare `T` value, promoted at resolution
+			if let Type::Concrete(descriptor) = ty
+				&& let Some(element_name) = descriptor.name.strip_prefix("core_types::list::Item<").and_then(|inner| inner.strip_suffix('>'))
+			{
+				let element_type = Type::Concrete(TypeDescriptor {
+					id: None,
+					name: element_name.to_string().into(),
+					alias: None,
+					size: 0,
+					align: 0,
+				});
+				if let Some(type_default) = TaggedValue::from_type(&element_type) {
+					return NodeInput::value(type_default, exposed);
+				}
+			}
+
 			NodeInput::value(TaggedValue::None, true)
 		})
 		.collect()

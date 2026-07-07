@@ -202,14 +202,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					_ => quote!(Some(concrete!(#core_types::list::List<#implementation_ty>))),
 				},
 				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
-				// A concrete ranked `Item<T>` param's default is a bare `T` value (unranked, promoted at resolution), so key its default off `T`
+				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
+				// without one it keeps the declared `Item<T>` wire type, and `node_inputs` peels to `T` if no `Item` type default exists
 				None => match peel_item(ty) {
 					Some(element_ty)
 						if !fn_generics
 							.iter()
 							.any(|generic| matches!(generic, syn::GenericParam::Type(param) if type_contains_ident(&element_ty, &param.ident))) =>
 					{
-						quote!(Some(concrete!(#element_ty)))
+						match value_source {
+							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element_ty))),
+							_ => quote!(Some(concrete!(#ty))),
+						}
 					}
 					_ => quote!(None),
 				},
