@@ -260,13 +260,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in export_ports");
-			return None;
-		};
-		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
-			self.load_import_export_ports(network_path);
-		}
+		self.try_load_import_export_ports(network_path);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
@@ -279,7 +273,23 @@ impl NodeNetworkInterface {
 		Some(ports)
 	}
 
-	pub fn load_import_export_ports(&mut self, network_path: &[NodeId]) {
+	/// Reads the import/export ports through &self, loading them first if needed.
+	pub(crate) fn with_import_export_ports<R>(&self, network_path: &[NodeId], read: impl FnOnce(&Ports) -> R) -> Option<R> {
+		self.try_load_import_export_ports(network_path);
+		self.network_metadata(network_path)?.transient_metadata.import_export_ports.with_loaded(read)
+	}
+
+	fn try_load_import_export_ports(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in export_ports");
+			return;
+		};
+		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
+			self.load_import_export_ports(network_path);
+		}
+	}
+
+	pub fn load_import_export_ports(&self, network_path: &[NodeId]) {
 		let Some(import_export_position) = self.import_export_position(network_path) else {
 			log::error!("Could not get import_export_position");
 			return;
@@ -299,7 +309,7 @@ impl NodeNetworkInterface {
 			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., export_index as f64 * 24.));
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
@@ -358,58 +368,59 @@ impl NodeNetworkInterface {
 		Some(click_targets)
 	}
 
-	pub fn load_modify_import_export(&mut self, network_path: &[NodeId]) {
+	pub fn load_modify_import_export(&self, network_path: &[NodeId]) {
 		let mut reorder_imports_exports = Ports::new();
 		let mut remove_imports_exports = Ports::new();
 
 		if !network_path.is_empty() {
-			let Some(import_exports) = self.import_export_ports(network_path) else {
+			let ports_built = self.with_import_export_ports(network_path, |import_exports| {
+				for (import_index, import_click_target) in import_exports.output_ports() {
+					let Some(import_bounding_box) = import_click_target.bounding_box() else {
+						log::error!("Could not get export bounding box in load_modify_import_export");
+						continue;
+					};
+					let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
+
+					if *import_index == 0 {
+						let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
+						let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+					} else {
+						let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
+						let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+						let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+						reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
+						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+					}
+				}
+
+				for (export_index, export_click_target) in import_exports.input_ports() {
+					let Some(export_bounding_box) = export_click_target.bounding_box() else {
+						log::error!("Could not get export bounding box in load_modify_import_export");
+						continue;
+					};
+					let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
+
+					if *export_index == 0 {
+						let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
+						let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+					} else {
+						let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
+						let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+						let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+						reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
+						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+					}
+				}
+			});
+			if ports_built.is_none() {
 				log::error!("Could not get import_export_ports in load_modify_import_export");
 				return;
-			};
-
-			for (import_index, import_click_target) in import_exports.output_ports() {
-				let Some(import_bounding_box) = import_click_target.bounding_box() else {
-					log::error!("Could not get export bounding box in load_modify_import_export");
-					continue;
-				};
-				let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
-
-				if *import_index == 0 {
-					let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
-					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-				} else {
-					let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
-					let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-					reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
-					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-				}
-			}
-
-			for (export_index, export_click_target) in import_exports.input_ports() {
-				let Some(export_bounding_box) = export_click_target.bounding_box() else {
-					log::error!("Could not get export bounding box in load_modify_import_export");
-					continue;
-				};
-				let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
-
-				if *export_index == 0 {
-					let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
-					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-				} else {
-					let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
-					let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-					reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
-					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-				}
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get current network in load_modify_import_export");
 			return;
 		};
@@ -437,7 +448,7 @@ impl NodeNetworkInterface {
 		layer_node.transient_metadata.owned_nodes.with_loaded(read)
 	}
 
-	pub fn all_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<&[DVec2; 2]> {
+	pub fn all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in all_nodes_bounding_box");
 			return None;
@@ -447,14 +458,11 @@ impl NodeNetworkInterface {
 			self.load_all_nodes_bounding_box(network_path);
 		}
 
-		let network_metadata = self.network_metadata_mut(network_path)?;
-
-		let Some(bounding_box) = network_metadata.transient_metadata.all_nodes_bounding_box.get_loaded_mut() else {
+		let bounding_box = self.network_metadata(network_path)?.transient_metadata.all_nodes_bounding_box.with_loaded(|bounds| *bounds);
+		if bounding_box.is_none() {
 			log::error!("could not load all nodes bounding box");
-			return None;
-		};
-
-		Some(bounding_box)
+		}
+		bounding_box
 	}
 
 	pub fn load_all_nodes_bounding_box(&self, network_path: &[NodeId]) {
