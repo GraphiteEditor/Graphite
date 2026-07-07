@@ -435,8 +435,8 @@ pub struct NodeNetworkTransientMetadata {
 	/// Click targets for adding, removing, and moving import/export ports
 	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
-	// Wires from the exports
-	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
+	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
+	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 }
 
 #[derive(Debug, Clone)]
@@ -616,13 +616,6 @@ impl InputPersistentMetadata {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct InputTransientMetadata {
-	pub(crate) wire: TransientMetadata<WirePathUpdate>,
-	// downstream_protonode: populated for all inputs after each compile
-	// types: populated for each protonode after each
-}
-
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -653,20 +646,9 @@ impl DocumentNodePersistentMetadata {
 	}
 }
 
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadata {
 	pub persistent_metadata: InputPersistentMetadata,
-	#[serde(skip)]
-	pub(crate) transient_metadata: InputTransientMetadata,
-}
-
-impl Clone for InputMetadata {
-	fn clone(&self) -> Self {
-		InputMetadata {
-			persistent_metadata: self.persistent_metadata.clone(),
-			transient_metadata: Default::default(),
-		}
-	}
 }
 
 impl PartialEq for InputMetadata {
@@ -681,7 +663,6 @@ impl From<(&str, &str)> for InputMetadata {
 			persistent_metadata: InputPersistentMetadata::default()
 				.with_name(input_name_and_description.0)
 				.with_description(input_name_and_description.1),
-			..Default::default()
 		}
 	}
 }
@@ -690,7 +671,6 @@ impl InputMetadata {
 	pub fn with_name_description_override(input_name: &str, description: &str, widget_override: WidgetOverride) -> Self {
 		InputMetadata {
 			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(description).with_override(widget_override),
-			..Default::default()
 		}
 	}
 }

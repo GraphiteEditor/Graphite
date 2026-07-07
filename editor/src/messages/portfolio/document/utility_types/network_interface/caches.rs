@@ -696,46 +696,17 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		let wire = match input {
-			InputConnector::Node { node_id, input_index } => {
-				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
-				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
-					log::error!("Could not load wire for input: {input:?}");
-					return None;
-				};
-				wire.clone()
-			}
-			InputConnector::Export(export_index) => {
-				let network_metadata = self.network_metadata(network_path)?;
-				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
-					log::error!("Could not load wire for input: {input:?}");
-					return None;
-				};
-				wire.clone()
-			}
+		let network_metadata = self.network_metadata(network_path)?;
+		let Some(wire) = network_metadata.transient_metadata.wires.borrow().get(input).cloned() else {
+			log::error!("Could not load wire for input: {input:?}");
+			return None;
 		};
 		Some(wire)
 	}
 
-	pub fn wire_is_loaded(&mut self, input: &InputConnector, network_path: &[NodeId]) -> bool {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(input_metadata) = self.transient_input_metadata(node_id, *input_index, network_path) else {
-					log::error!("Input metadata should always exist for input");
-					return false;
-				};
-				input_metadata.wire.is_loaded()
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata(network_path) else {
-					return false;
-				};
-				match network_metadata.transient_metadata.wires.get(*export_index) {
-					Some(wire) => wire.is_loaded(),
-					None => false,
-				}
-			}
-		}
+	pub fn wire_is_loaded(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		self.network_metadata(network_path)
+			.is_some_and(|network_metadata| network_metadata.transient_metadata.wires.borrow().contains_key(input))
 	}
 
 	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
@@ -750,36 +721,18 @@ impl NodeNetworkInterface {
 			log::error!("Could not load wire path from input");
 			return;
 		};
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					// log::warn!("Node metadata must exist on node: {input:?}");
-					return;
-				};
-				let wire_update = WirePathUpdate {
-					id: *node_id,
-					input_index: *input_index,
-					wire_path_update: Some(wire),
-				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Loaded(wire_update);
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
-				if *export_index >= network_metadata.transient_metadata.wires.len() {
-					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
-				}
-				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
-					return;
-				};
-				let wire_update = WirePathUpdate {
-					id: NodeId(u64::MAX),
-					input_index: *export_index,
-					wire_path_update: Some(wire),
-				};
-				*input_metadata = TransientMetadata::Loaded(wire_update);
-			}
-		}
+		let (id, input_index) = match input {
+			InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
+			InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
+		};
+		let wire_update = WirePathUpdate {
+			id,
+			input_index,
+			wire_path_update: Some(wire),
+		};
+
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
+		network_metadata.transient_metadata.wires.borrow_mut().insert(*input, wire_update);
 	}
 
 	pub fn all_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
@@ -840,30 +793,10 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-					return;
-				};
-				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					// log::warn!("Node metadata must exist on node: {input:?}");
-					return;
-				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Unloaded;
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-					return;
-				};
-				if *export_index >= network_metadata.transient_metadata.wires.len() {
-					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
-				}
-				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
-					return;
-				};
-				*input_metadata = TransientMetadata::Unloaded;
-			}
-		}
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			return;
+		};
+		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
 	/// When previewing, there may be a second path to the root node.
