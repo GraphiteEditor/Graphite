@@ -557,14 +557,13 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in set_implementation");
 			return;
 		};
-		let new_implementation = std::mem::take(&mut new_template.document_node.implementation);
-		let _ = std::mem::replace(&mut node.implementation, new_implementation);
+		let (new_implementation, new_network_metadata) = std::mem::take(&mut new_template.implementation).into_parts();
+		node.implementation = new_implementation;
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get metadata in set_implementation");
 			return;
 		};
-		let new_metadata = std::mem::take(&mut new_template.persistent_node_metadata.network_metadata);
-		let _ = std::mem::replace(&mut metadata.persistent_metadata.network_metadata, new_metadata);
+		metadata.persistent_metadata.network_metadata = new_network_metadata;
 	}
 
 	/// Replaces the inputs and corresponding metadata.
@@ -577,13 +576,13 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in set_implementation");
 			return None;
 		};
-		let new_inputs = std::mem::take(&mut new_template.document_node.inputs);
+		let new_inputs = std::mem::take(&mut new_template.inputs);
 		let old_inputs = std::mem::replace(&mut node.inputs, new_inputs);
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get metadata in set_implementation");
 			return None;
 		};
-		let new_metadata = std::mem::take(&mut new_template.persistent_node_metadata.input_metadata);
+		let new_metadata = std::mem::take(&mut new_template.input_metadata);
 		let _ = std::mem::replace(&mut metadata.persistent_metadata.input_metadata, new_metadata);
 		Some(old_inputs)
 	}
@@ -597,7 +596,7 @@ impl NodeNetworkInterface {
 				.reference(node_id, network_path)
 				.as_ref()
 				.and_then(resolve_document_node_type)
-				.and_then(|definition| definition.node_template.persistent_node_metadata.input_metadata.get(added_input_index))
+				.and_then(|definition| definition.node_template.input_metadata.get(added_input_index))
 				.cloned();
 			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 			metadata.persistent_metadata.input_metadata.push(input_metadata.unwrap_or_default());
@@ -1035,12 +1034,13 @@ impl NodeNetworkInterface {
 			node_template = self.map_ids(node_template, &old_node_id, &new_ids, network_path);
 			// Insert node into network
 			let node_id = *new_ids.get(&old_node_id).unwrap();
+			let (document_node, persistent_metadata) = node_template.into_parts();
 			let Some(network) = self.network_mut(network_path) else {
 				log::error!("Network not found in insert_node");
 				return;
 			};
 
-			network.nodes.insert(node_id, node_template.document_node);
+			network.nodes.insert(node_id, document_node);
 			self.transaction_modified();
 
 			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -1048,7 +1048,7 @@ impl NodeNetworkInterface {
 				return;
 			};
 			let node_metadata = DocumentNodeMetadata {
-				persistent_metadata: node_template.persistent_node_metadata,
+				persistent_metadata,
 				transient_metadata: DocumentNodeTransientMetadata::default(),
 			};
 			network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
@@ -1063,17 +1063,17 @@ impl NodeNetworkInterface {
 	/// Used to insert a node template with no node/network inputs into the network and returns the a NodeTemplate with information from the previous node, if it existed.
 	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, network_path: &[NodeId]) -> Option<NodeTemplate> {
 		let has_node_or_network_input = node_template
-			.document_node
 			.inputs
 			.iter()
 			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Import { .. })));
 		assert!(has_node_or_network_input, "Cannot insert node with node or network inputs. Use insert_node_group instead");
+		let (document_node, persistent_metadata) = node_template.into_parts();
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Network not found in insert_node");
 			return None;
 		};
 
-		let previous_node = network.nodes.insert(node_id, node_template.document_node);
+		let previous_node = network.nodes.insert(node_id, document_node);
 		self.transaction_modified();
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -1081,7 +1081,7 @@ impl NodeNetworkInterface {
 			return None;
 		};
 		let node_metadata = DocumentNodeMetadata {
-			persistent_metadata: node_template.persistent_node_metadata,
+			persistent_metadata,
 			transient_metadata: DocumentNodeTransientMetadata::default(),
 		};
 		let previous_metadata = network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
@@ -1089,10 +1089,9 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path);
 
-		previous_node.zip(previous_metadata).map(|(document_node, node_metadata)| NodeTemplate {
-			document_node,
-			persistent_node_metadata: node_metadata.persistent_metadata,
-		})
+		previous_node
+			.zip(previous_metadata)
+			.map(|(document_node, node_metadata)| NodeTemplate::from_parts(document_node, node_metadata.persistent_metadata))
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.

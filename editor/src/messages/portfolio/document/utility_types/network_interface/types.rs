@@ -814,14 +814,6 @@ pub struct NavigationMetadata {
 	pub node_graph_width: f64,
 }
 
-// PartialEq required by message handlers
-/// All persistent editor and Graphene data for a node. Used to serialize and deserialize a node, pass it through the editor, and create definitions.
-#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NodeTemplate {
-	pub document_node: DocumentNode,
-	pub persistent_node_metadata: DocumentNodePersistentMetadata,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TransactionStatus {
 	Started,

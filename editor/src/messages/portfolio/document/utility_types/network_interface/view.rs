@@ -425,9 +425,6 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		let node = self.node(node_id)?;
 		let node_metadata = self.node_metadata(node_id)?;
 
-		Ok(NodeTemplate {
-			persistent_node_metadata: node_metadata.persistent_metadata.clone(),
-			document_node: node.clone(),
-		})
+		Ok(NodeTemplate::from_parts(node.clone(), node_metadata.persistent_metadata.clone()))
 	}
 }

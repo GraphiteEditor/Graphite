@@ -3,7 +3,7 @@
 
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, NodeTemplateImplementation, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
@@ -993,9 +993,9 @@ pub fn document_migration_string_preprocessing(document_serialized_content: Stri
 /// so the staged input-count migrations can still upgrade old text nodes before the split.
 fn legacy_text_node_template() -> Option<NodeTemplate> {
 	let mut template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?.default_node_template();
-	template.document_node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"));
-	template.document_node.inputs.push(NodeInput::value(TaggedValue::Bool(false), false));
-	template.persistent_node_metadata.input_metadata.push(Default::default());
+	template.implementation = NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"));
+	template.inputs.push(NodeInput::value(TaggedValue::Bool(false), false));
+	template.input_metadata.push(Default::default());
 	Some(template)
 }
 
@@ -1151,10 +1151,12 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		if let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation {
 			let node_path_without_type_args = protonode_id.as_str().split('<').next();
 			if let Some(new) = node_path_without_type_args.and_then(|node_path| replacements.get(node_path)) {
-				let mut default_template = NodeTemplate::default();
-				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
+				let mut default_template = NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(new.clone()),
+					..Default::default()
+				};
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_call_argument(node_id, &network_path, default_template.document_node.call_argument);
+				document.network_interface.set_call_argument(node_id, &network_path, default_template.call_argument);
 			}
 		}
 	}
@@ -1224,7 +1226,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					// (which represented radians in the legacy format) reaches the now-degrees Rotation input correctly.
 					if let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) {
 						let mut multiply_template = multiply_node.default_node_template();
-						multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+						multiply_template.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
 						let multiply_node_id = NodeId::new();
 						if let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) {
 							let multiply_position = transform_position + IVec2::new(-7, 1);
@@ -2172,7 +2174,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// A brush node saved before `Item<Raster<CPU>>` had a default stored its unconnected background as the invalid `()`,
 	// which fails type resolution against the raster primary; adopt the definition's empty-raster default instead.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::None)) {
-		let default_background = resolve_document_node_type(&reference)?.node_template.document_node.inputs.first()?.clone();
+		let default_background = resolve_document_node_type(&reference)?.node_template.inputs.first()?.clone();
 		document.network_interface.set_input(&InputConnector::node(*node_id, 0), default_background, network_path);
 	}
 
@@ -2423,7 +2425,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 		let mut subtract_template = subtract_def.default_node_template();
-		subtract_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(1.), false);
+		subtract_template.inputs[1] = NodeInput::value(TaggedValue::F64(1.), false);
 		let subtract_id = NodeId::new();
 
 		// Create Divide node: old_progression / (N-1) → new progression
@@ -2518,7 +2520,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				return None;
 			};
 			let mut transform_template = transform_node_type.default_node_template();
-			transform_template.document_node.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+			transform_template.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
 
 			let transform_id = NodeId::new();
 
@@ -2579,7 +2581,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				return None;
 			};
 			let mut transform_template = transform_node_type.default_node_template();
-			transform_template.document_node.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+			transform_template.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
 
 			let transform_id = NodeId::new();
 
@@ -2596,7 +2598,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
 	{
-		let context_features = node_definition.node_template.document_node.context_features;
+		let context_features = node_definition.node_template.context_features;
 		document.network_interface.set_context_features(node_id, network_path, context_features);
 	}
 
@@ -2671,7 +2673,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// A value input stored as a List-form TypeDefault adopts the definition's current default when the connector's declared default has since changed (e.g. the connector was ranked down to Item).
 	// The red-slash no-paint choice shares that stored form but is a deliberate value, not a stale disconnect default, so it is exempt.
 	if let Some(definition) = resolve_document_node_type(&reference) {
-		let definition_inputs = definition.node_template.document_node.inputs.clone();
+		let definition_inputs = definition.node_template.inputs.clone();
 		for (index, definition_input) in definition_inputs.iter().enumerate() {
 			if !matches!(definition_input, NodeInput::Value { .. }) {
 				continue;

@@ -10,10 +10,12 @@ mod queries;
 mod resolved_types;
 pub mod storage_metadata;
 mod structure;
+mod template;
 mod types;
 mod validation;
 mod view;
 
+pub use template::*;
 pub use types::*;
 pub use view::{NetworkError, NetworkView};
 

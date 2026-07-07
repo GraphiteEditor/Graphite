@@ -1,7 +1,6 @@
 use super::DocumentNodeDefinition;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, NodeTemplate, WidgetOverride};
-use graph_craft::document::*;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputMetadata, NodeTemplate, NodeTemplateImplementation, WidgetOverride};
 use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
@@ -14,7 +13,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	let network_nodes = custom
 		.into_iter()
 		.filter_map(|definition| {
-			if let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = &definition.node_template.document_node.implementation {
+			if let NodeTemplateImplementation::ProtoNode(proto_node_identifier) = &definition.node_template.implementation {
 				definitions_map.insert(DefinitionIdentifier::ProtoNode(proto_node_identifier.clone()), definition);
 				return None;
 			};
@@ -72,29 +71,21 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			DocumentNodeDefinition {
 				identifier: display_name,
 				node_template: NodeTemplate {
-					document_node: DocumentNode {
-						inputs,
-						call_argument: input_type.clone(),
-						implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
-						visible: true,
-						skip_deduplication: false,
-						context_features: ContextDependencies::from(context_features.as_slice()),
-						..Default::default()
-					},
-					persistent_node_metadata: DocumentNodePersistentMetadata {
-						// TODO: Store information for input overrides in the node macro
-						input_metadata: fields
-							.iter()
-							.map(|f| match f.widget_override {
-								RegistryWidgetOverride::None => (f.name, f.description).into(),
-								RegistryWidgetOverride::Hidden => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Hidden),
-								RegistryWidgetOverride::String(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::String(str.to_string())),
-								RegistryWidgetOverride::Custom(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
-							})
-							.collect(),
-						locked: false,
-						..Default::default()
-					},
+					inputs,
+					call_argument: input_type.clone(),
+					implementation: NodeTemplateImplementation::ProtoNode(id.clone()),
+					context_features: ContextDependencies::from(context_features.as_slice()),
+					// TODO: Store information for input overrides in the node macro
+					input_metadata: fields
+						.iter()
+						.map(|f| match f.widget_override {
+							RegistryWidgetOverride::None => (f.name, f.description).into(),
+							RegistryWidgetOverride::Hidden => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Hidden),
+							RegistryWidgetOverride::String(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::String(str.to_string())),
+							RegistryWidgetOverride::Custom(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
+						})
+						.collect(),
+					..Default::default()
 				},
 				category,
 				description: Cow::Borrowed(description),
@@ -105,13 +96,14 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 
 	// Add the rest of the network nodes to the map and add the metadata for their internal protonodes
 	for mut network_node in network_nodes {
-		traverse_node(&network_node.node_template.document_node, &mut network_node.node_template.persistent_node_metadata, &definitions_map);
+		fill_proto_node_metadata(&mut network_node.node_template, &definitions_map);
+
 		// Set the reference to the node identifier
-		if let Some(nested_metadata) = network_node.node_template.persistent_node_metadata.network_metadata.as_mut() {
-			nested_metadata.persistent_metadata.reference = Some(network_node.identifier.to_string());
+		if let NodeTemplateImplementation::Network(network_template) = &mut network_node.node_template.implementation {
+			network_template.reference = Some(network_node.identifier.to_string());
 			// If it is not a merge node, then set the display name to the identifier/reference
 			if network_node.identifier != "Merge" {
-				network_node.node_template.persistent_node_metadata.display_name = network_node.identifier.to_string();
+				network_node.node_template.display_name = network_node.identifier.to_string();
 			}
 		}
 		definitions_map.insert(DefinitionIdentifier::Network(network_node.identifier.to_string()), network_node);
@@ -120,27 +112,27 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	definitions_map
 }
 
-/// Traverses a document node template and metadata in parallel to add metadata to the protonodes
-fn traverse_node(node: &DocumentNode, node_metadata: &mut DocumentNodePersistentMetadata, definitions_map: &HashMap<DefinitionIdentifier, DocumentNodeDefinition>) {
-	match &node.implementation {
-		DocumentNodeImplementation::Network(node_network) => {
-			for (nested_node_id, nested_node) in node_network.nodes.iter() {
-				let nested_metadata = node_metadata.network_metadata.as_mut().unwrap().persistent_metadata.node_metadata.get_mut(nested_node_id).unwrap();
-				traverse_node(nested_node, &mut nested_metadata.persistent_metadata, definitions_map);
+/// Recursively fills each nested proto node's editor metadata from its definition, preserving only the authored position.
+fn fill_proto_node_metadata(node_template: &mut NodeTemplate, definitions_map: &HashMap<DefinitionIdentifier, DocumentNodeDefinition>) {
+	match &mut node_template.implementation {
+		NodeTemplateImplementation::Network(network_template) => {
+			for nested_template in network_template.nodes.values_mut() {
+				fill_proto_node_metadata(nested_template, definitions_map);
 			}
 		}
-		DocumentNodeImplementation::ProtoNode(id) => {
-			// Set all the metadata except the position to the proto node information from the macro
-			// TODO: Use options in the template to specify what you want to default and what you want to override
-			// If this fails then the proto node id in the definition doesn't match what is generated by the macro
+		NodeTemplateImplementation::ProtoNode(id) => {
+			// If this lookup fails then the proto node id in the definition doesn't match what is generated by the macro
 			let Some(definition) = definitions_map.get(&DefinitionIdentifier::ProtoNode(id.clone())) else {
-				// log::error!("Could not get definition for id {} when filling in protonode metadata for a custom node", id.clone());
 				return;
 			};
-			let mut new_metadata = definition.node_template.persistent_node_metadata.clone();
-			new_metadata.node_type_metadata = node_metadata.node_type_metadata.clone();
-			*node_metadata = new_metadata
+
+			let definition_template = &definition.node_template;
+			node_template.display_name = definition_template.display_name.clone();
+			node_template.input_metadata = definition_template.input_metadata.clone();
+			node_template.output_names = definition_template.output_names.clone();
+			node_template.locked = definition_template.locked;
+			node_template.pinned = definition_template.pinned;
 		}
-		DocumentNodeImplementation::Extract => {}
+		NodeTemplateImplementation::Extract => {}
 	}
 }
