@@ -1096,7 +1096,6 @@ impl NodeNetworkInterface {
 				node_metadata.persistent_metadata.node_type_metadata = if old_node.is_layer {
 					NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 						position: LayerPosition::Absolute(old_node.metadata.position),
-						owned_nodes: TransientMetadata::Unloaded,
 					})
 				} else {
 					NodeTypePersistentMetadata::Node(NodePersistentMetadata {

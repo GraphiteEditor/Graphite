@@ -1498,7 +1498,6 @@ impl NodeNetworkInterface {
 		node_metadata.persistent_metadata.node_type_metadata = if is_layer {
 			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Absolute(position),
-				owned_nodes: TransientMetadata::Unloaded,
 			})
 		} else {
 			NodeTypePersistentMetadata::Node(NodePersistentMetadata {
@@ -1521,7 +1520,6 @@ impl NodeNetworkInterface {
 		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
 			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Stack((position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32),
-				owned_nodes: TransientMetadata::Unloaded,
 			})
 		}
 

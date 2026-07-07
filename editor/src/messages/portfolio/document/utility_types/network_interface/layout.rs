@@ -301,12 +301,12 @@ impl NodeNetworkInterface {
 		};
 		if !shift_without_push {
 			for node_id in node_ids.clone() {
-				if self.is_layer(&node_id, network_path)
-					&& let Some(owned_nodes) = self.owned_nodes(&node_id, network_path)
-				{
-					for owned_node in owned_nodes {
-						node_ids.remove(owned_node);
-					}
+				if self.is_layer(&node_id, network_path) {
+					self.with_owned_nodes(&node_id, network_path, |owned_nodes| {
+						for owned_node in owned_nodes {
+							node_ids.remove(owned_node);
+						}
+					});
 				};
 			}
 		}
@@ -472,7 +472,7 @@ impl NodeNetworkInterface {
 				if self.selected_nodes_in_nested_network(network_path).is_some_and(|selected_nodes| {
 					selected_nodes
 						.selected_nodes()
-						.any(|selected_node| selected_node == node_id || self.owned_nodes(node_id, network_path).is_some_and(|owned_nodes| owned_nodes.contains(selected_node)))
+						.any(|selected_node| selected_node == node_id || self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.contains(selected_node)) == Some(true))
 				}) {
 					return None;
 				};
@@ -564,7 +564,7 @@ impl NodeNetworkInterface {
 		}
 
 		// Shift the nodes that are owned by the layer (if any)
-		if let Some(owned_nodes) = self.owned_nodes(node_id, network_path).cloned() {
+		if let Some(owned_nodes) = self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.clone()) {
 			for owned_node in owned_nodes {
 				if self.is_absolute(&owned_node, network_path) {
 					self.try_shift_node(&owned_node, IVec2::new(0, shift_sign), shifted_nodes, network_path);
@@ -581,8 +581,7 @@ impl NodeNetworkInterface {
 		let nodes_to_shift = self.with_stack_dependents(network_path, |stack_dependents| {
 			let mut nodes_to_shift = Vec::new();
 
-			let default_hashset = HashSet::new();
-			let owned_nodes = self.owned_nodes(node_id, network_path).unwrap_or(&default_hashset);
+			let owned_nodes = self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.clone()).unwrap_or_default();
 
 			for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
 				for node_to_check_collision in stack_dependents {
