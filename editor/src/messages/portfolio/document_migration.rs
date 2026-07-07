@@ -2572,6 +2572,33 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// A value input stored as a List-form TypeDefault adopts the definition's current default when the connector's declared default has since changed (e.g. the connector was ranked down to Item)
+	if let Some(definition) = resolve_document_node_type(&reference) {
+		let definition_inputs = definition.node_template.document_node.inputs.clone();
+		for (index, definition_input) in definition_inputs.iter().enumerate() {
+			if !matches!(definition_input, NodeInput::Value { .. }) {
+				continue;
+			}
+
+			let stale_list_default = document
+				.network_interface
+				.input_from_connector(&InputConnector::node(*node_id, index), network_path)
+				.is_some_and(|stored_input| match stored_input {
+					NodeInput::Value { tagged_value, .. } => match &**tagged_value {
+						TaggedValue::TypeDefault(stored_descriptor) if stored_descriptor.name.starts_with("core_types::list::List<") => {
+							!matches!(definition_input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, TaggedValue::TypeDefault(definition_descriptor) if definition_descriptor.name == stored_descriptor.name))
+						}
+						_ => false,
+					},
+					_ => false,
+				});
+
+			if stale_list_default {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), definition_input.clone(), network_path);
+			}
+		}
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
