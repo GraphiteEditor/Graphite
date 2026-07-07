@@ -5089,11 +5089,10 @@ impl NodeNetworkInterface {
 					}
 				}
 			}
-			// The primary export is disconnected
+			// The primary export is disconnected, so preview the node with nothing to restore, which disconnects the export again when the preview ends
 			else {
-				// Set node as export and cancel any preview
 				new_export = Some(OutputConnector::node(toggle_id, 0));
-				self.start_previewing_without_restore(network_path);
+				new_previewing_state = Previewing::Yes { root_node_to_restore: None };
 			}
 		}
 		match new_export {
