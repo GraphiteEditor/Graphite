@@ -655,9 +655,11 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 		_ => GradientSpreadMethod::default(),
 	};
+	let has_transform = matches!(fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
 	let transform_input = fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value());
-	let transform = match transform_input {
-		Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(bounding_box())),
+	let transform = match (has_transform, transform_input) {
+		(true, Some(&TaggedValue::DAffine2(value))) => value,
+		(false, _) => initial_gradient_transform_for_bounding_box(bounding_box()),
 		_ => DAffine2::IDENTITY,
 	};
 
@@ -804,10 +806,10 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
 					_ => GradientSpreadMethod::default(),
 				};
-				let transform = match read(graphene_std::vector::fill::TransformInput::INDEX) {
-					Some(TaggedValue::OptionalDAffine2(value)) => {
-						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
-					}
+				let has_transform = matches!(read(graphene_std::vector::fill::HasTransformInput::INDEX), Some(TaggedValue::Bool(true)));
+				let transform = match (has_transform, read(graphene_std::vector::fill::TransformInput::INDEX)) {
+					(true, Some(TaggedValue::DAffine2(value))) => *value,
+					(false, _) => initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)),
 					_ => DAffine2::IDENTITY,
 				};
 

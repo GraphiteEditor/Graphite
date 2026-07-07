@@ -191,12 +191,14 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_backup_gradient: Item<Gradient>,
 	_gradient_type: Item<GradientType>,
 	_spread_method: Item<GradientSpreadMethod>,
-	_transform: Option<DAffine2>,
+	_has_transform: Item<bool>,
+	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
 	let (_gradient_type, _spread_method) = (_gradient_type.into_element(), _spread_method.into_element());
+	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
 	let mut fill = fill.into_graphic_list();
@@ -218,8 +220,10 @@ where
 		}
 
 		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			let transform = _transform.unwrap_or_else(|| {
-				// Construct a transform that covers the bounding box of the paint target
+			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
+			let transform = if _has_transform {
+				_transform
+			} else {
 				let mut bounds: Option<[DVec2; 2]> = None;
 				content.for_each_vector_mut(|vector, _| {
 					if let Some([min, max]) = vector.bounding_box() {
@@ -239,7 +243,7 @@ where
 					max.y = min.y + 1.;
 				}
 				initial_gradient_transform_for_bounding_box([min, max])
-			});
+			};
 
 			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 				*value = transform;

@@ -2068,8 +2068,9 @@ mod test_gradient {
 					_ => GradientSpreadMethod::default(),
 				};
 
+				let has_transform = matches!(fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
 				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::OptionalDAffine2(Some(value))) => value,
+					Some(&TaggedValue::DAffine2(value)) if has_transform => value,
 					_ => DAffine2::IDENTITY,
 				};
 

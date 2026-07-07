@@ -1690,6 +1690,39 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 7;
 	}
 
+	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && inputs_count == 7 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().enumerate().take(6) {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+
+		match old_inputs.get(6).and_then(|input| input.as_value()) {
+			Some(TaggedValue::OptionalDAffine2(value)) => {
+				let has_transform = value.is_some();
+				let transform = value.unwrap_or(glam::DAffine2::IDENTITY);
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(has_transform), false), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+			}
+			// A wired (or otherwise non-value) transform keeps its connection and is treated as present
+			_ => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+				let transform_input = old_inputs.get(6).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::DAffine2(glam::DAffine2::IDENTITY), false));
+				document.network_interface.set_input(&InputConnector::node(*node_id, 7), transform_input, network_path);
+			}
+		}
+
+		inputs_count = 8;
+	}
+
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 8 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();

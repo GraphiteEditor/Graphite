@@ -493,8 +493,13 @@ impl<'a> ModifyInputsContext<'a> {
 			.is_some_and(|input| input.as_value().is_some());
 		if transform_is_value {
 			self.set_input_with_refresh(
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX),
+				NodeInput::value(TaggedValue::Bool(true), false),
+				true,
+			);
+			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-				NodeInput::value(TaggedValue::OptionalDAffine2(Some(transform)), false),
+				NodeInput::value(TaggedValue::DAffine2(transform), false),
 				true,
 			);
 		}
