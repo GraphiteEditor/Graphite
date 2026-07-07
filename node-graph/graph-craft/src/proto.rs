@@ -817,6 +817,14 @@ impl TypingContext {
 						return Some(format!("graphene_core::ops::WrapItemNode<{element}>"));
 					}
 
+					// A bare wire may feed a `List<X>` connector via a wrap and singleton raise
+					if let (Type::Concrete(from_descriptor), Some(list_inner)) = (from_output.nested_type(), wrapped_name(to_output, "List"))
+						&& from_descriptor.name == list_inner
+					{
+						let element = peel_identifier(to_output, "List")?;
+						return Some(format!("graphene_core::ops::WrapListNode<{element}>"));
+					}
+
 					// An `Item<X>` wire may feed a bare legacy connector via an unwrap, since bare connectors are attribute-blind
 					if let (Some(item_inner), Type::Concrete(to_descriptor)) = (wrapped_name(from_output, "Item"), to_output.nested_type())
 						&& item_inner == to_descriptor.name
@@ -843,12 +851,16 @@ impl TypingContext {
 					})
 					.collect::<Vec<_>>();
 
-				// Prefer the variant needing the fewest promotions, so a rank-0 wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous
-				promotable_matches.sort_by_key(|(_, required_promotions)| required_promotions.len());
-				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| required_promotions.len());
+				// Prefer the variant needing the cheapest promotions, so a rank-0 wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
+				// A wrap-raise counts double since it spans two rank steps, keeping the all-Item variant ahead of the mapped one for fully bare inputs.
+				fn promotion_cost(required_promotions: &[(usize, String)]) -> usize {
+					required_promotions.iter().map(|(_, adapter)| if adapter.contains("WrapListNode") { 2 } else { 1 }).sum()
+				}
+				promotable_matches.sort_by_key(|(_, required_promotions)| promotion_cost(required_promotions));
+				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| promotion_cost(required_promotions));
 				let tied_at_minimum = promotable_matches
 					.iter()
-					.take_while(|(_, required_promotions)| Some(required_promotions.len()) == minimum_promotions)
+					.take_while(|(_, required_promotions)| Some(promotion_cost(required_promotions)) == minimum_promotions)
 					.count();
 
 				if tied_at_minimum == 1 {

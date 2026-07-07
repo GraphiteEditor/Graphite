@@ -459,6 +459,33 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
+	// A bare-value wrap-raise adapter inserted by type resolution when a bare wire feeds a List connector
+	macro_rules! wrap_list_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::WrapListNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::FieldAdapterNode::new(
+							graphene_std::any::downcast_node::<Context, $element>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
+						);
+						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::FieldAdapterNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $element> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
+					);
+					let params = vec![fn_type_fut!(Context, $element)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
 	// A legacy unwrap adapter inserted by type resolution when an Item wire feeds a bare connector predating ranked wires
 	macro_rules! unwrap_item_node {
 		(element: $element:ty) => {
@@ -486,7 +513,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
-	// Registers the rank adapters (FieldAdapterNode, ItemToListNode, WrapItemNode, UnwrapItemNode) for each element type
+	// Registers the rank adapters (FieldAdapterNode, ItemToListNode, WrapItemNode, WrapListNode, UnwrapItemNode) for each element type
 	macro_rules! rank_adapter_nodes {
 		($($element:ty),* $(,)?) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
@@ -494,6 +521,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				entries.extend(field_adapter_node!(element: $element));
 				entries.push(item_to_list_node!(element: $element));
 				entries.push(wrap_item_node!(element: $element));
+				entries.push(wrap_list_node!(element: $element));
 				entries.push(unwrap_item_node!(element: $element));
 			)*
 			entries
@@ -638,6 +666,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|| new_name.contains("FieldAdapterNode")
 			|| new_name.contains("ItemToListNode")
 			|| new_name.contains("WrapItemNode")
+			|| new_name.contains("WrapListNode")
 			|| new_name.contains("UnwrapItemNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
 		{

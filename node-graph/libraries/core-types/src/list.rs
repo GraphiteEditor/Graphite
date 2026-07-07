@@ -1415,6 +1415,12 @@ impl<T> From<Item<T>> for List<T> {
 	}
 }
 
+impl<T> From<T> for List<T> {
+	fn from(element: T) -> Self {
+		Self::new_from_element(element)
+	}
+}
+
 impl<T> ApplyTransform for Item<T> {
 	/// Right-multiplies the modification into the item's transform attribute.
 	fn apply_transform(&mut self, modification: &DAffine2) {
