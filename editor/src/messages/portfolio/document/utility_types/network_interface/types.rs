@@ -772,7 +772,7 @@ pub enum NodePosition {
 #[derive(Debug, Default, Clone)]
 pub struct DocumentNodeTransientMetadata {
 	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
-	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
+	pub(crate) click_targets: TransientCache<DocumentNodeClickTargets>,
 	/// All nodes that should be moved when this layer is moved, kept here since only layers own nodes.
 	pub(crate) owned_nodes: TransientCache<HashSet<NodeId>>,
 	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.
