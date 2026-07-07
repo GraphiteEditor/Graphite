@@ -13,7 +13,7 @@ use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
+use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -214,6 +214,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<BlendMode>,
 		Item<GradientType>,
 		Item<GradientSpreadMethod>,
+		Item<DashPattern>,
 		GradientStops,
 		f64,
 		u32,
@@ -389,6 +390,26 @@ impl TableItemLayout for Artboard {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.as_graphic_list().layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for DashPattern {
+	fn type_name() -> &'static str {
+		"DashPattern"
+	}
+	fn identifier(&self) -> String {
+		"DashPattern".to_string()
+	}
+	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	// Label the spreadsheet's element button with the inner list's identifier, like Artboard
+	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
+		self.0.value_widget(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
 	}
 }
 

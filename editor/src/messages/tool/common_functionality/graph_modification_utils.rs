@@ -571,7 +571,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		_ => PaintOrder::default(),
 	};
 	let dash_lengths = match read(graphene_std::vector::stroke::DashPatternInput::INDEX) {
-		Some(TaggedValue::DashPattern(value)) => value.0.clone(),
+		Some(TaggedValue::DashPattern(value)) => value.0.iter_element_values().copied().collect(),
 		_ => Vec::new(),
 	};
 	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX) {

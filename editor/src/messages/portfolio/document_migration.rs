@@ -1380,8 +1380,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
 	let pattern = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(lengths) => DashPattern(lengths.clone()),
-		TaggedValue::F64(length) => DashPattern(vec![*length]),
+		TaggedValue::F64Array(lengths) => DashPattern::from(lengths.clone()),
+		TaggedValue::F64(length) => DashPattern::from(*length),
 		TaggedValue::String(text) => DashPattern::from(text.as_str()),
 		_ => return None,
 	};

@@ -868,7 +868,7 @@ pub fn dash_pattern_widget(parameter_widgets_info: ParameterWidgetsInfo, text_in
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
-				.value(pattern.0.iter().map(|length| length.to_string()).collect::<Vec<_>>().join(", "))
+				.value(pattern.0.iter_element_values().map(|length| length.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(
 					move |input: &TextInput| Some(TaggedValue::DashPattern(DashPattern::from(input.value.as_str()))),
 					node_id,

@@ -3,6 +3,7 @@
 pub use crate::gradient::*;
 use core_types::Color;
 use core_types::color::SRGBA8;
+use core_types::list::{Item, List};
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -204,35 +205,53 @@ fn daffine2_identity() -> DAffine2 {
 /// A stroke's dash pattern: a sequence of lengths that alternate dash, gap, dash, gap, and so on. An odd-length
 /// sequence repeats with the dash and gap roles swapped.
 ///
-/// This is a rank-0 value type rather than a `List<f64>` because its lengths never carry attributes and the whole
-/// pattern is a single value, which keeps its connector frameable.
+/// Wraps a `List<f64>` so the Data panel can introspect its lengths, mirroring how `Artboard` wraps a `List<Graphic>`,
+/// while remaining a single rank-0 value on the wire.
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct DashPattern(pub Vec<f64>);
+pub struct DashPattern(pub List<f64>);
 
 impl DashPattern {
 	/// Returns the dash lengths with any negative values clamped to zero.
 	pub fn clamped_lengths(&self) -> Vec<f64> {
-		self.0.iter().map(|length| length.max(0.)).collect()
+		self.0.iter_element_values().map(|length| length.max(0.)).collect()
+	}
+}
+
+// `List<f64>` is a runtime-only wire type, so serialize the pattern as its bare lengths to keep documents stable
+#[cfg(feature = "serde")]
+impl serde::Serialize for DashPattern {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.collect_seq(self.0.iter_element_values())
+	}
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for DashPattern {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		Ok(Self::from(<Vec<f64> as serde::Deserialize>::deserialize(deserializer)?))
 	}
 }
 
 impl From<f64> for DashPattern {
 	fn from(length: f64) -> Self {
-		Self(vec![length])
+		Self(List::new_from_element(length))
 	}
 }
 
 impl From<Vec<f64>> for DashPattern {
 	fn from(lengths: Vec<f64>) -> Self {
-		Self(lengths)
+		Self(lengths.into_iter().map(Item::new_from_element).collect())
 	}
 }
 
 impl From<&str> for DashPattern {
 	fn from(text: &str) -> Self {
-		Self(text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(|piece| piece.parse::<f64>().ok()).collect())
+		Self::from(
+			text.split([',', ' '])
+				.filter(|piece| !piece.is_empty())
+				.filter_map(|piece| piece.parse::<f64>().ok())
+				.collect::<Vec<f64>>(),
+		)
 	}
 }
 
