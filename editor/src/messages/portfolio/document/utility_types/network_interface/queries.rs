@@ -103,27 +103,38 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
-	pub fn downstream_layer_for_chain_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+	pub fn downstream_layer_for_chain_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
 		let mut id = *node_id;
 		while !self.is_layer(&id, network_path) {
-			id = self.outward_wires(network_path)?.get(&OutputConnector::node(id, 0))?.first()?.node_id()?;
+			id = self.with_outward_wires(network_path, |outward_wires| {
+				outward_wires
+					.get(&OutputConnector::node(id, 0))
+					.and_then(|connections| connections.first())
+					.and_then(|connector| connector.node_id())
+			})??;
 		}
 		Some(id)
 	}
 
 	/// Returns all downstream layers (inclusive) from a node. If the node is a layer, it will return itself.
-	pub fn downstream_layers(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
+	pub fn downstream_layers(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
 		let mut stack = vec![*node_id];
 		let mut layers = Vec::new();
 		while let Some(current_node) = stack.pop() {
 			if self.is_layer(&current_node, network_path) {
 				layers.push(current_node);
 			} else {
-				let Some(outward_wires) = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(&OutputConnector::node(current_node, 0))) else {
+				let downstream_found = self.with_outward_wires(network_path, |outward_wires| {
+					let Some(connections) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+						return false;
+					};
+					stack.extend(connections.iter().filter_map(|input_connector| input_connector.node_id()));
+					true
+				});
+				if downstream_found != Some(true) {
 					log::error!("Could not get outward wires in downstream_layer");
 					return Vec::new();
-				};
-				stack.extend(outward_wires.iter().filter_map(|input_connector| input_connector.node_id()));
+				}
 			}
 		}
 		layers
@@ -552,7 +563,7 @@ impl NodeNetworkInterface {
 
 	/// Returns whether every downstream path from the node's outputs stays within the dependent set defined by `classify`, meaning nothing else in the graph depends on this node.
 	/// Reaching an export or a dead end (a walked node with no outward wires) always escapes. O(nodes + wires) per call.
-	pub(crate) fn is_sole_dependent(&mut self, node_id: NodeId, network_path: &[NodeId], classify: impl Fn(NodeId, usize) -> SoleDependentStep) -> bool {
+	pub(crate) fn is_sole_dependent(&self, node_id: NodeId, network_path: &[NodeId], classify: impl Fn(NodeId, usize) -> SoleDependentStep) -> bool {
 		let mut visited = HashSet::new();
 		let mut stack = vec![node_id];
 
@@ -561,47 +572,54 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			let number_of_outputs = self.number_of_outputs(&current_node, network_path);
-			let Some(outward_wires) = self.outward_wires(network_path) else {
-				log::error!("Could not get outward wires in is_sole_dependent");
-				return false;
-			};
-
 			// Classify every downstream connection of this node, collecting the ones to keep walking through
-			let mut has_downstream_connections = false;
-			let mut nodes_to_walk_through = Vec::new();
-			for output_index in 0..number_of_outputs {
-				let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(current_node, output_index)) else {
-					continue;
-				};
-				for downstream_connection in downstream_connections {
-					has_downstream_connections = true;
-					let InputConnector::Node {
-						node_id: downstream_node,
-						input_index,
-					} = downstream_connection
-					else {
-						return false;
+			let number_of_outputs = self.number_of_outputs(&current_node, network_path);
+			let keeps_within_set = self.with_outward_wires(network_path, |outward_wires| {
+				let mut has_downstream_connections = false;
+				let mut nodes_to_walk_through = Vec::new();
+				for output_index in 0..number_of_outputs {
+					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(current_node, output_index)) else {
+						continue;
 					};
-					match classify(*downstream_node, *input_index) {
-						SoleDependentStep::Terminate => {}
-						SoleDependentStep::Continue => nodes_to_walk_through.push(*downstream_node),
-						SoleDependentStep::Escape => return false,
+					for downstream_connection in downstream_connections {
+						has_downstream_connections = true;
+						let InputConnector::Node {
+							node_id: downstream_node,
+							input_index,
+						} = downstream_connection
+						else {
+							return false;
+						};
+						match classify(*downstream_node, *input_index) {
+							SoleDependentStep::Terminate => {}
+							SoleDependentStep::Continue => nodes_to_walk_through.push(*downstream_node),
+							SoleDependentStep::Escape => return false,
+						}
 					}
 				}
-			}
 
-			if !has_downstream_connections {
-				return false;
+				if !has_downstream_connections {
+					return false;
+				}
+				stack.extend(nodes_to_walk_through);
+				true
+			});
+
+			match keeps_within_set {
+				Some(true) => {}
+				Some(false) => return false,
+				None => {
+					log::error!("Could not get outward wires in is_sole_dependent");
+					return false;
+				}
 			}
-			stack.extend(nodes_to_walk_through);
 		}
 
 		true
 	}
 
 	// All chain nodes and branches from the chain which are sole dependents of the layer
-	pub fn upstream_nodes_below_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
+	pub fn upstream_nodes_below_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
 		// Every upstream node below layer must be a sole dependent
 		let mut upstream_nodes_below_layer = HashSet::new();
 
