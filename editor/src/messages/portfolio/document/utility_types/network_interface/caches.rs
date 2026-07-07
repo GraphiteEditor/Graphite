@@ -222,7 +222,7 @@ impl NodeNetworkInterface {
 
 			for sole_dependent in sole_dependents {
 				if !owned_sole_dependents.contains(&sole_dependent) {
-					stack_dependents.insert(sole_dependent, LayerOwner::None(0));
+					stack_dependents.insert(sole_dependent, LayerOwner::None);
 				}
 			}
 		}
@@ -243,20 +243,27 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.stack_dependents.unload();
 	}
 
-	/// Resets all the offsets for nodes with no LayerOwner when the drag ends
-	pub fn unload_stack_dependents_y_offset(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_stack_dependents_y_offset");
+	/// The vertical distance the node has been pushed from its resting position during the current drag.
+	pub(crate) fn drag_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> i32 {
+		self.network_metadata(network_path)
+			.map_or(0, |network_metadata| network_metadata.transient_metadata.drag_offsets.borrow().get(node_id).copied().unwrap_or(0))
+	}
+
+	pub(crate) fn add_drag_offset(&self, node_id: &NodeId, delta: i32, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in add_drag_offset");
 			return;
 		};
+		*network_metadata.transient_metadata.drag_offsets.borrow_mut().entry(*node_id).or_insert(0) += delta;
+	}
 
-		if let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() {
-			for layer_owner in stack_dependents.values_mut() {
-				if let LayerOwner::None(offset) = layer_owner {
-					*offset = 0;
-				}
-			}
-		}
+	/// Discards all drag offsets when the drag ends.
+	pub fn clear_drag_offsets(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in clear_drag_offsets");
+			return;
+		};
+		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
