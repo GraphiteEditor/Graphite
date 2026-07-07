@@ -77,6 +77,30 @@ async fn deleting_a_node_with_children_prunes_them_from_the_selection() {
 }
 
 #[tokio::test]
+async fn deleting_a_node_keeps_children_shared_with_other_nodes() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let parent = editor.create_node_by_name(rectangle_definition()).await;
+	let sibling = editor.create_node_by_name(rectangle_definition()).await;
+	let shared_child = editor.create_node_by_name(rectangle_definition()).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	// Wire the same child into the secondary inputs of both nodes, then delete only the parent along with its children
+	network_interface.set_input(&InputConnector::node(parent, 1), NodeInput::node(shared_child, 0), &[]);
+	network_interface.set_input(&InputConnector::node(sibling, 1), NodeInput::node(shared_child, 0), &[]);
+	network_interface.delete_nodes(vec![parent], true, &[]);
+
+	let nodes = &network_interface.document_network().nodes;
+	assert!(!nodes.contains_key(&parent), "The deleted node itself should be gone");
+	assert!(nodes.contains_key(&shared_child), "A child shared with another node is not a sole dependent and should survive");
+	assert!(nodes.contains_key(&sibling), "The unrelated sibling should survive");
+
+	assert_invariants(&editor, "after deleting a node with a shared child");
+}
+
+#[tokio::test]
 async fn cyclic_connection_is_rejected_without_side_effects() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
