@@ -317,22 +317,22 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Option<&wgpu_executor::WgpuExecutor>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuPipelineCache]),
 	];
-	// A rank promotion adapter registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged
-	macro_rules! promote_node {
+	// The per-connector field adapter, registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged
+	macro_rules! field_adapter_node {
 		(element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-			promote_node!(from: $element, to: Item<$element>, element: $element),
-			promote_node!(from: Item<$element>, to: Item<$element>, element: $element),
-			promote_node!(from: List<$element>, to: List<$element>, element: $element),
+			field_adapter_node!(from: $element, to: Item<$element>, element: $element),
+			field_adapter_node!(from: Item<$element>, to: Item<$element>, element: $element),
+			field_adapter_node!(from: List<$element>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 		(from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::PromoteNode<", stringify!($element), ">"]),
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::FieldAdapterNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::PromoteNode::new(
+						let node = graphene_std::ops::FieldAdapterNode::new(
 							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 						);
@@ -341,7 +341,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::PromoteNode::new(
+					let node = graphene_std::ops::FieldAdapterNode::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 					);
@@ -352,19 +352,19 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// A conversion adapter registered under the same `PromoteNode<$element>` identifier so a convertible-but-not-identical
+	// A conversion adapter registered under the same `FieldAdapterNode<$element>` identifier so a convertible-but-not-identical
 	// ranked wire can feed an `Item<$element>` connector, converting each element via `Into`
-	macro_rules! promote_convert_node {
+	macro_rules! field_adapter_convert_node {
 		(from_element: $from:ty, element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				promote_convert_node!(node: PromoteConvertNode, from: Item<$from>, to: Item<$element>, element: $element),
-				promote_convert_node!(node: PromoteConvertListNode, from: List<$from>, to: List<$element>, element: $element),
+				field_adapter_convert_node!(node: FieldAdapterConvertNode, from: Item<$from>, to: Item<$element>, element: $element),
+				field_adapter_convert_node!(node: FieldAdapterConvertListNode, from: List<$from>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 		(node: $node:ident, from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::PromoteNode<", stringify!($element), ">"]),
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::FieldAdapterNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
 						let node = graphene_std::ops::$node::new(
@@ -394,7 +394,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ItemToListNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::PromoteNode::new(
+						let node = graphene_std::ops::FieldAdapterNode::new(
 							graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
 						);
@@ -403,7 +403,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::PromoteNode::new(
+					let node = graphene_std::ops::FieldAdapterNode::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
 					);
@@ -421,7 +421,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::WrapItemNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::PromoteNode::new(
+						let node = graphene_std::ops::FieldAdapterNode::new(
 							graphene_std::any::downcast_node::<Context, $element>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<Item<$element>>)),
 						);
@@ -430,7 +430,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::PromoteNode::new(
+					let node = graphene_std::ops::FieldAdapterNode::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $element> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<Item<$element>>)),
 					);
@@ -468,12 +468,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
-	// Registers all three rank adapters (PromoteNode, ItemToListNode, WrapItemNode) for each promotable element type
+	// Registers the rank adapters (FieldAdapterNode, ItemToListNode, WrapItemNode, UnwrapItemNode) for each element type
 	macro_rules! rank_adapter_nodes {
 		($($element:ty),* $(,)?) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
 			$(
-				entries.extend(promote_node!(element: $element));
+				entries.extend(field_adapter_node!(element: $element));
 				entries.push(item_to_list_node!(element: $element));
 				entries.push(wrap_item_node!(element: $element));
 				entries.push(unwrap_item_node!(element: $element));
@@ -526,9 +526,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Resource,
 	));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
-	node_types.extend(promote_convert_node!(from_element: String, element: DashPattern));
+	node_types.extend(field_adapter_convert_node!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
-	node_types.extend(promote_convert_node!(from_element: f64, element: DashPattern));
+	node_types.extend(field_adapter_convert_node!(from_element: f64, element: DashPattern));
 	// =============
 	// CONVERT NODES
 	// =============
@@ -572,7 +572,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
 		if !(new_name.contains("IntoNode")
 			|| new_name.contains("ConvertNode")
-			|| new_name.contains("PromoteNode")
+			|| new_name.contains("FieldAdapterNode")
 			|| new_name.contains("ItemToListNode")
 			|| new_name.contains("WrapItemNode")
 			|| new_name.contains("UnwrapItemNode"))
