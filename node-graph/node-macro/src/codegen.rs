@@ -67,6 +67,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// An `Item<T>` primary input declares the node as an element-wise rank-0 kernel over element type `T`
 	let primary_element = primary_item_element(parsed);
 	let element_wise = primary_element.is_some();
+	let mapped_variant = generates_mapped_variant(parsed);
 
 	// Extract just the idents from data_field_generics for struct type parameters
 	let data_field_generic_idents: Vec<Ident> = data_field_generics
@@ -389,7 +390,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 	let mapped_struct_where_clause =
-		element_wise.then(|| make_struct_where_clause(build_field_clauses(Some(WireWrapper::List)), build_clampable_clauses(Some(WireWrapper::List)), param_clone_clauses));
+		mapped_variant.then(|| make_struct_where_clause(build_field_clauses(Some(WireWrapper::List)), build_clampable_clauses(Some(WireWrapper::List)), param_clone_clauses));
 
 	// Only regular fields are parameters to new()
 	let new_args: Vec<_> = node_generics
@@ -452,7 +453,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	// The mapped variant zips every ranked connector by frame slot (longest-list, last-element repeats), broadcasting bare parameters by clone
-	let mapped_eval_impl = element_wise.then(|| {
+	let mapped_eval_impl = mapped_variant.then(|| {
 		let ranked_names: Vec<_> = regular_fields
 			.iter()
 			.filter(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
@@ -552,7 +553,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		_ => quote!(),
 	};
 
-	let mapped_struct_def = element_wise.then(|| {
+	let mapped_struct_def = mapped_variant.then(|| {
 		quote! {
 			#struct_derives
 			pub struct #mapped_struct_name<#(#struct_generic_params,)*> {
@@ -572,7 +573,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
-	let mapped_struct_export = element_wise.then(|| {
+	let mapped_struct_export = mapped_variant.then(|| {
 		quote! {
 			#cfg
 			#[doc(hidden)]
@@ -845,6 +846,19 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	}
 }
 
+/// Whether the element-wise node gets a mapped `List` wire variant: an eager primary is its own frame source, while a lazy primary draws the frame from its ranked eager params, so it needs at least one.
+fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
+	if primary_item_element(parsed).is_none() {
+		return false;
+	}
+
+	let mut regular_fields = parsed.fields.iter().filter(|field| !field.is_data_field);
+	match regular_fields.next().map(|field| &field.ty) {
+		Some(ParsedFieldType::Node(_)) => regular_fields.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some())),
+		_ => true,
+	}
+}
+
 /// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
 fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
 	let syn::Type::Path(type_path) = ty else { return None };
@@ -922,9 +936,10 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	// Element-wise nodes register two wire variants per implementations row; all other nodes register one
 	let gcore = quote!(gcore);
-	let wire_variants: &[Option<WireWrapper>] = match primary_item_element(parsed).is_some() {
-		true => &[Some(WireWrapper::Item), Some(WireWrapper::List)],
-		false => &[None],
+	let wire_variants: &[Option<WireWrapper>] = match (primary_item_element(parsed).is_some(), generates_mapped_variant(parsed)) {
+		(true, true) => &[Some(WireWrapper::Item), Some(WireWrapper::List)],
+		(true, false) => &[Some(WireWrapper::Item)],
+		_ => &[None],
 	};
 
 	for i in 0..max_implementations.unwrap_or(0) {
