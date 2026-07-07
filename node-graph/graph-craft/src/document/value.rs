@@ -41,6 +41,7 @@ macro_rules! for_each_type_default {
 		$action!(List<Color>);
 		$action!(List<Gradient>);
 		$action!(Item<Vector>);
+		$action!(Item<f64>);
 		$action!(DocumentNode);
 		$action!(Resource);
 	};
