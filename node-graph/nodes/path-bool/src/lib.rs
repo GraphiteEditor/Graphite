@@ -34,8 +34,9 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
-	operation: BooleanOperation,
-) -> List<Vector> {
+	operation: Item<BooleanOperation>,
+) -> Item<Vector> {
+	let operation = operation.into_element();
 	let content = content.into_graphic_list();
 
 	// The first index is the bottom of the stack
@@ -60,7 +61,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
-	result_vector_list
+	result_vector_list.into_iter().next().unwrap_or_default()
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

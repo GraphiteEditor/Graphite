@@ -85,10 +85,11 @@ async fn quantize_real_time<T>(
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
 	#[unit("sec")]
-	quantum: f64,
+	quantum: Item<f64>,
 ) -> T {
 	let time = ctx.try_real_time().unwrap_or_default();
 	let time = time / 1000.;
+	let quantum = quantum.into_element();
 	let mut quantized_time = (time * quantum.recip()).round() / quantum.recip();
 	if !quantized_time.is_finite() {
 		quantized_time = time;
@@ -121,9 +122,10 @@ async fn quantize_animation_time<T>(
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
 	#[unit("sec")]
-	quantum: f64,
+	quantum: Item<f64>,
 ) -> T {
 	let time = ctx.try_animation_time().unwrap_or_default();
+	let quantum = quantum.into_element();
 	let mut quantized_time = (time * quantum.recip()).round() / quantum.recip();
 	if !quantized_time.is_finite() {
 		quantized_time = time;

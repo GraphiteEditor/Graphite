@@ -908,57 +908,58 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> Item<DVec2> {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: List<Color>) -> List<Color> {
-	color
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: List<Color>) -> Item<Color> {
+	// The "no color" choice arrives as an empty list and becomes the default (transparent) color
+	color.clone_item(0).unwrap_or_default()
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
+fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> Item<Color> {
 	let red = (red as f32).clamp(0., 1.);
 	let green = (green as f32).clamp(0., 1.);
 	let blue = (blue as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
-	List::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
+	Item::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
 }
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
+fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> Item<Color> {
 	let hue = (hue as f32) - (hue as f32).floor();
 	let saturation = (saturation as f32).clamp(0., 1.);
 	let value = (value as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	List::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
+	Item::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
 }
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSLA to Color"))]
-fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
+fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> Item<Color> {
 	let hue = (hue as f32) - (hue as f32).floor();
 	let saturation = (saturation as f32).clamp(0., 1.);
 	let lightness = (lightness as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	List::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
+	Item::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
 
-/// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce no color.
+/// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
-fn hex_to_color(_: impl Ctx, hex_code: String) -> List<Color> {
-	match core_types::misc::parse_css_color(&hex_code) {
-		Some(color) => List::new_from_element(color),
-		None => List::new(),
-	}
+fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
+	let (hex_code, attributes) = hex_code.into_parts();
+
+	let color = core_types::misc::parse_css_color(&hex_code).unwrap_or_default();
+	Item::from_parts(color, attributes)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: List<GradientStops>) -> List<GradientStops> {
-	gradient
+fn gradient_value(_: impl Ctx, _primary: (), gradient: List<GradientStops>) -> Item<GradientStops> {
+	gradient.clone_item(0).unwrap_or_default()
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
@@ -979,12 +980,12 @@ fn spread_method(_: impl Ctx, gradient: Item<GradientStops>, spread_method: Item
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: List<GradientStops>, position: Fraction) -> List<Color> {
-	let Some(gradient) = gradient.element(0) else { return List::new() };
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: List<GradientStops>, position: Fraction) -> Item<Color> {
+	let Some(gradient) = gradient.element(0) else { return Item::default() };
 
 	let position = position.clamp(0., 1.);
 	let color = gradient.evaluate(position);
-	List::new_from_element(color)
+	Item::new_from_element(color)
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.

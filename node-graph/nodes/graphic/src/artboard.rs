@@ -24,15 +24,17 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	/// Coordinate of the top-left corner of the artboard within the document.
-	location: DVec2,
+	location: Item<DVec2>,
 	/// Width and height of the artboard within the document.
-	dimensions: DVec2,
+	dimensions: Item<DVec2>,
 	/// Color of the artboard background.
 	background: List<Color>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
-	clip: bool,
-) -> List<Artboard> {
+	clip: Item<bool>,
+) -> Item<Artboard> {
+	let (location, dimensions, clip) = (location.into_element(), dimensions.into_element(), clip.into_element());
+
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
@@ -50,11 +52,9 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	List::new_from_item(
-		Item::new_from_element(Artboard::new(content))
-			.with_attribute(ATTR_LOCATION, normalized_location)
-			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
-			.with_attribute(ATTR_BACKGROUND, background)
-			.with_attribute(ATTR_CLIP, clip),
-	)
+	Item::new_from_element(Artboard::new(content))
+		.with_attribute(ATTR_LOCATION, normalized_location)
+		.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
+		.with_attribute(ATTR_BACKGROUND, background)
+		.with_attribute(ATTR_CLIP, clip)
 }

@@ -1,5 +1,5 @@
 use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
@@ -59,35 +59,35 @@ fn text(
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
-) -> List<String> {
-	let mut list = List::new_from_element(text);
+) -> Item<String> {
+	let mut item = Item::new_from_element(text);
 
 	if font != Resource::default() {
-		list.set_attribute(ATTR_FONT, 0, font);
+		item.set_attribute(ATTR_FONT, font);
 	}
 	if (size - DEFAULT_FONT_SIZE).abs() > f64::EPSILON {
-		list.set_attribute(ATTR_FONT_SIZE, 0, size);
+		item.set_attribute(ATTR_FONT_SIZE, size);
 	}
 	if (line_height - DEFAULT_LINE_HEIGHT).abs() > f64::EPSILON {
-		list.set_attribute(ATTR_LINE_HEIGHT, 0, line_height);
+		item.set_attribute(ATTR_LINE_HEIGHT, line_height);
 	}
 	if letter_spacing != 0. {
-		list.set_attribute(ATTR_LETTER_SPACING, 0, letter_spacing);
+		item.set_attribute(ATTR_LETTER_SPACING, letter_spacing);
 	}
 	if letter_tilt != 0. {
-		list.set_attribute(ATTR_LETTER_TILT, 0, letter_tilt);
+		item.set_attribute(ATTR_LETTER_TILT, letter_tilt);
 	}
 	if has_max_width {
-		list.set_attribute(ATTR_MAX_WIDTH, 0, Some(max_width));
+		item.set_attribute(ATTR_MAX_WIDTH, Some(max_width));
 	}
 	if has_max_height {
-		list.set_attribute(ATTR_MAX_HEIGHT, 0, Some(max_height));
+		item.set_attribute(ATTR_MAX_HEIGHT, Some(max_height));
 	}
 	if align != TextAlign::default() {
-		list.set_attribute(ATTR_TEXT_ALIGN, 0, align);
+		item.set_attribute(ATTR_TEXT_ALIGN, align);
 	}
 
-	list
+	item
 }
 
 /// Converts a styled `String[]` into vector geometry.
@@ -98,7 +98,7 @@ fn text_to_vector(
 	#[implementations(List<String>)]
 	strings: List<String>,
 	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
-	separate_glyphs: bool,
+	separate_glyphs: Item<bool>,
 ) -> List<Vector> {
-	shape_text_list(&strings, separate_glyphs)
+	shape_text_list(&strings, separate_glyphs.into_element())
 }

@@ -55,7 +55,7 @@ async fn get_request(
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
-) -> String {
+) -> Item<String> {
 	let header_map = parse_headers(&headers);
 	let request = reqwest::Client::new().get(url).headers(header_map);
 
@@ -68,13 +68,13 @@ async fn get_request(
 		tokio::spawn(async move {
 			let _ = request.send().await;
 		});
-		return String::new();
+		return Item::default();
 	}
 
 	let Ok(response) = request.send().await else {
-		return String::new();
+		return Item::default();
 	};
-	response.text().await.ok().unwrap_or_default()
+	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
 /// Sends an HTTP POST request to a specified URL with the provided binary data and optionally waits for the response (unless discarded) which is output as a string.
@@ -90,7 +90,7 @@ async fn post_request(
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
-) -> String {
+) -> Item<String> {
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
 	let body_bytes: Vec<u8> = body.iter_element_values().copied().collect();
@@ -105,26 +105,26 @@ async fn post_request(
 		tokio::spawn(async move {
 			let _ = request.send().await;
 		});
-		return String::new();
+		return Item::default();
 	}
 
 	let Ok(response) = request.send().await else {
-		return String::new();
+		return Item::default();
 	};
-	response.text().await.ok().unwrap_or_default()
+	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: String) -> List<u8> {
-	string.into_bytes().into_iter().map(Item::new_from_element).collect()
+fn string_to_bytes(_: impl Ctx, string: Item<String>) -> List<u8> {
+	string.into_element().into_bytes().into_iter().map(Item::new_from_element).collect()
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
-	let Some(image) = image.element(0) else { return List::new() };
+fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> List<u8> {
 	image
+		.element()
 		.data
 		.iter()
 		.flat_map(|color| {
@@ -137,8 +137,8 @@ fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Arc<[u8]> {
-	let placeholder = || -> Arc<[u8]> { Arc::from(Vec::<u8>::new()) };
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Item<Arc<[u8]>> {
+	let placeholder = || -> Item<Arc<[u8]>> { Item::new_from_element(Arc::from(Vec::<u8>::new())) };
 
 	let response = match reqwest::Client::new().get(&url).send().await {
 		Ok(response) => response,
@@ -149,7 +149,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: St
 	};
 
 	match response.bytes().await {
-		Ok(bytes) => Arc::from(bytes.to_vec()),
+		Ok(bytes) => Item::new_from_element(Arc::from(bytes.to_vec())),
 		Err(error) => {
 			log::error!("Failed to read HTTP response for `{url}`: {error}");
 			placeholder()
@@ -161,9 +161,10 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: St
 ///
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
+fn decode_image(_: impl Ctx, data: Item<Arc<[u8]>>) -> Item<Raster<CPU>> {
+	let data = data.into_element();
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return List::new();
+		return Item::default();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -180,7 +181,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 		..Default::default()
 	};
 
-	List::new_from_element(Raster::new_cpu(image))
+	Item::new_from_element(Raster::new_cpu(image))
 }
 
 #[cfg(target_family = "wasm")]

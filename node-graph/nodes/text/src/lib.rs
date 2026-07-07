@@ -835,12 +835,13 @@ fn string_join(
 	strings: List<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
-	separator: String,
+	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
-	separator_escaping: bool,
+	separator_escaping: Item<bool>,
 ) -> Item<String> {
+	let (separator, separator_escaping) = (separator.into_element(), separator_escaping.into_element());
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
 	let joined = strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator);

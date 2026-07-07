@@ -7,18 +7,22 @@ use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
 fn regex_contains(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to search for.
-	pattern: String,
+	pattern: Item<String>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
+	multiline: Item<bool>,
 	/// Only match if the pattern appears at the start of the string.
-	at_start: bool,
+	at_start: Item<bool>,
 	/// Only match if the pattern appears at the end of the string.
-	at_end: bool,
-) -> bool {
+	at_end: Item<bool>,
+) -> Item<bool> {
+	let (string, attributes) = string.into_parts();
+	let pattern = pattern.element();
+	let (case_insensitive, multiline, at_start, at_end) = (*case_insensitive.element(), *multiline.element(), *at_start.element(), *at_end.element());
+
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
 		(true, false) => "(?i)",
@@ -34,10 +38,10 @@ fn regex_contains(
 
 	let Ok(regex) = fancy_regex::Regex::new(&anchored_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return false;
+		return Item::from_parts(false, attributes);
 	};
 
-	regex.is_match(&string).unwrap_or(false)
+	Item::from_parts(regex.is_match(&string).unwrap_or(false), attributes)
 }
 
 /// Replaces matches of a regular expression pattern in the string. The replacement string can reference captures: `$0` for the whole match and `$1`, `$2`, etc. for capture groups.

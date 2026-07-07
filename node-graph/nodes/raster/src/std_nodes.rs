@@ -175,51 +175,46 @@ pub fn combine_channels(
 pub fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: List<Raster<CPU>>,
+	image: Item<Raster<CPU>>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: List<Raster<CPU>>,
-) -> List<Raster<CPU>> {
-	// TODO: Figure out what it means to support multiple stencil items?
-	let Some(stencil) = stencil.into_iter().next() else {
-		// No stencil provided so we return the original image
+	stencil: Item<Raster<CPU>>,
+) -> Item<Raster<CPU>> {
+	// An absent stencil arrives as the default empty raster, leaving the image unmasked
+	if stencil.element().width == 0 || stencil.element().height == 0 {
 		return image;
-	};
+	}
 	let stencil_size = DVec2::new(stencil.element().width as f64, stencil.element().height as f64);
 
-	image
-		.into_iter()
-		.filter_map(|mut row| {
-			let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
-			let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let mask_size = stencil_transform.scale_magnitudes();
+	let mut row = image;
+	let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
+	let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let mask_size = stencil_transform.scale_magnitudes();
 
-			if mask_size == DVec2::ZERO {
-				return None;
-			}
+	if mask_size == DVec2::ZERO {
+		return row;
+	}
 
-			// Transforms a point from the background image to the foreground image
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
-			let stencil_transform_inverse = stencil_transform.inverse();
+	// Transforms a point from the background image to the foreground image
+	let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
+	let stencil_transform_inverse = stencil_transform.inverse();
 
-			for y in 0..row.element().height {
-				for x in 0..row.element().width {
-					let image_point = DVec2::new(x as f64, y as f64);
-					let mask_point = bg_to_fg.transform_point2(image_point);
-					let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-					let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-					let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
+	for y in 0..row.element().height {
+		for x in 0..row.element().width {
+			let image_point = DVec2::new(x as f64, y as f64);
+			let mask_point = bg_to_fg.transform_point2(image_point);
+			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
+			let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+			let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
 
-					let image_pixel = row.element_mut().data_mut().get_pixel_mut(x, y).unwrap();
-					let mask_pixel = stencil.element().sample(mask_point);
-					*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
-				}
-			}
+			let image_pixel = row.element_mut().data_mut().get_pixel_mut(x, y).unwrap();
+			let mask_pixel = stencil.element().sample(mask_point);
+			*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
+		}
+	}
 
-			Some(row)
-		})
-		.collect()
+	row
 }
 
 #[node_macro::node(category(""))]
@@ -236,7 +231,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 	let (image, mut attributes) = image.into_parts();
 	let (image_width, image_height) = (image.width, image.height);
 	if image_width == 0 || image_height == 0 {
-		return empty_image((), bounds, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
+		return empty_image((), Item::new_from_element(bounds), Item::new_from_element(Color::TRANSPARENT));
 	}
 
 	let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -267,26 +262,23 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List<Raster<CPU>> {
+pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
+	let transform = transform.into_element();
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let color = color.element(0).copied().unwrap_or(Color::WHITE);
-	let image = Image::new(width, height, color);
+	let image = Image::new(width, height, color.into_element());
 
-	let mut result_list = List::new_from_element(Raster::new_cpu(image));
-	result_list.set_attribute(ATTR_TRANSFORM, 0, transform);
-
-	// Callers of empty_image can safely unwrap on returned `List`
-	result_list
+	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
 #[node_macro::node(category(""))]
-pub fn image<'a: 'n>(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
+pub fn image<'a: 'n>(_: impl Ctx, resource: Item<Resource>) -> Item<Raster<CPU>> {
+	let resource = resource.into_element();
 	let image_data = resource.as_ref();
 
 	let Some(image) = ::image::load_from_memory(image_data).ok() else {
-		return List::new();
+		return Item::default();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -301,7 +293,7 @@ pub fn image<'a: 'n>(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
 		height: image.height(),
 		..Default::default()
 	};
-	List::new_from_element(Raster::new_cpu(image))
+	Item::new_from_element(Raster::new_cpu(image))
 }
 
 /// Generates customizable procedural noise patterns.
@@ -339,7 +331,7 @@ pub fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: f64,
-) -> List<Raster<CPU>> {
+) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -357,7 +349,7 @@ pub fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return List::new();
+		return Item::default();
 	}
 
 	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -403,7 +395,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
+			return Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform);
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -461,11 +453,11 @@ pub fn noise_pattern(
 		}
 	}
 
-	List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
+pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -477,7 +469,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return List::new();
+		return Item::default();
 	}
 
 	let scale = footprint.scale();
@@ -499,15 +491,13 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
 		}
 	}
 
-	List::new_from_item(
-		Item::new_from_element(Raster::new_cpu(Image {
-			width,
-			height,
-			data,
-			..Default::default()
-		}))
-		.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
-	)
+	Item::new_from_element(Raster::new_cpu(Image {
+		width,
+		height,
+		data,
+		..Default::default()
+	}))
+	.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size))
 }
 
 #[inline(always)]
