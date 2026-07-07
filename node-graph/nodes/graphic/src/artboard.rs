@@ -28,7 +28,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	/// Width and height of the artboard within the document.
 	dimensions: Item<DVec2>,
 	/// Color of the artboard background.
-	background: List<Color>,
+	background: Item<Color>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: Item<bool>,
@@ -49,7 +49,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	let normalized_location = location.min(location + dimensions);
 	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
-	let background = background.element(0).copied().unwrap_or(Color::WHITE);
+	let background = background.into_element();
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
 	Item::new_from_element(Artboard::new(content))

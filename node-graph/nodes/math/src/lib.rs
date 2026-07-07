@@ -906,11 +906,10 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> Item<DVec2> {
 	Item::new_from_element(DVec2::new(x, y))
 }
 
-/// Constructs a color value which may be set to any color, or no color.
+/// Constructs a color value which may be set to any color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: List<Color>) -> Item<Color> {
-	// The "no color" choice arrives as an empty list and becomes the default (transparent) color
-	color.clone_item(0).unwrap_or_default()
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Color) -> Item<Color> {
+	Item::new_from_element(color)
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
@@ -958,8 +957,8 @@ fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: List<GradientStops>) -> Item<GradientStops> {
-	gradient.clone_item(0).unwrap_or_default()
+fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Item<GradientStops> {
+	Item::new_from_element(gradient)
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
@@ -980,9 +979,7 @@ fn spread_method(_: impl Ctx, gradient: Item<GradientStops>, spread_method: Item
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: List<GradientStops>, position: Fraction) -> Item<Color> {
-	let Some(gradient) = gradient.element(0) else { return Item::default() };
-
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Item<Color> {
 	let position = position.clamp(0., 1.);
 	let color = gradient.evaluate(position);
 	Item::new_from_element(color)

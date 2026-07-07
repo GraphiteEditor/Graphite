@@ -419,6 +419,7 @@ impl TableItemLayout for Graphic {
 	}
 	fn identifier(&self) -> String {
 		match self {
+			Self::None => "None".to_string(),
 			Self::Graphic(list) => list.identifier(),
 			Self::Vector(list) => list.identifier(),
 			Self::RasterCPU(list) => list.identifier(),
@@ -434,6 +435,7 @@ impl TableItemLayout for Graphic {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
+			Self::None => label("None"),
 			Self::Graphic(list) => list.layout_with_breadcrumb(data),
 			Self::Vector(list) => list.layout_with_breadcrumb(data),
 			Self::RasterCPU(list) => list.layout_with_breadcrumb(data),

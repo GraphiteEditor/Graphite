@@ -13,8 +13,11 @@ use vector_types::GradientStops;
 pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
-#[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
 pub enum Graphic {
+	/// The absence of graphical content, like CSS's `none` keyword: painting it produces nothing.
+	#[default]
+	None,
 	Graphic(List<Graphic>),
 	Vector(List<Vector>),
 	RasterCPU(List<Raster<CPU>>),
@@ -22,12 +25,6 @@ pub enum Graphic {
 	Color(List<Color>),
 	Gradient(List<GradientStops>),
 	Text(List<String>),
-}
-
-impl Default for Graphic {
-	fn default() -> Self {
-		Self::Graphic(List::new())
-	}
 }
 
 // Graphic
@@ -210,6 +207,18 @@ pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool 
 	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
 }
 
+/// Materializes a paint picker choice as the canonical single-graphic `List<Graphic>` paint form.
+pub fn fill_choice_to_paint(choice: vector_types::vector::style::FillChoice) -> List<Graphic> {
+	use vector_types::vector::style::FillChoice;
+
+	let graphic = match choice {
+		FillChoice::None => Graphic::None,
+		FillChoice::Solid(color) => Graphic::Color(List::new_from_element(color)),
+		FillChoice::Gradient(stops) => Graphic::Gradient(List::new_from_element(stops)),
+	};
+	List::new_from_element(graphic)
+}
+
 /// Stores a paint attribute in its canonical `List<Graphic>` form, the only representation paint readers accept.
 pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
 	attributes.insert(key, paint.into_graphic_list());
@@ -232,6 +241,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 	fn bake_graphic_paint_transform(graphics: &mut List<Graphic>, transform: DAffine2) {
 		for graphic in graphics.iter_element_values_mut() {
 			match graphic {
+				Graphic::None => {}
 				Graphic::Graphic(list) => bake_list_transform(list, transform),
 				Graphic::Vector(list) => bake_list_transform(list, transform),
 				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
@@ -423,6 +433,7 @@ impl Graphic {
 		}
 
 		match self {
+			Graphic::None => true,
 			Graphic::Vector(list) => all_clipped(list),
 			Graphic::Graphic(list) => all_clipped(list),
 			Graphic::RasterCPU(list) => all_clipped(list),
@@ -452,6 +463,7 @@ impl Graphic {
 
 	pub fn is_opaque(&self) -> bool {
 		match self {
+			Graphic::None => false,
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			Graphic::Vector(list) => {
 				let is_paint_opaque_at = |key: &str, index: usize| graphic_list_at(list, index, key).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()));
@@ -474,6 +486,7 @@ impl Graphic {
 
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			Graphic::Vector(list) => (0..list.len()).all(|i| {
 				let Some(vector) = list.element(i) else { return false };
@@ -501,9 +514,10 @@ impl Graphic {
 		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
 	}
 
-	/// Returns true if this graphic's inner list is empty.
+	/// Returns true if this graphic contains no content.
 	pub fn is_empty(&self) -> bool {
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => list.is_empty(),
 			Graphic::Vector(list) => list.is_empty(),
 			Graphic::Color(list) => list.is_empty(),
@@ -518,6 +532,7 @@ impl Graphic {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
+			Graphic::None => RenderBoundingBox::None,
 			Graphic::Vector(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
@@ -530,6 +545,7 @@ impl BoundingBox for Graphic {
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
+			Graphic::None => RenderBoundingBox::None,
 			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
@@ -560,6 +576,7 @@ impl ListConvert<Graphic> for Raster<GPU> {
 impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
+			Self::None => 0,
 			Self::Graphic(list) => list.render_complexity(),
 			Self::Vector(list) => list.render_complexity(),
 			Self::RasterCPU(list) => list.render_complexity(),

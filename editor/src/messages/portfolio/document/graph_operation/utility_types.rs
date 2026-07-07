@@ -15,7 +15,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{FillChoice, GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
@@ -138,7 +138,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
-			Some(NodeInput::value(TaggedValue::Color(Some(background)), false)),
+			Some(NodeInput::value(TaggedValue::Color(background), false)),
 			Some(NodeInput::value(TaggedValue::Bool(clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
@@ -300,7 +300,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) {
 		let color_value = resolve_proto_node_type(graphene_std::math_nodes::color_value::IDENTIFIER)
 			.expect("Color Value node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Color(Some(color)), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Color(color), false))]);
 
 		let color_value_id = NodeId::new();
 		self.network_interface.insert_node(color_value_id, color_value, &[]);
@@ -460,8 +460,12 @@ impl<'a> ModifyInputsContext<'a> {
 		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX);
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
 
-		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
+		// The backup remembers the last solid color, so the red-slash "none" choice leaves it untouched
+		if let Some(color) = color {
+			self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
+		}
+		let fill_choice = color.map_or(FillChoice::None, FillChoice::Solid);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::FillChoice(fill_choice), false), false);
 	}
 
 	pub fn fill_gradient_set(&mut self, gradient: GradientStops, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
@@ -475,7 +479,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
-			NodeInput::value(TaggedValue::Gradient(gradient), false),
+			NodeInput::value(TaggedValue::FillChoice(FillChoice::Gradient(gradient)), false),
 			true,
 		);
 
@@ -716,7 +720,11 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
+		self.set_input_with_refresh(
+			input_connector,
+			NodeInput::value(TaggedValue::FillChoice(color.map_or(FillChoice::None, FillChoice::Solid)), false),
+			true,
+		);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);

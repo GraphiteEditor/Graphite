@@ -12,11 +12,13 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::NodeInputDecleration;
 use graphene_std::ProtoNodeIdentifier;
+use graphene_std::list::List;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{DashPattern, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{DashPattern, FillChoice, PaintOrder, StrokeAlign};
+use graphene_std::{Color, Graphic};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1605,9 +1607,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			Some(TaggedValue::LegacyFill(old_fill)) => {
 				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
-					graphic_types::migrations::legacy::Fill::None => TaggedValue::Color(None),
-					graphic_types::migrations::legacy::Fill::Solid(color) => TaggedValue::Color(Some(*color)),
-					graphic_types::migrations::legacy::Fill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
+					graphic_types::migrations::legacy::Fill::None => TaggedValue::FillChoice(FillChoice::None),
+					graphic_types::migrations::legacy::Fill::Solid(color) => TaggedValue::FillChoice(FillChoice::Solid(*color)),
+					graphic_types::migrations::legacy::Fill::Gradient(gradient) => TaggedValue::FillChoice(FillChoice::Gradient(gradient.stops.clone())),
 				};
 				document
 					.network_interface
@@ -1704,6 +1706,64 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let dash_input = migrate_dash_input(&old_inputs[3]).unwrap_or_else(|| old_inputs[3].clone());
 		document.network_interface.set_input(&InputConnector::node(*node_id, 8), dash_input, network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
+	}
+
+	// TODO: Eventually remove this migration document upgrade code
+	// Paint moved to the `FillChoice` value type: paint inputs holding plain color/gradient values convert to it,
+	// while a legacy "no color" (`FillChoice::None` restored by the deserializer) on plain color connectors becomes a color
+	{
+		let migrate_paint_input = |input: &NodeInput| -> Option<NodeInput> {
+			let NodeInput::Value { tagged_value, exposed } = input else { return None };
+			let choice = match &*tagged_value.clone().into_inner() {
+				TaggedValue::Color(color) => FillChoice::Solid(*color),
+				TaggedValue::Gradient(stops) => FillChoice::Gradient(stops.clone()),
+				_ => return None,
+			};
+			Some(NodeInput::value(TaggedValue::FillChoice(choice), *exposed))
+		};
+		let migrate_color_input = |input: &NodeInput, fallback: Color| -> Option<NodeInput> {
+			let NodeInput::Value { tagged_value, exposed } = input else { return None };
+			let TaggedValue::FillChoice(choice) = &*tagged_value.clone().into_inner() else { return None };
+			Some(NodeInput::value(TaggedValue::Color(choice.as_solid().unwrap_or(fallback)), *exposed))
+		};
+
+		let conversions: &[(ProtoNodeIdentifier, usize, bool, Color)] = &[
+			(
+				graphene_std::vector::fill::IDENTIFIER,
+				graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX,
+				true,
+				Color::BLACK,
+			),
+			(
+				graphene_std::vector::stroke::IDENTIFIER,
+				graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX,
+				true,
+				Color::BLACK,
+			),
+			(graphene_std::vector::fill::IDENTIFIER, graphene_std::vector::fill::BackupColorInput::INDEX, false, Color::BLACK),
+			(
+				graphene_std::artboard::create_artboard::IDENTIFIER,
+				graphene_std::artboard::create_artboard::BackgroundInput::INDEX,
+				false,
+				Color::WHITE,
+			),
+			(
+				graphene_std::math_nodes::color_value::IDENTIFIER,
+				graphene_std::math_nodes::color_value::ColorInput::INDEX,
+				false,
+				Color::TRANSPARENT,
+			),
+		];
+		for &(ref identifier, index, is_paint, fallback) in conversions {
+			if reference != DefinitionIdentifier::ProtoNode(identifier.clone()) {
+				continue;
+			}
+			let Some(input) = node.inputs.get(index) else { continue };
+			let migrated = if is_paint { migrate_paint_input(input) } else { migrate_color_input(input, fallback) };
+			if let Some(migrated) = migrated {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), migrated, network_path);
+			}
+		}
 	}
 
 	// The stroke dash sequence became the `DashPattern` value type; convert any already-shaped stroke that still stores a legacy dash input

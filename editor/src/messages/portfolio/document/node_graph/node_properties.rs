@@ -249,8 +249,11 @@ pub(crate) fn property_from_type(
 						// LIST TYPES
 						// ==========
 						Some(x) if x == TypeId::of::<List<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<List<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<List<Graphic>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<List<BrushStroke>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
@@ -1195,11 +1198,19 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	match &**tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_button
-				.value(FillChoiceUI::from(&match color {
-					Some(color) => FillChoice::Solid(*color),
-					None => FillChoice::None,
-				}))
-				.on_update(update_value(|input: &ColorInput| TaggedValue::Color(input.value.as_solid().map(Color::from)), node_id, index))
+				.value(FillChoiceUI::from(&FillChoice::Solid(*color)))
+				.on_update(update_value(
+					|input: &ColorInput| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT)),
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_instance(),
+		),
+		TaggedValue::FillChoice(choice) => widgets.push(
+			color_button
+				.value(FillChoiceUI::from(choice))
+				.on_update(update_value(|input: &ColorInput| TaggedValue::FillChoice(FillChoice::from(&input.value)), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
@@ -2493,17 +2504,28 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let layer = root_layer_for_chain_node(node_id, context);
 
 	let fill = match input_type.compiled_nested_type() {
-		Some(ty) if ty == &concrete!(List<Color>) => {
-			if let Ok(document_node) = get_document_node(node_id, context) {
-				let color = match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
-					Some(&TaggedValue::Color(c)) => c,
-					_ => None,
-				};
-				ResolvedFill::Solid(color)
-			} else {
-				ResolvedFill::Other
-			}
-		}
+		Some(ty) if ty == &concrete!(List<Graphic>) => match get_document_node(node_id, context) {
+			Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
+				Some(TaggedValue::FillChoice(FillChoice::None)) => ResolvedFill::Solid(None),
+				Some(TaggedValue::FillChoice(FillChoice::Solid(color))) => ResolvedFill::Solid(Some(*color)),
+				Some(TaggedValue::FillChoice(FillChoice::Gradient(_))) => {
+					match graph_modification_utils::read_fill_node_gradient(document_node, || {
+						layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
+					}) {
+						Some(gradient) => ResolvedFill::Gradient {
+							gradient: gradient.stops,
+							gradient_type: gradient.gradient_type,
+							spread_method: gradient.spread_method,
+							transform: gradient.transform,
+							transform_is_value: gradient.transform_is_value,
+						},
+						None => ResolvedFill::Other,
+					}
+				}
+				_ => ResolvedFill::Other,
+			},
+			Err(_) => ResolvedFill::Other,
+		},
 		Some(ty) if ty == &concrete!(List<GradientStops>) => {
 			// Read this node's own inputs rather than the layer's nearest Fill, which may be a different node when Fills are chained
 			if let Ok(document_node) = get_document_node(node_id, context)
@@ -2527,7 +2549,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let (backup_color, backup_gradient) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let backup_color = match document_node.inputs[BackupColorInput::INDEX].as_value() {
-				Some(&TaggedValue::Color(color)) => color,
+				Some(&TaggedValue::Color(color)) => Some(color),
 				_ => None,
 			};
 			let backup_stops = match document_node.inputs[BackupGradientInput::INDEX].as_value() {
@@ -2566,21 +2588,26 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		ResolvedFill::Other => FillChoiceUI::None,
 	};
 
-	let solid_set_messages = move |color: Option<Color>| Message::Batched {
-		messages: Box::new([
+	let solid_set_messages = move |color: Option<Color>| {
+		let mut messages = vec![
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::<List<Graphic>>::INDEX,
-				value: TaggedValue::Color(color),
+				value: TaggedValue::FillChoice(color.map_or(FillChoice::None, FillChoice::Solid)),
 			}
 			.into(),
-			NodeGraphMessage::SetInputValue {
-				node_id,
-				input_index: BackupColorInput::INDEX,
-				value: TaggedValue::Color(color),
-			}
-			.into(),
-		]),
+		];
+		if let Some(color) = color {
+			messages.push(
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: BackupColorInput::INDEX,
+					value: TaggedValue::Color(color),
+				}
+				.into(),
+			);
+		}
+		Message::Batched { messages: messages.into() }
 	};
 
 	let gradient_set_messages = move |gradient: GradientStops| Message::Batched {
@@ -2628,11 +2655,19 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Color(backup_color), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(
+					move |_| TaggedValue::FillChoice(backup_color.map_or(FillChoice::None, FillChoice::Solid)),
+					node_id,
+					FillInput::<List<Graphic>>::INDEX,
+				))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(
+					move |_| TaggedValue::FillChoice(FillChoice::Gradient(backup_gradient.clone())),
+					node_id,
+					FillInput::<List<Graphic>>::INDEX,
+				))
 				.on_commit(commit_value),
 		];
 

@@ -319,7 +319,13 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			.get(&fill_node_id)
 			.and_then(|node| node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX))
 			.and_then(|input| input.as_value())
-			.and_then(|value| if let TaggedValue::Gradient(gradient) = value { Some(gradient.clone()) } else { None });
+			.and_then(|value| {
+				if let TaggedValue::FillChoice(FillChoice::Gradient(gradient)) = value {
+					Some(gradient.clone())
+				} else {
+					None
+				}
+			});
 	}
 
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
@@ -363,10 +369,10 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let &TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+	let TaggedValue::FillChoice(choice) = inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
 		return None;
 	};
-	color
+	choice.as_solid()
 }
 
 /// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.
@@ -638,7 +644,7 @@ pub struct FillNodeGradient {
 pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<FillNodeGradient> {
 	use graphene_std::vector::fill;
 
-	let TaggedValue::Gradient(stops) = fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+	let TaggedValue::FillChoice(FillChoice::Gradient(stops)) = fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
 		return None;
 	};
 	let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
@@ -667,7 +673,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
 	let color_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
 	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), color_index)?;
-	if let TaggedValue::Color(color) = tagged { Some(*color) } else { None }
+	if let TaggedValue::FillChoice(choice) = tagged { Some(choice.as_solid()) } else { None }
 }
 
 /// Aggregated fill state across all selected non-artboard layers.
@@ -700,8 +706,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 			let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
 			match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
-				&TaggedValue::Color(color) => Some(color.map_or(FillChoice::None, FillChoice::Solid)),
-				TaggedValue::Gradient(stops) => Some(FillChoice::Gradient(stops.clone())),
+				TaggedValue::FillChoice(choice) => Some(choice.clone()),
 				_ => None,
 			}
 		})()
@@ -826,7 +831,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
 			let input_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
-			let value = TaggedValue::Color(color);
+			let value = TaggedValue::FillChoice(color.map_or(FillChoice::None, FillChoice::Solid));
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else {
 			let stroke = graphene_std::vector::style::Stroke::new(weight);

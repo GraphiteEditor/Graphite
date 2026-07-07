@@ -13,8 +13,8 @@ pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
-use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::vector_types::vector::style::{DashPattern, FillChoice};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -38,6 +38,8 @@ macro_rules! for_each_type_default {
 		$action!(List<Raster<CPU>>);
 		$action!(List<Vector>);
 		$action!(List<String>);
+		$action!(List<Color>);
+		$action!(List<GradientStops>);
 		$action!(Item<Vector>);
 		$action!(DocumentNode);
 		$action!(Resource);
@@ -62,15 +64,19 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
-			/// Stored compactly as an `Option<Color>`, materializes as `List<Color>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "core_types::misc::migrate_to_optional_color")] // TODO: Eventually remove this migration document upgrade code
+			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
+			/// is routed to `FillChoice::None` by `deserialize_tagged_value_with_legacy_migration`.
+			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
-			Color(Option<Color>),
-			/// Stored compactly as a `GradientStops`, materializes as a single-row `List<GradientStops>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			Color(Color),
+			/// Stored compactly as a `GradientStops`, materializing as the bare stops at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(GradientStops),
+			/// The state of a Fill or Stroke node's paint picker: no paint, a solid color, or a gradient.
+			/// Materializes as the canonical single-graphic `List<Graphic>` paint at runtime via `to_dynany`/`to_any`.
+			FillChoice(FillChoice),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
@@ -116,6 +122,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
+					Self::FillChoice(choice) => choice.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
@@ -155,11 +162,9 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
-					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
-					Self::Gradient(stops) => Box::new(List::<GradientStops>::new_from_element(stops)),
+					Self::Color(color) => Box::new(color),
+					Self::Gradient(stops) => Box::new(stops),
+					Self::FillChoice(choice) => Box::new(graphic_types::graphic::fill_choice_to_paint(choice)),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
@@ -205,11 +210,9 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
-					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
-					Self::Gradient(stops) => Arc::new(List::<GradientStops>::new_from_element(stops)),
+					Self::Color(color) => Arc::new(color),
+					Self::Gradient(stops) => Arc::new(stops),
+					Self::FillChoice(choice) => Arc::new(graphic_types::graphic::fill_choice_to_paint(choice)),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
@@ -242,8 +245,9 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					Self::F64Array(_) => concrete!(List<f64>),
-					Self::Color(_) => concrete!(List<Color>),
-					Self::Gradient(_) => concrete!(List<GradientStops>),
+					Self::Color(_) => concrete!(Color),
+					Self::Gradient(_) => concrete!(GradientStops),
+					Self::FillChoice(_) => concrete!(List<Graphic>),
 					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -316,9 +320,9 @@ macro_rules! tagged_value {
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
-						// List-wrapped types need a single-item default with the element's default, not an empty list
-						if name == std::any::type_name::<List<Color>>() { return Some(TaggedValue::Color(Some(Color::default()))) }
-						if name == std::any::type_name::<List<GradientStops>>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
+						if name == std::any::type_name::<GradientStops>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
+						if name == std::any::type_name::<List<Graphic>>() { return Some(TaggedValue::FillChoice(FillChoice::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
@@ -350,6 +354,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
+					Self::FillChoice(choice) => format!("FillChoice({choice:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -586,11 +591,10 @@ impl TaggedValue {
 					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					// `Color` (not in a `List`) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
-					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
-					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
+					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
 					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
+					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(|color| TaggedValue::FillChoice(FillChoice::Solid(color)))?,
 					() if ty == TypeId::of::<List<GradientStops>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
@@ -659,6 +663,10 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Vector>))));
+			}
+			// The `Color` tag used to carry `Option<Color>`, where a `null` payload was the red-slash "no paint" choice
+			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable" if content.is_null() => {
+				return Ok(MemoHash::new(TaggedValue::FillChoice(FillChoice::None)));
 			}
 			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<GradientStops>`.
 			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `GradientStops` has none of those (it has `position`/`midpoint`/`color`).

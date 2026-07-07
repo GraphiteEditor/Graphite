@@ -187,8 +187,8 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 		List<Graphic>, List<Vector>, List<Color>, List<GradientStops>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	fill: F,
-	_backup_color: List<Color>,
-	_backup_gradient: List<GradientStops>,
+	_backup_color: Item<Color>,
+	_backup_gradient: Item<GradientStops>,
 	_gradient_type: Item<GradientType>,
 	_spread_method: Item<GradientSpreadMethod>,
 	_transform: Option<DAffine2>,
@@ -199,8 +199,12 @@ where
 	let (_gradient_type, _spread_method) = (_gradient_type.into_element(), _spread_method.into_element());
 
 	let mut content = content;
-	let mut fill = fill;
-	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
+	let mut fill = fill.into_graphic_list();
+
+	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
+	for graphic in fill.iter_element_values_mut() {
+		let Graphic::Gradient(gradient) = graphic else { continue };
+
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
 				*value = _gradient_type;
@@ -243,7 +247,6 @@ where
 		}
 	}
 
-	let fill = fill.into_graphic_list();
 	content.set_vector_paint(ATTR_FILL, fill);
 	content
 }

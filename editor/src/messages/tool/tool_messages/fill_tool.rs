@@ -205,17 +205,18 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::Graphic;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::list::List;
 	use graphene_std::vector::fill;
 
-	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<List<Color>> {
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<List<Graphic>> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::FillInput<List<Color>>>(&editor.runtime).collect()
+		instrumented.grab_all_input::<fill::FillInput<List<Graphic>>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
@@ -245,7 +246,10 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let color = fills.first().unwrap().element(0).expect("Color is stored in the list");
+		let Some(Graphic::Color(colors)) = fills.first().unwrap().element(0) else {
+			panic!("Expected a solid color fill")
+		};
+		let color = colors.element(0).expect("Color is stored in the list");
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::GREEN));
 	}
 
@@ -258,7 +262,10 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		let color = fills.first().unwrap().element(0).expect("Color is stored in the list");
+		let Some(Graphic::Color(colors)) = fills.first().unwrap().element(0) else {
+			panic!("Expected a solid color fill")
+		};
+		let color = colors.element(0).expect("Color is stored in the list");
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
 	}
 }

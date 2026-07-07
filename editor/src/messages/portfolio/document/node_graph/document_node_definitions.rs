@@ -345,7 +345,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						NodeInput::type_default(descriptor!(List<Graphic>), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
-						NodeInput::value(TaggedValue::Color(Some(Color::WHITE)), false),
+						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
 						NodeInput::value(TaggedValue::Bool(true), false),
 					],
 					..Default::default()

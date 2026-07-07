@@ -2059,7 +2059,7 @@ mod test_gradient {
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
 				let stops = match fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
-					TaggedValue::Gradient(stops) => stops.clone(),
+					TaggedValue::FillChoice(graphene_std::vector::style::FillChoice::Gradient(stops)) => stops.clone(),
 					_ => return None,
 				};
 

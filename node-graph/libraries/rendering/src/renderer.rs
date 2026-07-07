@@ -546,6 +546,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
 			Graphic::Vector(list) => list.render_svg(render, render_params),
 			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
@@ -558,6 +559,7 @@ impl Render for Graphic {
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -571,6 +573,7 @@ impl Render for Graphic {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
+				Graphic::None => {}
 				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
@@ -630,6 +633,7 @@ impl Render for Graphic {
 		}
 
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id),
@@ -642,6 +646,7 @@ impl Render for Graphic {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets),
@@ -654,6 +659,7 @@ impl Render for Graphic {
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines),
@@ -666,6 +672,7 @@ impl Render for Graphic {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
+			Graphic::None => false,
 			Graphic::Graphic(list) => list.contains_artboard(),
 			Graphic::Vector(list) => list.contains_artboard(),
 			Graphic::RasterCPU(list) => list.contains_artboard(),
@@ -678,6 +685,7 @@ impl Render for Graphic {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
@@ -1348,6 +1356,7 @@ impl Render for List<Vector> {
 				for paint_index in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
 					match paint {
+						Graphic::None => continue,
 						Graphic::Color(list) => {
 							let Some(color) = list.element(0) else { continue };
 
@@ -1430,6 +1439,7 @@ impl Render for List<Vector> {
 					};
 
 					match stroke_graphic {
+						Graphic::None => continue,
 						Graphic::Color(list) => {
 							let Some(color) = list.element(0) else { continue };
 							let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
