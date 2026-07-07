@@ -3575,6 +3575,7 @@ impl NodeNetworkInterface {
 		};
 
 		let input = NodeInput::value(default_value, true);
+		let inserted_index = if insert_index == -1 { network.exports.len() } else { insert_index as usize };
 		if insert_index == -1 {
 			network.exports.push(input);
 		} else {
@@ -3623,7 +3624,7 @@ impl NodeNetworkInterface {
 		}
 
 		// If the export is inserted as the first input or second input, and the parent network is the document_network, then it may have affected the document metadata structure
-		if network_path.len() == 1 && (insert_index == 0 || insert_index == 1) {
+		if network_path.len() == 1 && inserted_index <= 1 {
 			self.load_structure();
 		}
 	}
@@ -3646,6 +3647,7 @@ impl NodeNetworkInterface {
 		};
 
 		let input = NodeInput::value(default_value, exposed);
+		let inserted_index = if insert_index == -1 { node.inputs.len() } else { insert_index as usize };
 		if insert_index == -1 {
 			node.inputs.push(input);
 		} else {
@@ -3678,7 +3680,7 @@ impl NodeNetworkInterface {
 		// Update the metadata for the encapsulating node
 		self.unload_node_click_targets(&node_id, &encapsulating_network_path);
 		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
-		if encapsulating_network_path.is_empty() && (insert_index == 0 || insert_index == 1) {
+		if encapsulating_network_path.is_empty() && inserted_index <= 1 {
 			self.load_structure();
 		}
 
