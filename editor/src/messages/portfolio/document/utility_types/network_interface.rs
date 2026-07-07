@@ -12,8 +12,10 @@ pub mod storage_metadata;
 mod structure;
 mod types;
 mod validation;
+mod view;
 
 pub use types::*;
+pub use view::{NetworkError, NetworkView};
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
