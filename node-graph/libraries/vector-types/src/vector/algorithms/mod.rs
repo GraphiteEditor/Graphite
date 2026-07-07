@@ -1,5 +1,6 @@
 pub mod bezpath_algorithms;
 pub(crate) mod consts;
+pub mod convex_hull;
 pub mod intersection;
 pub mod offset_bezpath;
 mod poisson_disk;
