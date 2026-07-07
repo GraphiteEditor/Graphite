@@ -1352,7 +1352,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.shift_without_push = false;
 
 					// Reset all offsets to end the rubber banding while dragging
-					network_interface.unload_stack_dependents_y_offset(selection_network_path);
+					network_interface.clear_drag_offsets(selection_network_path);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
 						return;
@@ -1812,7 +1812,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
 
 				if !rubber_band {
-					network_interface.unload_stack_dependents_y_offset(selection_network_path);
+					network_interface.clear_drag_offsets(selection_network_path);
 				}
 
 				if graph_view_overlay_open {
