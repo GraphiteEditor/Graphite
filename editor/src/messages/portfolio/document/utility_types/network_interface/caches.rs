@@ -179,15 +179,11 @@ impl NodeNetworkInterface {
 						owned_sole_dependents.insert(*layer_sole_dependent);
 						new_owned_nodes.insert(*layer_sole_dependent);
 					}
-					let Some(layer_node) = self.node_metadata_mut(&upstream_layer, network_path) else {
+					let Some(layer_node) = self.node_metadata(&upstream_layer, network_path) else {
 						log::error!("Could not get layer node in load_stack_dependents");
 						continue;
 					};
-					let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &mut layer_node.persistent_metadata.node_type_metadata else {
-						log::error!("upstream layer should be a layer");
-						return;
-					};
-					*owned_nodes = TransientMetadata::Loaded(new_owned_nodes);
+					layer_node.transient_metadata.owned_nodes.store(new_owned_nodes);
 				}
 			}
 		}
@@ -428,15 +424,13 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.modify_import_export.unload();
 	}
 
-	pub(crate) fn owned_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&HashSet<NodeId>> {
+	/// Reads the owned nodes of a layer through &self if they are loaded.
+	pub(crate) fn with_owned_nodes<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
 		let layer_node = self.node_metadata(node_id, network_path)?;
-		let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &layer_node.persistent_metadata.node_type_metadata else {
+		if !layer_node.persistent_metadata.is_layer() {
 			return None;
-		};
-		let TransientMetadata::Loaded(owned_nodes) = owned_nodes else {
-			return None;
-		};
-		Some(owned_nodes)
+		}
+		layer_node.transient_metadata.owned_nodes.with_loaded(read)
 	}
 
 	pub fn all_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<&[DVec2; 2]> {

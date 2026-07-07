@@ -716,7 +716,6 @@ impl NodeTypePersistentMetadata {
 	pub fn layer(position: IVec2) -> NodeTypePersistentMetadata {
 		NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 			position: LayerPosition::Absolute(position),
-			owned_nodes: TransientMetadata::default(),
 		})
 	}
 }
@@ -728,9 +727,6 @@ pub struct LayerPersistentMetadata {
 	// preview_click_target: Option<ClickTarget>,
 	/// Stores the position of a layer node, which can either be Absolute or Stack
 	pub position: LayerPosition,
-	/// All nodes that should be moved when the layer is moved.
-	#[serde(skip)]
-	pub owned_nodes: TransientMetadata<HashSet<NodeId>>,
 }
 
 impl PartialEq for LayerPersistentMetadata {
@@ -777,6 +773,8 @@ pub enum NodePosition {
 pub struct DocumentNodeTransientMetadata {
 	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
 	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
+	/// All nodes that should be moved when this layer is moved, kept here since only layers own nodes.
+	pub(crate) owned_nodes: TransientCache<HashSet<NodeId>>,
 	// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	pub node_type_metadata: NodeTypeTransientMetadata,
 }
