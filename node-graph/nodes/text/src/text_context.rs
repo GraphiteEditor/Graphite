@@ -195,6 +195,10 @@ impl TextContext {
 			return 0;
 		};
 
+		if !position.x.is_finite() || !position.y.is_finite() {
+			return 0;
+		}
+
 		let mut clamped_y = position.y as f32;
 		let height = layout.height();
 		if height > 0.0 {

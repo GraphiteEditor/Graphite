@@ -19,12 +19,18 @@ let canvasFocused = true;
 let inPointerLock = false;
 let isEditingText = false;
 
+function handleUpdateTextEditingState(e: Event) {
+	if (e instanceof CustomEvent) {
+		isEditingText = Boolean(e.detail);
+	}
+}
+
 export function initInput() {
-	window.addEventListener("updateTextEditingState", (e: Event) => {
-		if (e instanceof CustomEvent) {
-			isEditingText = Boolean(e.detail);
-		}
-	});
+	window.addEventListener("updateTextEditingState", handleUpdateTextEditingState);
+}
+
+export function destroyInput() {
+	window.removeEventListener("updateTextEditingState", handleUpdateTextEditingState);
 }
 
 let lastShakeTime = 0;

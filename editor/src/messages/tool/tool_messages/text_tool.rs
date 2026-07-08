@@ -620,6 +620,9 @@ impl TextToolData {
 		let editing_text = self.editing_text.as_ref()?;
 		let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
 		let layer_to_viewport = document.metadata().transform_to_viewport(self.layer);
+		if layer_to_viewport.matrix2.determinant() == 0. {
+			return None;
+		}
 		let viewport_to_layer = layer_to_viewport.inverse();
 		let click_local = viewport_to_layer.transform_point2(mouse_viewport);
 
@@ -960,7 +963,6 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DoubleClick) => {
 				if let Some(clicked_layer) = TextToolData::check_click(document, input, fonts, responses) {
-					responses.add(DocumentMessage::StartTransaction);
 
 					let selected = document.network_interface.selected_nodes();
 					let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -1537,13 +1539,19 @@ impl Fsm for TextToolFsmState {
 				}
 				tool_data.last_edit_type = TextEditType::Delete;
 
-				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
-				let start = tool_data.new_text[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
-				let end = tool_data.new_text[offset..].find('\n').map(|i| offset + i + 1).unwrap_or(tool_data.new_text.len());
-
-				tool_data.new_text.replace_range(start..end, "");
-				tool_data.cursor_byte_offset = start;
-				tool_data.selection_start_byte_offset = None;
+				if !tool_data.delete_selection() {
+					let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+					if offset > 0 {
+						let start = tool_data.new_text[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
+						if start == offset {
+							tool_data.new_text.replace_range((start - 1)..offset, "");
+							tool_data.cursor_byte_offset = start - 1;
+						} else {
+							tool_data.new_text.replace_range(start..offset, "");
+							tool_data.cursor_byte_offset = start;
+						}
+					}
+				}
 
 				if let Some(text_node_id) = graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface) {
 					responses.add(NodeGraphMessage::SetInput {
@@ -1630,6 +1638,8 @@ impl Fsm for TextToolFsmState {
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else {
+					log::warn!("Text node not found for layer {:?}, edits were not committed", tool_data.layer);
 				}
 
 				TextToolFsmState::Ready
@@ -1723,12 +1733,13 @@ impl Fsm for TextToolFsmState {
 }
 
 fn spawn_blink_timer(tick: u64, responses: &mut VecDeque<Message>) {
-	responses.add(FutureMessage::Await {
-		future: MessageFuture::new(async move {
+	responses.add(async move {
 			#[cfg(target_family = "wasm")]
 			{
 				let mut cb = |resolve: js_sys::Function, _reject| {
-					web_sys::window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 500).unwrap();
+					if let Some(window) = web_sys::window() {
+						let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 500);
+					}
 				};
 				let promise = js_sys::Promise::new(&mut cb);
 				wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
@@ -1738,6 +1749,5 @@ fn spawn_blink_timer(tick: u64, responses: &mut VecDeque<Message>) {
 				tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 			}
 			Message::Tool(ToolMessage::Text(TextToolMessage::TimerTick { tick }))
-		}),
-	});
+		});
 }

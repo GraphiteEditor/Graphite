@@ -19,6 +19,7 @@ import {
 	onPaste,
 	onPointerLockChange,
 	initInput,
+	destroyInput,
 } from "/src/utility-functions/input";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -86,6 +87,8 @@ export function createInputManager(subscriptions: SubscriptionsRouter, editor: E
 
 // Return the destructor
 export function destroyInputManager() {
+	destroyInput();
+
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
