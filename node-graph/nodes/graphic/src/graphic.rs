@@ -75,6 +75,83 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 	list.clone_item(resolved).unwrap_or_default()
 }
 
+/// Keeps only the items whose corresponding mask value is true, pairing the list and mask by index.
+/// Where the two differ in length, the trailing items of the longer one are dropped.
+#[node_macro::node(category("General"))]
+fn filter<T: Clone + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The `List` of data to filter.
+	#[implementations(
+		List<String>,
+		List<f64>,
+		List<Color>,
+		List<Gradient>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Graphic>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// The mask deciding which items to keep: an item survives where its matching mask value is true.
+	mask: List<bool>,
+) -> List<T> {
+	let mut result = List::new();
+
+	for (index, &keep) in mask.iter_element_values().enumerate() {
+		let Some(item) = list.clone_item(index) else { break };
+		if keep {
+			result.push(item);
+		}
+	}
+
+	result
+}
+
+/// Reorders the items by their paired sort keys, smallest key first. Items and keys pair by index, and extra items or keys are dropped.
+/// Items with equal keys keep their original relative order.
+#[node_macro::node(category("General"))]
+fn sort<T: Clone + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The `List` of data to reorder.
+	#[implementations(
+		List<String>,
+		List<f64>,
+		List<Color>,
+		List<Gradient>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Graphic>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// A sort key for each item, paired by index. Items are ordered by ascending key.
+	keys: List<f64>,
+	/// Reverses the order so the largest key comes first.
+	reverse: Item<bool>,
+) -> List<T> {
+	let reverse = reverse.into_element();
+
+	let key_values: Vec<f64> = keys.iter_element_values().copied().collect();
+	let count = list.len().min(key_values.len());
+
+	let mut order: Vec<usize> = (0..count).collect();
+	order.sort_by(|&a, &b| {
+		let ordering = key_values[a].partial_cmp(&key_values[b]).unwrap_or(std::cmp::Ordering::Equal);
+		if reverse { ordering.reverse() } else { ordering }
+	});
+
+	let mut result = List::new();
+	for index in order {
+		if let Some(item) = list.clone_item(index) {
+			result.push(item);
+		}
+	}
+
+	result
+}
+
 #[node_macro::node(category("General"))]
 async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
