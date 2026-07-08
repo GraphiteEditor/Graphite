@@ -257,7 +257,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if network_interface.reference(&node_id, selection_network_path).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
 					&& input_index == graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX
 				{
-					let Some(walk_from) = output_connector.node_id() else { return };
+					// Only inspect primary outputs to avoid treating another output of a multi-output custom node as a gradient chain.
+					let OutputConnector::Node { node_id: walk_from, output_index: 0 } = output_connector else {
+						return;
+					};
+
 					let is_gradient_value_connected = network_interface
 						.upstream_flow_back_from_nodes(vec![walk_from], selection_network_path, FlowType::PrimaryFlow)
 						.take_while(|node_id| !network_interface.is_layer(node_id, selection_network_path))
