@@ -640,6 +640,34 @@ mod test {
 	}
 
 	#[test]
+	fn generator_frames_over_a_list_parameter() {
+		// A `()` generator (Circle) fed a `List<f64>` radius should frame into one circle per slot
+		let primary = ProtoNode::value(ConstructionArgs::Value(TaggedValue::None.into()), vec![NodeId(0)]);
+
+		let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![10., 20., 30.]).into()), vec![NodeId(1)]);
+		let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+		radius_adapter.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<f64>");
+
+		let mut circle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
+		circle_node.identifier = graphene_std::vector_nodes::circle::IDENTIFIER;
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![(NodeId(0), primary), (NodeId(1), radii), (NodeId(2), radius_adapter), (NodeId(3), circle_node)],
+		};
+
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A List<f64> radius should resolve Circle's mapped generator variant");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped generator variant should instantiate");
+
+		let context: Context = None;
+		let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+		let list = result.expect("The generator frame should produce a List<Vector>");
+		assert_eq!(list.len(), 3, "One circle per radius slot");
+	}
+
+	#[test]
 	fn bare_wires_promote_to_item_connectors_at_resolution() {
 		use glam::{DAffine2, DVec2};
 

@@ -498,7 +498,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect();
 
-		// The frame index is stamped onto each slot's context so lazy connectors can generate uniquely per slot
+		// The frame index is stamped onto each slot's context so lazy connectors can generate uniquely per slot.
+		// A `()` generator frames purely over its param values (no stamp), so its kernel needs no context-extraction bounds.
 		let has_lazy_connectors = regular_fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)));
 		let slot_context = match has_lazy_connectors {
 			true => quote!(#core_types::OwnedContextImpl::from(__input.clone()).with_index(__slot_index).into_context()),
@@ -1014,8 +1015,13 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	}
 }
 
-/// Whether the element-wise node gets a mapped `List` wire variant: an eager primary is its own frame source, while a lazy primary draws the frame from its ranked eager params, so it needs at least one.
+/// Whether the element-wise node gets a mapped `List` wire variant: an eager primary is its own frame source, while a lazy primary (or a `()` generator) draws the frame from its ranked eager params, so it needs at least one.
 fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
+	// A `()` generator frames over its ranked params exactly like a lazy primary, but generating fresh content per slot instead of transforming an upstream item
+	if is_generator_frame(parsed) {
+		return true;
+	}
+
 	if primary_item_element(parsed).is_none() {
 		return false;
 	}
@@ -1025,6 +1031,34 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 		Some(ParsedFieldType::Node(_)) => regular_fields.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some())),
 		_ => true,
 	}
+}
+
+/// Whether the node is a `()`-primary generator that frames over its ranked params: a unit primary with at least one ranked (`Item<T>`) param.
+/// Its mapped variant stamps the frame index (like a lazy primary) since each slot is a fresh generation, not a pre-evaluated content slot.
+fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
+	if parsed.attributes.skip_impl {
+		return false;
+	}
+
+	let Some(primary) = parsed.fields.first() else { return false };
+	if primary.is_data_field {
+		return false;
+	}
+	let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &primary.ty else { return false };
+	if !is_unit_type(ty) {
+		return false;
+	}
+
+	parsed
+		.fields
+		.iter()
+		.skip(1)
+		.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+}
+
+/// Whether the type is the unit type `()`, which marks a generator with no primary input.
+fn is_unit_type(ty: &syn::Type) -> bool {
+	matches!(ty, syn::Type::Tuple(tuple) if tuple.elems.is_empty())
 }
 
 /// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).
@@ -1125,6 +1159,9 @@ fn generate_register_node_impl(
 			variants.push(RegisterVariant::ListContent);
 		}
 		variants
+	} else if is_generator_frame(parsed) {
+		// A `()` generator registers an Item form (single generation) plus a mapped form framed over its ranked params
+		vec![RegisterVariant::Item, RegisterVariant::Mapped]
 	} else {
 		vec![RegisterVariant::Plain]
 	};

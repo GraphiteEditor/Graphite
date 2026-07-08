@@ -61,9 +61,9 @@ fn circle(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50.)]
-	radius: f64,
+	radius: Item<f64>,
 ) -> Item<Vector> {
-	let radius = radius.abs();
+	let radius = radius.element().abs();
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 

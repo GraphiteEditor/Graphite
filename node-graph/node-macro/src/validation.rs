@@ -23,10 +23,11 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
-	// An `Item` primary shares its element-wise frame with ranked parameters; a `List`/`ListDyn` aggregation primary accepts them as fixed ranked inputs
+	// An `Item` primary shares its element-wise frame with ranked parameters; a `List`/`ListDyn` aggregation primary accepts
+	// them as fixed ranked inputs; a `()` generator has no primary and draws its frame from the ranked parameters themselves.
 	let ranked = |ty: &Type| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
 	let primary_permits_item_params = match parsed.fields.first().map(|field| &field.ty) {
-		Some(ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) => ranked(ty) || implementations.iter().any(ranked),
+		Some(ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) => is_unit_type(ty) || ranked(ty) || implementations.iter().any(ranked),
 		Some(ParsedFieldType::Node(NodeParsedField { output_type, implementations, .. })) => ranked(output_type) || implementations.iter().any(|implementation| ranked(&implementation.output)),
 		None => false,
 	};
