@@ -68,6 +68,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let primary_element = primary_item_element(parsed);
 	let element_wise = primary_element.is_some();
 	let mapped_variant = generates_mapped_variant(parsed);
+	let list_content_variant = generates_list_content_variant(parsed);
 
 	// Extract just the idents from data_field_generics for struct type parameters
 	let data_field_generic_idents: Vec<Ident> = data_field_generics
@@ -329,13 +330,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	future_idents.extend((0..regular_fields.len()).map(|id| format_ident!("F{}", id)));
 
-	// Builds every field's where-clause bounds, optionally wrapping the primary field's wire type for the element-wise variants
-	let build_field_clauses = |primary_wire: Option<WireWrapper>| -> Vec<TokenStream2> {
+	// Builds every field's where-clause bounds, optionally wrapping the primary field's wire type for the element-wise variants.
+	// `list_content` additionally lifts a lazy primary connector's `Item<E>` output to `List<E>` for the list-content variant.
+	let build_field_clauses = |primary_wire: Option<WireWrapper>, list_content: bool| -> Vec<TokenStream2> {
 		regular_fields
 			.iter()
 			.zip(node_generics.iter())
 			.zip(future_idents.iter())
-			.map(|((field, name), fut_ident)| match (&field.ty, *is_async) {
+			.enumerate()
+			.map(|(index, ((field, name), fut_ident))| match (&field.ty, *is_async) {
 				(ParsedFieldType::Regular(RegularParsedField { ty, .. }), _) => {
 					let ty = match (peel_item(ty), primary_wire) {
 						// An `Item<T>`-declared connector contributes its element type to the wire wrapping
@@ -350,6 +353,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					)
 				}
 				(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
+					let output_type = if list_content && index == 0 {
+						let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+						WireWrapper::List.apply(core_types, &element_ty)
+					} else {
+						output_type.clone()
+					};
 					quote!(
 						#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
 						#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
@@ -376,7 +385,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		struct_where_clause
 	};
 	let primary_wire = element_wise.then_some(WireWrapper::Item);
-	let struct_where_clause = make_struct_where_clause(build_field_clauses(primary_wire), build_clampable_clauses(primary_wire), Vec::new());
+	let struct_where_clause = make_struct_where_clause(build_field_clauses(primary_wire, false), build_clampable_clauses(primary_wire), Vec::new());
 
 	// The mapped variant clones bare parameters and clones ranked connectors' items per frame slot, so both need Clone
 	let param_clone_clauses: Vec<TokenStream2> = regular_fields
@@ -389,8 +398,23 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Node(_) => None,
 		})
 		.collect();
-	let mapped_struct_where_clause =
-		mapped_variant.then(|| make_struct_where_clause(build_field_clauses(Some(WireWrapper::List)), build_clampable_clauses(Some(WireWrapper::List)), param_clone_clauses));
+	let mapped_struct_where_clause = mapped_variant.then(|| {
+		make_struct_where_clause(
+			build_field_clauses(Some(WireWrapper::List), false),
+			build_clampable_clauses(Some(WireWrapper::List)),
+			param_clone_clauses.clone(),
+		)
+	});
+
+	// The list-content variant clones each content slot and feeds it in behind a shared reference held across the kernel's await,
+	// so the primary connector's element type needs `Clone` (to clone the slot) and `Sync` (so `&PrecomputedItemNode` is `Send`)
+	let list_content_struct_where_clause = list_content_variant.then(|| {
+		let mut extra_clauses = param_clone_clauses.clone();
+		if let Some(content_element) = &primary_element {
+			extra_clauses.push(quote!(#content_element: Clone + #core_types::WasmNotSync));
+		}
+		make_struct_where_clause(build_field_clauses(Some(WireWrapper::List), true), build_clampable_clauses(Some(WireWrapper::List)), extra_clauses)
+	});
 
 	// Only regular fields are parameters to new()
 	let new_args: Vec<_> = node_generics
@@ -519,6 +543,81 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
+	// The list-content variant evaluates a lazy primary's whole content `List` once, then feeds each slot into the kernel as a
+	// precomputed stub (ambient footprint, no index stamp), zipping ranked params by slot with the frame taken from the content length.
+	let list_content_eval_impl = list_content_variant.then(|| {
+		let primary_name = &regular_fields[0].pat_ident.ident;
+
+		let ranked_names: Vec<_> = regular_fields
+			.iter()
+			.filter(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+			.map(|field| &field.pat_ident.ident)
+			.collect();
+
+		let per_slot_args: Vec<_> = regular_fields
+			.iter()
+			.enumerate()
+			.map(|(index, field)| {
+				let name = &field.pat_ident.ident;
+				if index == 0 {
+					return quote!(&__stub);
+				}
+				match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some() => quote! {
+						#name.clone_item(__slot_index.min(#name.len() - 1)).expect("A zip slot index is always within bounds")
+					},
+					ParsedFieldType::Regular(_) => quote!(#name.clone()),
+					ParsedFieldType::Node(_) => quote!(#name),
+				}
+			})
+			.collect();
+
+		let (list_content_output_type, initial_output, collect_result) = match peel_item(output_type) {
+			Some(element_ty) => (
+				quote!(#core_types::list::List<#element_ty>),
+				quote!(#core_types::list::List::with_capacity(__frame_length)),
+				quote!(__output.push(__result);),
+			),
+			None => (quote!(#output_type), quote!(#core_types::list::List::new()), quote!(__output.extend(__result);)),
+		};
+
+		let empty_param_check = (!ranked_names.is_empty()).then(|| {
+			quote! {
+				if [#(#ranked_names.len()),*].into_iter().any(|__length| __length == 0) {
+					return #core_types::list::List::new();
+				}
+			}
+		});
+
+		quote! {
+			type Output = #core_types::registry::DynFuture<'n, #list_content_output_type>;
+			#[inline]
+			#[allow(clippy::clone_on_copy)]
+			fn eval(&'n self, __input: #input_type) -> Self::Output {
+				Box::pin(async move {
+					#eval_prelude
+
+					let __content = #primary_name.eval(#core_types::OwnedContextImpl::from(__input.clone()).into_context()) #await_keyword;
+					let __frame_length = __content.len();
+					#empty_param_check
+
+					let mut __output = #initial_output;
+					for __slot_index in 0..__frame_length {
+						let __stub = #core_types::value::PrecomputedItemNode::new(
+							__content.clone_item(__slot_index).expect("A content slot index is always within bounds")
+						);
+						let __result = self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #per_slot_args)*) #await_keyword;
+						#collect_result
+					}
+
+					__output
+				})
+			}
+
+			#serialize_impl
+		}
+	});
+
 	let identifier = format_ident!("{}_proto_ident", fn_name);
 	let identifier_path = match parsed.attributes.path.as_ref() {
 		Some(path) => {
@@ -529,7 +628,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 
 	let mapped_struct_name = format_ident!("{}Mapped", struct_name);
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &mapped_struct_name, &identifier)?;
+	let list_content_struct_name = format_ident!("{}ListContent", struct_name);
+	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &mapped_struct_name, &list_content_struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
@@ -548,6 +648,19 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#mapped_where_clause
 			{
 				#mapped_eval
+			}
+		},
+		_ => quote!(),
+	};
+
+	let list_content_node_impl = match (&list_content_struct_where_clause, &list_content_eval_impl) {
+		(Some(list_content_where_clause), Some(list_content_eval)) => quote! {
+			#cfg
+			#[automatically_derived]
+			impl<'n, #(#fn_generics,)* #(#node_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#list_content_struct_name<#(#struct_type_params,)*>
+			#list_content_where_clause
+			{
+				#list_content_eval
 			}
 		},
 		_ => quote!(),
@@ -573,11 +686,39 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
+	let list_content_struct_def = list_content_variant.then(|| {
+		quote! {
+			#struct_derives
+			pub struct #list_content_struct_name<#(#struct_generic_params,)*> {
+				#(#struct_fields,)*
+			}
+
+			#[automatically_derived]
+			impl<'n, #(#struct_generic_params,)*> #list_content_struct_name<#(#struct_type_params,)*>
+			{
+				#[allow(clippy::too_many_arguments)]
+				pub fn new(#(#new_args,)*) -> Self {
+					Self {
+						#(#all_field_inits,)*
+					}
+				}
+			}
+		}
+	});
+
 	let mapped_struct_export = mapped_variant.then(|| {
 		quote! {
 			#cfg
 			#[doc(hidden)]
 			pub use #mod_name::#mapped_struct_name;
+		}
+	});
+
+	let list_content_struct_export = list_content_variant.then(|| {
+		quote! {
+			#cfg
+			#[doc(hidden)]
+			pub use #mod_name::#list_content_struct_name;
 		}
 	});
 
@@ -621,6 +762,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		#mapped_node_impl
 
+		#list_content_node_impl
+
 		#cfg
 		const fn #identifier() -> #core_types::ProtoNodeIdentifier {
 			#core_types::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
@@ -631,6 +774,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		pub use #mod_name::#struct_name;
 
 		#mapped_struct_export
+
+		#list_content_struct_export
 
 		#[doc(hidden)]
 		#node_input_accessor
@@ -668,6 +813,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 
 			#mapped_struct_def
+
+			#list_content_struct_def
 
 			#register_node_impl
 
@@ -827,6 +974,27 @@ impl WireWrapper {
 	}
 }
 
+/// The variant of a node registered under one identifier: `Plain` for non-element-wise nodes, and the three element-wise wire
+/// shapes (`Item` content and params, `Mapped` `List` params, `ListContent` `List` content for a lazy primary).
+#[derive(Clone, Copy, PartialEq)]
+enum RegisterVariant {
+	Plain,
+	Item,
+	Mapped,
+	ListContent,
+}
+
+impl RegisterVariant {
+	/// The wrapper applied to ranked eager params for this variant.
+	fn param_wrap(self) -> Option<WireWrapper> {
+		match self {
+			RegisterVariant::Item => Some(WireWrapper::Item),
+			RegisterVariant::Mapped | RegisterVariant::ListContent => Some(WireWrapper::List),
+			RegisterVariant::Plain => None,
+		}
+	}
+}
+
 /// Returns the element type of the node's primary input if it is declared `Item<T>` (directly, or as a lazy
 /// connector's `Output = Item<T>`), which marks the node as element-wise.
 fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
@@ -859,6 +1027,11 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 	}
 }
 
+/// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).
+fn generates_list_content_variant(parsed: &ParsedNodeFn) -> bool {
+	primary_item_element(parsed).is_some() && matches!(parsed.fields.first().map(|field| &field.ty), Some(ParsedFieldType::Node(_)))
+}
+
 /// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
 fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
 	let syn::Type::Path(type_path) = ty else { return None };
@@ -878,7 +1051,14 @@ pub(crate) fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
 	peel_wrapper(ty, "Item")
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, mapped_struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
+fn generate_register_node_impl(
+	parsed: &ParsedNodeFn,
+	field_names: &[&Ident],
+	struct_name: &Ident,
+	mapped_struct_name: &Ident,
+	list_content_struct_name: &Ident,
+	identifier: &Ident,
+) -> Result<TokenStream2, Error> {
 	// On native, `register_node` and `register_metadata` run automatically via `#[ctor]`.
 	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
 	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
@@ -934,16 +1114,23 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
 
-	// Element-wise nodes register two wire variants per implementations row; all other nodes register one
+	// Element-wise nodes register a variant per wire shape per implementations row; all other nodes register one
 	let gcore = quote!(gcore);
-	let wire_variants: &[Option<WireWrapper>] = match (primary_item_element(parsed).is_some(), generates_mapped_variant(parsed)) {
-		(true, true) => &[Some(WireWrapper::Item), Some(WireWrapper::List)],
-		(true, false) => &[Some(WireWrapper::Item)],
-		_ => &[None],
+	let variants: Vec<RegisterVariant> = if primary_item_element(parsed).is_some() {
+		let mut variants = vec![RegisterVariant::Item];
+		if generates_mapped_variant(parsed) {
+			variants.push(RegisterVariant::Mapped);
+		}
+		if generates_list_content_variant(parsed) {
+			variants.push(RegisterVariant::ListContent);
+		}
+		variants
+	} else {
+		vec![RegisterVariant::Plain]
 	};
 
 	for i in 0..max_implementations.unwrap_or(0) {
-		for wire in wire_variants {
+		for &variant in &variants {
 			let mut temp_constructors = Vec::new();
 			let mut temp_node_io = Vec::new();
 			let mut panic_node_types = Vec::new();
@@ -953,12 +1140,19 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				let (input_type, output_type) = &types[i.min(types.len() - 1)];
 				// Rankedness comes from the field's declared type; its #[implementations(...)] entries are bare element types
 				let field_is_ranked = matches!(&regular_fields[j].ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some());
-				let output_type = match (field_is_ranked, wire) {
-					(true, Some(wrap)) => {
-						let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
-						wrap.apply(&gcore, &element_ty)
+				let is_lazy_primary = j == 0 && matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
+				// The list-content variant lifts its lazy primary connector's `Item<E>` content to `List<E>`; ranked params follow the variant's param wrap
+				let output_type = if is_lazy_primary && variant == RegisterVariant::ListContent {
+					let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+					WireWrapper::List.apply(&gcore, &element_ty)
+				} else {
+					match (field_is_ranked, variant.param_wrap()) {
+						(true, Some(wrap)) => {
+							let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+							wrap.apply(&gcore, &element_ty)
+						}
+						_ => output_type.clone(),
 					}
-					_ => output_type.clone(),
 				};
 
 				let node = matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
@@ -977,9 +1171,10 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				true => parsed.input.ty.clone(),
 				false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
 			};
-			let variant_struct_name = match wire {
-				Some(WireWrapper::List) => mapped_struct_name,
-				_ => struct_name,
+			let variant_struct_name = match variant {
+				RegisterVariant::Mapped => mapped_struct_name,
+				RegisterVariant::ListContent => list_content_struct_name,
+				RegisterVariant::Item | RegisterVariant::Plain => struct_name,
 			};
 			constructors.push(quote!(
 				(

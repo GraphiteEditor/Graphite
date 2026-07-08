@@ -612,11 +612,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	let measure_list_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		async_node!(identifier: ProtoNodeIdentifier::new("core_types::vector::AreaNode"), graphene_std::vector::AreaListNode<_>, input: Context, fn_params: [Context => List<Vector>]),
-		async_node!(identifier: ProtoNodeIdentifier::new("core_types::vector::CentroidNode"), graphene_std::vector::CentroidListNode<_, _>, input: Context, fn_params: [Context => List<Vector>, Context => Item<CentroidType>]),
-	];
-	node_types.extend(measure_list_rows);
 	let transform_list_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 		transform_list_node!(element: Graphic),
 		transform_list_node!(element: String),
@@ -627,26 +622,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		transform_list_node!(element: Gradient),
 	];
 	node_types.extend(transform_list_rows);
-	macro_rules! transform_list_zip_node {
-		(element: $element:ty) => {
-			async_node!(
-				identifier: ProtoNodeIdentifier::new("transform_nodes::transform_nodes::TransformNode"),
-				graphene_std::transform_nodes::TransformListZipNode<_, _, _, _, _>,
-				input: Context,
-				fn_params: [Context => List<$element>, Context => List<DVec2>, Context => List<f64>, Context => List<DVec2>, Context => List<DVec2>]
-			)
-		};
-	}
-	let transform_list_zip_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		transform_list_zip_node!(element: Graphic),
-		transform_list_zip_node!(element: String),
-		transform_list_zip_node!(element: Vector),
-		transform_list_zip_node!(element: Raster<CPU>),
-		transform_list_zip_node!(element: Raster<GPU>),
-		transform_list_zip_node!(element: Color),
-		transform_list_zip_node!(element: Gradient),
-	];
-	node_types.extend(transform_list_zip_rows);
 	// =============
 	// CONVERT NODES
 	// =============

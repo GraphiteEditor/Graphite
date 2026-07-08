@@ -3169,25 +3169,6 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 	Item::from_parts(area, attributes)
 }
 
-/// The whole-`List` counterpart of `area`, measuring each element of a rank-1 content wire.
-/// Registered under the `AreaNode` identifier by manual registry rows, like `transform_list`.
-#[node_macro::node(category(""), skip_impl)]
-async fn area_list(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> List<f64> {
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let content = content.eval(new_ctx).await;
-
-	let mut result = List::default();
-	for item in content.into_iter() {
-		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let area_scale = transform.matrix2.determinant().abs();
-		let (vector, attributes) = item.into_parts();
-		let area = vector.stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>();
-		result.push(Item::from_parts(area, attributes));
-	}
-
-	result
-}
-
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Item<DVec2> {
 	let centroid_type = centroid_type.into_element();
@@ -3200,24 +3181,6 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	let (_, attributes) = vector.into_parts();
 
 	Item::from_parts(position, attributes)
-}
-
-/// The whole-`List` counterpart of `centroid`, measuring each element of a rank-1 content wire.
-/// Registered under the `CentroidNode` identifier by manual registry rows, like `transform_list`.
-#[node_macro::node(category(""), skip_impl)]
-async fn centroid_list(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: Item<CentroidType>) -> List<DVec2> {
-	let centroid_type = centroid_type.into_element();
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let content = content.eval(new_ctx).await;
-
-	let mut result = List::default();
-	for item in content.into_iter() {
-		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let (vector, attributes) = item.into_parts();
-		result.push(Item::from_parts(element_centroid(&vector, transform, centroid_type), attributes));
-	}
-
-	result
 }
 
 /// The area- or length-weighted centroid of one vector element's subpaths, averaging raw point positions when the weights all vanish.

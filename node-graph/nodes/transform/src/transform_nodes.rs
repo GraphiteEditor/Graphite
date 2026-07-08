@@ -53,41 +53,6 @@ async fn transform<T: 'n + Send + 'static>(
 	item
 }
 
-/// The zip counterpart of `transform_list`, pairing each content item with its slot's transform parameters (longest list, repeating each list's last item).
-#[node_macro::node(category(""), skip_impl)]
-async fn transform_list_zip<T: 'n + Send + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
-	content: impl Node<Context<'static>, Output = List<T>>,
-	translation: List<DVec2>,
-	rotation: List<f64>,
-	scale: List<DVec2>,
-	skew: List<DVec2>,
-) -> List<T> {
-	let content_list = content.eval(OwnedContextImpl::from(ctx).into_context()).await;
-
-	if translation.is_empty() || rotation.is_empty() || scale.is_empty() || skew.is_empty() {
-		return List::new();
-	}
-
-	let mut result = List::default();
-	for (slot, item) in content_list.into_iter().enumerate() {
-		let mut item = item;
-		let translation = *translation.element(slot.min(translation.len() - 1)).expect("A zip slot index is always within bounds");
-		let rotation = *rotation.element(slot.min(rotation.len() - 1)).expect("A zip slot index is always within bounds");
-		let scale = *scale.element(slot.min(scale.len() - 1)).expect("A zip slot index is always within bounds");
-		let skew = *skew.element(slot.min(skew.len() - 1)).expect("A zip slot index is always within bounds");
-
-		let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
-		let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
-		let matrix = trs * skew;
-
-		item.left_apply_transform(&matrix);
-		result.push(item);
-	}
-
-	result
-}
-
 /// The whole-`List` counterpart of `transform`, composing the matrix onto every item of a rank-1 content wire.
 /// Registered under the `TransformNode` identifier by manual registry rows, since the macro's element-wise variants require an `Item`-peeling primary.
 #[node_macro::node(category(""), skip_impl)]
