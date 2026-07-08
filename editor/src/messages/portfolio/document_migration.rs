@@ -1293,9 +1293,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
 
-	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> "Text to Vector" pair, which reuses the same
-	// proto identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current
-	// 12-input node by the trailing `separate_glyphs` input (index 12): forward inputs 0..=11 onto the new node and move it onto `text_to_vector`.
+	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> converter pair, which reuses the same proto
+	// identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current 12-input
+	// node by the trailing `separate_glyphs` input (index 12): forward inputs 0..=11 onto the new node and splice the matching converter after it.
 	let old_text_nodes: Vec<(NodeId, Vec<NodeId>)> = document
 		.network_interface
 		.document_network()
@@ -1329,7 +1329,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				document.network_interface.set_input(&InputConnector::node(*node_id, new_index), input.clone(), network_path);
 			}
 		}
-		let separate_glyphs = old_inputs.get(12).cloned();
+		// A `true` toggle at index 12 chose per-glyph geometry, which is now the dedicated "Text to Vector Glyphs" node
+		let separate_glyphs = matches!(old_inputs.get(12).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
 
 		// Collect the inputs reading the old text node's output before any rewiring so the new node can be spliced onto those wires.
 		let downstream_consumers: Vec<InputConnector> = document
@@ -1341,40 +1342,35 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		let text_was_in_chain = text_nodes_in_chain.contains(node_id);
 
-		// Insert the `text_to_vector` node that converts the `text` `String[]` output back into vector geometry.
-		let Some(text_to_vector_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text_to_vector::IDENTIFIER)) else {
+		// Insert the converter that turns the `text` `String[]` output back into vector geometry: "Text to Vector Glyphs" for the per-glyph case, otherwise "Text to Vector".
+		let converter_identifier = if separate_glyphs {
+			graphene_std::text::text_to_vector_glyphs::IDENTIFIER
+		} else {
+			graphene_std::text::text_to_vector::IDENTIFIER
+		};
+		let Some(converter_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(converter_identifier)) else {
 			continue;
 		};
-		let text_to_vector_id = NodeId::new();
-		document
-			.network_interface
-			.insert_node(text_to_vector_id, text_to_vector_definition.default_node_template(), network_path);
+		let converter_id = NodeId::new();
+		document.network_interface.insert_node(converter_id, converter_definition.default_node_template(), network_path);
 
-		// Splice `text_to_vector` onto the wire(s) leaving `text` (`insert_node_between` is the pure wire-splice the editor uses for
-		// dropping a node on a wire), then carry the old `separate_glyphs` value onto its second input.
+		// Splice the converter onto the wire(s) leaving `text` (`insert_node_between` is the pure wire-splice the editor uses for dropping a node on a wire).
 		if let Some((first_consumer, remaining_consumers)) = downstream_consumers.split_first() {
-			document.network_interface.insert_node_between(&text_to_vector_id, first_consumer, 0, network_path);
+			document.network_interface.insert_node_between(&converter_id, first_consumer, 0, network_path);
 			for consumer in remaining_consumers {
-				document.network_interface.set_input(consumer, NodeInput::node(text_to_vector_id, 0), network_path);
+				document.network_interface.set_input(consumer, NodeInput::node(converter_id, 0), network_path);
 			}
 		} else {
-			document
-				.network_interface
-				.set_input(&InputConnector::node(text_to_vector_id, 0), NodeInput::node(*node_id, 0), network_path);
-		}
-		if let Some(separate_glyphs) = separate_glyphs {
-			document.network_interface.set_input(&InputConnector::node(text_to_vector_id, 1), separate_glyphs, network_path);
+			document.network_interface.set_input(&InputConnector::node(converter_id, 0), NodeInput::node(*node_id, 0), network_path);
 		}
 
-		// If `text` was in a layer chain, re-chain `text_to_vector` and its upstream so both lay out by distance from the layer (the splice
-		// broke the chain, like `move_node_to_chain_start`). Otherwise `text` is absolute, so place `text_to_vector` beside it instead of
+		// If `text` was in a layer chain, re-chain the converter and its upstream so both lay out by distance from the layer (the splice
+		// broke the chain, like `move_node_to_chain_start`). Otherwise `text` is absolute, so place the converter beside it instead of
 		// leaving it at the origin.
 		if text_was_in_chain {
-			document.network_interface.force_set_upstream_to_chain(&text_to_vector_id, network_path);
+			document.network_interface.force_set_upstream_to_chain(&converter_id, network_path);
 		} else if let Some(text_position) = document.network_interface.position(node_id, network_path) {
-			document
-				.network_interface
-				.shift_absolute_node_position(&text_to_vector_id, text_position + IVec2::new(7, 0), network_path);
+			document.network_interface.shift_absolute_node_position(&converter_id, text_position + IVec2::new(7, 0), network_path);
 		}
 	}
 }
@@ -1842,6 +1838,25 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 3), corner_radius, network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+	}
+
+	// The Text to Vector node's runtime `separate_glyphs` toggle became the dedicated "Text to Vector Glyphs" node, leaving Text to Vector as a plain
+	// string-to-compound-path converter. A 2-input Text to Vector is the old toggled shape: a `true` toggle routes to Text to Vector Glyphs, otherwise
+	// the node stays Text to Vector; either way the toggle input is dropped and the string wire is preserved.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text_to_vector::IDENTIFIER) && inputs_count == 2 {
+		let separate_glyphs = matches!(node.inputs.get(1).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
+		let target = if separate_glyphs {
+			graphene_std::text::text_to_vector_glyphs::IDENTIFIER
+		} else {
+			graphene_std::text::text_to_vector::IDENTIFIER
+		};
+
+		let mut node_template = resolve_proto_node_type(target)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(string_input) = node.inputs.first() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), string_input.clone(), network_path);
+		}
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016

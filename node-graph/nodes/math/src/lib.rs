@@ -977,7 +977,14 @@ fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] 
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSLA to Color"))]
-fn hsla_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] saturation: Item<Fraction>, #[default(0.5)] lightness: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+fn hsla_to_color(
+	_: impl Ctx,
+	_primary: (),
+	hue: Item<Fraction>,
+	#[default(1.)] saturation: Item<Fraction>,
+	#[default(0.5)] lightness: Item<Fraction>,
+	#[default(1.)] alpha: Item<Fraction>,
+) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
 	let saturation = (*saturation.element() as f32).clamp(0., 1.);
 	let lightness = (*lightness.element() as f32).clamp(0., 1.);
