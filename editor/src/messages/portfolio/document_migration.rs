@@ -2618,7 +2618,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 0),
-				NodeInput::type_default(descriptor!(graphene_std::list::List<graphene_std::vector::Vector>), true),
+				NodeInput::type_default(descriptor!(graphene_std::list::Item<graphene_std::vector::Vector>), true),
 				network_path,
 			);
 

@@ -16,7 +16,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, descriptor};
 use graphene_std::extract_xy::XY;
-use graphene_std::list::List;
+use graphene_std::list::{Item, List};
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
 #[allow(unused_imports)]
@@ -1378,7 +1378,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Vector>), 0)],
+								inputs: vec![NodeInput::import(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
@@ -1402,7 +1402,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(descriptor!(Item<Vector>), true),
 						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 					],
 					..Default::default()

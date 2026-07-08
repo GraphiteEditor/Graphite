@@ -8,17 +8,12 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
+async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> Item<Vector> {
 	let mut vector = vector;
-	use core_types::list::Item;
+	modification.apply(vector.element_mut());
 
-	if vector.is_empty() {
-		vector.push(Item::default());
-	}
-	modification.apply(vector.element_mut(0).expect("push should give one item"));
-
-	// Drop stale click-target override so hit testing uses the geometry the user is now editing
-	vector.remove_attribute(ATTR_EDITOR_CLICK_TARGET);
+	// Drop the stale click-target override so hit testing uses the geometry the user is now editing
+	vector.remove_attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET);
 
 	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
 	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.
@@ -26,12 +21,9 @@ async fn path_modify(_ctx: impl Ctx, vector: List<Vector>, modification: Box<Vec
 		let len = node_path.len();
 		node_path.into_iter().take(len.saturating_sub(1)).collect()
 	};
-	let existing: List<NodeId> = vector.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
-	vector.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, if existing.is_empty() { subgraph_path } else { existing });
+	let existing: List<NodeId> = vector.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+	vector.set_attribute(ATTR_EDITOR_LAYER_PATH, if existing.is_empty() { subgraph_path } else { existing });
 
-	if vector.len() > 1 {
-		warn!("The path modify ran on {} vector items. Only the first can be modified.", vector.len());
-	}
 	vector
 }
 
