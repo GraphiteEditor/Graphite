@@ -9,7 +9,7 @@ use graph_craft::document::NodeId;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::gradient::Gradient;
-use graphene_std::list::{Item, List};
+use graphene_std::list::{Item, List, NodeIdPath};
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
@@ -177,10 +177,10 @@ macro_rules! generate_layout_downcast {
 }
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `List<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
+	// `Item<NodeIdPath>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<NodeId>>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<NodeIdPath>>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&io.output.element().0, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
 		List<Artboard>,
@@ -1020,7 +1020,6 @@ macro_rules! known_item_types {
 			List<Color>,
 			List<Gradient>,
 			List<String>,
-			List<NodeId>,
 			List<f64>,
 			List<u8>,
 			Gradient,
@@ -1062,6 +1061,10 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 /// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
 /// types so the caller can fall back to a debug-formatted [`TextLabel`].
 fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
+	// `Item<NodeIdPath>` (e.g. the `editor:layer_path` attribute) drills into its inner path list, matching `drilldown_attribute_layout`.
+	if let Some(path) = any.downcast_ref::<Item<NodeIdPath>>() {
+		return Some(path.element().0.value_widget(target, data));
+	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
 			$(
@@ -1118,10 +1121,10 @@ fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut Lay
 /// Mirrors [`dispatch_value_widget`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `List<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
-	// resolves against the prefix made up of preceding items. Handled before the generic `List<T>` blanket impl.
-	if let Some(path) = any.downcast_ref::<List<NodeId>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
+	// `Item<NodeIdPath>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
+	// resolves against the prefix made up of preceding items. Handled before the generic blanket impl.
+	if let Some(path) = any.downcast_ref::<Item<NodeIdPath>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&path.element().0, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {

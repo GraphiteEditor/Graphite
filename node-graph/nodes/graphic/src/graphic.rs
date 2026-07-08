@@ -1,5 +1,5 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
@@ -257,9 +257,10 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
-pub fn path_of_subgraph(_: impl Ctx, node_path: List<NodeId>) -> List<NodeId> {
+pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
+	let node_path = node_path.into_element().0;
 	let len = node_path.len();
-	node_path.into_iter().take(len.saturating_sub(1)).collect()
+	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
 }
 
 /// Sets a named attribute on the input `List`, computing one value per item via the value-producing input. That input
@@ -543,10 +544,11 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	#[expose]
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
-	nested_node_path: List<NodeId>,
+	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
+	let nested_node_path = nested_node_path.into_element().0;
 	let layer = {
 		let index = nested_node_path.len().wrapping_sub(2);
 		nested_node_path.element(index).copied()

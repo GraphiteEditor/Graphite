@@ -4,11 +4,10 @@ use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
 use core_types::generic::FnNode;
-use core_types::list::{Item, List};
+use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::bbox::{AxisAlignedBbox, Bbox};
 use core_types::registry::FutureWrapperNode;
 use core_types::transform::Transform;
-use core_types::uuid::NodeId;
 use core_types::value::ClonedNode;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 use core_types::{Ctx, Node};
@@ -317,7 +316,7 @@ async fn brush(
 	let opacity: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let fill: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
-	let layer: List<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+	let layer: Item<NodeIdPath> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 
 	*result_item.element_mut() = actual_image.into_element();
 	result_item.set_attribute(ATTR_TRANSFORM, transform);

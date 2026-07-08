@@ -1,5 +1,4 @@
-use core_types::list::{ATTR_FILL, Item, List};
-use core_types::uuid::NodeId;
+use core_types::list::{ATTR_FILL, Item, List, NodeIdPath};
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
 	Ctx,
@@ -221,7 +220,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let layer: Item<NodeIdPath> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
 							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
 							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
@@ -254,7 +253,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let layer: Item<NodeIdPath> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
 							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
 							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);

@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -1418,7 +1418,7 @@ where
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, index).into_element().0;
 		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
@@ -1447,7 +1447,7 @@ where
 		output_list = List::new_from_item(Item::from_parts(output, attributes));
 
 		// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
+		let layer_path: Item<NodeIdPath> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
 		output_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 	}
 
@@ -2762,7 +2762,7 @@ async fn morph<I: IntoGraphicList>(
 	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
-	let layer_path: List<NodeId> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
+	let layer_path: Item<NodeIdPath> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
 
 	let mut item = Item::new_from_element(vector)
 		.with_attribute(ATTR_TRANSFORM, lerped_transform)

@@ -1,7 +1,8 @@
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
-use dyn_any::{StaticType, StaticTypeSized};
+use crate::uuid::NodeId;
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DAffine2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
@@ -22,7 +23,7 @@ pub const ATTR_OPACITY: &str = "opacity";
 pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 /// `bool` for whether an item inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
-/// `List<NodeId>` path from the root network to the layer node owning this item.
+/// `Item<NodeIdPath>` path from the root network to the layer node owning this item.
 /// Used by editor tools to route clicks/selection back to the originating layer.
 pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// `List<Graphic>` snapshot of the upstream content that fed into a destructive merge
@@ -78,6 +79,22 @@ pub const ATTR_MAX_HEIGHT: &str = "max_height";
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";
 /// Text item's `TextAlign` horizontal alignment of lines within the block.
 pub const ATTR_TEXT_ALIGN: &str = "text_align";
+
+// =====================
+// TYPE: NodeIdPath
+// =====================
+
+/// A single path of `NodeId`s locating a node (or its owning layer) within the nested document graph.
+/// Wraps a `List<NodeId>` so it flows as one rank-0 value (`Item<NodeIdPath>`) rather than a rank-1
+/// `List<NodeId>` that the element-wise machinery would wrongly zip over per ID.
+#[derive(Default, Debug, Clone, PartialEq, CacheHash, DynAny)]
+pub struct NodeIdPath(pub List<NodeId>);
+
+impl From<Vec<NodeId>> for NodeIdPath {
+	fn from(ids: Vec<NodeId>) -> Self {
+		Self(ids.into_iter().map(Item::new_from_element).collect())
+	}
+}
 
 // ===========================
 // Implicit attribute defaults

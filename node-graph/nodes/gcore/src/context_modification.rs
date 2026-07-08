@@ -1,8 +1,7 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::list::{AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::Gradient;
@@ -43,7 +42,7 @@ async fn context_modification<T>(
 		Context -> Item<Artboard>,
 		Context -> Item<Gradient>,
 		Context -> List<String>,
-		Context -> List<NodeId>,
+		Context -> Item<NodeIdPath>,
 		Context -> List<f64>,
 		Context -> List<DVec2>,
 		Context -> List<u8>,
