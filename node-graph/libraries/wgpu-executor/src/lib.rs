@@ -4,8 +4,6 @@ pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
 
-use std::sync::Arc;
-
 use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
 use anyhow::Result;
@@ -14,6 +12,7 @@ use core_types::color::SRGBA8;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
+use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::{Origin3d, TextureAspect};
 
@@ -25,6 +24,10 @@ pub use pipeline::PipelineCache as WgpuPipelineCache;
 pub use rendering::RenderContext;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
+pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
+pub use wgpu_sync::Instance as WgpuInstance;
+pub use wgpu_sync::Queue as WgpuQueue;
+pub use wgpu_sync::Surface as WgpuSurface;
 
 const TEXTURE_CACHE_SIZE: u64 = 256 * 1024 * 1024; // 256 MiB
 
@@ -88,7 +91,11 @@ impl WgpuExecutor {
 				};
 				renderer.override_image(&image_brush.image, Some(texture_view));
 			}
-			renderer.render_to_texture(&self.context().device, &self.context().queue, scene, &texture_view, &render_params)?;
+
+			{
+				let queue = self.context().queue.lock();
+				renderer.render_to_texture(&self.context().device, &queue, scene, &texture_view, &render_params)?;
+			}
 			for (image_brush, _) in context.resource_overrides.iter() {
 				renderer.override_image(&image_brush.image, None);
 			}

@@ -150,12 +150,12 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
 impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
 		let device = &executor.context().device;
-		let queue = &executor.context().queue;
+		let queue = executor.context().queue.lock();
 		let list = self
 			.into_iter()
 			.map(|row| {
 				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(device, queue, &image);
+				let texture = upload_to_texture(device, &queue, &image);
 
 				Item::from_parts(Raster::new_gpu(texture), attributes)
 			})
@@ -170,8 +170,8 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
 		let device = &executor.context().device;
-		let queue = &executor.context().queue;
-		let texture = upload_to_texture(device, queue, &self);
+		let queue = executor.context().queue.lock();
+		let texture = upload_to_texture(device, &queue, &self);
 
 		queue.submit([]);
 		Raster::new_gpu(texture)
