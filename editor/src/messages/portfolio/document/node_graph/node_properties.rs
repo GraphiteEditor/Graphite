@@ -32,7 +32,9 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
-use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
+use graphene_std::vector::misc::{
+	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+};
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
@@ -2204,7 +2206,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
 	// Corner Radius
-	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::<f64>::INDEX, true, context));
+	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::INDEX, true, context));
 	corner_radius_row_1.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
@@ -2224,20 +2226,15 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(CornerRadiusInput::<f64>::INDEX) else {
+		let Some(input) = document_node.inputs.get(CornerRadiusInput::INDEX) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
-		let uniform_val = match input.as_non_exposed_value() {
-			Some(TaggedValue::F64(x)) => *x,
-			Some(TaggedValue::F64Array(values)) => values.first().copied().unwrap_or(0.),
-			_ => 0.,
+		let corner_values = match input.as_non_exposed_value() {
+			Some(TaggedValue::BoxCorners(corners)) => corners.to_corner_values(),
+			_ => [0.; 4],
 		};
-		let individual_val = match input.as_non_exposed_value() {
-			Some(&TaggedValue::F64(x)) => vec![x; 4],
-			Some(TaggedValue::F64Array(values)) => values.clone(),
-			_ => vec![0.; 4],
-		};
+		let uniform_val = corner_values[0];
 
 		// Uniform/individual radio input widget
 		let uniform = RadioEntryData::new("Uniform")
@@ -2252,14 +2249,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64(uniform_val),
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(uniform_val)),
 					}
 					.into(),
 				]),
 			})
 			.on_commit(commit_value);
-		let individual_val_for_switch = individual_val.clone();
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
 			.on_update(move |_| Message::Batched {
@@ -2272,8 +2268,8 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64Array(individual_val_for_switch.clone()),
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec())),
 					}
 					.into(),
 				]),
@@ -2284,24 +2280,23 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 		// Radius value input widget
 		let input_widget = if is_individual {
-			let from_string = |string: &str| {
-				string
-					.split(&[',', ' '])
-					.filter(|x| !x.is_empty())
-					.map(str::parse::<f64>)
-					.collect::<Result<Vec<f64>, _>>()
-					.ok()
-					.map(|values| TaggedValue::F64Array(values.into_iter().take(4).collect()))
-			};
 			TextInput::default()
-				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, CornerRadiusInput::<f64>::INDEX))
+				.value(corner_values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(
+					move |x: &TextInput| Some(TaggedValue::BoxCorners(BoxCorners::from(x.value.as_str()))),
+					node_id,
+					CornerRadiusInput::INDEX,
+				))
 				.widget_instance()
 		} else {
 			NumberInput::default()
 				.value(Some(uniform_val))
 				.unit(" px")
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::<f64>::INDEX))
+				.on_update(update_value(
+					move |x: &NumberInput| TaggedValue::BoxCorners(BoxCorners::from(x.value.unwrap())),
+					node_id,
+					CornerRadiusInput::INDEX,
+				))
 				.on_commit(commit_value)
 				.widget_instance()
 		};

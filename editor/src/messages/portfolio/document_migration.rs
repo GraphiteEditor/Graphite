@@ -17,6 +17,7 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
+use graphene_std::vector::misc::BoxCorners;
 use graphene_std::vector::style::{DashPattern, FillChoice, PaintOrder, StrokeAlign};
 use graphene_std::{Color, Graphic};
 use std::collections::HashMap;
@@ -1390,6 +1391,17 @@ fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
 	Some(NodeInput::value(TaggedValue::DashPattern(pattern), *exposed))
 }
 
+/// Converts a legacy rectangle corner radius input (a single `f64` or a `List<f64>` of up to four values) to the `BoxCorners` value type.
+fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
+	let NodeInput::Value { tagged_value, exposed } = input else { return None };
+	let corners = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(values) => BoxCorners::from(values.clone()),
+		TaggedValue::F64(value) => BoxCorners::from(*value),
+		_ => return None,
+	};
+	Some(NodeInput::value(TaggedValue::BoxCorners(corners), *exposed))
+}
+
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
 	// Must run before the reset block below: a node referencing a removed catalog entry would otherwise abort
 	// `migrate_node` via the `?` on `resolve_document_node_type`, preventing subsequent migration blocks from running.
@@ -1810,6 +1822,26 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput::INDEX), migrated, network_path);
+	}
+
+	// The rectangle's corner radius became the `BoxCorners` value type and its hidden individual-radii toggle moved after the
+	// user-visible inputs. A legacy rectangle stores that toggle (a plain `bool`) at index 3, where the new shape stores the corner
+	// radius, so a `bool` value there identifies the old input order: [width, height, individual, corner_radius, clamped].
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+		&& let Some(toggle_input) = node.inputs.get(3)
+		&& matches!(toggle_input.as_value(), Some(TaggedValue::Bool(_)))
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let corner_radius = migrate_corner_radius_input(&old_inputs[4]).unwrap_or_else(|| old_inputs[4].clone());
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), corner_radius, network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016

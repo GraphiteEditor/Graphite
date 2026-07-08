@@ -23,7 +23,7 @@ use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
-use graphene_std::vector::misc::{BooleanOperation, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns};
+use graphene_std::vector::misc::{BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns};
 use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
@@ -125,6 +125,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Gradient>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BoxCorners>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<String>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<f64>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<f32>]),
@@ -246,6 +247,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Color>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Gradient>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BoxCorners>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<String>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<f64>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<f32>]),
@@ -546,6 +548,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		RelativeAbsolute,
 		SelectiveColorChoice,
 		DashPattern,
+		BoxCorners,
 		XY,
 		ScaleType,
 		Footprint,
@@ -561,6 +564,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(field_adapter_convert_node!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
 	node_types.extend(field_adapter_convert_node!(from_element: f64, element: DashPattern));
+	// A string wire may feed the ranked `Item<BoxCorners>` connector by parsing each element into a set of corner values
+	node_types.extend(field_adapter_convert_node!(from_element: String, element: BoxCorners));
+	// A number wire may feed the ranked `Item<BoxCorners>` connector, each number becoming a uniform radius for all four corners
+	node_types.extend(field_adapter_convert_node!(from_element: f64, element: BoxCorners));
 	// Numeric wires cast between element types at a ranked connector, as `Convert` does for bare numeric wires
 	macro_rules! field_adapter_cast_node {
 		(from_element: $from:ty, element: $element:ty) => {{

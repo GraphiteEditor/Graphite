@@ -13,6 +13,7 @@ pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::Gradient;
 use graphic_types::vector_types::vector::style::{DashPattern, FillChoice};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
@@ -453,6 +454,7 @@ tagged_value! {
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
 	DashPattern(vector::style::DashPattern),
+	BoxCorners(vector::misc::BoxCorners),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
@@ -602,6 +604,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
+					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
 					_ => return None,
 				};
 				Some(ty)

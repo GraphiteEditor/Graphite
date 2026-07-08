@@ -206,6 +206,7 @@ mod test {
 	use std::pin::Pin;
 	use vector_nodes::generator_nodes::RectangleNode;
 	use vector_types::subpath::Subpath;
+	use vector_types::vector::misc::BoxCorners;
 
 	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
 		List::new_from_element(Vector::from_bezpath(bezpath))
@@ -247,8 +248,8 @@ mod test {
 				FutureWrapperNode(Item::new_from_element(XY::Y)),
 			),
 			FutureWrapperNode(Item::new_from_element(2_f64)),
+			FutureWrapperNode(Item::new_from_element(BoxCorners::default())),
 			FutureWrapperNode(Item::new_from_element(false)),
-			FutureWrapperNode(0_f64),
 			FutureWrapperNode(Item::new_from_element(false)),
 		);
 
