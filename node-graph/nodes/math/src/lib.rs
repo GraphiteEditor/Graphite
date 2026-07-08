@@ -459,15 +459,16 @@ fn random(
 	_: impl Ctx,
 	_primary: (),
 	/// Seed to determine the unique variation of which number is generated.
-	seed: u64,
+	seed: Item<u64>,
 	/// The smaller end of the range within which the random number is generated.
-	min: f64,
+	min: Item<f64>,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
-	max: f64,
+	max: Item<f64>,
 ) -> Item<f64> {
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+	let mut rng = rand::rngs::StdRng::seed_from_u64(*seed.element());
 	let result = rng.random::<f64>();
+	let (min, max) = (*min.element(), *max.element());
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
 	Item::new_from_element(result * (max - min) + min)
 }
@@ -923,41 +924,41 @@ async fn switch<T, C: Send + 'n + Clone>(
 
 /// Constructs a bool value which may be set to true or false.
 #[node_macro::node(category("Value"))]
-fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: bool) -> Item<bool> {
-	Item::new_from_element(bool_value)
+fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: Item<bool>) -> Item<bool> {
+	bool_value
 }
 
 /// Constructs a number value which may be set to any real number.
 #[node_macro::node(category("Value"))]
-fn number_value(_: impl Ctx, _primary: (), number: f64) -> Item<f64> {
-	Item::new_from_element(number)
+fn number_value(_: impl Ctx, _primary: (), number: Item<f64>) -> Item<f64> {
+	number
 }
 
 /// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
 #[node_macro::node(category("Value"))]
-fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> Item<f64> {
-	Item::new_from_element(percentage)
+fn percentage_value(_: impl Ctx, _primary: (), percentage: Item<Percentage>) -> Item<f64> {
+	percentage
 }
 
 /// Constructs a two-dimensional vector value which may be set to any XY pair.
 #[node_macro::node(category("Value"), name("Vec2 Value"))]
-fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> Item<DVec2> {
-	Item::new_from_element(DVec2::new(x, y))
+fn vec2_value(_: impl Ctx, _primary: (), x: Item<f64>, y: Item<f64>) -> Item<DVec2> {
+	Item::new_from_element(DVec2::new(*x.element(), *y.element()))
 }
 
 /// Constructs a color value which may be set to any color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Color) -> Item<Color> {
-	Item::new_from_element(color)
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Item<Color>) -> Item<Color> {
+	color
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> Item<Color> {
-	let red = (red as f32).clamp(0., 1.);
-	let green = (green as f32).clamp(0., 1.);
-	let blue = (blue as f32).clamp(0., 1.);
-	let alpha = (alpha as f32).clamp(0., 1.);
+fn rgba_to_color(_: impl Ctx, _primary: (), red: Item<Fraction>, green: Item<Fraction>, blue: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+	let red = (*red.element() as f32).clamp(0., 1.);
+	let green = (*green.element() as f32).clamp(0., 1.);
+	let blue = (*blue.element() as f32).clamp(0., 1.);
+	let alpha = (*alpha.element() as f32).clamp(0., 1.);
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
 	Item::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
@@ -965,22 +966,22 @@ fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> Item<Color> {
-	let hue = (hue as f32) - (hue as f32).floor();
-	let saturation = (saturation as f32).clamp(0., 1.);
-	let value = (value as f32).clamp(0., 1.);
-	let alpha = (alpha as f32).clamp(0., 1.);
+fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] saturation: Item<Fraction>, #[default(1.)] value: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
+	let saturation = (*saturation.element() as f32).clamp(0., 1.);
+	let value = (*value.element() as f32).clamp(0., 1.);
+	let alpha = (*alpha.element() as f32).clamp(0., 1.);
 
 	Item::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
 }
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSLA to Color"))]
-fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> Item<Color> {
-	let hue = (hue as f32) - (hue as f32).floor();
-	let saturation = (saturation as f32).clamp(0., 1.);
-	let lightness = (lightness as f32).clamp(0., 1.);
-	let alpha = (alpha as f32).clamp(0., 1.);
+fn hsla_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] saturation: Item<Fraction>, #[default(0.5)] lightness: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
+	let saturation = (*saturation.element() as f32).clamp(0., 1.);
+	let lightness = (*lightness.element() as f32).clamp(0., 1.);
+	let alpha = (*alpha.element() as f32).clamp(0., 1.);
 
 	Item::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
@@ -996,8 +997,8 @@ fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: Gradient) -> Item<Gradient> {
-	Item::new_from_element(gradient)
+fn gradient_value(_: impl Ctx, _primary: (), gradient: Item<Gradient>) -> Item<Gradient> {
+	gradient
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
@@ -1018,18 +1019,18 @@ fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vect
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: Gradient, position: Fraction) -> Item<Color> {
-	let position = position.clamp(0., 1.);
-	let color = gradient.evaluate(position);
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
+	let position = position.element().clamp(0., 1.);
+	let color = gradient.element().evaluate(position);
 	Item::new_from_element(color)
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
 #[node_macro::node(category("Value"))]
-fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100., 100.)] resolution: PixelSize) -> Item<Footprint> {
+fn footprint_value(_: impl Ctx, _primary: (), transform: Item<DAffine2>, #[default(100., 100.)] resolution: Item<PixelSize>) -> Item<Footprint> {
 	Item::new_from_element(Footprint {
-		transform,
-		resolution: resolution.max(DVec2::ONE).as_uvec2(),
+		transform: *transform.element(),
+		resolution: resolution.element().max(DVec2::ONE).as_uvec2(),
 		..Default::default()
 	})
 }

@@ -184,8 +184,8 @@ pub enum StringCapitalization {
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> Item<String> {
-	Item::new_from_element(string)
+fn string_value(_: impl Ctx, _primary: (), string: Item<TextArea>) -> Item<String> {
+	string
 }
 
 /// Type-asserts a value to be a string.
