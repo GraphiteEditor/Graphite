@@ -963,7 +963,6 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DoubleClick) => {
 				if let Some(clicked_layer) = TextToolData::check_click(document, input, fonts, responses) {
-
 					let selected = document.network_interface.selected_nodes();
 					let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
 					let selected = all_selected.find(|&layer| document.metadata().is_text_layer(layer));
@@ -1734,20 +1733,20 @@ impl Fsm for TextToolFsmState {
 
 fn spawn_blink_timer(tick: u64, responses: &mut VecDeque<Message>) {
 	responses.add(async move {
-			#[cfg(target_family = "wasm")]
-			{
-				let mut cb = |resolve: js_sys::Function, _reject| {
-					if let Some(window) = web_sys::window() {
-						let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 500);
-					}
-				};
-				let promise = js_sys::Promise::new(&mut cb);
-				wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
-			}
-			#[cfg(not(target_family = "wasm"))]
-			{
-				tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-			}
-			Message::Tool(ToolMessage::Text(TextToolMessage::TimerTick { tick }))
-		});
+		#[cfg(target_family = "wasm")]
+		{
+			let mut cb = |resolve: js_sys::Function, _reject| {
+				if let Some(window) = web_sys::window() {
+					let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 500);
+				}
+			};
+			let promise = js_sys::Promise::new(&mut cb);
+			wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+		}
+		#[cfg(not(target_family = "wasm"))]
+		{
+			tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+		}
+		Message::Tool(ToolMessage::Text(TextToolMessage::TimerTick { tick }))
+	});
 }
