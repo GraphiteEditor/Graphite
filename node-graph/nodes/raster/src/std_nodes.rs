@@ -3,7 +3,7 @@ use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
-use core_types::list::{Item, List};
+use core_types::list::Item;
 use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
@@ -94,81 +94,55 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 pub fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
-	#[expose] red: List<Raster<CPU>>,
-	#[expose] green: List<Raster<CPU>>,
-	#[expose] blue: List<Raster<CPU>>,
-	#[expose] alpha: List<Raster<CPU>>,
-) -> List<Raster<CPU>> {
-	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
-	let red = red.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let green = green.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let blue = blue.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
-	let alpha = alpha.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	#[expose] red: Item<Raster<CPU>>,
+	#[expose] green: Item<Raster<CPU>>,
+	#[expose] blue: Item<Raster<CPU>>,
+	#[expose] alpha: Item<Raster<CPU>>,
+) -> Item<Raster<CPU>> {
+	// An unconnected channel arrives as the default zero-sized raster, which counts as absent
+	let present = |channel: Item<Raster<CPU>>| (channel.element().width > 0 && channel.element().height > 0).then_some(channel);
+	let (red, green, blue, alpha) = (present(red), present(green), present(blue), present(alpha));
 
-	red.zip(green)
-		.zip(blue)
-		.zip(alpha)
-		.filter_map(|(((red, green), blue), alpha)| {
-			// Turn any default zero-sized image items into None
-			let red = red.filter(|i| i.element().width > 0 && i.element().height > 0);
-			let green = green.filter(|i| i.element().width > 0 && i.element().height > 0);
-			let blue = blue.filter(|i| i.element().width > 0 && i.element().height > 0);
-			let alpha = alpha.filter(|i| i.element().width > 0 && i.element().height > 0);
+	// Take this item's transform and blending attributes from the first present channel
+	let Some(attributes) = [&red, &green, &blue, &alpha].iter().find_map(|channel| channel.as_ref()).map(|channel| channel.attributes().clone()) else {
+		return Item::default();
+	};
 
-			// Get this item's transform and alpha blending mode from the first non-empty channel
-			let attributes = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| i.attributes().clone())?;
+	// All present channels must share the same dimensions; a mismatch yields the default zero-sized raster
+	let channel_dimensions = [&red, &green, &blue, &alpha].map(|channel| channel.as_ref().map(|channel| (channel.element().width, channel.element().height)));
+	let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else {
+		return Item::default();
+	};
+	if channel_dimensions.iter().flatten().any(|&(other_width, other_height)| other_width != width || other_height != height) {
+		return Item::default();
+	}
 
-			// Get the common width and height of the channels, which must have equal dimensions
-			let channel_dimensions = [
-				red.as_ref().map(|r| (r.element().width, r.element().height)),
-				green.as_ref().map(|g| (g.element().width, g.element().height)),
-				blue.as_ref().map(|b| (b.element().width, b.element().height)),
-				alpha.as_ref().map(|a| (a.element().width, a.element().height)),
-			];
-			if channel_dimensions.iter().all(Option::is_none)
-				|| channel_dimensions
-					.iter()
-					.flatten()
-					.any(|&(x, y)| channel_dimensions.iter().flatten().any(|&(other_x, other_y)| x != other_x || y != other_y))
-			{
-				return None;
+	// Set each output pixel's channels from the present inputs, defaulting absent color channels to 0 and absent alpha to 1
+	let mut image = Image::new(width, height, Color::TRANSPARENT);
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+
+			match red.as_ref().and_then(|r| r.element().get_pixel(x, y)) {
+				Some(r) => image_pixel.set_red(r.l().cast_linear_channel()),
+				None => image_pixel.set_red(Channel::from_linear(0.)),
 			}
-			let &(width, height) = channel_dimensions.iter().flatten().next()?;
-
-			// Create a new image for the output element
-			let mut image = Image::new(width, height, Color::TRANSPARENT);
-
-			// Iterate over all pixels in the image and set the color channels
-			for y in 0..image.height() {
-				for x in 0..image.width() {
-					let image_pixel = image.get_pixel_mut(x, y).unwrap();
-
-					if let Some(r) = red.as_ref().and_then(|r| r.element().get_pixel(x, y)) {
-						image_pixel.set_red(r.l().cast_linear_channel());
-					} else {
-						image_pixel.set_red(Channel::from_linear(0.));
-					}
-					if let Some(g) = green.as_ref().and_then(|g| g.element().get_pixel(x, y)) {
-						image_pixel.set_green(g.l().cast_linear_channel());
-					} else {
-						image_pixel.set_green(Channel::from_linear(0.));
-					}
-					if let Some(b) = blue.as_ref().and_then(|b| b.element().get_pixel(x, y)) {
-						image_pixel.set_blue(b.l().cast_linear_channel());
-					} else {
-						image_pixel.set_blue(Channel::from_linear(0.));
-					}
-					if let Some(a) = alpha.as_ref().and_then(|a| a.element().get_pixel(x, y)) {
-						image_pixel.set_alpha(a.l().cast_linear_channel());
-					} else {
-						image_pixel.set_alpha(Channel::from_linear(1.));
-					}
-				}
+			match green.as_ref().and_then(|g| g.element().get_pixel(x, y)) {
+				Some(g) => image_pixel.set_green(g.l().cast_linear_channel()),
+				None => image_pixel.set_green(Channel::from_linear(0.)),
 			}
+			match blue.as_ref().and_then(|b| b.element().get_pixel(x, y)) {
+				Some(b) => image_pixel.set_blue(b.l().cast_linear_channel()),
+				None => image_pixel.set_blue(Channel::from_linear(0.)),
+			}
+			match alpha.as_ref().and_then(|a| a.element().get_pixel(x, y)) {
+				Some(a) => image_pixel.set_alpha(a.l().cast_linear_channel()),
+				None => image_pixel.set_alpha(Channel::from_linear(1.)),
+			}
+		}
+	}
 
-			Some(Item::from_parts(Raster::new_cpu(image), attributes))
-		})
-		.collect()
+	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
 #[node_macro::node(category("Raster"))]
