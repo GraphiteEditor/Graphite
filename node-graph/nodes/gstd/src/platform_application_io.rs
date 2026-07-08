@@ -52,11 +52,14 @@ async fn get_request(
 	_primary: (),
 	/// The web address to send the GET request to.
 	#[name("URL")]
-	url: String,
+	url: Item<String>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
-	discard_result: bool,
-	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
+	discard_result: Item<bool>,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
 ) -> Item<String> {
+	let (url, headers) = (url.into_element(), headers.into_element());
+	let discard_result = *discard_result.element();
+
 	let header_map = parse_headers(&headers);
 	let request = reqwest::Client::new().get(url).headers(header_map);
 
@@ -85,16 +88,19 @@ async fn post_request(
 	_primary: (),
 	/// The web address to send the POST request to.
 	#[name("URL")]
-	url: String,
+	url: Item<String>,
 	/// The binary data to include in the body of the POST request.
-	body: Resource,
+	body: Item<Resource>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
-	discard_result: bool,
-	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
+	discard_result: Item<bool>,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
 ) -> Item<String> {
+	let (url, headers) = (url.into_element(), headers.into_element());
+	let discard_result = *discard_result.element();
+
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let body_bytes: Vec<u8> = body.as_ref().to_vec();
+	let body_bytes: Vec<u8> = body.element().as_ref().to_vec();
 	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
@@ -141,7 +147,8 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Item<Resource> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
+	let url = url.into_element();
 	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
 
 	let response = match reqwest::Client::new().get(&url).send().await {

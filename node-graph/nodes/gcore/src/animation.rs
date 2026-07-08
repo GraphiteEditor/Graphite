@@ -33,8 +33,9 @@ fn real_time(
 	ctx: impl Ctx + ExtractRealTime,
 	_primary: (),
 	/// The time and date component to be produced as a number.
-	component: RealTimeMode,
+	component: Item<RealTimeMode>,
 ) -> Item<f64> {
+	let component = component.into_element();
 	let real_time = ctx.try_real_time().unwrap_or_default();
 
 	// TODO: Implement proper conversion using and existing time implementation
@@ -57,9 +58,9 @@ fn animation_time(
 	_primary: (),
 	#[default(1)]
 	#[unit("/sec")]
-	rate: f64,
+	rate: Item<f64>,
 ) -> Item<f64> {
-	Item::new_from_element(ctx.try_animation_time().unwrap_or_default() * rate)
+	Item::new_from_element(ctx.try_animation_time().unwrap_or_default() * *rate.element())
 }
 
 #[node_macro::node(category("Debug"))]
