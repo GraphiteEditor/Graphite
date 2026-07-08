@@ -1034,7 +1034,6 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 }
 
 /// Whether the node is a `()`-primary generator that frames over its ranked params: a unit primary with at least one ranked (`Item<T>`) param.
-/// Its mapped variant stamps the frame index (like a lazy primary) since each slot is a fresh generation, not a pre-evaluated content slot.
 fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
 	if parsed.attributes.skip_impl {
 		return false;

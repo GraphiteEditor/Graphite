@@ -112,6 +112,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform_nodes::FreezeRealTimeNode",
 			"graphene_core::vector::SubpathSegmentLengthsNode",
 			"core_types::vector::SubpathSegmentLengthsNode",
+			// The deleted debug Option trio degrades to a passthrough of its single input (audit resolution 8)
+			"graphene_core::ops::SizeOfNode",
+			"graphene_core::debug::SizeOfNode",
+			"graphene_core::ops::SomeNode",
+			"graphene_core::debug::SomeNode",
+			"graphene_core::ops::UnwrapNode",
+			"graphene_core::debug::UnwrapNode",
+			"graphene_core::debug::UnwrapOptionNode",
 		],
 	},
 	NodeReplacement {
@@ -125,18 +133,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::animation::real_time::IDENTIFIER,
 		aliases: &["graphene_core::animation::RealTimeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::debug::size_of::IDENTIFIER,
-		aliases: &["graphene_core::ops::SizeOfNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::debug::some::IDENTIFIER,
-		aliases: &["graphene_core::ops::SomeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::debug::unwrap_option::IDENTIFIER,
-		aliases: &["graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"],
 	},
 	// ================================
 	// graphic
