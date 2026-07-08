@@ -410,7 +410,12 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 		}
 
 		// Then, try to construct a gradient out of a chain, which is directly connected to a Fill node or a layer
-		let appearance = read_gradient_chain_state(layer, network_interface);
+		let mut appearance = read_gradient_chain_state(layer, network_interface);
+
+		// Match the Fill node's fallback transform until the chain materializes its own Transform node.
+		if gradient_fill_chain_needs_transform_node(layer, network_interface) {
+			appearance.transform = initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer));
+		}
 		Some((stops, appearance, GradientSource::Chain))
 	} else {
 		None
@@ -1122,15 +1127,6 @@ impl Fsm for GradientToolFsmState {
 				}
 				tool_data.selected_gradient = None;
 
-				// Insert a Transform node if a chain-backed gradient does not have one yet. This prevents the rendered gradient and Gradient tool state from getting out of sync.
-				let network_interface = &document.network_interface;
-				for layer in network_interface.selected_nodes().selected_visible_layers(network_interface) {
-					if gradient_fill_chain_needs_transform_node(layer, network_interface) {
-						let transform = initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer));
-						responses.add(GraphOperationMessage::GradientTransformSet { layer, transform });
-					}
-				}
-
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
 					selected: GradientSelectedTarget::None,
@@ -1335,13 +1331,23 @@ impl Fsm for GradientToolFsmState {
 
 				let mut drag_hint: Option<GradientDragHintState> = None;
 				let mut transaction_started = false;
+				let mut pending_transform_materialization = None;
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
-					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
+					let Some((gradient, mut appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
+					let is_gradient_chain = source == GradientSource::Chain;
+					let transform_to_materialize = if is_gradient_chain && gradient_fill_chain_needs_transform_node(layer, &document.network_interface) {
+						Some(initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
+					} else {
+						None
+					};
+					// if let Some(transform) = transform_to_materialize {
+					// 	// GraphOperation is queued later, so it won't affect this PointerDown immediately. Patch the local tool state too.
+					// 	appearance.transform = transform;
+					// }
 					let gradient_space_transform = gradient_space_transform(layer, document);
 					let unit_to_viewport = gradient_space_transform * appearance.transform;
-					let is_gradient_chain = source == GradientSource::Chain;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
 					// Check for dragging a midpoint diamond
@@ -1373,6 +1379,7 @@ impl Fsm for GradientToolFsmState {
 									initial_gradient: gradient.clone(),
 									is_gradient_chain,
 								});
+								pending_transform_materialization = transform_to_materialize.map(|transform| (layer, transform));
 
 								break;
 							}
@@ -1416,6 +1423,7 @@ impl Fsm for GradientToolFsmState {
 								initial_gradient_transform: appearance.transform,
 								is_gradient_chain,
 							});
+							pending_transform_materialization = transform_to_materialize.map(|transform| (layer, transform));
 						}
 					}
 
@@ -1433,7 +1441,8 @@ impl Fsm for GradientToolFsmState {
 									initial_gradient: gradient.clone(),
 									initial_gradient_transform: appearance.transform,
 									is_gradient_chain,
-								})
+								});
+								pending_transform_materialization = transform_to_materialize.map(|transform| (layer, transform));
 							}
 						}
 					}
@@ -1533,7 +1542,7 @@ impl Fsm for GradientToolFsmState {
 						if matches!(source, GradientSource::Chain) && gradient_fill_chain_needs_transform_node(layer, &document.network_interface) {
 							let transform = initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer));
 
-							responses.add(GraphOperationMessage::GradientTransformSet { layer, transform });
+							pending_transform_materialization = Some((layer, transform));
 
 							// GraphOperation is queued, so it won't affect this PointerDown immediately. Patch the local tool state too.
 							appearance.transform = transform;
@@ -1554,8 +1563,13 @@ impl Fsm for GradientToolFsmState {
 					}
 				};
 
-				if matches!(gradient_state, GradientToolFsmState::Drawing { .. }) && !transaction_started {
-					responses.add(DocumentMessage::StartTransaction);
+				if matches!(gradient_state, GradientToolFsmState::Drawing { .. }) {
+					if !transaction_started {
+						responses.add(DocumentMessage::StartTransaction);
+					}
+					if let Some((layer, transform)) = pending_transform_materialization {
+						responses.add(GraphOperationMessage::GradientTransformSet { layer, transform });
+					}
 				}
 
 				responses.add(OverlaysMessage::Draw);
