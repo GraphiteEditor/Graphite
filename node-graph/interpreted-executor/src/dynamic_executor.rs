@@ -519,6 +519,37 @@ mod test {
 		assert!(result.is_some(), "The promoted wire should execute end-to-end");
 	}
 
+	// The layer content path: a rank-0 content wire enters Wrap Graphic's `List` connector by singleton raise, and the
+	// wrapped `Item<Graphic>` raises again at Extend's `List` connector, so layers accept rank-0 chains without new machinery
+	#[test]
+	fn rank_0_content_promotes_through_the_layer_coercion_path() {
+		let content_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
+
+		let mut wrap_graphic_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		wrap_graphic_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::WrapGraphicNode");
+
+		let base_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>)).into()), vec![NodeId(2)]);
+
+		let mut extend_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2), NodeId(1)]), vec![NodeId(3)]);
+		extend_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::ExtendNode");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![(NodeId(0), content_node), (NodeId(1), wrap_graphic_node), (NodeId(2), base_node), (NodeId(3), extend_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A rank-0 content wire should resolve the layer coercion path via promotion");
+		assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 content should be raised at Wrap Graphic's List connector");
+		assert!(typing_context.promotions(NodeId(3)).is_some(), "The wrapped Item<Graphic> should be raised at Extend's List connector");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapters should instantiate");
+
+		let context: Context = None;
+		let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+		let stack = result.expect("The layer coercion path should execute end-to-end");
+		assert_eq!(stack.len(), 1, "The rank-0 content should contribute exactly one graphic to the stack");
+	}
+
 	/// Builds a network feeding the given content plus a promoted bare distance into Offset Points, whose distance connector is ranked `Item<f64>`.
 	fn offset_points_network(content: TaggedValue) -> ProtoNetwork {
 		let content_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);

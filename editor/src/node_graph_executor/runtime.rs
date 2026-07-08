@@ -10,7 +10,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
-use graphene_std::list::List;
+use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -439,6 +439,22 @@ impl NodeRuntime {
 				if update_thumbnails {
 					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
+				}
+			}
+			// Rank-0 wires record single items; each arm mirrors its list counterpart through a singleton raise
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Graphic>>>() {
+				if update_thumbnails {
+					let singleton = List::new_from_item(io.output.clone());
+					let bounds = graphene_std::renderer::graphic_list_bounding_box(&singleton, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
+				}
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Vector>>>() {
+				self.vector_modify.insert(parent_network_node_id, io.output.element().clone());
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<String>>>() {
+				if update_thumbnails {
+					let singleton = List::new_from_item(io.output.clone());
+					let bounds = graphene_std::renderer::text_list_bounding_box(&singleton, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
 				}
 			}
 			// Other
