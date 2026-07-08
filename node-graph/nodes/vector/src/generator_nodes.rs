@@ -74,14 +74,15 @@ fn arc(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50.)]
-	radius: f64,
-	start_angle: Angle,
+	radius: Item<f64>,
+	start_angle: Item<Angle>,
 	#[default(270.)]
 	#[range]
 	#[soft(0..360)]
-	sweep_angle: Angle,
-	arc_type: ArcType,
+	sweep_angle: Item<Angle>,
+	arc_type: Item<ArcType>,
 ) -> Item<Vector> {
+	let (radius, start_angle, sweep_angle, arc_type) = (*radius.element(), *start_angle.element(), *sweep_angle.element(), arc_type.into_element());
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
@@ -99,20 +100,22 @@ fn arc(
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
-	spiral_type: SpiralType,
-	#[default(5.)] turns: f64,
-	#[default(0.)] start_angle: f64,
-	#[default(0.)] inner_radius: f64,
-	#[default(25)] outer_radius: f64,
-	#[default(90.)] angular_resolution: f64,
+	spiral_type: Item<SpiralType>,
+	#[default(5.)] turns: Item<f64>,
+	#[default(0.)] start_angle: Item<f64>,
+	#[default(0.)] inner_radius: Item<f64>,
+	#[default(25)] outer_radius: Item<f64>,
+	#[default(90.)] angular_resolution: Item<f64>,
 ) -> Item<Vector> {
+	let (turns, start_angle, inner_radius, outer_radius, angular_resolution) =
+		(*turns.element(), *start_angle.element(), *inner_radius.element(), *outer_radius.element(), *angular_resolution.element());
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
-		spiral_type,
+		spiral_type.into_element(),
 	)))
 }
 
@@ -123,12 +126,12 @@ fn ellipse(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50)]
-	radius_x: f64,
+	radius_x: Item<f64>,
 	#[unit(" px")]
 	#[default(25)]
-	radius_y: f64,
+	radius_y: Item<f64>,
 ) -> Item<Vector> {
-	let radius = DVec2::new(radius_x, radius_y);
+	let radius = DVec2::new(*radius_x.element(), *radius_y.element());
 	let corner1 = -radius;
 	let corner2 = radius;
 
@@ -151,15 +154,15 @@ fn rectangle<T: CornerRadius>(
 	_primary: (),
 	#[unit(" px")]
 	#[default(100)]
-	width: f64,
+	width: Item<f64>,
 	#[unit(" px")]
 	#[default(100)]
-	height: f64,
-	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
+	height: Item<f64>,
+	_individual_corner_radii: Item<bool>, // TODO: Move this to the bottom once we have a migration capability
 	#[implementations(f64, List<f64>)] corner_radius: T,
-	#[default(true)] clamped: bool,
+	#[default(true)] clamped: Item<bool>,
 ) -> Item<Vector> {
-	Item::new_from_element(corner_radius.generate(DVec2::new(width, height), clamped))
+	Item::new_from_element(corner_radius.generate(DVec2::new(*width.element(), *height.element()), *clamped.element()))
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
@@ -170,13 +173,13 @@ fn regular_polygon<T: AsU64>(
 	#[default(6)]
 	#[hard(3..)]
 	#[implementations(u32, u64, f64)]
-	sides: T,
+	sides: Item<T>,
 	#[unit(" px")]
 	#[default(50)]
-	radius: f64,
+	radius: Item<f64>,
 ) -> Item<Vector> {
-	let points = sides.as_u64();
-	let radius: f64 = radius * 2.;
+	let points = sides.element().as_u64();
+	let radius: f64 = *radius.element() * 2.;
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
@@ -188,17 +191,17 @@ fn star<T: AsU64>(
 	#[default(5)]
 	#[hard(2..)]
 	#[implementations(u32, u64, f64)]
-	sides: T,
+	sides: Item<T>,
 	#[unit(" px")]
 	#[default(50)]
-	radius_1: f64,
+	radius_1: Item<f64>,
 	#[unit(" px")]
 	#[default(25)]
-	radius_2: f64,
+	radius_2: Item<f64>,
 ) -> Item<Vector> {
-	let points = sides.as_u64();
-	let diameter: f64 = radius_1 * 2.;
-	let inner_diameter = radius_2 * 2.;
+	let points = sides.element().as_u64();
+	let diameter: f64 = *radius_1.element() * 2.;
+	let inner_diameter = *radius_2.element() * 2.;
 
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
@@ -226,15 +229,18 @@ fn qr_code(
 	_primary: (),
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	#[default("https://graphite.art")]
-	text: String,
-	#[widget(ParsedWidgetOverride::Hidden)] has_size: bool,
+	text: Item<String>,
+	#[widget(ParsedWidgetOverride::Hidden)] has_size: Item<bool>,
 	#[unit(" px")]
 	#[hard(1..)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	size: f64,
-	error_correction: QRCodeErrorCorrectionLevel,
-	#[default(false)] individual_squares: bool,
+	size: Item<f64>,
+	error_correction: Item<QRCodeErrorCorrectionLevel>,
+	#[default(false)] individual_squares: Item<bool>,
 ) -> Item<Vector> {
+	let (text, error_correction) = (text.into_element(), error_correction.into_element());
+	let (has_size, size, individual_squares) = (*has_size.element(), *size.element(), *individual_squares.element());
+
 	let ecc = match error_correction {
 		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
 		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
@@ -281,17 +287,18 @@ fn qr_code(
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	#[default(100., 0.)] arrow_to: PixelSize,
-	#[default(10)] shaft_width: PixelLength,
-	#[default(30)] head_width: PixelLength,
-	#[default(20)] head_length: PixelLength,
+	#[default(100., 0.)] arrow_to: Item<PixelSize>,
+	#[default(10)] shaft_width: Item<PixelLength>,
+	#[default(30)] head_width: Item<PixelLength>,
+	#[default(20)] head_length: Item<PixelLength>,
 ) -> Item<Vector> {
+	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), *shaft_width.element(), *head_width.element(), *head_length.element());
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> Item<Vector> {
-	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: Item<PixelSize>) -> Item<Vector> {
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, *line_to.element())))
 }
 
 trait GridSpacing {
@@ -313,17 +320,19 @@ impl GridSpacing for DVec2 {
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
-	grid_type: GridType,
+	grid_type: Item<GridType>,
 	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
-	spacing: T,
-	#[default(10)] columns: u32,
-	#[default(10)] rows: u32,
-	#[default(30., 30.)] angles: DVec2,
+	spacing: Item<T>,
+	#[default(10)] columns: Item<u32>,
+	#[default(10)] rows: Item<u32>,
+	#[default(30., 30.)] angles: Item<DVec2>,
 ) -> Item<Vector> {
-	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
+	let (grid_type, columns, rows, angles) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element());
+
+	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
 	let mut vector = Vector::default();
@@ -410,14 +419,19 @@ fn grid<T: GridSpacing>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn item<T>(value: T) -> Item<T> {
+		Item::new_from_element(value)
+	}
+
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), GridType::Isometric, 0., 5, 5, (0., 0.).into());
-		grid((), (), GridType::Isometric, 90., 5, 5, (90., 90.).into());
+		grid((), (), item(GridType::Isometric), item(0.), item(5_u32), item(5_u32), item((0., 0.).into()));
+		grid((), (), item(GridType::Isometric), item(90.), item(5_u32), item(5_u32), item((90., 90.).into()));
 
 		// Works properly
-		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
+		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((30., 30.).into()));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
@@ -432,7 +446,7 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
+		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((40., 30.).into()));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
@@ -445,8 +459,8 @@ mod tests {
 
 	#[test]
 	fn qr_code_test() {
-		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
-		assert!(qr.element().point_domain.ids().len() > 0);
-		assert!(qr.element().segment_domain.ids().len() > 0);
+		let qr = qr_code((), (), item("https://graphite.art".to_string()), item(false), item(1.), item(QRCodeErrorCorrectionLevel::Low), item(true));
+		assert!(!qr.element().point_domain.ids().is_empty());
+		assert!(!qr.element().segment_domain.ids().is_empty());
 	}
 }

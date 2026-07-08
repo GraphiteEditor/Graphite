@@ -919,8 +919,17 @@ mod test {
 	use graph_craft::document::NodeNetwork;
 	use graphene_std::Context;
 	use graphene_std::NodeInputDecleration;
+	use graphene_std::list::Item;
 	use graphene_std::memo::IORecord;
 	use test_prelude::LayerNodeIdentifier;
+
+	/// A ranked input whose `Item<E>` Result carries an element `E`, recovered by `grab_ranked_input`.
+	pub trait RankedResult {
+		type Element: Send + Sync + Clone + 'static;
+	}
+	impl<E: Send + Sync + Clone + 'static> RankedResult for Item<E> {
+		type Element = E;
+	}
 
 	/// Stores all of the monitor nodes that have been attached to a graph
 	#[derive(Default)]
@@ -980,15 +989,21 @@ mod test {
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
-			// This is quite inflexible since it only allows the footprint as inputs.
-			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
+			Self::downcast_record::<Input::Result>(dynamic).or_else(|| {
+				warn!("cannot downcast type for introspection");
+				None
+			})
+		}
+
+		/// Pulls a concrete output type out of a monitor record, tolerating the three context shapes the executor records against.
+		fn downcast_record<Output: Send + Sync + Clone + 'static>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Output> {
+			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Output>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Output>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Output>>() {
 				Some(x.output.clone())
 			} else {
-				warn!("cannot downcast type for introspection");
 				None
 			}
 		}
@@ -1016,6 +1031,17 @@ mod test {
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
 			Self::downcast::<Input>(dynamic)
+		}
+
+		/// Grabs a ranked (`Item<E>`) input's recorded value as its bare element `E`.
+		/// The type resolver inserts the promotion adapter between the input monitor and the connector, so the monitor records the element ahead of the wrap.
+		pub fn grab_ranked_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<<Input::Result as RankedResult>::Element>
+		where
+			Input::Result: RankedResult,
+		{
+			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
+			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
+			Self::downcast_record::<<Input::Result as RankedResult>::Element>(dynamic)
 		}
 
 		pub fn grab_input_from_layer<Input: NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
