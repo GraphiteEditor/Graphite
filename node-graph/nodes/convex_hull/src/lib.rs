@@ -1,94 +1,14 @@
 use core_types::Ctx;
-use core_types::table::{Table, TableRow, TableRowRef};
-use glam::{DAffine2, DVec2};
-use graphic_types::Vector;
-use graphic_types::vector_types::subpath::{ManipulatorGroup, PathSegPoints, Subpath, pathseg_points};
+use core_types::list::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, Item, List};
+use glam::DAffine2;
+use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-pub use path_bool as path_bool_lib;
-use path_bool::{FillRule, PathBooleanOperation};
-use std::ops::Mul;
+use graphic_types::{Graphic, IntoGraphicList, Vector};
+use vector_types::kurbo::{Affine, CubicBez, Line as KurboLine, ParamCurve, PathSeg as KurboPathSeg};
 
-use ::convex_hull::{HullSegment, MonotoneArc, convex_hull as compute_convex_hull, split_into_arcs};
-use kurbo::{CubicBez, Line as KurboLine, ParamCurve, PathSeg as KurboPathSeg, Point as KurboPoint};
-
-// ─── Graham's Scan Convex Hull ───
-
-/// Compute the convex hull of a set of 2D points using Graham's scan.
-/// Returns points in counter-clockwise order.
-fn graham_scan_hull(points: &[DVec2]) -> Vec<DVec2> {
-	if points.len() <= 2 {
-		return points.to_vec();
-	}
-
-	// Find the lowest-y point (leftmost if tied)
-	let mut pivot_idx = 0;
-	for (i, p) in points.iter().enumerate() {
-		if p.y < points[pivot_idx].y || (p.y == points[pivot_idx].y && p.x < points[pivot_idx].x) {
-			pivot_idx = i;
-		}
-	}
-	let pivot = points[pivot_idx];
-
-	// Sort remaining points by polar angle from pivot
-	let mut indexed: Vec<(usize, DVec2)> = points.iter().copied().enumerate().filter(|&(i, _)| i != pivot_idx).collect();
-	indexed.sort_by(|&(_, a), &(_, b)| {
-		let da = a - pivot;
-		let db = b - pivot;
-		let angle_a = da.y.atan2(da.x);
-		let angle_b = db.y.atan2(db.x);
-		angle_a.partial_cmp(&angle_b).unwrap().then_with(|| {
-			// If same angle, closer point first
-			da.length_squared().partial_cmp(&db.length_squared()).unwrap()
-		})
-	});
-
-	// Build hull using cross-product left-turn test
-	let mut hull = vec![pivot];
-	for (_, p) in indexed {
-		while hull.len() >= 2 {
-			let a = hull[hull.len() - 2];
-			let b = hull[hull.len() - 1];
-			let cross = (b - a).perp_dot(p - b);
-			if cross <= 0.0 {
-				hull.pop();
-			} else {
-				break;
-			}
-		}
-		hull.push(p);
-	}
-
-	hull
-}
-
-// ─── Kurbo PathSeg → CubicBez Conversion ───
-
-/// Convert any `kurbo::PathSeg` to a `CubicBez`.
-fn pathseg_to_cubicbez(seg: KurboPathSeg) -> CubicBez {
-	match seg {
-		KurboPathSeg::Cubic(cb) => cb,
-		KurboPathSeg::Quad(qb) => {
-			// Degree elevation: quadratic → cubic
-			let p0 = qb.p0;
-			let p3 = qb.p2;
-			let q1 = qb.p1;
-			let p1 = KurboPoint::new(p0.x + 2.0 / 3.0 * (q1.x - p0.x), p0.y + 2.0 / 3.0 * (q1.y - p0.y));
-			let p2 = KurboPoint::new(p3.x + 2.0 / 3.0 * (q1.x - p3.x), p3.y + 2.0 / 3.0 * (q1.y - p3.y));
-			CubicBez::new(p0, p1, p2, p3)
-		}
-		KurboPathSeg::Line(l) => {
-			// Place control points at 1/3 and 2/3 along the line
-			let p0 = l.p0;
-			let p3 = l.p1;
-			let p1 = KurboPoint::new(p0.x + (p3.x - p0.x) / 3.0, p0.y + (p3.y - p0.y) / 3.0);
-			let p2 = KurboPoint::new(p0.x + 2.0 * (p3.x - p0.x) / 3.0, p0.y + 2.0 * (p3.y - p0.y) / 3.0);
-			CubicBez::new(p0, p1, p2, p3)
-		}
-	}
-}
-
-// ─── Subpath → Vec<CubicBez> Conversion ───
+mod hull;
+use hull::{HullSegment, MonotoneArc, convex_hull_loops, split_loops_into_arcs};
 
 /// Check if a CubicBez is degenerate (all control points at essentially the same location).
 fn is_degenerate_cubic(cb: &CubicBez) -> bool {
@@ -99,48 +19,12 @@ fn is_degenerate_cubic(cb: &CubicBez) -> bool {
 	(d03.x * d03.x + d03.y * d03.y) < EPS_SQ && (d01.x * d01.x + d01.y * d01.y) < EPS_SQ && (d02.x * d02.x + d02.y * d02.y) < EPS_SQ
 }
 
-/// Convert a `Subpath<PointId>` into a `Vec<CubicBez>` for the convex hull library.
-/// Filters out degenerate zero-length segments.
-fn subpath_to_cubicbez_vec(subpath: &Subpath<PointId>) -> Vec<CubicBez> {
-	subpath.iter().map(pathseg_to_cubicbez).filter(|cb| !is_degenerate_cubic(cb)).collect()
+/// Convert a `Subpath<PointId>` into a closed loop of `CubicBez` segments in world space.
+/// Open subpaths are closed with a line segment; degenerate segments are dropped.
+fn subpath_to_loop(subpath: &Subpath<PointId>, transform: DAffine2) -> Vec<CubicBez> {
+	let affine = Affine::new(transform.to_cols_array());
+	subpath.iter_closed().map(|seg| (affine * seg).to_cubic()).filter(|cb| !is_degenerate_cubic(cb)).collect()
 }
-
-// ─── Winding Direction ───
-
-/// Compute the signed area of a closed cubic bezier path by sampling.
-/// Positive = CCW in standard math coords, Negative = CW.
-fn signed_area_of_cubic_path(segments: &[CubicBez]) -> f64 {
-	let mut area = 0.0;
-	let n = 16;
-	for seg in segments {
-		for i in 0..n {
-			let t0 = i as f64 / n as f64;
-			let t1 = (i + 1) as f64 / n as f64;
-			let p0 = seg.eval(t0);
-			let p1 = seg.eval(t1);
-			area += p0.x * p1.y - p1.x * p0.y;
-		}
-	}
-	area / 2.0
-}
-
-/// Reverse a cubic bezier path (reverse segment order + swap endpoints within each segment).
-fn reverse_cubic_path(segments: &[CubicBez]) -> Vec<CubicBez> {
-	segments.iter().rev().map(|cb| CubicBez::new(cb.p3, cb.p2, cb.p1, cb.p0)).collect()
-}
-
-// ─── Select Outer Subpath ───
-
-/// Select the outermost subpath from a Vector by choosing the one with the largest absolute area.
-fn select_outer_subpath(vector: &Vector) -> Option<Subpath<PointId>> {
-	vector.stroke_bezier_paths().max_by(|a, b| {
-		let area_a = a.area_centroid_and_area(None, None).map(|(_, area)| area.abs()).unwrap_or(0.0);
-		let area_b = b.area_centroid_and_area(None, None).map(|(_, area)| area.abs()).unwrap_or(0.0);
-		area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
-	})
-}
-
-// ─── Hull Segments → Subpath ───
 
 /// Convert hull segments back into a `Subpath<PointId>`.
 fn hull_segments_to_subpath(segments: &[HullSegment], arcs: &[MonotoneArc]) -> Option<Subpath<PointId>> {
@@ -162,296 +46,137 @@ fn hull_segments_to_subpath(segments: &[HullSegment], arcs: &[MonotoneArc]) -> O
 	// Subpath::from_beziers requires at least 2 segments for a closed path.
 	// If we have only 1, split it at the midpoint.
 	if kurbo_segs.len() == 1 {
-		let seg = kurbo_segs[0];
-		match seg {
-			KurboPathSeg::Cubic(cb) => {
-				let first_half = cb.subsegment(0.0..0.5);
-				let second_half = cb.subsegment(0.5..1.0);
-				kurbo_segs = vec![KurboPathSeg::Cubic(first_half), KurboPathSeg::Cubic(second_half)];
-			}
-			KurboPathSeg::Line(l) => {
-				let mid = KurboPoint::new((l.p0.x + l.p1.x) / 2.0, (l.p0.y + l.p1.y) / 2.0);
-				kurbo_segs = vec![KurboPathSeg::Line(KurboLine::new(l.p0, mid)), KurboPathSeg::Line(KurboLine::new(mid, l.p1))];
-			}
-			KurboPathSeg::Quad(qb) => {
-				let cb = pathseg_to_cubicbez(KurboPathSeg::Quad(qb));
-				let first_half = cb.subsegment(0.0..0.5);
-				let second_half = cb.subsegment(0.5..1.0);
-				kurbo_segs = vec![KurboPathSeg::Cubic(first_half), KurboPathSeg::Cubic(second_half)];
-			}
-		}
+		let cb = kurbo_segs[0].to_cubic();
+		kurbo_segs = vec![KurboPathSeg::Cubic(cb.subsegment(0.0..0.5)), KurboPathSeg::Cubic(cb.subsegment(0.5..1.0))];
 	}
 
 	Some(Subpath::from_beziers(&kurbo_segs, true))
 }
 
-// ─── Main Node ───
+/// Exact convex hull of a set of closed loops, as a subpath.
+fn compute_hull_subpath(loops: &[&[CubicBez]]) -> Option<Subpath<PointId>> {
+	if loops.is_empty() {
+		return None;
+	}
+	let arcs = split_loops_into_arcs(loops);
+	let hull_segments = convex_hull_loops(loops);
+	hull_segments_to_subpath(&hull_segments, &arcs)
+}
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn convex_hull(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
-	// Handle empty input
-	if content.is_empty() {
-		return Table::default();
+async fn convex_hull<I: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: I) -> List<Vector> {
+	let content = content.into_graphic_list();
+	let flattened: List<Vector> = content.clone().into_flattened_list();
+	if flattened.is_empty() {
+		return List::default();
 	}
 
-	// Step 1: Collect one representative point per subpath (in world space)
-	let mut hull_points: Vec<DVec2> = Vec::new();
-	for row in content.iter() {
-		let transform = *row.transform;
-		for subpath in row.element.stroke_bezier_paths() {
-			if let Some(first) = subpath.manipulator_groups().first() {
-				hull_points.push(transform.transform_point2(first.anchor));
+	// Collect every subpath of every element as a closed loop in world space.
+	// The hull library handles multiple loops, occlusion, nesting, arbitrary
+	// winding, and self-intersections directly, so no union or winding
+	// normalization is needed.
+	let mut loops: Vec<Vec<CubicBez>> = Vec::new();
+	for index in 0..flattened.len() {
+		let Some(element) = flattened.element(index) else { continue };
+		let transform: DAffine2 = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+		for subpath in element.stroke_bezier_paths() {
+			let segs = subpath_to_loop(&subpath, transform);
+			if !segs.is_empty() {
+				loops.push(segs);
 			}
 		}
 	}
 
-	// Step 2: Union all input shapes
-	let mut result_vector_table = union(content.iter());
-
-	// Step 3: Flatten union result to world space (apply transform, set to IDENTITY)
-	let style;
-	{
-		let Some(result_row) = result_vector_table.iter_mut().next() else {
-			return Table::default();
-		};
-		let transform = *result_row.transform;
-		*result_row.transform = DAffine2::IDENTITY;
-		Vector::transform(result_row.element, transform);
-		result_row.element.style.set_stroke_transform(DAffine2::IDENTITY);
-
-		// Step 4: Save style
-		style = result_row.element.style.clone();
-	}
-
-	// Step 5: If the union has multiple disjoint subpaths AND we have ≥3 hull points,
-	// build a polyline convex hull and boolean-union it with the result to connect everything.
-	let subpath_count = result_vector_table.iter().next().map(|r| r.element.stroke_bezier_paths().count()).unwrap_or(0);
-	log::debug!("subpath_count: {}", subpath_count);
-
-	if subpath_count > 1 && hull_points.len() >= 3 {
-		let poly_points = graham_scan_hull(&hull_points);
-		if poly_points.len() >= 3 {
-			// Build a polyline subpath from the hull points
-			let poly_subpath = Subpath::<PointId>::from_anchors(poly_points.into_iter(), true);
-			let poly_vector = Vector::from_subpath(poly_subpath);
-
-			// Boolean union the current result with the polyline
-			let current_vector = &result_vector_table.iter().next().unwrap().element;
-			let upper_path = to_path(current_vector, DAffine2::IDENTITY);
-			let lower_path = to_path(&poly_vector, DAffine2::IDENTITY);
-
-			#[allow(unused_unsafe)]
-			let union_result_paths = unsafe { boolean_union(upper_path, lower_path) };
-			let union_result = from_path(&union_result_paths);
-
-			// Replace the result vector's geometry
-			let result_row = result_vector_table.iter_mut().next().unwrap();
-			result_row.element.colinear_manipulators = union_result.colinear_manipulators;
-			result_row.element.point_domain = union_result.point_domain;
-			result_row.element.segment_domain = union_result.segment_domain;
-			result_row.element.region_domain = union_result.region_domain;
-		}
-	}
-
-	// Step 6: Select the outer boundary subpath (largest by area)
-	let outer_subpath = {
-		let result_row = result_vector_table.iter().next().unwrap();
-		select_outer_subpath(result_row.element)
+	let loop_refs: Vec<&[CubicBez]> = loops.iter().map(|l| l.as_slice()).collect();
+	let Some(hull_subpath) = compute_hull_subpath(&loop_refs) else {
+		// Degenerate input (e.g. only zero-length segments): pass through.
+		return flattened;
 	};
 
-	let Some(outer_subpath) = outer_subpath else {
-		return result_vector_table;
-	};
+	// Carry the first input item's paint attributes onto the hull. The hull
+	// geometry is already in world space, so the cloned transform attribute
+	// must be reset to identity or it would be applied a second time.
+	let paint_attributes = flattened.clone_item_attributes(0);
+	let hull_vector = Vector::from_subpath(hull_subpath);
+	let mut result = List::new_from_item(Item::from_parts(hull_vector, paint_attributes));
+	result.set_attribute(ATTR_TRANSFORM, 0, DAffine2::IDENTITY);
 
-	// Step 7: Convert to Vec<CubicBez>
-	let cubic_segments = subpath_to_cubicbez_vec(&outer_subpath);
-	if cubic_segments.is_empty() {
-		return result_vector_table;
-	}
+	// Snapshot the input layers as `editor:merged_layers` so the renderer can
+	// recurse into them and keep the original layers' overlays and click
+	// targets in place (same pattern as Boolean Operation and Flatten Path).
+	// No transform pre-compensation is needed since item 0's transform is
+	// identity.
+	result.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content);
 
-	// The hull library expects CCW winding. Graphite paths are typically CW in screen coords
-	// (Y-down), so we reverse if the signed area is negative (CW in math coords).
-	let cubic_segments = if signed_area_of_cubic_path(&cubic_segments) < 0.0 {
-		reverse_cubic_path(&cubic_segments)
-	} else {
-		cubic_segments
-	};
-
-	log::debug!("path: {:?}", cubic_segments);
-
-	// Step 8: Run the curved convex hull algorithm
-	let arcs = split_into_arcs(&cubic_segments);
-	log::debug!("arcs: {:?}", arcs);
-	let hull_segments = compute_convex_hull(&cubic_segments);
-	log::debug!("segments: {:?}", hull_segments);
-
-	if hull_segments.is_empty() {
-		// Fallback: return the union result as-is
-		return result_vector_table;
-	}
-
-	// Step 9: Reconstruct hull as Subpath
-	let Some(hull_subpath) = hull_segments_to_subpath(&hull_segments, &arcs) else {
-		return result_vector_table;
-	};
-	log::debug!("hull_subpath: {:?}", hull_subpath);
-
-	// Step 10: Create Vector from hull subpath, apply saved style
-	let mut hull_vector = Vector::from_subpath(hull_subpath);
-	hull_vector.style = style;
-
-	// Step 11: Build result table
-	let mut result: Table<Vector> = Table::new_from_element(hull_vector);
-	if let Some(row) = result.iter_mut().next() {
-		// Step 11: Clean up with merge_by_distance_spatial
-		row.element.merge_by_distance_spatial(*row.transform, 0.0001);
+	if let Some(element) = result.element_mut(0) {
+		element.merge_by_distance_spatial(DAffine2::IDENTITY, 0.0001);
 	}
 
 	result
 }
 
-// ─── Boolean Operations (shared helpers) ───
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use vector_types::kurbo::Point as KurboPoint;
 
-fn union<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
-	// Reverse the vector table rows so that the result style is the style of the first vector row
-	let mut vector_reversed = vector.rev();
-
-	let mut result_vector_table = Table::new_from_row(vector_reversed.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
-
-	// Loop over all vector table rows and union it with the result
-	let default = TableRow::default();
-	let mut second_vector = Some(vector_reversed.next().unwrap_or(default.as_ref()));
-	while let Some(lower_vector) = second_vector {
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
-
-		let result = &mut first_row.element;
-
-		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector.element, transform_of_lower_into_space_of_upper);
-
-		#[allow(unused_unsafe)]
-		let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
-		let boolean_operation_result = from_path(&boolean_operation_string);
-
-		result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
-		result.point_domain = boolean_operation_result.point_domain;
-		result.segment_domain = boolean_operation_result.segment_domain;
-		result.region_domain = boolean_operation_result.region_domain;
-
-		second_vector = vector_reversed.next();
+	fn circle_at(cx: f64, cy: f64, r: f64) -> Vec<CubicBez> {
+		let k = 0.5522847498 * r;
+		vec![
+			CubicBez::new((cx + r, cy), (cx + r, cy + k), (cx + k, cy + r), (cx, cy + r)),
+			CubicBez::new((cx, cy + r), (cx - k, cy + r), (cx - r, cy + k), (cx - r, cy)),
+			CubicBez::new((cx - r, cy), (cx - r, cy - k), (cx - k, cy - r), (cx, cy - r)),
+			CubicBez::new((cx, cy - r), (cx + k, cy - r), (cx + r, cy - k), (cx + r, cy)),
+		]
 	}
 
-	result_vector_table
-}
-
-fn to_path(vector: &Vector, transform: DAffine2) -> Vec<path_bool::PathSegment> {
-	let mut path = Vec::new();
-	for subpath in vector.stroke_bezier_paths() {
-		to_path_segments(&mut path, &subpath, transform);
-	}
-	path
-}
-
-fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<PointId>, transform: DAffine2) {
-	use path_bool::PathSegment;
-	let mut global_start = None;
-	let mut global_end = DVec2::ZERO;
-
-	for bezier in subpath.iter() {
-		const EPS: f64 = 1e-8;
-		let transform_point = |pos: DVec2| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS);
-
-		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(bezier);
-
-		let p0 = transform_point(p0);
-		let p1 = p1.map(transform_point);
-		let p2 = p2.map(transform_point);
-		let p3 = transform_point(p3);
-
-		if global_start.is_none() {
-			global_start = Some(p0);
-		}
-		global_end = p3;
-
-		let segment = match (p1, p2) {
-			(None, None) => PathSegment::Line(p0, p3),
-			(None, Some(p2)) | (Some(p2), None) => PathSegment::Quadratic(p0, p2, p3),
-			(Some(p1), Some(p2)) => PathSegment::Cubic(p0, p1, p2, p3),
-		};
-
-		path.push(segment);
-	}
-	if let Some(start) = global_start {
-		path.push(PathSegment::Line(global_end, start));
-	}
-}
-
-fn from_path(path_data: &[Path]) -> Vector {
-	const EPSILON: f64 = 1e-5;
-
-	fn is_close(a: DVec2, b: DVec2) -> bool {
-		(a - b).length_squared() < EPSILON * EPSILON
-	}
-
-	let mut all_subpaths = Vec::new();
-
-	for path in path_data.iter().filter(|path| !path.is_empty()) {
-		let cubics: Vec<[DVec2; 4]> = path.iter().map(|segment| segment.to_cubic()).collect();
-		let mut manipulators_list = Vec::new();
-		let mut current_start = None;
-
-		for (index, cubic) in cubics.iter().enumerate() {
-			let [start, handle1, handle2, end] = *cubic;
-
-			if current_start.is_none() || !is_close(start, current_start.unwrap()) {
-				// Start a new subpath
-				if !manipulators_list.is_empty() {
-					all_subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), true));
-				}
-				// Use the correct in-handle (None) and out-handle for the start point
-				manipulators_list.push(ManipulatorGroup::new(start, None, Some(handle1)));
-			} else {
-				// Update the out-handle of the previous point
-				if let Some(last) = manipulators_list.last_mut() {
-					last.out_handle = Some(handle1);
+	fn assert_closed_and_contains(subpath: &Subpath<PointId>, points: &[(f64, f64)]) {
+		assert!(subpath.closed());
+		assert!(subpath.manipulator_groups().len() >= 2);
+		// Sampled containment check against the hull polygon.
+		let poly: Vec<KurboPoint> = subpath.iter_closed().flat_map(|seg| (0..32).map(move |k| seg.eval(k as f64 / 32.0))).collect();
+		for &(px, py) in points {
+			// Point-in-polygon via ray casting.
+			let mut inside = false;
+			for i in 0..poly.len() {
+				let a = poly[i];
+				let b = poly[(i + 1) % poly.len()];
+				if (a.y > py) != (b.y > py) && px < a.x + (b.x - a.x) * (py - a.y) / (b.y - a.y) {
+					inside = !inside;
 				}
 			}
-
-			// Add the end point with the correct in-handle and out-handle (None)
-			manipulators_list.push(ManipulatorGroup::new(end, Some(handle2), None));
-
-			current_start = Some(end);
-
-			// Check if this is the last segment
-			if index == cubics.len() - 1 {
-				all_subpaths.push(Subpath::new(manipulators_list, true));
-				manipulators_list = Vec::new(); // Reset manipulators for the next path
-			}
+			assert!(inside, "point ({px}, {py}) not inside hull");
 		}
 	}
 
-	Vector::from_subpaths(all_subpaths, false)
-}
-
-type Path = Vec<path_bool::PathSegment>;
-
-fn boolean_union(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Union)
-}
-
-fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
-	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
-		Ok(results) => results,
-		Err(e) => {
-			let a_path = path_bool::path_to_path_data(&a, 0.001);
-			let b_path = path_bool::path_to_path_data(&b, 0.001);
-			log::error!("Boolean error {e:?} encountered while processing {a_path}\n {op:?}\n {b_path}");
-			Vec::new()
-		}
+	#[test]
+	fn hull_of_two_disjoint_circles_spans_both() {
+		let a = circle_at(0.0, 0.0, 1.0);
+		let b = circle_at(5.0, 0.0, 1.0);
+		let hull = compute_hull_subpath(&[&a, &b]).unwrap();
+		// Previously (union + Graham bridging) two disjoint shapes fell through
+		// the >= 3 anchor guard and the hull covered only one of them.
+		assert_closed_and_contains(&hull, &[(0.0, 0.0), (5.0, 0.0), (2.5, 0.5)]);
 	}
-}
 
-pub fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Intersection)
+	#[test]
+	fn hull_of_nested_circles_is_outer() {
+		let outer = circle_at(0.0, 0.0, 2.0);
+		let inner = circle_at(0.3, 0.1, 1.0);
+		let hull = compute_hull_subpath(&[&outer, &inner]).unwrap();
+		assert_closed_and_contains(&hull, &[(0.0, 0.0), (1.9, 0.0), (0.0, -1.9)]);
+	}
+
+	#[test]
+	fn hull_handles_degenerate_line_parameterization() {
+		// Rectangle with zero-derivative endpoints, as produced by real paths.
+		let rect = vec![
+			CubicBez::new((0.0, 0.0), (0.0, 0.0), (4.0, 0.0), (4.0, 0.0)),
+			CubicBez::new((4.0, 0.0), (4.0, 0.0), (4.0, 2.0), (4.0, 2.0)),
+			CubicBez::new((4.0, 2.0), (4.0, 2.0), (0.0, 2.0), (0.0, 2.0)),
+			CubicBez::new((0.0, 2.0), (0.0, 2.0), (0.0, 0.0), (0.0, 0.0)),
+		];
+		let hull = compute_hull_subpath(&[&rect]).unwrap();
+		assert_closed_and_contains(&hull, &[(2.0, 1.0), (0.1, 0.1), (3.9, 1.9)]);
+	}
 }
