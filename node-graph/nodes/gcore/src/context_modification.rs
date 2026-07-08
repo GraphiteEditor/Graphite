@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
@@ -54,7 +54,6 @@ async fn context_modification<T>(
 		Context -> List<Color>,
 		Context -> List<Artboard>,
 		Context -> List<Gradient>,
-		Context -> AttributeDyn,
 		Context -> AttributeValueDyn,
 		Context -> ListDyn,
 	)]

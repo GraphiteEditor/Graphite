@@ -10,7 +10,7 @@ use graphene_std::application_io::Texture;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
-use graphene_std::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use graphene_std::list::{AttributeValueDyn, Item, List, ListDyn};
 #[cfg(target_family = "wasm")]
 use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
 #[cfg(feature = "gpu")]
@@ -51,19 +51,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
 		// Type-erased attribute conversions for the `Attach Attribute` node, so it monomorphizes only over the destination `List` type.
-		convert_node!(from: List<Artboard>, to: AttributeDyn),
-		convert_node!(from: List<Graphic>, to: AttributeDyn),
-		convert_node!(from: List<Vector>, to: AttributeDyn),
-		convert_node!(from: List<Raster<CPU>>, to: AttributeDyn),
-		convert_node!(from: List<Color>, to: AttributeDyn),
-		convert_node!(from: List<Gradient>, to: AttributeDyn),
-		convert_node!(from: List<f64>, to: AttributeDyn),
-		convert_node!(from: List<bool>, to: AttributeDyn),
-		convert_node!(from: List<String>, to: AttributeDyn),
-		convert_node!(from: List<DAffine2>, to: AttributeDyn),
-		convert_node!(from: List<BlendMode>, to: AttributeDyn),
-		convert_node!(from: List<graphene_std::vector::style::GradientType>, to: AttributeDyn),
-		convert_node!(from: List<graphene_std::vector::style::GradientSpreadMethod>, to: AttributeDyn),
 		convert_node!(from: List<Artboard>, to: ListDyn),
 		convert_node!(from: List<Graphic>, to: ListDyn),
 		convert_node!(from: List<Vector>, to: ListDyn),
@@ -182,7 +169,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BlendMode>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<graphene_std::vector::style::GradientType>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<graphene_std::vector::style::GradientSpreadMethod>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Graphic]),
@@ -222,7 +208,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => &PlatformEditorApi, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderOutput, Context => graphene_std::ContextFeatures]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeDyn, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => ListDyn, Context => graphene_std::ContextFeatures]),
 		#[cfg(target_family = "wasm")]
@@ -271,7 +256,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<u32>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<u64>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeDyn]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
 		#[cfg(target_family = "wasm")]

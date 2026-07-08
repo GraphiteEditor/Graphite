@@ -361,76 +361,6 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	}
 }
 
-// ============
-// AttributeDyn
-// ============
-
-/// Type-erased list of attribute values, used as a node graph parameter type.
-/// Lets a node accept any `List<U>` source via the auto-inserted `Convert<AttributeDyn, ()>`
-/// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
-pub struct AttributeDyn(pub Box<dyn AnyAttribute>);
-
-impl AttributeDyn {
-	/// Number of values in this attribute.
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	/// Whether this attribute has zero values.
-	pub fn is_empty(&self) -> bool {
-		self.0.len() == 0
-	}
-
-	/// Builds a new attribute matching `target_len` items, taking values from this attribute (wrapping if shorter, truncating if longer).
-	pub fn cloned_to_length(&self, key: &str, target_len: usize) -> Box<dyn AnyAttribute> {
-		let mut result = self.0.new_with_defaults(0);
-		let source_len = self.0.len();
-		if source_len == 0 {
-			pad_with_implicit_default(key, &mut result, target_len);
-			return result;
-		}
-		for i in 0..target_len {
-			let value = self.0.clone_value(i % source_len).expect("source_len > 0");
-			result.push(value);
-		}
-		result
-	}
-}
-
-impl Clone for AttributeDyn {
-	fn clone(&self) -> Self {
-		Self(self.0.clone_box())
-	}
-}
-
-impl Default for AttributeDyn {
-	fn default() -> Self {
-		Self(Box::new(Attribute::<bool>(Vec::new())))
-	}
-}
-
-impl Debug for AttributeDyn {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "AttributeDyn(len: {})", self.0.len())
-	}
-}
-
-impl PartialEq for AttributeDyn {
-	fn eq(&self, other: &Self) -> bool {
-		self.0.eq_dyn(&*other.0)
-	}
-}
-
-impl CacheHash for AttributeDyn {
-	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.0.cache_hash_dyn(state);
-	}
-}
-
-unsafe impl StaticType for AttributeDyn {
-	type Static = Self;
-}
-
 // ==================
 // AttributeValueDyn
 // ==================
@@ -1068,14 +998,6 @@ impl<T> List<T> {
 	/// Sets the attribute value at the given item index and key, creating the attribute with defaults if it doesn't exist.
 	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
 		self.attributes.set_value(key, index, value);
-	}
-
-	/// Replaces (or adds) an attribute from a type-erased source. The source is wrapped or truncated to match this list's item count.
-	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, source: AttributeDyn) {
-		let key = key.into();
-		self.attributes.attributes.retain(|(k, _)| k != &key);
-		let new_attribute = source.cloned_to_length(&key, self.element.len());
-		self.attributes.attributes.push((key, new_attribute));
 	}
 
 	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).

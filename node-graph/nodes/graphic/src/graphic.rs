@@ -1,5 +1,5 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
@@ -226,42 +226,6 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		let v = value.eval(owned_ctx.into_context()).await;
 		content.set_attribute_value_dyn(&name, index, v);
 	}
-	content
-}
-
-/// Sets a named attribute on the primary list, with each value taken from the corresponding item's element in the source list (paired by index, wrapping if the source has fewer items).
-/// The source is type-erased into an `AttributeDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
-#[node_macro::node(category("Attributes: Write"))]
-fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
-	_: impl Ctx,
-	/// The `List` to attach the new attribute to.
-	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<f64>,
-		List<bool>,
-		List<String>,
-		List<DAffine2>,
-		List<BlendMode>,
-		List<GradientType>,
-		List<GradientSpreadMethod>,
-	)]
-	content: List<T>,
-	/// The source values to attach.
-	#[expose]
-	source: AttributeDyn,
-	/// The name to assign to the new destination attribute.
-	name: Item<String>,
-) -> List<T> {
-	let mut content = content;
-	if source.is_empty() {
-		return content;
-	}
-	content.set_attribute_dyn(name.into_element(), source);
 	content
 }
 

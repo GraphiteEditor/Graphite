@@ -2717,6 +2717,19 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
+	// The removed Attach Attribute node (merged into Write Attribute per audit resolution 6) degrades to a passthrough of its
+	// content: its eager whole-list source input cannot be mechanically rewired as Write Attribute's lazy per-item value producer.
+	if let Some(DefinitionIdentifier::ProtoNode(identifier)) = document.network_interface.reference(node_id, network_path)
+		&& identifier.as_str().ends_with("::AttachAttributeNode")
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(content) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), content.clone(), network_path);
+		}
+	}
+
 	Some(())
 }
 

@@ -1,5 +1,5 @@
 use crate::Node;
-use crate::list::{Attribute, AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use crate::list::{AttributeValueDyn, Item, List, ListDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
 use graphene_hash::CacheHash;
@@ -69,16 +69,6 @@ impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
 			})
 			.collect();
 		list
-	}
-}
-
-/// Wraps each row's element into a type-erased attribute. Lets nodes that accept a source attribute
-/// from any `List<U>` express their signature as `AttributeDyn` and avoid monomorphizing
-/// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
-impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
-		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
-		AttributeDyn(Box::new(Attribute(values)))
 	}
 }
 
