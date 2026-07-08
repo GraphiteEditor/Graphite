@@ -1,4 +1,4 @@
 #![windows_subsystem = "windows"]
-fn main() {
-	graphite_desktop::start();
+fn main() -> std::process::ExitCode {
+	graphite_desktop::start()
 }

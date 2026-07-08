@@ -28,11 +28,15 @@ pub(crate) fn cef_path() -> PathBuf {
 	PathBuf::from(env!("CEF_PATH"))
 }
 
-pub(crate) fn build_bin(package: &str, bin: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
+pub(crate) fn build_bin(package: &str, bin: Option<&str>, features: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
 	let mut args = vec!["build", "--package", package, "--profile", profile_name()];
 	if let Some(bin) = bin {
 		args.push("--bin");
 		args.push(bin);
+	}
+	if let Some(features) = features {
+		args.push("--features");
+		args.push(features);
 	}
 	run_command("cargo", &args)?;
 	let profile_path = profile_path();

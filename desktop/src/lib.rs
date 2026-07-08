@@ -1,17 +1,17 @@
 use crate::app::App;
-use crate::cef::CefHandler;
 use crate::cli::Cli;
 use crate::consts::APP_LOCK_FILE_NAME;
-use crate::event::CreateAppEventSchedulerEventLoopExt;
+use crate::event::{AppEvent, CreateAppEventSchedulerEventLoopExt};
 use clap::Parser;
+use graphite_desktop_ui::{Acceleration, UiConfig, UiContext, UiEvent, UiSetupResult};
 use std::io::Write;
+use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
 pub(crate) use graphite_desktop_wrapper as wrapper;
 
 mod app;
-mod cef;
 mod cli;
 mod dirs;
 mod event;
@@ -24,18 +24,17 @@ mod window;
 
 pub(crate) mod consts;
 
-pub fn start() {
+pub fn start() -> ExitCode {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
-	let cef_context_builder = cef::CefContextBuilder::<CefHandler>::new();
-
-	if cef_context_builder.is_sub_process() {
-		// We are in a CEF subprocess
-		// This will block until the CEF subprocess quits
-		let error = cef_context_builder.execute_sub_process();
-		tracing::warn!("Cef subprocess failed with error: {error}");
-		return;
-	}
+	let ui_context = match UiContext::setup() {
+		UiSetupResult::Ready(context) => context,
+		UiSetupResult::Helper(code) => return code,
+		UiSetupResult::Failed => {
+			eprintln!("Failed to set up the UI runtime");
+			return ExitCode::FAILURE;
+		}
+	};
 
 	let cli = Cli::parse();
 
@@ -63,13 +62,13 @@ pub fn start() {
 				&& let Err(error) = socket::send(socket::Message::OpenFiles(cli.files))
 			{
 				tracing::error!("Failed to send socket message to running instance: {}", error);
-				std::process::exit(1);
+				return ExitCode::FAILURE;
 			}
-			return;
+			return ExitCode::SUCCESS;
 		}
 	};
 
-	dirs::app_tmp_dir_cleanup();
+	dirs::clear_dir(&graphite_desktop_ui::temp_dir_root());
 
 	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
 	dirs::delete_old_cef_browser_directory();
@@ -87,8 +86,6 @@ pub fn start() {
 
 	let _socket_handle = socket::start(app_event_scheduler.clone());
 
-	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
-
 	if cli.disable_ui_acceleration {
 		prefs.disable_ui_acceleration = true;
 	}
@@ -96,26 +93,45 @@ pub fn start() {
 		println!("UI acceleration is disabled");
 	}
 
-	let cef_handler = cef::CefHandler::new(app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.create(cef_handler, wgpu_context.clone(), prefs.disable_ui_acceleration) {
-		Ok(context) => {
-			tracing::info!("CEF initialized successfully");
-			context
-		}
-		Err(cef::InitError::InitializationFailureCode(code)) => {
-			panic!("CEF initialization failed with code: {code}");
-		}
-		Err(cef::InitError::BrowserCreationFailed) => {
-			panic!("Failed to create CEF browser");
-		}
-		Err(cef::InitError::RequestContextCreationFailed) => {
-			panic!("Failed to create CEF request context");
-		}
-	};
+	let acceleration = if prefs.disable_ui_acceleration { Acceleration::Disabled } else { Acceleration::Auto };
+	let ui_context = ui_context.start(UiConfig { acceleration }).unwrap_or_else(|error| panic!("Failed to start the UI runtime: {error}"));
+	let ui = ui_context
+		.instance(&wgpu_context.device, &wgpu_context.queue)
+		.unwrap_or_else(|error| panic!("Failed to start the UI: {error}"));
+	tracing::info!("UI runtime started successfully");
 
-	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli.files);
+	{
+		let ui = ui.clone();
+		let scheduler = app_event_scheduler.clone();
+		std::thread::Builder::new()
+			.name("ui-events".to_string())
+			.spawn(move || {
+				while let Some(event) = ui.recv() {
+					match event {
+						UiEvent::Ready => scheduler.schedule(AppEvent::WebCommunicationInitialized),
+						UiEvent::Frame(texture) => scheduler.schedule(AppEvent::UiUpdate(texture)),
+						UiEvent::Cursor(cursor) => scheduler.schedule(AppEvent::CursorChange(cursor)),
+						UiEvent::Message(message) => match wrapper::deserialize_editor_message(&message) {
+							Some(message) => scheduler.schedule(AppEvent::DesktopWrapperMessage(message)),
+							None => tracing::error!("Failed to deserialize web message"),
+						},
+						UiEvent::InitFailed(error) => {
+							tracing::error!("UI initialization failed: {error}");
+							scheduler.schedule(AppEvent::UiCrashed);
+						}
+						UiEvent::Crashed => scheduler.schedule(AppEvent::UiCrashed),
+					}
+				}
+			})
+			.expect("Failed to spawn the UI event bridge thread");
+	}
+
+	let app = App::new(ui.clone(), wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli.files);
 
 	let exit_reason = app.run(event_loop);
+
+	// ui needs to be shutdown before restarting
+	ui.shutdown();
 
 	// If exiting due to a UI acceleration failure, update preferences to disable it for next launch
 	if matches!(exit_reason, app::ExitReason::UiAccelerationFailure) {
@@ -149,10 +165,7 @@ pub fn start() {
 	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
 	#[cfg(target_os = "windows")]
 	std::process::exit(0);
-}
 
-pub fn start_helper() {
-	let cef_context_builder = cef::CefContextBuilder::<CefHandler>::new_helper();
-	assert!(cef_context_builder.is_sub_process());
-	cef_context_builder.execute_sub_process();
+	#[cfg(not(target_os = "windows"))]
+	ExitCode::SUCCESS
 }

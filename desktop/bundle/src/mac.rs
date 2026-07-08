@@ -18,8 +18,8 @@ const GRAPHITE_FILE_EXTENSION: &str = "graphite";
 const GRAPHITE_MIME_TYPE: &str = "application/graphite+json";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
-	let app_bin = build_bin("graphite-desktop-platform-mac", None)?;
-	let helper_bin = build_bin("graphite-desktop-platform-mac", Some("helper"))?;
+	let app_bin = build_bin("graphite-desktop-platform-mac", None, Some("main"))?;
+	let helper_bin = build_bin("graphite-desktop-platform-mac", Some("helper"), Some("helper"))?;
 
 	let profile_path = profile_path();
 	let app_dir = bundle(&profile_path, &app_bin, &helper_bin);
