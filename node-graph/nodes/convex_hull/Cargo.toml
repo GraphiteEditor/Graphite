@@ -12,11 +12,7 @@ dyn-any = { workspace = true }
 core-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
-glam = { workspace = true }
-specta = { workspace = true }
-log = { workspace = true }
-path-bool = { workspace = true }
-serde = { workspace = true }
 vector-types = { workspace = true }
+glam = { workspace = true }
 kurbo = { workspace = true }
-convex_hull = { path = "../../../../convex_hull" }
+poly-cool = { workspace = true }
