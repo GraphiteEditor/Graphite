@@ -415,7 +415,7 @@ mod test {
 		let image = brush(
 			(),
 			&BrushCache::default(),
-			List::new_from_element(Raster::new_cpu(Image::<Color>::default())),
+			Item::new_from_element(Raster::new_cpu(Image::<Color>::default())),
 			List::new_from_element(BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
@@ -429,6 +429,6 @@ mod test {
 			}),
 		)
 		.await;
-		assert_eq!(image.element(0).unwrap().width, 20);
+		assert_eq!(image.element().width, 20);
 	}
 }
