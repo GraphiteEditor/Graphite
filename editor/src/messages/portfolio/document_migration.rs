@@ -2737,6 +2737,12 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 mod tests {
 	use super::*;
 
+	// The removed-definition blocks above abort silently via `?` if their swap target ever leaves the catalog
+	#[test]
+	fn removed_definition_swap_targets_resolve() {
+		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
+	}
+
 	#[test]
 	fn test_no_duplicate_node_replacements() {
 		let mut hashmap = HashMap::<ProtoNodeIdentifier, u32>::new();
