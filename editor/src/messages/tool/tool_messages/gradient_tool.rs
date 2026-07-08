@@ -843,6 +843,39 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	});
 }
 
+/// Send only the chain write operations for fields that changed from the caller-provided snapshot.
+fn dispatch_changed_gradient_chain_writes(
+	layer: LayerNodeIdentifier,
+	old_gradient: &GradientStops,
+	old_appearance: GradientAppearance,
+	gradient: &GradientStops,
+	appearance: GradientAppearance,
+	responses: &mut VecDeque<Message>,
+) {
+	if old_gradient != gradient {
+		responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: gradient.clone() });
+	}
+
+	if old_appearance.transform != appearance.transform {
+		responses.add(GraphOperationMessage::GradientTransformSet {
+			layer,
+			transform: appearance.transform,
+		});
+	}
+	if old_appearance.gradient_type != appearance.gradient_type {
+		responses.add(GraphOperationMessage::GradientTypeSet {
+			layer,
+			gradient_type: appearance.gradient_type,
+		});
+	}
+	if old_appearance.spread_method != appearance.spread_method {
+		responses.add(GraphOperationMessage::GradientSpreadMethodSet {
+			layer,
+			spread_method: appearance.spread_method,
+		});
+	}
+}
+
 impl GradientTool {
 	/// Get the gradient type of the selected gradient (if it exists)
 	pub fn selected_gradient(&self) -> Option<GradientType> {
@@ -1333,7 +1366,7 @@ impl Fsm for GradientToolFsmState {
 				let mut transaction_started = false;
 				let mut pending_transform_materialization = None;
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
-					let Some((gradient, mut appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
+					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
 					let is_gradient_chain = source == GradientSource::Chain;
@@ -1342,10 +1375,6 @@ impl Fsm for GradientToolFsmState {
 					} else {
 						None
 					};
-					// if let Some(transform) = transform_to_materialize {
-					// 	// GraphOperation is queued later, so it won't affect this PointerDown immediately. Patch the local tool state too.
-					// 	appearance.transform = transform;
-					// }
 					let gradient_space_transform = gradient_space_transform(layer, document);
 					let unit_to_viewport = gradient_space_transform * appearance.transform;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
@@ -1890,11 +1919,14 @@ fn apply_gradient_update(
 				responses.add(DocumentMessage::StartTransaction);
 				transaction_started = true;
 			}
+
+			let old_gradient = gradient.clone();
+			let old_appearance = appearance.clone();
 			update((&mut gradient, &mut appearance));
 
 			// Only check for the gradient list once we know we'll write back, since this is a graph traversal per layer
 			if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
-				dispatch_gradient_chain_writes(layer, &gradient, appearance, responses);
+				dispatch_changed_gradient_chain_writes(layer, &old_gradient, old_appearance, &gradient, appearance, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
