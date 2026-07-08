@@ -201,6 +201,22 @@ impl NodeNetworkInterface {
 				concrete!(())
 			}
 		};
+
+		// A List-typed default drops to its Item counterpart (when that has a default value and the connector accepts rank 0),
+		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0
+		let guaranteed_name = guaranteed_type.nested_type().identifier_name();
+		if let Some(element) = guaranteed_name.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')) {
+			let item_name = format!("Item<{element}>");
+			if let Some(item_type) = self
+				.potential_valid_input_types(input_connector, network_path)
+				.into_iter()
+				.find(|ty| ty.nested_type().identifier_name() == item_name)
+				&& let Some(item_default) = TaggedValue::from_type(&item_type)
+			{
+				return item_default;
+			}
+		}
+
 		TaggedValue::from_type_or_none(&guaranteed_type)
 	}
 
