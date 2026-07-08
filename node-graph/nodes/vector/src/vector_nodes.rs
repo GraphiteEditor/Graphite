@@ -1388,17 +1388,13 @@ async fn path_is_closed(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vector>, mapped: impl Node<Context<'static>, Output = Item<DVec2>>) -> List<Vector> {
+async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Item<Vector>, mapped: impl Node<Context<'static>, Output = Item<DVec2>>) -> Item<Vector> {
 	let mut content = content;
-	let mut index = 0;
 
-	for vector in content.iter_element_values_mut() {
-		for (_, position) in vector.point_domain.positions_mut() {
-			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
-			index += 1;
+	for (index, (_, position)) in content.element_mut().point_domain.positions_mut().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
 
-			*position = mapped.eval(owned_ctx.into_context()).await.into_element();
-		}
+		*position = mapped.eval(owned_ctx.into_context()).await.into_element();
 	}
 
 	content
