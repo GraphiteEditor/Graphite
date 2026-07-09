@@ -1,6 +1,7 @@
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
 use crate::wrapper::messages::MenuItem;
+use crate::wrapper::{WgpuInstance, WgpuSurface};
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
@@ -86,8 +87,8 @@ impl Window {
 		self.winit_window.request_redraw();
 	}
 
-	pub(crate) fn create_surface(&self, instance: &wgpu::Instance) -> wgpu::Surface<'static> {
-		instance.create_surface(self.winit_window.clone()).unwrap()
+	pub(crate) fn create_surface(&self, instance: &WgpuInstance) -> WgpuSurface {
+		instance.create_surface(self.winit_window.clone()).expect("Failed to create surface")
 	}
 
 	pub(crate) fn pre_present_notify(&self) {

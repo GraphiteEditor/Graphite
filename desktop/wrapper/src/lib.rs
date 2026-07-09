@@ -11,8 +11,11 @@ pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
+pub use wgpu_executor::WgpuCurrentSurfaceTexture;
 pub use wgpu_executor::WgpuExecutor;
 pub use wgpu_executor::WgpuFeatures;
+pub use wgpu_executor::WgpuInstance;
+pub use wgpu_executor::WgpuSurface;
 
 mod handle_desktop_wrapper_message;
 mod intercept_editor_message;
