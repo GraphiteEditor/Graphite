@@ -42,6 +42,7 @@ macro_rules! for_each_type_default {
 		$action!(List<Gradient>);
 		$action!(Item<Vector>);
 		$action!(Item<f64>);
+		$action!(Item<Raster<CPU>>);
 		$action!(DocumentNode);
 		$action!(Resource);
 	};

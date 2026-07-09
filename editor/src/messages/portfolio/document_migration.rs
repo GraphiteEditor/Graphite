@@ -2158,6 +2158,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 	}
 
+	// A brush node saved before `Item<Raster<CPU>>` had a default stored its unconnected background as the invalid `()`,
+	// which fails type resolution against the raster primary; adopt the definition's empty-raster default instead.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::None)) {
+		let default_background = resolve_document_node_type(&reference)?.node_template.document_node.inputs.first()?.clone();
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), default_background, network_path);
+	}
+
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::RemoveHandlesNode")) {
 		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::auto_tangents::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
