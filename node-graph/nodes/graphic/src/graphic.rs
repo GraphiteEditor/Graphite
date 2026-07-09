@@ -1,7 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
@@ -48,8 +47,6 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<f64>,
-		List<u8>,
-		List<NodeId>,
 		List<Color>,
 		List<Gradient>,
 		List<Vector>,

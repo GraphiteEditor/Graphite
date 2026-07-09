@@ -49,7 +49,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
-		// Type-erased attribute conversions for the `Attach Attribute` node, so it monomorphizes only over the destination `List` type.
+		// Type-erased list conversions for the `Read Attribute` and `Count Elements` nodes, so they need no monomorphization over the content type.
 		convert_node!(from: List<Artboard>, to: ListDyn),
 		convert_node!(from: List<Graphic>, to: ListDyn),
 		convert_node!(from: List<Vector>, to: ListDyn),
@@ -61,7 +61,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<f64>, to: ListDyn),
 		convert_node!(from: List<bool>, to: ListDyn),
 		convert_node!(from: List<String>, to: ListDyn),
-		convert_node!(from: List<u8>, to: ListDyn),
 		convert_node!(from: List<DAffine2>, to: ListDyn),
 		convert_node!(from: List<BlendMode>, to: ListDyn),
 		convert_node!(from: List<graphene_std::vector::style::GradientType>, to: ListDyn),
@@ -162,7 +161,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<NodeIdPath>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<f64>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DVec2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<u8>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<bool>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DAffine2>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BlendMode>]),
@@ -231,7 +229,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<NodeIdPath>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<f64>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<DVec2>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<u8>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<bool>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<DAffine2>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<BlendMode>]),
