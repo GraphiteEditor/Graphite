@@ -205,7 +205,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				},
 				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
 				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
-				// without one it keeps the declared `Item<T>` wire type, and `node_inputs` peels to `T` if no `Item` type default exists
+				// without one it keeps the declared `Item<T>` wire type tagged with the element's alias (so the rank-0 Properties widget still dispatches, e.g. `Progression`), and `node_inputs` peels to `T` if no `Item` type default exists
 				None => match peel_item(ty) {
 					Some(element_ty)
 						if !fn_generics
@@ -214,7 +214,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					{
 						match value_source {
 							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element_ty))),
-							_ => quote!(Some(concrete!(#ty))),
+							_ => quote!(Some(concrete!(#ty, #element_ty))),
 						}
 					}
 					_ => quote!(None),

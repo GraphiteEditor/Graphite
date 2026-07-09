@@ -2365,10 +2365,14 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
+						// Clone to end the `network_interface` borrow held via `implementation`, freeing the mutable borrow `input_type` needs below
+						let proto_node_identifier = proto_node_identifier.clone();
+
+						let mut default_type = None;
 						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
-							.get(proto_node_identifier)
+							.get(&proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = NumberOptions {
@@ -2381,12 +2385,40 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
 							step = field.number_step;
-							if let Some(ref default) = field.default_type {
-								break 'early_return default.clone();
-							}
+							default_type = field.default_type.clone();
 						}
 
-						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
+						if let Some(default) = default_type {
+							// A ranked `Item<T>`/`List<T>` connector's `default_type` is the whole-list wire type, but the widget is chosen by the rank-0 element `T` that the resolved input surfaces; fall back to the wire type when nothing rank-0 resolved
+							let wire_ranked = {
+								let name = default.nested_type().identifier_name();
+								name.starts_with("Item<") || name.starts_with("List<")
+							};
+							if wire_ranked
+								&& let Some(resolved) = context
+									.network_interface
+									.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path)
+									.compiled_nested_type()
+									.cloned()
+							{
+								let resolved_name = resolved.nested_type().identifier_name();
+								if !resolved_name.starts_with("Item<") && !resolved_name.starts_with("List<") && resolved_name != "()" {
+									// Carry the element alias (e.g. "Progression") from the wire type onto the resolved element so aliased widgets still dispatch
+									let mut resolved = resolved;
+									if let (Type::Concrete(resolved_descriptor), Type::Concrete(default_descriptor)) = (&mut resolved, &default)
+										&& resolved_descriptor.alias.is_none()
+									{
+										resolved_descriptor.alias = default_descriptor.alias.clone();
+									}
+
+									break 'early_return resolved;
+								}
+							}
+
+							break 'early_return default;
+						}
+
+						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(&proto_node_identifier) else {
 							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
 							return Vec::new();
 						};
