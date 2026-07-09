@@ -43,6 +43,11 @@ macro_rules! for_each_type_default {
 		$action!(Item<Vector>);
 		$action!(Item<f64>);
 		$action!(Item<Raster<CPU>>);
+		$action!(Item<Graphic>);
+		$action!(Item<Color>);
+		$action!(Item<Gradient>);
+		$action!(Item<Artboard>);
+		$action!(Item<String>);
 		$action!(DocumentNode);
 		$action!(Resource);
 	};
