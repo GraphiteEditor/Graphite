@@ -1,10 +1,12 @@
 pub mod artboard;
 pub mod graphic;
+pub mod filter;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
 pub use core_types;
 pub use raster_types;
 pub use vector_types;
+pub use filter::SvgFilterEffect;
 
 // Re-export commonly used types at the crate root
 pub use artboard::Artboard;

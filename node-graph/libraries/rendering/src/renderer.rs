@@ -7,7 +7,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_FILTER_EFFECTS, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -21,6 +21,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
+use graphic_types::SvgFilterEffect;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -266,6 +267,29 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 		let comma = if i == 5 { "" } else { "," };
 		val + &(num + comma)
 	}) + ")"
+}
+
+fn write_svg_filter_def(svg_defs: &mut String, effects: &[SvgFilterEffect]) -> Option<String> {
+	if effects.is_empty() {
+		return None;
+	}
+
+	let id = format!("filter-{}", generate_uuid());
+	write!(svg_defs, r#"<filter id="{id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">"#).unwrap();
+
+	let mut input = "SourceGraphic".to_string();
+	for (index, effect) in effects.iter().enumerate() {
+		let result = format!("effect{index}");
+		match effect {
+			SvgFilterEffect::GaussianBlur { std_deviation_x, std_deviation_y } => {
+				write!(svg_defs, r#"<feGaussianBlur in="{input}" stdDeviation="{std_deviation_x} {std_deviation_y}" result="{result}"/>"#).unwrap();
+			}
+		}
+		input = result;
+	}
+
+	svg_defs.push_str("</filter>");
+	Some(id)
 }
 
 /// `(max, min)` factors by which a unit vector is stretched under `transform`'s linear part — the
@@ -835,6 +859,7 @@ impl Render for List<Graphic> {
 		for index in 0..self.len() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let filter_effects: Vec<SvgFilterEffect> = self.attribute_cloned_or_default(ATTR_FILTER_EFFECTS, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
@@ -1061,9 +1086,9 @@ impl Render for List<Vector> {
 			let Some(vector) = self.element(index) else { continue };
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let filter_effects: Vec<SvgFilterEffect> = self.attribute_cloned_or_default(ATTR_FILTER_EFFECTS, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
@@ -1159,6 +1184,10 @@ impl Render for List<Vector> {
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push(ATTR_TRANSFORM, matrix);
+				}
+
+				if let Some(filter_id) = write_svg_filter_def(&mut attributes.0.svg_defs, &filter_effects) {
+					attributes.push("filter", format!("url(#{filter_id})"));
 				}
 
 				let defs = &mut attributes.0.svg_defs;

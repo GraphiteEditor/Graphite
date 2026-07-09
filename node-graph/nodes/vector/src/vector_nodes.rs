@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
+use core_types::list::{ATTR_FILL, ATTR_FILTER_EFFECTS, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -15,6 +15,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::SvgFilterEffect;
 use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
@@ -229,6 +230,48 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	});
 	content
 }
+
+trait FilterListIterMut {
+	fn push_filter_effect(&mut self, effect: SvgFilterEffect);
+}
+
+impl FilterListIterMut for List<Vector> {
+	fn push_filter_effect(&mut self, effect: SvgFilterEffect) {
+		for effects in self.iter_attribute_values_mut_or_default::<Vec<SvgFilterEffect>>(ATTR_FILTER_EFFECTS) {
+			effects.push(effect.clone());
+		}
+	}
+}
+
+impl FilterListIterMut for List<Graphic> {
+	fn push_filter_effect(&mut self, effect: SvgFilterEffect) {
+		for graphic in self.iter_element_values_mut() {
+			let Some(vector_list) = graphic.as_vector_mut() else { continue };
+			vector_list.push_filter_effect(effect.clone());
+		}
+	}
+}
+
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+async fn svg_gaussian_blur<T>(
+	_: impl Ctx,
+	#[implementations(List<Vector>, List<Graphic>)]
+	mut content: T,
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	std_deviation: PixelLength,
+) -> T
+where
+	T: FilterListIterMut + 'n + Send,
+{
+	content.push_filter_effect(SvgFilterEffect::GaussianBlur {
+		std_deviation_x: std_deviation,
+		std_deviation_y: std_deviation,
+	});
+	content
+}
+
 
 trait IntoF64Vec {
 	fn into_vec(self) -> Vec<f64>;

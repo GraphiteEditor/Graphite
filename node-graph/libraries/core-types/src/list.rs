@@ -14,6 +14,8 @@ use std::fmt::Debug;
 pub const ATTR_TRANSFORM: &str = "transform";
 /// Item's `BlendMode`, controlling how it composites with content beneath it.
 pub const ATTR_BLEND_MODE: &str = "blend_mode";
+/// Item's SVG-compatible filter effects, applied in order during rendering.
+pub const ATTR_FILTER_EFFECTS: &str = "filter_effects";
 /// Item's opacity multiplier (`f64`, implicit default `1.`).
 /// Composed multiplicatively through nested groups. Affects content clipped to the item.
 pub const ATTR_OPACITY: &str = "opacity";
