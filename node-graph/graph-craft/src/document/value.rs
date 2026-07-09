@@ -11,6 +11,7 @@ use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDe
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_animation::AnimationCurve;
 use graphene_application_io::resource::ResourceHash;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::style::GradientStops;
@@ -410,6 +411,7 @@ tagged_value! {
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(graphene_application_io::resource::ResourceId),
+	AnimationCurve(AnimationCurve),
 	// ==========
 	// ENUM TYPES
 	// ==========

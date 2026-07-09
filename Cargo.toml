@@ -74,6 +74,7 @@ preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 graphene-application-io = { path = "node-graph/libraries/application-io" }
 graphene-resource = { path = "node-graph/libraries/resources" }
+graphene-animation = { path = "node-graph/libraries/animation" }
 core-types = { path = "node-graph/libraries/core-types" }
 no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }

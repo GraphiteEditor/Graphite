@@ -23,6 +23,7 @@ impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
 		self.replace_resource_inputs(network, resolve_resource)?;
+		self.replace_animation_curve_inputs(network);
 		self.expand_network(network);
 		Ok(())
 	}
@@ -41,47 +42,103 @@ impl Preprocessor {
 		}
 	}
 
-	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
-		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
-		let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
+	/// Visits each node in the network and passes it to the visitor closure
+	fn visit_nodes(&self, network: &mut NodeNetwork, mut visitor: impl FnMut(&mut DocumentNode, &mut Vec<(NodeId, DocumentNode)>) -> Result<(), PreprocessorError>) -> Result<(), PreprocessorError> {
+		// Inner function avoids type recursion issues with dyn
+		fn inner(network: &mut NodeNetwork, visitor: &mut dyn FnMut(&mut DocumentNode, &mut Vec<(NodeId, DocumentNode)>) -> Result<(), PreprocessorError>) -> Result<(), PreprocessorError> {
+			let mut inserts = Vec::new();
 
-		for node in network.nodes.values_mut() {
-			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				self.replace_resource_inputs(nested, resolve_resource)?;
-				continue;
+			for node in network.nodes.values_mut() {
+				if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+					inner(nested, visitor)?;
+					continue;
+				}
+
+				visitor(node, &mut inserts)?;
 			}
 
-			if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == platform_application_io::resource::IDENTIFIER) {
-				continue;
+			for (id, node) in inserts {
+				network.nodes.insert(id, node);
+			}
+
+			Ok(())
+		}
+
+		inner(network, &mut visitor)
+	}
+
+	/// Visits each input, excluding nodes with a given identifier
+	fn visit_inputs_exclude(
+		&self,
+		network: &mut NodeNetwork,
+		exclude: &ProtoNodeIdentifier,
+		mut visitor: impl FnMut(&mut NodeInput, &mut Vec<(NodeId, DocumentNode)>) -> Result<(), PreprocessorError>,
+	) -> Result<(), PreprocessorError> {
+		self.visit_nodes(network, |node, inserts| {
+			if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if identifier == exclude) {
+				return Ok(());
 			}
 
 			for input in node.inputs.iter_mut() {
-				let NodeInput::Value { tagged_value, .. } = input else { continue };
-				let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
-
-				let Some(hash) = resolve_resource(resource_id) else {
-					return Err(PreprocessorError::ResourceNotFound(resource_id));
-				};
-
-				let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
-					let id = NodeId::new();
-					let resource_node = DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
-						implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
-						..Default::default()
-					};
-					new_resource_nodes.push((id, resource_node));
-					id
-				});
-
-				*input = NodeInput::node(resource_id, 0);
+				visitor(input, inserts)?;
 			}
-		}
 
-		for (id, node) in new_resource_nodes {
-			network.nodes.insert(id, node);
-		}
+			Ok(())
+		})
+	}
+
+	/// Replace every `TaggedValue::AnimationCurve(curve)` input with a reference to a freshly inserted `eval_curve` proto node.
+	fn replace_animation_curve_inputs(&self, network: &mut NodeNetwork) {
+		self.visit_inputs_exclude(network, &graphene_core::animation::eval_curve::IDENTIFIER, |input, new_curve_nodes| {
+			let NodeInput::Value { tagged_value, .. } = input else { return Ok(()) };
+			let TaggedValue::AnimationCurve(ref curve) = **tagged_value else { return Ok(()) };
+
+			let id = NodeId::new();
+			let resource_node = DocumentNode {
+				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
+				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::eval_curve::IDENTIFIER),
+				context_features: ContextDependencies {
+					extract: ContextFeatures::ANIMATION_TIME,
+					inject: ContextFeatures::empty(),
+				},
+				..Default::default()
+			};
+			new_curve_nodes.push((id, resource_node));
+
+			*input = NodeInput::node(id, 0);
+
+			Ok(())
+		})
+		.unwrap(); // infallible
+	}
+
+	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
+	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
+
+		self.visit_inputs_exclude(network, &platform_application_io::resource::IDENTIFIER, |input, new_resource_nodes| {
+			let NodeInput::Value { tagged_value, .. } = input else { return Ok(()) };
+			let TaggedValue::Resource(resource_id) = **tagged_value else { return Ok(()) };
+
+			let Some(hash) = resolve_resource(resource_id) else {
+				return Err(PreprocessorError::ResourceNotFound(resource_id));
+			};
+
+			let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
+				let id = NodeId::new();
+				let resource_node = DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
+					implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
+					..Default::default()
+				};
+				new_resource_nodes.push((id, resource_node));
+				id
+			});
+
+			*input = NodeInput::node(resource_id, 0);
+
+			Ok(())
+		})?;
 
 		Ok(())
 	}
