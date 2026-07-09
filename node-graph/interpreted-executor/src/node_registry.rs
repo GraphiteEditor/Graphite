@@ -633,6 +633,57 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Gradient,
 		Artboard,
 	));
+	// The compiler wraps a ranked connector's broadcast sibling in a Memoize plus context nullification pair, so both must pass
+	// through every ranked element type. These fill in the enum and newtype ranks that the hand lists above omit. The identifiers
+	// are passed explicitly because `stringify!` mangles whitespace when the path tokens come through this nested macro layer.
+	macro_rules! cache_chain_nodes {
+		(each: $value:ty) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				async_node!(identifier: graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => $value]),
+				async_node!(identifier: graphene_core::context_modification::context_modification::IDENTIFIER, graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => $value, Context => graphene_std::ContextFeatures]),
+			];
+			entries
+		}};
+		($($element:ty),* $(,)?) => {{
+			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
+			$(
+				entries.extend(cache_chain_nodes!(each: $element));
+				entries.extend(cache_chain_nodes!(each: Item<$element>));
+				entries.extend(cache_chain_nodes!(each: List<$element>));
+			)*
+			entries
+		}};
+	}
+	node_types.extend(cache_chain_nodes!(
+		i32,
+		i64,
+		BlendMode,
+		StrokeJoin,
+		StrokeAlign,
+		StrokeCap,
+		PaintOrder,
+		GradientType,
+		GradientSpreadMethod,
+		DashPattern,
+		BoxCorners,
+		MergeByDistanceAlgorithm,
+		ExtrudeJoiningAlgorithm,
+		PointSpacingType,
+		StringCapitalization,
+		LuminanceCalculation,
+		RedGreenBlue,
+		RedGreenBlueAlpha,
+		RelativeAbsolute,
+		SelectiveColorChoice,
+		BrushTrace,
+		XY,
+		ScaleType,
+		ReferencePoint,
+		CentroidType,
+		BooleanOperation,
+		InterpolationDistribution,
+		RowsOrColumns,
+	));
 	// A position wire may feed a ranked vector connector, each position becoming a single-anchor vector
 	node_types.extend(field_adapter_convert_node!(from_element: DVec2, element: Vector));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern

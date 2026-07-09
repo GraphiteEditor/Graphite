@@ -698,6 +698,40 @@ mod test {
 		assert_eq!(list.len(), 3, "One circle per radius slot");
 	}
 
+	/// Builds the compiler's cache chain (child, then Memoize, then Context Modification) around a value, as `insert_context_nullification_node` does.
+	fn nullification_chain_network(value: TaggedValue) -> ProtoNetwork {
+		let value_node = ProtoNode::value(ConstructionArgs::Value(value.into()), vec![NodeId(0)]);
+
+		let mut memoize_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		memoize_node.identifier = graphene_core::memo::memoize::IDENTIFIER;
+
+		let features_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextFeatures(Default::default()).into()), vec![NodeId(2)]);
+
+		let mut nullification_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(2)]), vec![NodeId(3)]);
+		nullification_node.identifier = graphene_core::context_modification::context_modification::IDENTIFIER;
+
+		ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), memoize_node), (NodeId(2), features_node), (NodeId(3), nullification_node)],
+		}
+	}
+
+	#[test]
+	fn the_nullification_chain_resolves_for_ranked_enum_wires() {
+		use graphene_std::vector::style::StrokeAlign;
+
+		// The bare form, as a constant enum wire presents to the inserted cache chain
+		let network = nullification_chain_network(TaggedValue::StrokeAlign(StrokeAlign::default()));
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A bare StrokeAlign wire should resolve through the compiler's cache chain");
+
+		// The Item form, as a wrapped field adapter's output presents to the chain
+		let network = nullification_chain_network(TaggedValue::TypeDefault(descriptor!(Item<StrokeAlign>)));
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("An Item<StrokeAlign> wire should resolve through the compiler's cache chain");
+	}
+
 	#[test]
 	fn bare_wires_promote_to_item_connectors_at_resolution() {
 		use glam::{DAffine2, DVec2};
