@@ -546,17 +546,16 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	new: List<T>,
 	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
-	// Get the penultimate element of the node path, or None if the path is too short
-	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
+	// Drop this internal node's own trailing entry so the stamped path ends at the user-facing parent layer-style node (which encapsulates it)
 	let nested_node_path = nested_node_path.into_element().0;
-	let layer = {
-		let index = nested_node_path.len().wrapping_sub(2);
-		nested_node_path.element(index).copied()
+	let layer_path = {
+		let len = nested_node_path.len();
+		NodeIdPath(nested_node_path.into_iter().take(len.saturating_sub(1)).collect())
 	};
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+		row.set_attribute(ATTR_EDITOR_LAYER_PATH, Item::new_from_element(layer_path.clone()));
 		base.push(row);
 	}
 
