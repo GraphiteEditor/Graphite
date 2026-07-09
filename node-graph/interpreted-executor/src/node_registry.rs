@@ -10,7 +10,7 @@ use graphene_std::application_io::Texture;
 use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
-use graphene_std::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
+use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
 #[cfg(target_family = "wasm")]
 use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
 #[cfg(feature = "gpu")]
@@ -493,6 +493,54 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
+	// A whole-List bundle adapter inserted by type resolution when a List wire feeds an Item<Bundle<X>> connector
+	macro_rules! bundle_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::BundleNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::BundleNode::new(graphene_std::any::downcast_node::<Context, List<$element>>(args.pop().unwrap()));
+						let any: DynAnyNode<Context, Item<Bundle<$element>>, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::BundleNode::new(graphene_std::any::PanicNode::<
+						Context,
+						core::pin::Pin<Box<dyn core::future::Future<Output = List<$element>> + Send>>,
+					>::new());
+					let params = vec![fn_type_fut!(Context, List<$element>)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
+	// The reverse unbundle adapter inserted by type resolution when an Item<Bundle<X>> wire feeds a List connector
+	macro_rules! unbundle_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::UnbundleNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_std::ops::UnbundleNode::new(graphene_std::any::downcast_node::<Context, Item<Bundle<$element>>>(args.pop().unwrap()));
+						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_std::ops::UnbundleNode::new(graphene_std::any::PanicNode::<
+						Context,
+						core::pin::Pin<Box<dyn core::future::Future<Output = Item<Bundle<$element>>> + Send>>,
+					>::new());
+					let params = vec![fn_type_fut!(Context, Item<Bundle<$element>>)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
@@ -556,6 +604,34 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		RowsOrColumns,
 		Artboard,
 		Resource,
+	));
+	// Registers the whole-List bundle adapters for each value type whose entire list may be selected or carried as one opaque cell
+	macro_rules! bundle_adapter_nodes {
+		($($element:ty),* $(,)?) => {{
+			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
+			$(
+				entries.push(bundle_node!(element: $element));
+				entries.push(unbundle_node!(element: $element));
+			)*
+			entries
+		}};
+	}
+	node_types.extend(bundle_adapter_nodes!(
+		bool,
+		f32,
+		f64,
+		u32,
+		u64,
+		DVec2,
+		DAffine2,
+		Graphic,
+		Raster<CPU>,
+		Raster<GPU>,
+		Vector,
+		String,
+		Color,
+		Gradient,
+		Artboard,
 	));
 	// A position wire may feed a ranked vector connector, each position becoming a single-anchor vector
 	node_types.extend(field_adapter_convert_node!(from_element: DVec2, element: Vector));
@@ -659,7 +735,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|| new_name.contains("ItemToListNode")
 			|| new_name.contains("WrapItemNode")
 			|| new_name.contains("WrapListNode")
-			|| new_name.contains("UnwrapItemNode"))
+			|| new_name.contains("UnwrapItemNode")
+			|| new_name.contains("BundleNode")
+			|| new_name.contains("UnbundleNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
 		{
 			new_name = path.to_string();

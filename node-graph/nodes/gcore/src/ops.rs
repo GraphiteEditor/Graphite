@@ -1,4 +1,4 @@
-use core_types::list::{Item, List};
+use core_types::list::{Bundle, Item, List};
 use core_types::{Ctx, ExtractFootprint, ops::Convert, transform::Footprint};
 use std::marker::PhantomData;
 
@@ -20,6 +20,18 @@ fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty
 #[node_macro::node(category(""), skip_impl)]
 fn unwrap_item<'i, T: 'i + Send>(_: impl Ctx, value: Item<T>) -> T {
 	value.into_element()
+}
+
+/// Wraps a whole `List` onto the wire as one rank-0 `Item<Bundle<T>>` so an entire collection can feed a connector that carries it as one opaque cell.
+#[node_macro::node(category(""), skip_impl)]
+fn bundle<'i, T: 'i + Send>(_: impl Ctx, value: List<T>) -> Item<Bundle<T>> {
+	Item::new_from_element(Bundle(value))
+}
+
+/// Unwraps a `Bundle` wire back into the whole `List` it carries, restoring the collection after it passed through a connector as one opaque cell.
+#[node_macro::node(category(""), skip_impl)]
+fn unbundle<'i, T: 'i + Send>(_: impl Ctx, value: Item<Bundle<T>>) -> List<T> {
+	value.into_element().0
 }
 
 /// The adapter slot inserted ahead of each ranked connector: wraps a bare value onto the wire as an `Item`, or passes an

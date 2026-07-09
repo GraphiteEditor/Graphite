@@ -833,6 +833,22 @@ impl TypingContext {
 						return Some(format!("graphene_core::ops::UnwrapItemNode<{element}>"));
 					}
 
+					// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
+					if let (Some(list_inner), Some(item_inner)) = (wrapped_name(from_output, "List"), wrapped_name(to_output, "Item"))
+						&& item_inner == format!("core_types::list::Bundle<{list_inner}>")
+					{
+						let element = peel_identifier(from_output, "List")?;
+						return Some(format!("graphene_core::ops::BundleNode<{element}>"));
+					}
+
+					// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
+					if let (Some(item_inner), Some(list_inner)) = (wrapped_name(from_output, "Item"), wrapped_name(to_output, "List"))
+						&& item_inner == format!("core_types::list::Bundle<{list_inner}>")
+					{
+						let element = peel_identifier(to_output, "List")?;
+						return Some(format!("graphene_core::ops::UnbundleNode<{element}>"));
+					}
+
 					None
 				}
 

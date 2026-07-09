@@ -1,8 +1,9 @@
 use core_types::Context;
-use core_types::list::{Item, List};
+use core_types::context::{CloneVarArgs, ExtractAll};
+use core_types::list::{Bundle, Item, List};
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
-use core_types::{Color, Ctx, num_traits};
+use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -877,49 +878,81 @@ fn logical_not(
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
-async fn switch<T, C: Send + 'n + Clone>(
-	#[implementations(Context)] ctx: C,
-	condition: bool,
+async fn switch<T: 'n + Send>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	condition: Item<bool>,
 	#[expose]
 	#[implementations(
-		Context -> String,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> u32,
-		Context -> u64,
-		Context -> DVec2,
-		Context -> DAffine2,
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<Gradient>,
+		Context -> Item<String>,
+		Context -> Item<bool>,
+		Context -> Item<f32>,
+		Context -> Item<f64>,
+		Context -> Item<u32>,
+		Context -> Item<u64>,
+		Context -> Item<DVec2>,
+		Context -> Item<DAffine2>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+		Context -> Item<Artboard>,
+		Context -> Item<Bundle<String>>,
+		Context -> Item<Bundle<bool>>,
+		Context -> Item<Bundle<f32>>,
+		Context -> Item<Bundle<f64>>,
+		Context -> Item<Bundle<u32>>,
+		Context -> Item<Bundle<u64>>,
+		Context -> Item<Bundle<DVec2>>,
+		Context -> Item<Bundle<DAffine2>>,
+		Context -> Item<Bundle<Vector>>,
+		Context -> Item<Bundle<Graphic>>,
+		Context -> Item<Bundle<Raster<CPU>>>,
+		Context -> Item<Bundle<Raster<GPU>>>,
+		Context -> Item<Bundle<Color>>,
+		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Artboard>>,
 	)]
-	if_true: impl Node<C, Output = T>,
+	if_true: impl Node<Context<'static>, Output = Item<T>>,
 	#[expose]
 	#[implementations(
-		Context -> String,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> u32,
-		Context -> u64,
-		Context -> DVec2,
-		Context -> DAffine2,
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<Gradient>,
+		Context -> Item<String>,
+		Context -> Item<bool>,
+		Context -> Item<f32>,
+		Context -> Item<f64>,
+		Context -> Item<u32>,
+		Context -> Item<u64>,
+		Context -> Item<DVec2>,
+		Context -> Item<DAffine2>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+		Context -> Item<Artboard>,
+		Context -> Item<Bundle<String>>,
+		Context -> Item<Bundle<bool>>,
+		Context -> Item<Bundle<f32>>,
+		Context -> Item<Bundle<f64>>,
+		Context -> Item<Bundle<u32>>,
+		Context -> Item<Bundle<u64>>,
+		Context -> Item<Bundle<DVec2>>,
+		Context -> Item<Bundle<DAffine2>>,
+		Context -> Item<Bundle<Vector>>,
+		Context -> Item<Bundle<Graphic>>,
+		Context -> Item<Bundle<Raster<CPU>>>,
+		Context -> Item<Bundle<Raster<GPU>>>,
+		Context -> Item<Bundle<Color>>,
+		Context -> Item<Bundle<Gradient>>,
+		Context -> Item<Bundle<Artboard>>,
 	)]
-	if_false: impl Node<C, Output = T>,
-) -> T {
-	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+	if_false: impl Node<Context<'static>, Output = Item<T>>,
+) -> Item<T> {
+	let ctx = OwnedContextImpl::from(ctx).into_context();
+
+	if *condition.element() { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }
 
 /// Constructs a bool value which may be set to true or false.

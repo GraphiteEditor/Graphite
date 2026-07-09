@@ -96,6 +96,38 @@ impl From<Vec<NodeId>> for NodeIdPath {
 	}
 }
 
+// ================
+// TYPE: Bundle
+// ================
+
+/// A whole `List<T>` treated as one rank-0 value (`Item<Bundle<T>>`) rather than a rank-1 `List<T>`.
+/// Bundling a collection lets it pass through a connector that selects or carries the entire collection as one opaque
+/// cell (such as a Switch branch), instead of the element-wise machinery zipping over it per element.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bundle<T>(pub List<T>);
+
+impl<T> Default for Bundle<T> {
+	fn default() -> Self {
+		Self(List::default())
+	}
+}
+
+impl<T: CacheHash> CacheHash for Bundle<T> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.cache_hash(state);
+	}
+}
+
+impl<T> From<List<T>> for Bundle<T> {
+	fn from(list: List<T>) -> Self {
+		Self(list)
+	}
+}
+
+unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
+	type Static = Bundle<T::Static>;
+}
+
 // ===========================
 // Implicit attribute defaults
 // ===========================

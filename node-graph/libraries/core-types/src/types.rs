@@ -374,7 +374,7 @@ pub fn make_type_user_readable(ty: &str) -> String {
 	rewrite_ranked_type_wrappers(&ty)
 }
 
-/// Rewrites `List<T>` as `T[]` (rank 1) and unwraps `Item<T>` to `T` (rank 0), so ranked wires read as their element type.
+/// Rewrites `List<T>` and the whole-collection `Bundle<T>` as `T[]`, and unwraps `Item<T>` to `T`, so ranked wires read as their element type.
 /// Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
 /// Respects word boundaries so unrelated identifiers that happen to end in `List` or `Item` are not affected.
 fn rewrite_ranked_type_wrappers(input: &str) -> String {
@@ -386,6 +386,16 @@ fn rewrite_ranked_type_wrappers(input: &str) -> String {
 		let at_word_boundary = i == 0 || !is_identifier_byte(bytes[i - 1]);
 		if at_word_boundary && bytes[i..].starts_with(b"List<") {
 			let inner_start = i + b"List<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
+				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if at_word_boundary && bytes[i..].starts_with(b"Bundle<") {
+			let inner_start = i + b"Bundle<".len();
 			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
 				let inner = &input[inner_start..close];
 				result.push_str(&rewrite_ranked_type_wrappers(inner));
