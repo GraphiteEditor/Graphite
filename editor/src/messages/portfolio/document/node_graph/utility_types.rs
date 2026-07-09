@@ -19,13 +19,14 @@ pub enum FrontendGraphDataType {
 
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
-		// Color a wire by its element type, peeling a rank-0 `Item<>` or rank-1 `List<>` wrapper so both ranks share the element's color
+		// Color a wire by its element type, peeling a rank-0 `Item<>` or rank-1 `List<>` wrapper (and a whole-list `Bundle<>` cell) so all ranks share the element's color
 		let name = input.nested_type().identifier_name();
 		let element = name
 			.strip_prefix("Item<")
 			.or_else(|| name.strip_prefix("List<"))
 			.and_then(|inner| inner.strip_suffix('>'))
 			.unwrap_or(name.as_str());
+		let element = element.strip_prefix("Bundle<").and_then(|inner| inner.strip_suffix('>')).unwrap_or(element);
 
 		match element {
 			"Vector" => Self::Vector,
@@ -34,7 +35,7 @@ impl FrontendGraphDataType {
 			"Color" => Self::Color,
 			"Gradient" => Self::Gradient,
 			"String" => Self::Typography,
-			"f64" | "f32" | "u32" | "u64" | "DVec2" | "DAffine2" => Self::Number,
+			"f64" | "f32" | "u32" | "u64" | "bool" | "DVec2" | "DAffine2" => Self::Number,
 			raster if raster.starts_with("Raster") => Self::Raster,
 			_ => Self::General,
 		}

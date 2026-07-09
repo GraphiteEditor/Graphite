@@ -355,6 +355,8 @@ impl NodeNetworkInterface {
 				};
 				match implementation {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
+					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
+					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => self.input_type(&InputConnector::node(*node_id, 0), network_path),
 					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
 						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
 						None => TypeSource::Unknown,

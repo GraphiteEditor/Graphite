@@ -693,12 +693,12 @@
 								<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
 								<path
 									d={pathString}
-									style:--data-line-width="3px"
+									style:--data-line-width="4px"
 									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
 								/>
-								<path d={pathString} style:--data-line-width="1px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+								<path d={pathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
 							{:else}
 								<path
 									d={pathString}
