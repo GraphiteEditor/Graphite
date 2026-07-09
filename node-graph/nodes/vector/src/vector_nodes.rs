@@ -1400,13 +1400,10 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Item<Vec
 	content
 }
 
-/// Combines every vector path within the input into a single compound path.
+/// Combines every vector path across the input into a single compound path.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn combine_paths<T: 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<T>) -> Item<Vector>
-where
-	List<T>: IntoGraphicList,
-{
-	let graphic_list = List::new_from_item(content).into_graphic_list();
+pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> Item<Vector> {
+	let graphic_list = content.into_graphic_list();
 	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
 
 	// Create a `List` with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
@@ -3307,7 +3304,7 @@ mod test {
 			Item::new_from_element(0),
 		)
 		.await;
-		let combine_paths = List::new_from_item(super::combine_paths(Footprint::default(), Item::new_from_element(Graphic::Vector(copy_to_points))).await);
+		let combine_paths = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(copy_to_points))).await);
 		let flattened_copy_to_points = combine_paths.element(0).unwrap();
 
 		assert_eq!(flattened_copy_to_points.region_manipulator_groups().count(), expected_points.len());
