@@ -601,7 +601,9 @@ pub async fn to_graphic<T: IntoGraphicList>(
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
-pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: bool) -> List<Graphic> {
+pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
+	let fully_flatten = fully_flatten.into_element();
+
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
 	fn flatten_list(output_graphic_list: &mut List<Graphic>, current_graphic_list: List<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for index in 0..current_graphic_list.len() {
