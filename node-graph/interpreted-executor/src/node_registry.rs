@@ -7,7 +7,7 @@ use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::Texture;
-use graphene_std::brush::brush_stroke::BrushStroke;
+use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
@@ -170,7 +170,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Graphic]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::text::Font]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BrushStroke>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BrushTrace>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => DocumentNode]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::transform::Footprint]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::blending::BlendMode]),
@@ -276,7 +276,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => glam::f32::Affine2]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::Stroke]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::text::Font]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<BrushStroke>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BrushTrace>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => DocumentNode]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::Footprint]),
@@ -545,6 +545,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		DashPattern,
 		BoxCorners,
 		NodeIdPath,
+		BrushTrace,
 		XY,
 		ScaleType,
 		Footprint,

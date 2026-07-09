@@ -2,7 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::brush_stroke::BrushStroke;
+use brush_nodes::brush_stroke::{BrushStroke, BrushTrace};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transform::Footprint;
@@ -84,7 +84,7 @@ macro_rules! tagged_value {
 			/// The state of a Fill or Stroke node's paint picker: no paint, a solid color, or a gradient.
 			/// Materializes as the canonical single-graphic `List<Graphic>` paint at runtime via `to_dynany`/`to_any`.
 			FillChoice(FillChoice),
-			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
@@ -172,10 +172,7 @@ macro_rules! tagged_value {
 					Self::Color(color) => Box::new(color),
 					Self::Gradient(stops) => Box::new(stops),
 					Self::FillChoice(choice) => Box::new(graphic_types::graphic::fill_choice_to_paint(choice)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -217,10 +214,7 @@ macro_rules! tagged_value {
 					Self::Color(color) => Arc::new(color),
 					Self::Gradient(stops) => Arc::new(stops),
 					Self::FillChoice(choice) => Arc::new(graphic_types::graphic::fill_choice_to_paint(choice)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -249,7 +243,7 @@ macro_rules! tagged_value {
 					Self::Color(_) => concrete!(Color),
 					Self::Gradient(_) => concrete!(Gradient),
 					Self::FillChoice(_) => concrete!(List<Graphic>),
-					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
+					Self::BrushStrokes(_) => concrete!(Item<BrushTrace>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -326,7 +320,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<List<Graphic>>() { return Some(TaggedValue::FillChoice(FillChoice::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
-						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
+						if name == std::any::type_name::<Item<BrushTrace>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						macro_rules! check {
 							($type_default:ty) => {

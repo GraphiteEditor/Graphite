@@ -1,5 +1,5 @@
 use crate::brush_cache::BrushCache;
-use crate::brush_stroke::{BrushStroke, BrushStyle};
+use crate::brush_stroke::{BrushStyle, BrushTrace};
 use core_types::ATTR_TRANSFORM;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -193,11 +193,13 @@ async fn brush(
 	/// Optional raster content that may be drawn onto.
 	background: Item<Raster<CPU>>,
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
-	trace: List<BrushStroke>,
+	trace: Item<BrushTrace>,
 	/// Internal cache data used to accelerate rendering of the brush content.
 	#[data]
 	cache: BrushCache,
 ) -> Item<Raster<CPU>> {
+	let trace = trace.into_element().0;
+
 	let list_item = background;
 	let mut result_item = list_item.clone();
 
@@ -389,6 +391,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::brush_stroke::BrushStroke;
 	use core_types::transform::Transform;
 	use glam::DAffine2;
 
@@ -407,7 +410,7 @@ mod test {
 			(),
 			&BrushCache::default(),
 			Item::new_from_element(Raster::new_cpu(Image::<Color>::default())),
-			List::new_from_element(BrushStroke {
+			Item::new_from_element(BrushTrace::from(vec![BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
 					color: Color::BLACK,
@@ -417,7 +420,7 @@ mod test {
 					spacing: 20.,
 					blend_mode: BlendMode::Normal,
 				},
-			}),
+			}])),
 		)
 		.await;
 		assert_eq!(image.element().width, 20);

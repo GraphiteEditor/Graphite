@@ -19,10 +19,10 @@ use graph_craft::{Type, concrete};
 use graphene_std::Graphic;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
-use graphene_std::brush::brush_stroke::BrushStroke;
+use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
-use graphene_std::list::List;
+use graphene_std::list::{Item, List};
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
@@ -256,7 +256,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<List<Gradient>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<List<Graphic>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<List<BrushStroke>>() => brush_strokes_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Item<BrushTrace>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
