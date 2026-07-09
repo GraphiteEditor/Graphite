@@ -812,9 +812,9 @@ fn equals<T: std::cmp::PartialEq<T>>(
 	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
-	let (value, attributes) = value.into_parts();
+	let value = value.into_element();
 
-	Item::from_parts(other_value.into_element() == value, attributes)
+	Item::new_from_element(other_value.into_element() == value)
 }
 
 /// The inequality operation (`!=`, `XOR`) compares two values and returns true if they are not equal, or false if they are.
@@ -828,9 +828,9 @@ fn not_equals<T: std::cmp::PartialEq<T>>(
 	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
-	let (value, attributes) = value.into_parts();
+	let value = value.into_element();
 
-	Item::from_parts(other_value.into_element() != value, attributes)
+	Item::new_from_element(other_value.into_element() != value)
 }
 
 /// The logical OR operation (`||`) returns true if either of the two inputs are true, or false if both are false.
@@ -996,10 +996,8 @@ fn hsla_to_color(
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
 fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
-	let (hex_code, attributes) = hex_code.into_parts();
-
-	let color = core_types::misc::parse_css_color(&hex_code).unwrap_or_default();
-	Item::from_parts(color, attributes)
+	let color = core_types::misc::parse_css_color(hex_code.element()).unwrap_or_default();
+	Item::new_from_element(color)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.

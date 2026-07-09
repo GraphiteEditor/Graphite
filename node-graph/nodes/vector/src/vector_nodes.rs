@@ -1149,9 +1149,7 @@ async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default();
 
-	let (_, attributes) = content.into_parts();
-
-	Item::from_parts(dimensions, attributes)
+	Item::new_from_element(dimensions)
 }
 
 /// Type-asserts a value to be vector data.
@@ -1382,9 +1380,7 @@ async fn path_is_closed(
 	let index = index.into_element();
 	let closed = content.element().build_stroke_path_iter().map(|(_, closed)| closed).nth(index.max(0.) as usize).unwrap_or(false);
 
-	let (_, attributes) = content.into_parts();
-
-	Item::from_parts(closed, attributes)
+	Item::new_from_element(closed)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1849,9 +1845,7 @@ async fn position_on_path(
 		point_to_dvec2(evaluate_bezpath(bezpath, t, None))
 	});
 
-	let (_, attributes) = content.into_parts();
-
-	Item::from_parts(position, attributes)
+	Item::new_from_element(position)
 }
 
 /// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
@@ -1899,9 +1893,7 @@ async fn tangent_on_path(
 		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
 	});
 
-	let (_, attributes) = content.into_parts();
-
-	Item::from_parts(if radians { angle } else { angle.to_degrees() }, attributes)
+	Item::new_from_element(if radians { angle } else { angle.to_degrees() })
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
@@ -3081,9 +3073,7 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let inside = source.element().check_point_inside_shape(transform, point);
 
-	let (_, attributes) = source.into_parts();
-
-	Item::from_parts(inside, attributes)
+	Item::new_from_element(inside)
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
@@ -3097,9 +3087,7 @@ async fn count_elements(_: impl Ctx, content: ListDyn) -> Item<f64> {
 async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	let count = content.element().point_domain.positions().len() as f64;
 
-	let (_, attributes) = content.into_parts();
-
-	Item::from_parts(count, attributes)
+	Item::new_from_element(count)
 }
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `List` of vector elements.
@@ -3151,9 +3139,7 @@ async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 		})
 		.sum::<f64>();
 
-	let (_, attributes) = source.into_parts();
-
-	Item::from_parts(length, attributes)
+	Item::new_from_element(length)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
@@ -3165,9 +3151,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 	let area_scale = transform.matrix2.determinant().abs();
 	let area = vector.element().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>();
 
-	let (_, attributes) = vector.into_parts();
-
-	Item::from_parts(area, attributes)
+	Item::new_from_element(area)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
@@ -3179,9 +3163,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let position = element_centroid(vector.element(), transform, centroid_type);
 
-	let (_, attributes) = vector.into_parts();
-
-	Item::from_parts(position, attributes)
+	Item::new_from_element(position)
 }
 
 /// The area- or length-weighted centroid of one vector element's subpaths, averaging raw point positions when the weights all vanish.

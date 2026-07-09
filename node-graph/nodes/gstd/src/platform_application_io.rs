@@ -124,8 +124,7 @@ async fn post_request(
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
 fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
-	let (string, attributes) = string.into_parts();
-	Item::from_parts(Resource::new(string.into_bytes()), attributes)
+	Item::new_from_element(Resource::new(string.into_element().into_bytes()))
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
@@ -141,8 +140,7 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 		})
 		.collect();
 
-	let (_, attributes) = image.into_parts();
-	Item::from_parts(Resource::new(bytes), attributes)
+	Item::new_from_element(Resource::new(bytes))
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
