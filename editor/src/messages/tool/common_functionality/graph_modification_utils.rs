@@ -101,21 +101,21 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		delete_children: false,
 	});
 
-	// Add a Flatten Path node after the merge
-	let flatten_node_id = NodeId::new();
-	let flatten_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::flatten_path::IDENTIFIER)
-		.expect("Failed to create flatten node")
+	// Add a Combine Paths node after the merge
+	let combine_paths_node_id = NodeId::new();
+	let combine_paths_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::combine_paths::IDENTIFIER)
+		.expect("Failed to create Combine Paths node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
-		node_id: flatten_node_id,
-		node_template: Box::new(flatten_node),
+		node_id: combine_paths_node_id,
+		node_template: Box::new(combine_paths_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
-		node_id: flatten_node_id,
+		node_id: combine_paths_node_id,
 		parent: first_layer,
 	});
 
-	// Add a path node after the flatten node
+	// Add a path node after the Combine Paths node
 	let path_node_id = NodeId::new();
 	let path_node = document_node_definitions::resolve_network_node_type("Path")
 		.expect("Failed to create path node")

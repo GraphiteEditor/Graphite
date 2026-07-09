@@ -421,7 +421,7 @@ impl ShapeState {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
-	/// Applies a dummy vector modification to the layer. In the case where a group containing some vector data is selected, this triggers the creation of a «Flatten Path» node.
+	/// Applies a dummy vector modification to the layer. In the case where a group containing some vector data is selected, this triggers the creation of a «Combine Paths» node.
 	fn add_dummy_modification_to_trigger_graph_reorganization(layer: LayerNodeIdentifier, start_point: PointId, _end_point: PointId, responses: &mut VecDeque<Message>) {
 		// Apply a zero-delta to one of the points to trigger reorganization
 		let dummy_modification = VectorModificationType::ApplyPointDelta {

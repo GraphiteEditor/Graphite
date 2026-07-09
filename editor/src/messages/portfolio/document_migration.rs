@@ -803,7 +803,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::vector_nodes::FillNode", "graphene_core::vector::FillNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::flatten_path::IDENTIFIER,
+		node: graphene_std::vector::combine_paths::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::FlattenPathNode",
 			"graphene_core::vector::FlattenVectorElementsNode",
