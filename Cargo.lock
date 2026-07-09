@@ -34,19 +34,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "ahash"
-version = "0.8.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
-dependencies = [
- "cfg-if",
- "getrandom 0.3.3",
- "once_cell",
- "version_check",
- "zerocopy",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1251,9 +1238,9 @@ dependencies = [
 
 [[package]]
 name = "dlib"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
+checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
  "libloading 0.8.8",
 ]
@@ -1337,7 +1324,7 @@ dependencies = [
 [[package]]
 name = "dpi"
 version = "0.1.2"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "serde",
 ]
@@ -3146,13 +3133,14 @@ checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
 name = "libredox"
-version = "0.1.9"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "391290121bad3d37fbddad76d8f5d1c1c314cfc646d143d7e07a3086ddff0ce3"
+checksum = "c943259e342f1e06ff2da7a83eabdfe7f92ce10262688dbf1895ff0b3e6e4652"
 dependencies = [
  "bitflags 2.11.0",
  "libc",
- "redox_syscall",
+ "plain",
+ "redox_syscall 0.9.0",
 ]
 
 [[package]]
@@ -3950,7 +3938,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.45.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3980,7 +3968,7 @@ checksum = "bc838d2a56b5b1a6c25f55575dfc605fabb63bb2365f6c2353ef9159aa69e4a5"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.5.17",
  "smallvec",
  "windows-targets 0.52.6",
 ]
@@ -4220,6 +4208,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "plain"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
+
+[[package]]
 name = "plist"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4441,18 +4435,18 @@ checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
 
 [[package]]
 name = "quick-xml"
-version = "0.37.5"
+version = "0.38.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+checksum = "42a232e7487fc2ef313d96dde7948e7a3c05101870d8985e4fd8d26aedd27b89"
 dependencies = [
  "memchr",
 ]
 
 [[package]]
 name = "quick-xml"
-version = "0.38.3"
+version = "0.39.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42a232e7487fc2ef313d96dde7948e7a3c05101870d8985e4fd8d26aedd27b89"
+checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
 dependencies = [
  "memchr",
 ]
@@ -4698,10 +4692,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
+name = "redox_event"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5018d583d6d2f5499352aea8d177e9067d1eb03ab17c78169d5ba7a30001b15"
+dependencies = [
+ "bitflags 2.11.0",
+ "libredox",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5407465600fb0548f1442edf71dd20683c6ed326200ace4b1ef0763521bb3b77"
+dependencies = [
+ "bitflags 2.11.0",
+]
+
+[[package]]
+name = "redox_syscall"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5102a6aaa05aa011a238e178e6bca86d2cb56fc9f586d37cb80f5bca6e07759"
 dependencies = [
  "bitflags 2.11.0",
 ]
@@ -6655,9 +6668,9 @@ dependencies = [
 
 [[package]]
 name = "wayland-backend"
-version = "0.3.11"
+version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "673a33c33048a5ade91a6b139580fa174e19fb0d23f396dca9fa15f2e1e49b35"
+checksum = "2857dd20b54e916ec7253b3d6b4d5c4d7d4ca2c33c2e11c6c76a99bd8744755d"
 dependencies = [
  "cc",
  "downcast-rs",
@@ -6669,9 +6682,9 @@ dependencies = [
 
 [[package]]
 name = "wayland-client"
-version = "0.31.11"
+version = "0.31.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c66a47e840dc20793f2264eb4b3e4ecb4b75d91c0dd4af04b456128e0bdd449d"
+checksum = "645c7c96bb74690c3189b5c9cb4ca1627062bb23693a4fad9d8c3de958260144"
 dependencies = [
  "bitflags 2.11.0",
  "rustix",
@@ -6703,9 +6716,9 @@ dependencies = [
 
 [[package]]
 name = "wayland-protocols"
-version = "0.32.9"
+version = "0.32.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efa790ed75fbfd71283bd2521a1cfdc022aabcc28bdcff00851f9e4ae88d9901"
+checksum = "23d0c813de3daa2ed6520af85a3bd49b0e722a3078506899aa9686fea58dc4b6"
 dependencies = [
  "bitflags 2.11.0",
  "wayland-backend",
@@ -6767,20 +6780,20 @@ dependencies = [
 
 [[package]]
 name = "wayland-scanner"
-version = "0.31.7"
+version = "0.31.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54cb1e9dc49da91950bdfd8b848c49330536d9d1fb03d4bfec8cae50caa50ae3"
+checksum = "9c324a910fd86ebdc364a3e61ec1f11737d3b1d6c273c0239ee8ff4bc0d24b4a"
 dependencies = [
  "proc-macro2",
- "quick-xml 0.37.5",
+ "quick-xml 0.39.4",
  "quote",
 ]
 
 [[package]]
 name = "wayland-sys"
-version = "0.31.7"
+version = "0.31.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34949b42822155826b41db8e5d0c1be3a2bd296c747577a43a3e6daefc296142"
+checksum = "d8eab23fefc9e41f8e841df4a9c707e8a8c4ed26e944ef69297184de2785e3be"
 dependencies = [
  "dlib",
  "log",
@@ -7481,8 +7494,8 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 
 [[package]]
 name = "winit"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "cfg_aliases",
@@ -7508,8 +7521,8 @@ dependencies = [
 
 [[package]]
 name = "winit-android"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "android-activity",
  "bitflags 2.11.0",
@@ -7523,8 +7536,8 @@ dependencies = [
 
 [[package]]
 name = "winit-appkit"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "block2 0.6.2",
@@ -7545,12 +7558,14 @@ dependencies = [
 
 [[package]]
 name = "winit-common"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
+ "block2 0.6.2",
  "memmap2 0.9.10",
  "objc2 0.6.3",
  "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
  "smol_str",
  "tracing",
  "winit-core",
@@ -7560,8 +7575,8 @@ dependencies = [
 
 [[package]]
 name = "winit-core"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
@@ -7575,14 +7590,15 @@ dependencies = [
 
 [[package]]
 name = "winit-orbital"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "dpi",
+ "libredox",
  "orbclient",
  "raw-window-handle",
- "redox_syscall",
+ "redox_event",
  "smol_str",
  "tracing",
  "winit-core",
@@ -7590,8 +7606,8 @@ dependencies = [
 
 [[package]]
 name = "winit-uikit"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "block2 0.6.2",
@@ -7611,14 +7627,14 @@ dependencies = [
 
 [[package]]
 name = "winit-wayland"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
- "ahash",
  "bitflags 2.11.0",
  "calloop",
  "cursor-icon",
  "dpi",
+ "foldhash 0.2.0",
  "libc",
  "memmap2 0.9.10",
  "raw-window-handle",
@@ -7637,8 +7653,8 @@ dependencies = [
 
 [[package]]
 name = "winit-web"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "atomic-waker",
  "bitflags 2.11.0",
@@ -7659,8 +7675,8 @@ dependencies = [
 
 [[package]]
 name = "winit-win32"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
@@ -7669,14 +7685,14 @@ dependencies = [
  "smol_str",
  "tracing",
  "unicode-segmentation",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
  "winit-core",
 ]
 
 [[package]]
 name = "winit-x11"
-version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
+version = "0.31.0-beta.2"
+source = "git+https://github.com/rust-windowing/winit.git#ca573df55941299f4ddca3543f9c4a61045854ab"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
