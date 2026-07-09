@@ -1441,14 +1441,12 @@ where
 
 		attributes.insert_cloned_from(&source_attributes, ATTR_FILL);
 		attributes.insert_cloned_from(&source_attributes, ATTR_STROKE);
+		// Adopt the last input item's layer (if any) so the editor can also bucket clicks under a contributing child layer
+		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
 		bake_paint_transforms(&mut attributes, source_transform);
 
 		let output = std::mem::take(output_list.element_mut(0).unwrap());
 		output_list = List::new_from_item(Item::from_parts(output, attributes));
-
-		// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
-		let layer_path: Item<NodeIdPath> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
-		output_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 	}
 
 	// Preserve a reference to the original upstream `List<Graphic>` so the renderer can recurse into it
