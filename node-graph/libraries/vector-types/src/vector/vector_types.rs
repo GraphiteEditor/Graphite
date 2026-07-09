@@ -63,6 +63,13 @@ impl core_types::ops::FromAnchorPosition for Vector {
 	}
 }
 
+// Lets a position wire feed a ranked vector connector through the field adapter's element conversion
+impl From<DVec2> for Vector {
+	fn from(position: DVec2) -> Self {
+		<Self as core_types::ops::FromAnchorPosition>::from_anchor_position(position)
+	}
+}
+
 // Identity item conversion so `List<Vector>` satisfies the blanket `Convert<List<U>, ()> for List<T>`, letting its
 // auto-inserted input wrapper be a `ConvertNode` (which also accepts a `DVec2` anchor position) rather than an `IntoNode`.
 impl core_types::ops::ListConvert<Vector> for Vector {

@@ -2135,3 +2135,26 @@ impl DocumentNodeDefinition {
 		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(Some))
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::resolve_network_node_type;
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::NodeId;
+
+	// Guards the embedded Map body chain (Read Vector -> Extract Transform -> Decompose Translation -> As Vector) against registry drift
+	#[tokio::test]
+	async fn origins_to_polyline_resolves_and_evaluates() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().expect("drawing a rectangle should create a layer");
+		let node_id = NodeId::new();
+		let node_template = resolve_network_node_type("Origins to Polyline").expect("the Origins to Polyline definition should exist").default_node_template();
+		editor.handle_message(NodeGraphMessage::InsertNode { node_id, node_template: Box::new(node_template) }).await;
+		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+
+		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
+	}
+}

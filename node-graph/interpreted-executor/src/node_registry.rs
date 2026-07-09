@@ -559,6 +559,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Artboard,
 		Resource,
 	));
+	// A position wire may feed a ranked vector connector, each position becoming a single-anchor vector
+	node_types.extend(field_adapter_convert_node!(from_element: DVec2, element: Vector));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
 	node_types.extend(field_adapter_convert_node!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern

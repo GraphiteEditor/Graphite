@@ -1,11 +1,10 @@
 use core::f64;
 use core_types::color::Color;
-use core_types::list::{Item, List, ListDyn};
+use core_types::list::{Item, List};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::Graphic;
-use graphic_types::Vector;
+use graphic_types::{Artboard, Graphic, Vector};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
@@ -150,11 +149,16 @@ fn replace_transform<T>(
 	content
 }
 
-// TODO: Figure out how this node should behave once #2982 is implemented.
-/// Obtains the transform of the first item in the input `List`, if present.
+/// Obtains the transform of the input content.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-async fn extract_transform(_: impl Ctx, content: ListDyn) -> Item<DAffine2> {
-	Item::new_from_element(content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default())
+fn extract_transform<T: 'n + Send>(
+	_: impl Ctx,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: Item<T>,
+) -> Item<DAffine2> {
+	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let (_, attributes) = content.into_parts();
+
+	Item::from_parts(transform, attributes)
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.
