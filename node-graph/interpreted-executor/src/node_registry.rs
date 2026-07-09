@@ -767,9 +767,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 
+	// Rank normalization at this merge is the single convergence point for structurally-built and name-encoded `List` types,
+	// covering the sources which cannot construct them structurally (reflected return values and opaque macro captures)
 	for (id, entry) in graphene_std::registry::NODE_REGISTRY.lock().unwrap().iter() {
 		for (constructor, types) in entry.iter() {
-			map.entry(id.clone()).or_default().insert(types.clone(), *constructor);
+			map.entry(id.clone()).or_default().insert(types.clone().normalize_rank(), *constructor);
 		}
 	}
 
@@ -794,7 +796,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			new_name = path.to_string();
 		}
 
-		map.entry(ProtoNodeIdentifier::with_owned_string(new_name)).or_default().insert(types.clone(), node_constructor);
+		map.entry(ProtoNodeIdentifier::with_owned_string(new_name))
+			.or_default()
+			.insert(types.clone().normalize_rank(), node_constructor);
 	}
 
 	map

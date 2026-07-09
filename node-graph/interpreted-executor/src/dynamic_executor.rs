@@ -415,12 +415,11 @@ impl BorrowTree {
 				let ids = ids.to_vec();
 				let mut construction_nodes = self.node_deps(&ids);
 
-				// Wrap arguments the typing pass marked for Item -> List promotion with their adapter node
+				// Wrap arguments the typing pass marked for rank promotion with their adapter node
 				if let Some(promotions) = typing_context.promotions(id) {
-					for (argument_index, adapter_name) in promotions {
-						let identifier = graph_craft::ProtoNodeIdentifier::with_owned_string(adapter_name.clone());
+					for (argument_index, promotion) in promotions {
 						let adapter_constructor = typing_context
-							.adapter_constructor(&identifier)
+							.adapter_constructor(&promotion.adapter_identifier())
 							.ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 						let adapter = adapter_constructor(vec![construction_nodes[*argument_index].clone()]).await;
 						construction_nodes[*argument_index] = NodeContainer::new(adapter);
@@ -442,6 +441,7 @@ impl BorrowTree {
 	}
 }
 
+// TODO(Keavon): Move these many new tests into a separate file
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -879,7 +879,10 @@ mod test {
 			.expect("A List<Graphic> branch should resolve the Item<Bundle<Graphic>> row via the bundle wrap");
 
 		let promotions = typing_context.promotions(NodeId(3)).expect("The condition wrap and both branch bundles should be recorded");
-		let branch_bundles = promotions.iter().filter(|(index, adapter)| *index != 0 && adapter.contains("BundleNode")).count();
+		let branch_bundles = promotions
+			.iter()
+			.filter(|(index, adapter)| *index != 0 && matches!(adapter, graph_craft::proto::Promotion::Bundle(_)))
+			.count();
 		assert_eq!(branch_bundles, 2, "Both branches should bundle their whole list into one opaque cell");
 
 		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");
@@ -911,7 +914,7 @@ mod test {
 
 		let promotions = typing_context.promotions(NodeId(3)).expect("Extend's bundled base should be marked for unbundling");
 		assert!(
-			promotions.iter().any(|(index, adapter)| *index == 0 && adapter.contains("UnbundleNode")),
+			promotions.iter().any(|(index, adapter)| *index == 0 && matches!(adapter, graph_craft::proto::Promotion::Unbundle(_))),
 			"The base connector should unbundle the whole list"
 		);
 
@@ -951,7 +954,10 @@ mod test {
 			.expect("A List<f64> branch should resolve the Item<Bundle<f64>> row via the bundle wrap");
 
 		let promotions = typing_context.promotions(NodeId(3)).expect("The condition wrap and both branch bundles should be recorded");
-		let branch_bundles = promotions.iter().filter(|(index, adapter)| *index != 0 && adapter.contains("BundleNode")).count();
+		let branch_bundles = promotions
+			.iter()
+			.filter(|(index, adapter)| *index != 0 && matches!(adapter, graph_craft::proto::Promotion::Bundle(_)))
+			.count();
 		assert_eq!(branch_bundles, 2, "Both scalar-list branches should bundle into one opaque cell");
 
 		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");

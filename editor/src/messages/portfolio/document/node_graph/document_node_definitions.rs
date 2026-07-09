@@ -14,7 +14,7 @@ use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::{concrete, descriptor};
+use graph_craft::{concrete, descriptor, list};
 use graphene_std::extract_xy::XY;
 use graphene_std::list::{Item, List};
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
@@ -327,7 +327,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(List<Artboard>))), 0),
+									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
 									NodeInput::node(NodeId(3), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
@@ -1081,7 +1081,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1090,7 +1090,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1099,7 +1099,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1108,7 +1108,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),

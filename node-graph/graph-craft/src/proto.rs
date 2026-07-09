@@ -634,7 +634,48 @@ pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
-	promotions: HashMap<NodeId, Vec<(usize, String)>>,
+	promotions: HashMap<NodeId, Vec<(usize, Promotion)>>,
+}
+
+/// A rank adapter which type resolution marks for insertion between a wire and a connector whose ranks differ,
+/// carrying the element type the adapter is registered under.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Promotion {
+	/// Raises an `Item<X>` wire onto a `List<X>` connector as a one-element list.
+	ItemToList(Type),
+	/// Wraps a bare wire into an `Item<X>` connector.
+	WrapItem(Type),
+	/// Wraps a bare wire into a `List<X>` connector as a one-element list.
+	WrapList(Type),
+	/// Unwraps an `Item<X>` wire onto a bare legacy connector.
+	UnwrapItem(Type),
+	/// Bundles a whole `List<X>` wire into one opaque `Item<Bundle<X>>` cell.
+	Bundle(Type),
+	/// Unbundles an `Item<Bundle<X>>` wire back into the whole `List<X>`.
+	Unbundle(Type),
+}
+
+impl Promotion {
+	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
+	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
+		let (node_name, element) = match self {
+			Self::ItemToList(element) => ("ItemToListNode", element),
+			Self::WrapItem(element) => ("WrapItemNode", element),
+			Self::WrapList(element) => ("WrapListNode", element),
+			Self::UnwrapItem(element) => ("UnwrapItemNode", element),
+			Self::Bundle(element) => ("BundleNode", element),
+			Self::Unbundle(element) => ("UnbundleNode", element),
+		};
+		ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::{node_name}<{}>", element.identifier_name()))
+	}
+
+	/// A wrap-raise counts double since it spans two rank steps, keeping the all-Item variant ahead of the mapped one for fully bare inputs
+	fn cost(&self) -> usize {
+		match self {
+			Self::WrapList(_) => 2,
+			_ => 1,
+		}
+	}
 }
 
 impl TypingContext {
@@ -663,8 +704,8 @@ impl TypingContext {
 		self.inferred.remove(&node_id)
 	}
 
-	/// Returns the input positions of a node which type resolution marked for rank promotion, with each adapter's identifier name.
-	pub fn promotions(&self, node_id: NodeId) -> Option<&Vec<(usize, String)>> {
+	/// Returns the input positions of a node which type resolution marked for rank promotion, with each position's adapter.
+	pub fn promotions(&self, node_id: NodeId) -> Option<&Vec<(usize, Promotion)>> {
 		self.promotions.get(&node_id)
 	}
 
@@ -743,6 +784,8 @@ impl TypingContext {
 				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
 				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
+				// Lists of the same rank are compared element-wise
+				(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
 				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -780,18 +823,24 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				// Retry allowing an Item<X> input to feed a List<X> connector, satisfied at construction time by an inserted promotion adapter
-				fn promotable_adapter(from: &Type, to: &Type) -> Option<String> {
-					fn wrapped_name<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a str> {
-						let Type::Concrete(descriptor) = ty.nested_type() else { return None };
-						descriptor.name.strip_prefix("core_types::list::")?.strip_prefix(wrapper)?.strip_prefix('<')?.strip_suffix('>')
+				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter.
+				// The transitional `Item<X>` cell is still an opaque concrete type, so relating it to its element takes one name peel;
+				// every `List` relation is matched structurally.
+				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
+					fn named_element(name: &str) -> Type {
+						Type::Concrete(TypeDescriptor {
+							id: None,
+							name: Cow::Owned(name.to_string()),
+							alias: None,
+							size: 0,
+							align: 0,
+						})
 					}
-					fn peel_identifier(ty: &Type, wrapper: &str) -> Option<String> {
-						let name = ty.nested_type().identifier_name();
-						name.strip_prefix(wrapper)
-							.and_then(|rest| rest.strip_prefix('<'))
-							.and_then(|rest| rest.strip_suffix('>'))
-							.map(str::to_string)
+					fn concrete_name(ty: &Type) -> Option<&str> {
+						match ty {
+							Type::Concrete(descriptor) => Some(&descriptor.name),
+							_ => None,
+						}
 					}
 
 					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
@@ -801,55 +850,40 @@ impl TypingContext {
 						return None;
 					}
 
-					// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
-					if let (Some(item_inner), Some(list_inner)) = (wrapped_name(from_output, "Item"), wrapped_name(to_output, "List"))
-						&& item_inner == list_inner
-					{
-						let element = peel_identifier(to_output, "List")?;
-						return Some(format!("graphene_core::ops::ItemToListNode<{element}>"));
-					}
+					let from_value = from_output.nested_type();
+					let to_value = to_output.nested_type();
 
-					// A bare wire may feed an `Item<X>` connector via a wrap
-					if let (Type::Concrete(from_descriptor), Some(item_inner)) = (from_output.nested_type(), wrapped_name(to_output, "Item"))
-						&& from_descriptor.name == item_inner
-					{
-						let element = peel_identifier(to_output, "Item")?;
-						return Some(format!("graphene_core::ops::WrapItemNode<{element}>"));
-					}
+					match (from_value, to_value) {
+						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
+						(Type::Concrete(_), Type::List(element)) if from_value.item_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
+							Some(Promotion::ItemToList((**element).clone()))
+						}
 
-					// A bare wire may feed a `List<X>` connector via a wrap and singleton raise
-					if let (Type::Concrete(from_descriptor), Some(list_inner)) = (from_output.nested_type(), wrapped_name(to_output, "List"))
-						&& from_descriptor.name == list_inner
-					{
-						let element = peel_identifier(to_output, "List")?;
-						return Some(format!("graphene_core::ops::WrapListNode<{element}>"));
-					}
+						// A bare wire may feed a `List<X>` connector via a wrap and singleton raise
+						(Type::Concrete(from_descriptor), Type::List(element)) if Some(from_descriptor.name.as_ref()) == concrete_name(element) => Some(Promotion::WrapList((**element).clone())),
 
-					// An `Item<X>` wire may feed a bare legacy connector via an unwrap, since bare connectors are attribute-blind
-					if let (Some(item_inner), Type::Concrete(to_descriptor)) = (wrapped_name(from_output, "Item"), to_output.nested_type())
-						&& item_inner == to_descriptor.name
-					{
-						let element = peel_identifier(from_output, "Item")?;
-						return Some(format!("graphene_core::ops::UnwrapItemNode<{element}>"));
-					}
+						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
+						(Type::List(element), Type::Concrete(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
+							Some(Promotion::Bundle((**element).clone()))
+						}
 
-					// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
-					if let (Some(list_inner), Some(item_inner)) = (wrapped_name(from_output, "List"), wrapped_name(to_output, "Item"))
-						&& item_inner == format!("core_types::list::Bundle<{list_inner}>")
-					{
-						let element = peel_identifier(from_output, "List")?;
-						return Some(format!("graphene_core::ops::BundleNode<{element}>"));
-					}
+						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
+						(Type::Concrete(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
+							Some(Promotion::Unbundle((**element).clone()))
+						}
 
-					// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
-					if let (Some(item_inner), Some(list_inner)) = (wrapped_name(from_output, "Item"), wrapped_name(to_output, "List"))
-						&& item_inner == format!("core_types::list::Bundle<{list_inner}>")
-					{
-						let element = peel_identifier(to_output, "List")?;
-						return Some(format!("graphene_core::ops::UnbundleNode<{element}>"));
-					}
+						// A bare wire may feed an `Item<X>` connector via a wrap
+						(Type::Concrete(from_descriptor), Type::Concrete(_)) if to_value.item_element_name() == Some(&from_descriptor.name) => {
+							Some(Promotion::WrapItem(named_element(&from_descriptor.name)))
+						}
 
-					None
+						// An `Item<X>` wire may feed a bare legacy connector via an unwrap, since bare connectors are attribute-blind
+						(Type::Concrete(_), Type::Concrete(to_descriptor)) if from_value.item_element_name() == Some(&to_descriptor.name) => {
+							Some(Promotion::UnwrapItem(named_element(&to_descriptor.name)))
+						}
+
+						_ => None,
+					}
 				}
 
 				let mut promotable_matches = impls
@@ -868,9 +902,8 @@ impl TypingContext {
 					.collect::<Vec<_>>();
 
 				// Prefer the variant needing the cheapest promotions, so a rank-0 wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
-				// A wrap-raise counts double since it spans two rank steps, keeping the all-Item variant ahead of the mapped one for fully bare inputs.
-				fn promotion_cost(required_promotions: &[(usize, String)]) -> usize {
-					required_promotions.iter().map(|(_, adapter)| if adapter.contains("WrapListNode") { 2 } else { 1 }).sum()
+				fn promotion_cost(required_promotions: &[(usize, Promotion)]) -> usize {
+					required_promotions.iter().map(|(_, promotion)| promotion.cost()).sum()
 				}
 				promotable_matches.sort_by_key(|(_, required_promotions)| promotion_cost(required_promotions));
 				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| promotion_cost(required_promotions));

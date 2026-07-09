@@ -58,8 +58,9 @@ impl TypeSource {
 	}
 
 	/// Whether the compiled type is a rank-1 `List<T>`, as opposed to a rank-0 `Item<T>` or a bare value.
+	/// A bundled cell carrying a whole list displays as the list it carries.
 	pub fn is_list(&self) -> bool {
-		self.compiled_nested_type().is_some_and(|ty| ty.identifier_name().starts_with("List<"))
+		self.compiled_nested_type().is_some_and(|ty| matches!(ty, Type::List(_)) || ty.bundle_element_name().is_some())
 	}
 
 	/// The element type's identifier name with any rank-0 `Item<>` or rank-1 `List<>` wrapper peeled, so semantic type checks can be rank-agnostic.

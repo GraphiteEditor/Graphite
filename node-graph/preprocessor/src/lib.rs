@@ -375,11 +375,6 @@ impl std::fmt::Display for PreprocessorError {
 
 /// Collapses an element-wise node's dual wire registration for one field, `{Item<X>, List<X>}`, to its `List<X>` document wire form.
 fn collapse_item_list_pair(types: &HashSet<Type>) -> Option<&Type> {
-	fn inner_name<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a str> {
-		let Type::Concrete(descriptor) = ty.nested_type() else { return None };
-		descriptor.name.strip_prefix("core_types::list::")?.strip_prefix(wrapper)?.strip_prefix('<')?.strip_suffix('>')
-	}
-
 	let mut types_iterator = types.iter();
 	let (first, second) = (types_iterator.next()?, types_iterator.next()?);
 	if types_iterator.next().is_some() {
@@ -387,8 +382,9 @@ fn collapse_item_list_pair(types: &HashSet<Type>) -> Option<&Type> {
 	}
 
 	for (item, list) in [(first, second), (second, first)] {
-		if let (Some(item_inner), Some(list_inner)) = (inner_name(item, "Item"), inner_name(list, "List"))
-			&& item_inner == list_inner
+		if let Type::List(element) = list.nested_type()
+			&& let Type::Concrete(element_descriptor) = element.as_ref()
+			&& item.nested_type().item_element_name() == Some(&element_descriptor.name)
 		{
 			return Some(list);
 		}
@@ -411,9 +407,10 @@ mod tests {
 		assert_eq!(primary_types.len(), 2, "An element-wise node should register Item and List wire variants for its primary input");
 
 		let collapsed = collapse_item_list_pair(&primary_types).expect("The Item/List wire pair should collapse");
-		let Type::Concrete(descriptor) = collapsed.nested_type() else {
-			panic!("The collapsed wire type should be concrete")
-		};
-		assert!(descriptor.name.contains("List<"), "The collapse should pick the List form, but got {}", descriptor.name);
+		assert!(
+			matches!(collapsed.nested_type(), Type::List(_)),
+			"The collapse should pick the structural List form, but got {}",
+			collapsed.nested_type()
+		);
 	}
 }

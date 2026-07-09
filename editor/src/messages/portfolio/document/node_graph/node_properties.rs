@@ -15,7 +15,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::{Type, concrete};
+use graph_craft::{Type, concrete, list};
 use graphene_std::Graphic;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
@@ -215,6 +215,24 @@ pub(crate) fn property_from_type(
 
 	let default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
 
+	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
+	let unsupported_widgets = |default_info: ParameterWidgetsInfo, type_label: String| {
+		let is_exposed = default_info.is_exposed();
+
+		let mut widgets = start_widgets(default_info);
+		if !is_exposed {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				TextLabel::new("-")
+					.tooltip_label(type_label)
+					.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
+					.widget_instance(),
+			]);
+		}
+
+		vec![LayoutGroup::from(widgets)]
+	};
+
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
@@ -247,15 +265,8 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						// ==========
-						// LIST TYPES
-						// ==========
-						Some(x) if x == TypeId::of::<List<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<Gradient>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<List<Gradient>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<List<Graphic>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<Item<BrushTrace>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
@@ -305,26 +316,18 @@ pub(crate) fn property_from_type(
 						// =====
 						// OTHER
 						// =====
-						_ => {
-							let is_exposed = default_info.is_exposed();
-
-							let mut widgets = start_widgets(default_info);
-
-							if !is_exposed {
-								widgets.extend_from_slice(&[
-									Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-									TextLabel::new("-")
-										.tooltip_label(concrete_type.to_string())
-										.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
-										.widget_instance(),
-								]);
-							}
-							return Err(vec![widgets.into()]);
-						}
+						_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
 					}
 				}
 			}
 		}
+		Type::List(element) => match element.as_ref() {
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Gradient>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Graphic>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
+		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
@@ -2531,7 +2534,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let layer = root_layer_for_chain_node(node_id, context);
 
 	let fill = match input_type.compiled_nested_type() {
-		Some(ty) if ty == &concrete!(List<Graphic>) => match get_document_node(node_id, context) {
+		Some(ty) if ty == &list!(Graphic) => match get_document_node(node_id, context) {
 			Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
 				Some(TaggedValue::FillChoice(FillChoice::None)) => ResolvedFill::Solid(None),
 				Some(TaggedValue::FillChoice(FillChoice::Solid(color))) => ResolvedFill::Solid(Some(*color)),
@@ -2553,7 +2556,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			},
 			Err(_) => ResolvedFill::Other,
 		},
-		Some(ty) if ty == &concrete!(List<Gradient>) => {
+		Some(ty) if ty == &list!(Gradient) => {
 			// Read this node's own inputs rather than the layer's nearest Fill, which may be a different node when Fills are chained
 			if let Ok(document_node) = get_document_node(node_id, context)
 				&& let Some(gradient) = graph_modification_utils::read_fill_node_gradient(document_node, || {

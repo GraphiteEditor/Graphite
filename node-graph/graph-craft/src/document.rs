@@ -270,7 +270,8 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
-			NodeInput::Import { import_type, .. } => import_type.clone(),
+			// Documents saved before the structural `List` form persist name-encoded import types, normalized here on ingestion
+			NodeInput::Import { import_type, .. } => import_type.clone().normalize_rank(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
 			NodeInput::Reflection(_) => concrete!(Metadata),

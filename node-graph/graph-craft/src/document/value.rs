@@ -11,6 +11,7 @@ use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
+use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::Gradient;
@@ -231,18 +232,18 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
+			/// Creates the wire [`Type`] of the value inside the tagged value, with `List` types in their structural form.
 			pub fn ty(&self) -> Type {
-				match self {
+				let ty = match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
-					Self::F64Array(_) => concrete!(List<f64>),
+					Self::F64Array(_) => list!(f64),
 					Self::Color(_) => concrete!(Color),
 					Self::Gradient(_) => concrete!(Gradient),
-					Self::FillChoice(_) => concrete!(List<Graphic>),
+					Self::FillChoice(_) => list!(Graphic),
 					Self::BrushStrokes(_) => concrete!(Item<BrushTrace>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -257,7 +258,10 @@ macro_rules! tagged_value {
 					Self::ContextFeatures(_) => concrete!(ContextFeatures),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
-				}
+				};
+
+				// The generated arms and `TypeDefault` descriptors carry name-encoded `List` types, which this converts to the structural form
+				ty.normalize_rank()
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -332,6 +336,17 @@ macro_rules! tagged_value {
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
 					Type::Future(output) => TaggedValue::from_type(output),
+					// Structural lists dispatch by their re-encoded name, since the name checks above cover the `List` types directly
+					Type::List(_) => {
+						let name = input.full_type_name()?;
+						TaggedValue::from_type(&Type::Concrete(TypeDescriptor {
+							id: None,
+							name,
+							alias: None,
+							size: 0,
+							align: 0,
+						}))
+					}
 				}
 			}
 
@@ -408,7 +423,7 @@ tagged_value! {
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
-	Resource(graphene_application_io::resource::ResourceId),
+	Resource(ResourceId),
 	// Legacy
 	#[serde(alias = "OptionalDAffine2")]
 	LegacyOptionalDAffine2(Option<DAffine2>),
@@ -604,6 +619,16 @@ impl TaggedValue {
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
 			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
+			Type::List(element) => {
+				let Type::Concrete(descriptor) = element.as_ref() else { return None };
+				match descriptor.name.as_ref() {
+					name if name == std::any::type_name::<Color>() => to_color(string).map(TaggedValue::Color),
+					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
+					name if name == std::any::type_name::<Graphic>() => to_color(string).map(|color| TaggedValue::FillChoice(FillChoice::Solid(color))),
+					name if name == std::any::type_name::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient),
+					_ => None,
+				}
+			}
 		}
 	}
 

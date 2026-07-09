@@ -201,7 +201,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				// A primary's scalar `#[default]` parses as a bare element (unranked, promoted at resolution); without one it defaults to an empty List
 				Some(implementation_ty) if index == 0 && element_wise => match value_source {
 					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
-					_ => quote!(Some(concrete!(#core_types::list::List<#implementation_ty>))),
+					_ => quote!(Some(#core_types::list!(#implementation_ty))),
 				},
 				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
 				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
@@ -1177,19 +1177,22 @@ fn generate_register_node_impl(
 				// Rankedness comes from the field's declared type; its #[implementations(...)] entries are bare element types
 				let field_is_ranked = matches!(&regular_fields[j].ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some());
 				let is_lazy_primary = j == 0 && matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
-				// The list-content variant lifts its lazy primary connector's `Item<E>` content to `List<E>`; ranked params follow the variant's param wrap
-				let output_type = if is_lazy_primary && variant == RegisterVariant::ListContent {
+				// The list-content variant lifts its lazy primary connector's `Item<E>` content to `List<E>`; ranked params follow the variant's param wrap.
+				// A `List`-wrapped signature is also spelled with bare `List<...>` tokens, which `fn_type_fut!` matches syntactically to construct the structural form.
+				let (output_type, signature_type) = if is_lazy_primary && variant == RegisterVariant::ListContent {
 					let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
-					WireWrapper::List.apply(&gcore, &element_ty)
+					(WireWrapper::List.apply(&gcore, &element_ty), Some(quote!(List<#element_ty>)))
 				} else {
 					match (field_is_ranked, variant.param_wrap()) {
 						(true, Some(wrap)) => {
 							let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
-							wrap.apply(&gcore, &element_ty)
+							let signature = matches!(wrap, WireWrapper::List).then(|| quote!(List<#element_ty>));
+							(wrap.apply(&gcore, &element_ty), signature)
 						}
-						_ => output_type.clone(),
+						_ => (output_type.clone(), None),
 					}
 				};
+				let signature_type = signature_type.unwrap_or_else(|| quote!(#output_type));
 
 				let node = matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
 
@@ -1200,7 +1203,7 @@ fn generate_register_node_impl(
 					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
 				}
 				temp_constructors.push(downcast_node);
-				temp_node_io.push(quote!(fn_type_fut!(#input_type, #output_type, alias: #output_type)));
+				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type, alias: #signature_type)));
 				panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
 			}
 			let input_type = match parsed.input.implementations.is_empty() {
