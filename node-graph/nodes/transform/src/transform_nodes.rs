@@ -96,6 +96,7 @@ fn reset_transform<T>(
 		Raster<GPU>,
 		Color,
 		Gradient,
+		String,
 	)]
 	content: Item<T>,
 	#[default(true)] reset_translation: Item<bool>,
@@ -138,6 +139,7 @@ fn replace_transform<T>(
 		Raster<GPU>,
 		Color,
 		Gradient,
+		String,
 	)]
 	content: Item<T>,
 	transform: Item<DAffine2>,

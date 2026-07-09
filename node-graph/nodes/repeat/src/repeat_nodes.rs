@@ -4,19 +4,29 @@ use core_types::list::{Item, List};
 use core_types::registry::types::{Angle, PixelSize};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::{Graphic, Vector};
-use raster_types::{CPU, Raster};
+use graphic_types::{Artboard, Graphic, Vector};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
 #[node_macro::node(category("Repeat"))]
-async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
+async fn repeat<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> List<Graphic>,
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
 		Context -> List<Vector>,
+		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Artboard>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(1)]
@@ -46,14 +56,24 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 }
 
 #[node_macro::node(category("Repeat"))]
-pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
+pub async fn repeat_array<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> List<Graphic>,
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
 		Context -> List<Vector>,
+		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Artboard>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[default(100., 100.)]
@@ -95,14 +115,24 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 }
 
 #[node_macro::node(category("Repeat"))]
-async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
+async fn repeat_radial<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> List<Graphic>,
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
 		Context -> List<Vector>,
+		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Artboard>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	start_angle: Item<Angle>,
@@ -141,15 +171,25 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 }
 
 #[node_macro::node(category("Repeat"), name("Repeat on Points"))]
-async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
+async fn repeat_on_points<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs,
 	points: List<Vector>,
 	#[implementations(
-		Context -> List<Graphic>,
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
 		Context -> List<Vector>,
+		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Artboard>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	reverse: Item<bool>,

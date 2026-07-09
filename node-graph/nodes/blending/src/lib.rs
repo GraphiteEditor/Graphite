@@ -3,7 +3,7 @@ use core_types::registry::types::Percentage;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
-use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
@@ -11,7 +11,7 @@ use vector_types::Gradient;
 fn blend_mode<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
 	content: Item<T>,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: Item<BlendMode>,
@@ -30,7 +30,7 @@ fn blend_mode<T>(
 fn opacity<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
 	content: Item<T>,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
@@ -71,7 +71,7 @@ fn opacity<T>(
 fn clipping_mask<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
 	content: Item<T>,
 	/// Whether the content inherits the alpha of the content beneath it.
 	clip: Item<bool>,
