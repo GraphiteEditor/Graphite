@@ -1,15 +1,15 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
+use core_types::ATTR_TRANSFORM;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
 use core_types::generic::FnNode;
-use core_types::list::{Item, List, NodeIdPath};
+use core_types::list::{Item, List};
 use core_types::math::bbox::{AxisAlignedBbox, Bbox};
 use core_types::registry::FutureWrapperNode;
 use core_types::transform::Transform;
 use core_types::value::ClonedNode;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 use core_types::{Ctx, Node};
 use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
@@ -311,20 +311,12 @@ async fn brush(
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
+	// The paint operation changes only the raster and its bounds, so set just the resulting transform; blending, opacity,
+	// clipping, and layer-path attributes carry through from the input `background` rather than being invented here.
 	let transform: DAffine2 = actual_image.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let blend_mode: BlendMode = actual_image.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let fill: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
-	let layer: Item<NodeIdPath> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 
 	*result_item.element_mut() = actual_image.into_element();
 	result_item.set_attribute(ATTR_TRANSFORM, transform);
-	result_item.set_attribute(ATTR_BLEND_MODE, blend_mode);
-	result_item.set_attribute(ATTR_OPACITY, opacity);
-	result_item.set_attribute(ATTR_OPACITY_FILL, fill);
-	result_item.set_attribute(ATTR_CLIPPING_MASK, clip);
-	result_item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer);
 
 	result_item
 }
