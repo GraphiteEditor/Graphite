@@ -1,7 +1,6 @@
-use core_types::list::{ATTR_FILL, Item, List, NodeIdPath};
+use core_types::list::{ATTR_FILL, Item, ItemAttributeValues, List};
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, BlendMode, Color,
-	Ctx,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color, Ctx,
 };
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
@@ -198,18 +197,16 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				}
 				Graphic::RasterCPU(image) => {
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
+					let make_item = |transform: DAffine2, source_attributes: &ItemAttributeValues| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						let element = Vector::from_subpath(subpath);
 
-						let mut item = Item::new_from_element(element)
-							.with_attribute(ATTR_BLEND_MODE, blend_mode)
-							.with_attribute(ATTR_OPACITY, opacity)
-							.with_attribute(ATTR_OPACITY_FILL, fill)
-							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+						let mut item = Item::new_from_element(element);
+						for key in [ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH] {
+							item.attributes_mut().insert_cloned_from(source_attributes, key);
+						}
 						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 						item
 					};
@@ -220,29 +217,23 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: Item<NodeIdPath> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
-							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
-							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
+							let source_attributes = image.clone_item_attributes(i);
+							make_item(parent_transform * row_transform, &source_attributes)
 						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
+					let make_item = |transform: DAffine2, source_attributes: &ItemAttributeValues| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						let element = Vector::from_subpath(subpath);
 
-						let mut item = Item::new_from_element(element)
-							.with_attribute(ATTR_BLEND_MODE, blend_mode)
-							.with_attribute(ATTR_OPACITY, opacity)
-							.with_attribute(ATTR_OPACITY_FILL, fill)
-							.with_attribute(ATTR_CLIPPING_MASK, clip)
-							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+						let mut item = Item::new_from_element(element);
+						for key in [ATTR_BLEND_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH] {
+							item.attributes_mut().insert_cloned_from(source_attributes, key);
+						}
 						set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 						item
 					};
@@ -253,12 +244,8 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: Item<NodeIdPath> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
-							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
-							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
+							let source_attributes = image.clone_item_attributes(i);
+							make_item(parent_transform * row_transform, &source_attributes)
 						})
 						.collect::<Vec<_>>()
 				}

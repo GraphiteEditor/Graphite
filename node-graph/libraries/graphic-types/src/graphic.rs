@@ -316,11 +316,11 @@ impl IntoGraphicList for List<Graphic> {
 
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic item so a subsequent
-		// `flatten_graphic_list` doesn't overwrite the inner Vector's stamp with an empty value
-		let layer_path: Item<NodeIdPath> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		// Propagate the `editor:layer_path` column (if present) from item 0 onto the wrapper Graphic item so a
+		// subsequent `flatten_graphic_list` doesn't drop the inner Vector's layer stamp
+		let layer_path = self.attribute::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
 		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
-		if !layer_path.element().0.is_empty() {
+		if let Some(layer_path) = layer_path {
 			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 		}
 		graphic_list
@@ -353,9 +353,9 @@ impl IntoGraphicList for List<Gradient> {
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		let layer_path: Item<NodeIdPath> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let layer_path = self.attribute::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
 		let mut graphic_list = List::new_from_element(Graphic::Text(self));
-		if !layer_path.element().0.is_empty() {
+		if let Some(layer_path) = layer_path {
 			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 		}
 		graphic_list

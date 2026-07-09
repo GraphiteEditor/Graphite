@@ -2760,16 +2760,26 @@ async fn morph<I: IntoGraphicList>(
 	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
-	let layer_path: Item<NodeIdPath> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
+	let mut item = Item::new_from_element(vector);
+	item.set_attribute(ATTR_TRANSFORM, lerped_transform);
 
-	let mut item = Item::new_from_element(vector)
-		.with_attribute(ATTR_TRANSFORM, lerped_transform)
-		.with_attribute(ATTR_BLEND_MODE, lerped_blend_mode)
-		.with_attribute(ATTR_OPACITY, lerped_opacity)
-		.with_attribute(ATTR_OPACITY_FILL, lerped_fill)
-		.with_attribute(ATTR_CLIPPING_MASK, lerped_clip)
-		.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
-		.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
+	// Propagate each blending/layer column only when the input carries it, so attribute presence stays determined by the graph rather than by runtime values
+	if content.attribute::<BlendMode>(ATTR_BLEND_MODE, source_index).is_some() {
+		item.set_attribute(ATTR_BLEND_MODE, lerped_blend_mode);
+	}
+	if content.attribute::<f64>(ATTR_OPACITY, source_index).is_some() {
+		item.set_attribute(ATTR_OPACITY, lerped_opacity);
+	}
+	if content.attribute::<f64>(ATTR_OPACITY_FILL, source_index).is_some() {
+		item.set_attribute(ATTR_OPACITY_FILL, lerped_fill);
+	}
+	if content.attribute::<bool>(ATTR_CLIPPING_MASK, source_index).is_some() {
+		item.set_attribute(ATTR_CLIPPING_MASK, lerped_clip);
+	}
+	if let Some(layer_path) = content.attribute::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, primary_index) {
+		item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+	}
+	item.set_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
 
 	if let Some(fill) = fill_paint {
 		item.set_attribute(ATTR_FILL, fill);
