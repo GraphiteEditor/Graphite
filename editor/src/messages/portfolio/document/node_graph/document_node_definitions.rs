@@ -2151,8 +2151,15 @@ mod test {
 
 		let layer = editor.active_document().metadata().all_layers().next().expect("drawing a rectangle should create a layer");
 		let node_id = NodeId::new();
-		let node_template = resolve_network_node_type("Origins to Polyline").expect("the Origins to Polyline definition should exist").default_node_template();
-		editor.handle_message(NodeGraphMessage::InsertNode { node_id, node_template: Box::new(node_template) }).await;
+		let node_template = resolve_network_node_type("Origins to Polyline")
+			.expect("the Origins to Polyline definition should exist")
+			.default_node_template();
+		editor
+			.handle_message(NodeGraphMessage::InsertNode {
+				node_id,
+				node_template: Box::new(node_template),
+			})
+			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
 
 		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
