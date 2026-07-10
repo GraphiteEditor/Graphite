@@ -19,7 +19,7 @@ gpu = ["interpreted-executor/gpu", "dep:wgpu-executor"]
 # Local dependencies
 graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
-graph-storage = { workspace = true, features = ["conversion"] }
+document-graph = { workspace = true, features = ["conversion"] }
 document-format = { workspace = true }
 document-container = { workspace = true }
 graphene-hash = { workspace = true }

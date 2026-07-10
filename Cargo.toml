@@ -2,15 +2,15 @@
 members = [
 	"desktop",
 	"desktop/wrapper",
+	"desktop/ui",
 	"desktop/embedded-resources",
 	"desktop/bundle",
 	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
-	"desktop/ui",
-	"document/graph-storage",
+	"document/graph",
 	"document/container",
-	"document/document-format",
+	"document/format",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -92,8 +92,8 @@ repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-graph-storage = { path = "document/graph-storage", default-features = false }
-document-format = { path = "document/document-format" }
+document-graph = { path = "document/graph", default-features = false }
+document-format = { path = "document/format" }
 document-container = { path = "document/container" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }

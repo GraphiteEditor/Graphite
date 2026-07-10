@@ -1,5 +1,5 @@
 [package]
-name = "graph-storage"
+name = "document-graph"
 description = "Provides a delta based graph representation used in the Graphite file format"
 edition.workspace = true
 version.workspace = true

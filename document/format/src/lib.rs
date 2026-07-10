@@ -1,6 +1,6 @@
 //! Typed handle for `.gdd` documents.
 //!
-//! [`Gdd`] owns a [`graph_storage::Session`] plus a working-copy [`document_container::AnyContainer`].
+//! [`Gdd`] owns a [`document_graph::Session`] plus a working-copy [`document_container::AnyContainer`].
 //! Mutations flow through `Gdd` to keep the session and the on-disk working copy mirrored.
 //! Export is a separate, explicit operation — see [`export::ExportFormat`].
 //!
@@ -16,8 +16,8 @@ use std::path::Path;
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
 #[cfg(feature = "conversion")]
-use graph_storage::{CommitError, NodeMetadataSource};
-use graph_storage::{Delta, HotOp, PeerId, Registry, Session};
+use document_graph::{CommitError, NodeMetadataSource};
+use document_graph::{Delta, HotOp, PeerId, Registry, Session};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::ResourceHash;
@@ -83,7 +83,7 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) view_settings: std::collections::BTreeMap<String, serde_json::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
-	pub(crate) network_view_settings: std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -261,19 +261,19 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
-	/// [`NetworkId`](graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
-	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
+	/// [`NetworkId`](document_graph::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
+	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
 		&self.network_view_settings
 	}
 
-	/// Resolve each runtime `network_path` to its stable [`NetworkId`](graph_storage::NetworkId), so the
+	/// Resolve each runtime `network_path` to its stable [`NetworkId`](document_graph::NetworkId), so the
 	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
-	) -> Result<std::collections::HashMap<Vec<core_types::uuid::NodeId>, graph_storage::NetworkId>, CommitError> {
+	) -> Result<std::collections::HashMap<Vec<core_types::uuid::NodeId>, document_graph::NetworkId>, CommitError> {
 		self.session.network_ids(network, metadata)
 	}
 
@@ -292,17 +292,17 @@ impl<L: Layout> Gdd<L> {
 		(working, self.layout)
 	}
 
-	/// Resolve the proto-node declarations referenced by the registry into a [`graph_storage::Declarations`]
+	/// Resolve the proto-node declarations referenced by the registry into a [`document_graph::Declarations`]
 	/// map, loading each `ProtoNode`'s bytes from `byte_store` (the global cache in the editor, the
 	/// working-copy container for standalone). Only resources referenced by `Implementation::ProtoNode`
 	/// are visited, so image/font resources are skipped. Cold-path (open / `to_runtime`); async
 	/// because resource loads are.
 	#[cfg(feature = "conversion")]
-	pub async fn declarations(&self, byte_store: &dyn LoadResource) -> graph_storage::Declarations {
-		use graph_storage::Implementation;
+	pub async fn declarations(&self, byte_store: &dyn LoadResource) -> document_graph::Declarations {
+		use document_graph::Implementation;
 
 		let registry = self.session.registry();
-		let mut declarations = graph_storage::Declarations::new();
+		let mut declarations = document_graph::Declarations::new();
 
 		for node in registry.node_instances.values() {
 			let Implementation::ProtoNode(id) = node.implementation() else { continue };
@@ -317,7 +317,7 @@ impl<L: Layout> Gdd<L> {
 				log::error!("Declaration bytes for {id} (hash {hash}) missing from byte store");
 				continue;
 			};
-			match graph_storage::decode_declaration(resource.as_ref()) {
+			match document_graph::decode_declaration(resource.as_ref()) {
 				Ok(proto) => {
 					declarations.insert(*id, proto);
 				}

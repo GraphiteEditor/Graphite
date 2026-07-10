@@ -5,8 +5,8 @@
 
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
-use graph_storage::NodeMetadataSource;
-use graph_storage::{HotOp, Rev, TimeStamp};
+use document_graph::NodeMetadataSource;
+use document_graph::{HotOp, Rev, TimeStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -200,7 +200,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Advance the published frontier to `rev` and persist it to `session.json`, so the silent/published
 	/// undo boundary survives a reopen. Called by the (future) broadcast transport as commits are shared.
-	pub fn publish_up_to(&mut self, rev: graph_storage::Rev) -> Result<(), Error> {
+	pub fn publish_up_to(&mut self, rev: document_graph::Rev) -> Result<(), Error> {
 		self.session.publish_up_to(rev);
 		self.persist_session_state()
 	}
@@ -209,7 +209,7 @@ impl<L: Layout> Gdd<L> {
 	/// enters the registry, history, or CRDT.
 	pub fn set_network_view_settings(
 		&mut self,
-		network_view_settings: std::collections::BTreeMap<graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+		network_view_settings: std::collections::BTreeMap<document_graph::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
 	) -> Result<(), Error> {
 		self.network_view_settings = network_view_settings;
 		self.persist_session_state()

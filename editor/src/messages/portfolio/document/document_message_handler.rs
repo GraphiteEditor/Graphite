@@ -2049,7 +2049,7 @@ impl DocumentMessageHandler {
 
 	/// Restore `view_settings` map into the document.
 	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
-		use graph_storage::attr::session::doc;
+		use document_graph::attr::session::doc;
 
 		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
 			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())

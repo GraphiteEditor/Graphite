@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
-use graph_storage::Registry;
+use document_graph::Registry;
 
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, collect_network_view_settings};

@@ -8,7 +8,7 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_storage::{NodeMetadataSource, PeerId};
+use document_graph::{NodeMetadataSource, PeerId};
 
 use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
@@ -125,7 +125,7 @@ async fn recommit_after_open_is_stable() {
 	// that same peer for deterministic node-ID derivation.
 	let rebuilt_network = round_trip.rebuilt.document_network().clone();
 	let view = StorageMetadataView::new(&round_trip.rebuilt);
-	let reconverted = graph_storage::Registry::convert_from_runtime(&rebuilt_network, &view, &Default::default(), PeerId(1)).expect("re-convert from_runtime");
+	let reconverted = document_graph::Registry::convert_from_runtime(&rebuilt_network, &view, &Default::default(), PeerId(1)).expect("re-convert from_runtime");
 
 	assert!(
 		round_trip.registry.value_equal(&reconverted.registry),
@@ -351,7 +351,7 @@ async fn live_undo_shadows_storage_cursor() {
 
 #[tokio::test]
 async fn round_trip_document_settings() {
-	use graph_storage::attr::session::doc;
+	use document_graph::attr::session::doc;
 
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -382,7 +382,7 @@ async fn round_trip_document_settings() {
 /// and reopens via `open_from_archive`, asserting the PTZ round-trips.
 #[tokio::test]
 async fn gdd_archive_round_trips_view_settings() {
-	use graph_storage::attr::session::doc;
+	use document_graph::attr::session::doc;
 
 	let byte_store = HashMapResourceStorage::new();
 	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
@@ -420,7 +420,7 @@ async fn gdd_archive_round_trips_view_settings() {
 #[tokio::test]
 async fn per_network_navigation_round_trips_via_session_not_registry() {
 	use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{apply_network_view_settings, collect_network_view_settings, network_ids_from_entries};
-	use graph_storage::attr::session::network;
+	use document_graph::attr::session::network;
 
 	let byte_store = HashMapResourceStorage::new();
 
@@ -449,7 +449,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	gdd.set_network_view_settings(network_view_settings).expect("set_network_view_settings");
 
 	// The registry must NOT carry the node-graph nav (it's per-peer, not document content).
-	let root_network = gdd.registry().networks.get(&graph_storage::ROOT_NETWORK).expect("root network in registry");
+	let root_network = gdd.registry().networks.get(&document_graph::ROOT_NETWORK).expect("root network in registry");
 	assert!(!root_network.attributes.contains_key(network::NAV_PTZ), "node-graph nav must not be stored in the registry attributes");
 
 	// Reopen, rebuild the interface, and apply the persisted per-network view state.
@@ -632,7 +632,7 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);
-	let target = graph_storage::Registry::convert_from_runtime(&network, &view, &document.resources.registry, peer).expect("from_runtime");
+	let target = document_graph::Registry::convert_from_runtime(&network, &view, &document.resources.registry, peer).expect("from_runtime");
 
 	let stored = storage.registry();
 

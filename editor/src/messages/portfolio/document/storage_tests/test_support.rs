@@ -7,7 +7,7 @@ use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNodeImplementation, NodeId};
-use graph_storage::PeerId;
+use document_graph::PeerId;
 
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -45,7 +45,7 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 /// storage, the reopened registry, and the reopened per-peer view settings (`ui::doc::*`).
 pub struct RoundTrip {
 	pub rebuilt: NodeNetworkInterface,
-	pub registry: graph_storage::Registry,
+	pub registry: document_graph::Registry,
 	pub view_settings: std::collections::BTreeMap<String, serde_json::Value>,
 }
 

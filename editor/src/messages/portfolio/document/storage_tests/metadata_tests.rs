@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use graph_storage::{NodeMetadataSource, PeerId, Registry};
+use document_graph::{NodeMetadataSource, PeerId, Registry};
 
 use super::test_support::{load_demo, node_paths};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
@@ -34,7 +34,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let (_converted_network, entries) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime_with_metadata failed");
 
 	// Index emitted entries by their (network_path, local_id) address.
-	let entries_by_address: HashMap<(Vec<NodeId>, NodeId), &graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network_path.clone(), e.local_id), e)).collect();
+	let entries_by_address: HashMap<(Vec<NodeId>, NodeId), &document_graph::NodeMetadataEntry> = entries.iter().map(|e| ((e.network_path.clone(), e.local_id), e)).collect();
 
 	let mut checked_any_position = false;
 	let mut checked_any_layer = false;

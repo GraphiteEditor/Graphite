@@ -1298,15 +1298,30 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "document-container",
+ "document-graph",
  "futures",
  "graph-craft",
- "graph-storage",
  "graphene-resource",
  "log",
  "rmp-serde",
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "document-graph"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "core-types",
+ "graph-craft",
+ "graphene-resource",
+ "rmp-serde",
+ "rustc-hash 2.1.1",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -2016,21 +2031,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-storage"
-version = "0.0.0"
-dependencies = [
- "blake3",
- "core-types",
- "graph-craft",
- "graphene-resource",
- "rmp-serde",
- "rustc-hash 2.1.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "graphene-application-io"
 version = "0.1.0"
 dependencies = [
@@ -2334,12 +2334,12 @@ dependencies = [
  "derivative",
  "document-container",
  "document-format",
+ "document-graph",
  "dyn-any",
  "env_logger",
  "futures",
  "glam",
  "graph-craft",
- "graph-storage",
  "graphene-hash",
  "graphene-std",
  "graphite-proc-macros",

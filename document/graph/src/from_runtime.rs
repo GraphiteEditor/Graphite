@@ -89,7 +89,7 @@ impl TryFrom<&NodeNetwork> for Registry {
 pub type DeclarationBytes = HashMap<ResourceHash, Vec<u8>>;
 
 /// A `from_runtime` conversion result: the reference-only [`Registry`] plus the proto-node
-/// declaration *bytes* it extracted, keyed by content hash. `graph-storage` doesn't own a byte
+/// declaration *bytes* it extracted, keyed by content hash. `document-graph` doesn't own a byte
 /// store, so the caller (the `Gdd`) persists these into its content store; the registry only holds
 /// the `ResourceId`/`ResourceHash` references.
 pub struct RuntimeConversion {

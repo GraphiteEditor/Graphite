@@ -5,7 +5,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{Codec, Error, GddV1, GddV1Layout, Layout, Manifest, io, manifest};
-use graph_storage::{HotOp, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
+use document_graph::{HotOp, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
 
 fn empty_container() -> AnyContainer {
 	AnyContainer::Memory(MemoryBackend::new())
@@ -416,8 +416,8 @@ fn export_carries_resources() {
 #[test]
 fn embed_all_resources_materializes_link_only_resource() {
 	use document_format::{ExportFormat, ExportOptions};
+	use document_graph::NoMetadata;
 	use graph_craft::application_io::resource::ResourceStorage;
-	use graph_storage::NoMetadata;
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
@@ -483,8 +483,8 @@ fn embed_all_resources_materializes_link_only_resource() {
 #[test]
 fn export_materializes_embedded_resource_from_byte_store() {
 	use document_format::{ExportFormat, ExportOptions};
+	use document_graph::NoMetadata;
 	use graph_craft::application_io::resource::ResourceStorage;
-	use graph_storage::NoMetadata;
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
@@ -526,8 +526,8 @@ fn export_materializes_embedded_resource_from_byte_store() {
 /// export, which previously failed at `embed_resource_sources` and fell back to the legacy blob.
 #[test]
 fn export_round_trips_unretired_hot_ops() {
+	use document_graph::NoMetadata;
 	use graph_craft::application_io::resource::ResourceStorage;
-	use graph_storage::NoMetadata;
 	use graphene_resource::{DataSource, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
@@ -602,10 +602,10 @@ fn create_in_records_default_codecs_in_manifest() {
 /// persistence and retirement, so the `peer_users` mapping survives a reopen.
 #[test]
 fn first_commit_registers_peer_and_survives_reopen() {
+	use document_graph::{NoMetadata, UserId};
 	use graph_craft::application_io::resource::HashMapResourceStorage;
 	use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 	use graph_craft::{ProtoNodeIdentifier, concrete};
-	use graph_storage::{NoMetadata, UserId};
 	use graphene_resource::ResourceRegistry;
 
 	futures::executor::block_on(async {
@@ -674,10 +674,10 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 /// editor-shaped path (declaration bytes live in the resource store, not the Gdd container).
 #[test]
 fn declarations_round_trip_through_byte_store() {
+	use document_graph::NoMetadata;
 	use graph_craft::application_io::resource::HashMapResourceStorage;
 	use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 	use graph_craft::{ProtoNodeIdentifier, concrete};
-	use graph_storage::NoMetadata;
 	use graphene_resource::ResourceRegistry;
 
 	const PROTO: &str = "graphene_core::ops::identity::IdentityNode";

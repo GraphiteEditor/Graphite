@@ -34,7 +34,7 @@ pub enum ConversionError {
 
 /// Resolved proto-node declarations, keyed by the `ResourceId` that `Implementation::ProtoNode`
 /// references. The caller resolves these from its byte store (`ResourceId` → `ResourceHash` →
-/// stored `ProtoNode` bytes) before converting, since `graph-storage` holds only references.
+/// stored `ProtoNode` bytes) before converting, since `document-graph` holds only references.
 pub type Declarations = std::collections::HashMap<ResourceId, ProtoNode>;
 
 impl Registry {
