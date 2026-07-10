@@ -297,13 +297,18 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
-		let Some(mut node_ids) = self
+		let Some(node_ids) = self
 			.selected_nodes_in_nested_network(network_path)
 			.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>())
 		else {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
+		self.shift_nodes(node_ids, direction, shift_without_push, network_path);
+	}
+
+	pub(crate) fn shift_nodes(&mut self, mut node_ids: HashSet<NodeId>, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
+		let seed_nodes = node_ids.clone();
 		if !shift_without_push {
 			for node_id in node_ids.clone() {
 				if self.is_layer(&node_id, network_path) {
@@ -468,11 +473,10 @@ impl NodeNetworkInterface {
 				if offset == 0 {
 					return None;
 				}
-				if self.selected_nodes_in_nested_network(network_path).is_some_and(|selected_nodes| {
-					selected_nodes
-						.selected_nodes()
-						.any(|selected_node| selected_node == node_id || self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.contains(selected_node)) == Some(true))
-				}) {
+				if seed_nodes
+					.iter()
+					.any(|seed_node| seed_node == node_id || self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.contains(seed_node)) == Some(true))
+				{
 					return None;
 				};
 				let Some(position) = self.position(node_id, network_path) else {
