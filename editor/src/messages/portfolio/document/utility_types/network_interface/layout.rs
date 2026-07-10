@@ -701,7 +701,7 @@ impl NodeNetworkInterface {
 			insert_index = 0;
 		}
 
-		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
+		let post_node = self.post_node_with_index(parent, insert_index);
 		let Some(post_node_input) = self.input_from_connector(&post_node, network_path).cloned() else {
 			log::error!("Could not get previous input in move_layer_to_stack_for_import");
 			return;
@@ -789,7 +789,7 @@ impl NodeNetworkInterface {
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), network_path);
 
-		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
+		let post_node = self.post_node_with_index(parent, insert_index);
 
 		// Get the previous input to the post node before inserting the layer
 		let Some(post_node_input) = self.input_from_connector(&post_node, network_path).cloned() else {

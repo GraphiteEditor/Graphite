@@ -623,6 +623,61 @@ impl NodeNetworkInterface {
 	}
 
 	// All chain nodes and branches from the chain which are sole dependents of the layer
+	/// The input connector into which a layer should be inserted for the given parent and stack index.
+	pub(crate) fn post_node_with_index(&self, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
+		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
+			InputConnector::Export(0)
+		} else {
+			InputConnector::node(parent.to_node(), 1)
+		};
+		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
+		let mut current_index = 0;
+
+		// Set the post node to the layer node at insert_index
+		loop {
+			if current_index == insert_index {
+				break;
+			}
+			let next_node_in_stack_id = self
+				.input_from_connector(&post_node_input_connector, &[])
+				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
+
+			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
+				// Only increment index for layer nodes
+				if self.is_layer(next_node_in_stack_id, &[]) {
+					current_index += 1;
+				}
+				// Input as a sibling to the Layer node above
+				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
+			} else {
+				log::error!("Error getting post node: insert_index out of bounds");
+				break;
+			};
+		}
+
+		let layer_input_connector = post_node_input_connector;
+
+		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
+		loop {
+			let pre_node_output_connector = self.upstream_output_connector(&post_node_input_connector, &[]);
+
+			match pre_node_output_connector {
+				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !self.is_layer(&pre_node_id, &[]) => {
+					// Update post_node_input_connector for the next iteration
+					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
+					let primary_is_exposed = self.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
+					if !primary_is_exposed {
+						return layer_input_connector;
+					}
+				}
+				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
+			}
+		}
+
+		post_node_input_connector
+	}
+
 	pub fn upstream_nodes_below_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
 		// Every upstream node below layer must be a sole dependent
 		let mut upstream_nodes_below_layer = HashSet::new();
