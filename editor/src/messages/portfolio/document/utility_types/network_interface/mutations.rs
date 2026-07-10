@@ -227,6 +227,36 @@ impl NodeNetworkInterface {
 	}
 
 	// First disconnects the export, then removes it
+	/// Disconnects every wire fed by the given import within the network.
+	pub(crate) fn disconnect_import_wires(&mut self, import_index: usize, network_path: &[NodeId]) {
+		let Some(wires_for_import) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::Import(import_index)).cloned()) else {
+			log::error!("Could not get outward wires in disconnect_import_wires");
+			return;
+		};
+		let Some(wires_for_import) = wires_for_import else {
+			log::error!("Could not get outward wires for import in disconnect_import_wires");
+			return;
+		};
+		for downstream_connection in wires_for_import {
+			self.disconnect_input(&downstream_connection, network_path);
+		}
+	}
+
+	/// Disconnects every wire fed by the given output within the network.
+	pub(crate) fn disconnect_output_wires(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) {
+		let Some(downstream_connections) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()) else {
+			log::error!("Could not get outward wires in disconnect_output_wires");
+			return;
+		};
+		let Some(downstream_connections) = downstream_connections else {
+			log::error!("Could not get downstream connections in disconnect_output_wires");
+			return;
+		};
+		for downstream_connection in downstream_connections {
+			self.disconnect_input(&downstream_connection, network_path);
+		}
+	}
+
 	pub fn remove_export(&mut self, export_index: usize, network_path: &[NodeId]) {
 		let mut encapsulating_network_path = network_path.to_vec();
 		let Some(parent_id) = encapsulating_network_path.pop() else {
@@ -300,10 +330,6 @@ impl NodeNetworkInterface {
 			log::error!("Could not get outward wires in remove_import");
 			return;
 		};
-		let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(import_index)).cloned() else {
-			log::error!("Could not get outward wires for import in remove_import");
-			return;
-		};
 		let mut new_import_mapping = Vec::new();
 		for i in (import_index + 1)..number_of_inputs {
 			let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(i)).cloned() else {
@@ -316,9 +342,7 @@ impl NodeNetworkInterface {
 		}
 
 		// Disconnect all upstream connections
-		for outward_wire in outward_wires_for_import {
-			self.disconnect_input(&outward_wire, network_path);
-		}
+		self.disconnect_import_wires(import_index, network_path);
 		// Shift inputs connected to to imports at a higher index down one
 		for (output_connector, input_wire) in new_import_mapping {
 			self.create_wire(&output_connector, &input_wire, network_path);
