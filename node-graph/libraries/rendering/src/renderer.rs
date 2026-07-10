@@ -3,7 +3,7 @@ use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::color::{Color, SRGBA8, bilerp_color};
+use core_types::color::{Color, SRGBA8};
 use core_types::consts::DEFAULT_FONT_SIZE;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
@@ -16,7 +16,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, FloatExt};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
@@ -27,7 +27,7 @@ use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, ParamCurve, Shape, StrokeOpts};
-use num_traits::Zero;
+use num_traits::{Float, Zero};
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as SkrifaFontRef;
@@ -35,7 +35,7 @@ use skrifa::{GlyphId, MetadataProvider};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
-use std::ops::Deref;
+use std::ops::{Add, Deref, Mul, Sub};
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
 use vector_types::vector::misc::point_to_dvec2;
@@ -1096,7 +1096,7 @@ impl Render for List<Vector> {
 				MaskType::Mask
 			};
 
-			let fill_graphic_list = graphic_list_at(self, index, ATTR_FILL);
+			let fill_graphic_list: Option<std::borrow::Cow<'_, List<Graphic>>> = graphic_list_at(self, index, ATTR_FILL);
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
 			let stroke_graphic_list = graphic_list_at(self, index, ATTR_STROKE);
@@ -1159,12 +1159,14 @@ impl Render for List<Vector> {
 				}
 			}
 
-			let is_mesh_fill = fill_graphic_list.as_ref().is_some_and(|list| {
-				matches!(list.element(0), Some(Graphic::Gradient(gradient)) if gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0) == GradientType::Mesh)
-			});
+			let is_mesh_fill = fill_graphic_list
+				.as_ref()
+				.is_some_and(|list| matches!(list.element(0), Some(Graphic::Gradient(gradient)) if gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0) == GradientType::Mesh));
 			if is_mesh_fill {
+				let mesh_transform = element_transform * applied_stroke_transform;
+
 				// Split the mesh into 8 x 8 subgrids
-				let grid_num = 8;
+				let grid_num = 2;
 				let grid_stride_uv = 1. / grid_num as f64;
 
 				let segments: Vec<_> = vector.segment_iter().map(|(_, path_seg, _, _)| path_seg).collect();
@@ -1180,14 +1182,27 @@ impl Render for List<Vector> {
 				let bottom_left_color = Color::GREEN;
 				let bottom_right_color = Color::YELLOW;
 
-				let bilerp = |u: f64, v: f64| points[3] * (1. - u) * (1. - v) + points[2] * u * (1. - v) + points[0] * (1. - u) * v + points[1] * u * v;
+				let bilerp_points = |u: f64, v: f64| points[3] * (1. - u) * (1. - v) + points[2] * u * (1. - v) + points[0] * (1. - u) * v + points[1] * u * v;
+				let float_srgba_to_hex = |color: [f32; 4]| -> String {
+					let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
+					SRGBA8 {
+						red: float_to_u8(color[0]),
+						green: float_to_u8(color[1]),
+						blue: float_to_u8(color[2]),
+						alpha: float_to_u8(color[3]),
+					}
+					.to_rgba_hex()
+				};
+
+				type Row = Vec<(DVec2, [f32; 4])>;
+				type Grid = Vec<Row>;
 
 				// Create the position and color info of the grid that is splitted from the original mesh
-				let mut grid_info: Vec<Vec<(DVec2, Color)>> = vec![];
+				let mut grid_info: Grid = vec![];
 
 				for i in 0..=grid_num {
 					let u = i as f64 * grid_stride_uv;
-					let mut grid_info_row: Vec<(DVec2, Color)> = vec![];
+					let mut grid_info_row: Row = vec![];
 
 					for j in 0..=grid_num {
 						let v = j as f64 * grid_stride_uv;
@@ -1197,10 +1212,22 @@ impl Render for List<Vector> {
 						let d2_v = point_to_dvec2(right_seg.eval(1. - v));
 						let lc = (1. - v) * c1_u + v * c2_u;
 						let ld = (1. - u) * d1_v + u * d2_v;
+						let pos = mesh_transform.transform_point2(lc + ld - bilerp_points(u, v));
 
-						let pos = lc + ld - bilerp(u, v);
-						let color = bilerp_color(bottom_left_color, bottom_right_color, top_left_color, top_right_color, u, v);
-						grid_info_row.push((pos, color));
+						// We need to calculate the color for each grid points by sRGB since SVG uses sRGB for color interpolation.
+						// `color-interpolation="linearRGB"` is part of the SVG2 spec but not yet implemented in major browsers as of Jul. 2026.
+						// See also: https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/color-interpolation
+						let bottom_left_gamma = bottom_left_color.to_gamma_srgb_channels();
+						let bottom_right_gamma = bottom_right_color.to_gamma_srgb_channels();
+						let top_left_gamma = top_left_color.to_gamma_srgb_channels();
+						let top_right_gamma = top_right_color.to_gamma_srgb_channels();
+						let color_gamma: [f32; 4] = std::array::from_fn(|i| {
+							bottom_left_gamma[i]
+								.lerp(bottom_right_gamma[i], u as f32)
+								.lerp(top_left_gamma[i].lerp(top_right_gamma[i], u as f32), v as f32)
+						});
+
+						grid_info_row.push((pos, color_gamma));
 					}
 					grid_info.push(grid_info_row);
 				}
@@ -1210,63 +1237,82 @@ impl Render for List<Vector> {
 
 				for i in 0..grid_num {
 					for j in 0..grid_num {
-						let bl = grid_info[i][j];
-						let tl = grid_info[i][j + 1];
-						let br = grid_info[i + 1][j];
-						let tr = grid_info[i + 1][j + 1];
+						let (bl, bl_color) = grid_info[i][j];
+						let (tl, tl_color) = grid_info[i][j + 1];
+						let (br, br_color) = grid_info[i + 1][j];
+						let (tr, tr_color) = grid_info[i + 1][j + 1];
+						let DVec2 { x: bl_x, y: bl_y } = bl;
+						let DVec2 { x: tl_x, y: tl_y } = tl;
+						let DVec2 { x: br_x, y: br_y } = br;
+						let DVec2 { x: tr_x, y: tr_y } = tr;
+						let patch_transform = format_transform_matrix(DAffine2::from_cols(tr - tl, bl - tl, tl));
 
 						// linear gradient for the bottom line
 						write!(
 							&mut render.svg_defs,
-							r##"<linearGradient id="gb{idx}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-							bl.0.x,
-							bl.0.y,
-							br.0.x,
-							br.0.y,
-							SRGBA8::from(bl.1).to_rgb_hex(),
-							SRGBA8::from(br.1).to_rgb_hex(),
+							r##"<linearGradient id="gb{idx}" x1="0" y1="1" x2="1" y2="1" gradientTransform="{patch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							float_srgba_to_hex(bl_color),
+							float_srgba_to_hex(br_color),
 						)
 						.unwrap();
 
 						// linear gradient for the top line
 						write!(
 							&mut render.svg_defs,
-							r##"<linearGradient id="gt{idx}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-							tl.0.x,
-							tl.0.y,
-							tr.0.x,
-							tr.0.y,
-							SRGBA8::from(tl.1).to_rgb_hex(),
-							SRGBA8::from(tr.1).to_rgb_hex(),
+							r##"<linearGradient id="gt{idx}" x1="0" y1="0" x2="1" y2="0" gradientTransform="{patch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							float_srgba_to_hex(tl_color),
+							float_srgba_to_hex(tr_color),
 						)
 						.unwrap();
 
 						// top mask gradient
 						write!(
 							&mut render.svg_defs,
-							r##"<linearGradient id="gm{idx}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="black"/><stop offset="1" stop-color="white"/></linearGradient>"##,
-							(bl.0.x + br.0.x) / 2.,
-							(bl.0.y + br.0.y) / 2.,
-							(tl.0.x + tr.0.x) / 2.,
-							(tl.0.y + tr.0.y) / 2.,
+							r##"<linearGradient id="gm{idx}" x1="0.5" y1="0" x2="0.5" y2="1" gradientTransform="{patch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
 						)
 						.unwrap();
 
+						// inflate a patch to hide gaps caused by anti-aliasing
+						let bottom_normal = (br - bl).perp().normalize();
+						let top_normal = (tl - tr).perp().normalize();
+						let left_normal = (bl - tl).perp().normalize();
+						let right_normal = (tr - br).perp().normalize();
+						let pad = 1.;
+						let bl = bl + (bottom_normal + left_normal) * pad;
+						let tl = tl + (top_normal + left_normal) * pad;
+						let br = br + (bottom_normal + right_normal) * pad;
+						let tr = tr + (top_normal + right_normal) * pad;
+						let DVec2 { x: bl_x, y: bl_y } = bl;
+						let DVec2 { x: tl_x, y: tl_y } = tl;
+						let DVec2 { x: br_x, y: br_y } = br;
+						let DVec2 { x: tr_x, y: tr_y } = tr;
+
 						// mask
+						let min_x = bl_x.min(tl_x.min(br_x.min(tr_x)));
+						let max_x = bl_x.max(tl_x.max(br_x.max(tr_x)));
+						let min_y = bl_y.min(tl_y.min(br_y.min(tr_y)));
+						let max_y = bl_y.max(tl_y.max(br_y.max(tr_y)));
+						let mask_width = max_x - min_x;
+						let mask_height = max_y - min_y;
 						write!(
 							&mut render.svg_defs,
-							r##"<mask id="m{idx}" maskUnits="userSpaceOnUse"><polygon points="{},{} {},{} {},{} {},{}" fill="url(#gm{idx})"/></mask>"##,
-							bl.0.x, bl.0.y, br.0.x, br.0.y, tr.0.x, tr.0.y, tl.0.x, tl.0.y,
+							r##"<mask id="m{idx}" x="{min_x}" y="{min_y}" width="{mask_width}" height="{mask_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+							<rect
+							x="{min_x}"
+							y="{min_y}"
+							width="{mask_width}"
+							height="{mask_height}"
+							fill="url(#gm{idx})" /></mask>"##,
 						)
 						.unwrap();
 
 						render.leaf_tag("polygon", |attributes| {
-							attributes.push("points", format!("{},{} {},{} {},{} {},{}", bl.0.x, bl.0.y, br.0.x, br.0.y, tr.0.x, tr.0.y, tl.0.x, tl.0.y));
+							attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
 							attributes.push("fill", format!("url(#gb{idx})"));
 						});
 
 						render.leaf_tag("polygon", |attributes| {
-							attributes.push("points", format!("{},{} {},{} {},{} {},{}", bl.0.x, bl.0.y, br.0.x, br.0.y, tr.0.x, tr.0.y, tl.0.x, tl.0.y));
+							attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
 							attributes.push("fill", format!("url(#gt{idx})"));
 							attributes.push("mask", format!("url(#m{idx})"));
 						});
