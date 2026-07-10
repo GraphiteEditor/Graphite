@@ -15,9 +15,11 @@ pub(crate) enum TextureImportError {
 	InvalidHandle(String),
 	#[error("Unsupported texture format: {format:?}")]
 	UnsupportedFormat { format: cef_color_type_t },
+	#[cfg(not(target_os = "macos"))]
 	#[error("Hardware acceleration not available: {reason}")]
 	HardwareUnavailable { reason: String },
 	#[error("Vulkan operation failed: {operation}")]
+	#[cfg(target_os = "linux")]
 	VulkanError { operation: String },
 	#[error("Platform-specific error: {message}")]
 	PlatformError { message: String },

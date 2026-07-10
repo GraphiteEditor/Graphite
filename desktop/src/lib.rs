@@ -169,6 +169,5 @@ pub fn start() -> ExitCode {
 		_ => {}
 	}
 
-	#[cfg(not(target_os = "windows"))]
 	ExitCode::SUCCESS
 }

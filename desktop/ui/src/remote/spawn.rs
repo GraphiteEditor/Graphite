@@ -23,7 +23,7 @@ pub(crate) struct HostHandle {
 	child: Arc<Mutex<Child>>,
 	shutting_down: Arc<AtomicBool>,
 	died_reported: Arc<AtomicBool>,
-	#[cfg_attr(not(feature = "accelerated_paint"), expect(dead_code))]
+	#[cfg_attr(any(not(feature = "accelerated_paint"), target_os = "windows"), expect(dead_code))]
 	host_acceleration: bool,
 	#[cfg(target_os = "windows")]
 	_job: Option<platform::win::KillOnCloseJob>,
