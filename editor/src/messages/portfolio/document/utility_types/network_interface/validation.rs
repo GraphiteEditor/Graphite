@@ -35,6 +35,13 @@ fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadat
 		}
 	}
 
+	// The pinned display order may only reference existing nodes
+	for node_id in &network_metadata.persistent_metadata.pinned_node_order {
+		if !network.nodes.contains_key(node_id) {
+			violations.push(format!("Pinned node order in network {path:?} references nonexistent node {node_id}"));
+		}
+	}
+
 	// Every wire must reference an existing endpoint within this network
 	let validate_input = |input: &NodeInput, location: &str, violations: &mut Vec<String>| match input {
 		NodeInput::Node { node_id, output_index, .. } => match network.nodes.get(node_id) {
