@@ -2125,6 +2125,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let lock_direction = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
@@ -2136,6 +2137,7 @@ impl Fsm for PathToolFsmState {
 						molding_segment_handles,
 						input.mouse.position,
 						break_molding,
+						lock_direction,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
 
@@ -3638,6 +3640,8 @@ fn update_dynamic_hints(
 				let molding_disable_possible = has_colinear_anchors || handles_stored;
 
 				let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+
+				molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Lock Direction")]));
 
 				if molding_disable_possible {
 					molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
