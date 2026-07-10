@@ -27,6 +27,7 @@ core-types = { workspace = true, features = ["serde"] }
 brush-nodes = { workspace = true, features = ["serde"] }
 graphene-core = { workspace = true, features = ["serde"] }
 graphene-application-io = { workspace = true, features = ["serde"] }
+graphene-animation = { workspace = true, features = ["serde"] }
 rendering = { workspace = true, features = ["serde"] }
 raster-nodes = { workspace = true, features = ["serde"] }
 vector-nodes = { workspace = true, features = ["serde"] }

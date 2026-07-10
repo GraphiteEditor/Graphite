@@ -24,6 +24,7 @@ graphene-hash = { workspace = true }
 raster-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
+graphene-animation = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }

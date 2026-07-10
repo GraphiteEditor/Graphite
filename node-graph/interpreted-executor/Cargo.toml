@@ -15,6 +15,7 @@ wasm = ["graphene-std/wasm"]
 graphene-std = { workspace = true }
 graph-craft = { workspace = true }
 graphene-core = { workspace = true }
+graphene-animation = { workspace = true }
 wgpu-executor = { workspace = true }
 core-types = { workspace = true }
 dyn-any = { workspace = true }
