@@ -7,8 +7,8 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use graph_craft::application_io::resource::HashMapResourceStorage;
 use document_graph::{NodeMetadataSource, PeerId};
+use graph_craft::application_io::resource::HashMapResourceStorage;
 
 use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;

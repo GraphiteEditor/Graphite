@@ -5,9 +5,9 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
+use document_graph::PeerId;
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNodeImplementation, NodeId};
-use document_graph::PeerId;
 
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;

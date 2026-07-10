@@ -7,10 +7,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use glam::IVec2;
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use document_graph::attr::session;
 use document_graph::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position};
+use glam::IVec2;
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
 use super::memo_network::MemoNetwork;
