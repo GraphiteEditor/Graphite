@@ -530,19 +530,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				network_interface.set_input(&encapsulating_connector, input, network_path);
 
-				let Some(outward_wires) = network_interface.outward_wires(breadcrumb_network_path) else {
-					log::error!("Could not get outward wires in remove_import");
-					return;
-				};
-				let Some(downstream_connections) = outward_wires.get(&OutputConnector::Import(0)).cloned() else {
-					log::error!("Could not get outward wires for import in remove_import");
-					return;
-				};
-
-				// Disconnect all connections in the encapsulating network
-				for downstream_connection in &downstream_connections {
-					network_interface.disconnect_input(downstream_connection, breadcrumb_network_path);
-				}
+				// Disconnect all connections fed by the hidden import in the nested network
+				network_interface.disconnect_import_wires(0, breadcrumb_network_path);
 
 				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendWires);
@@ -565,18 +554,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Disconnect all connections in the encapsulating network
 				if let Some((encapsulating_node, encapsulating_path)) = breadcrumb_network_path.split_last() {
-					let Some(outward_wires) = network_interface.outward_wires(encapsulating_path) else {
-						log::error!("Could not get outward wires in remove_import");
-						return;
-					};
-					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*encapsulating_node, 0)).cloned() else {
-						log::error!("Could not get outward wires for import in remove_import");
-						return;
-					};
-
-					for downstream_connection in &downstream_connections {
-						network_interface.disconnect_input(downstream_connection, encapsulating_path);
-					}
+					network_interface.disconnect_output_wires(&OutputConnector::node(*encapsulating_node, 0), encapsulating_path);
 				}
 
 				responses.add(NodeGraphMessage::UpdateImportsExports);
