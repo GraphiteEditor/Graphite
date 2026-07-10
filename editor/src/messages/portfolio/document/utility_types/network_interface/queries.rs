@@ -1,5 +1,8 @@
 use super::*;
 
+/// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
+pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
+
 impl NodeNetworkInterface {
 	/// Runs a query against a resolved [`NetworkView`], logging any error at this message-boundary wrapper and mapping it to None.
 	pub(crate) fn query<'a, 'p, T>(&'a self, network_path: &'p [NodeId], caller: &str, query: impl FnOnce(NetworkView<'a, 'p>) -> Result<T, NetworkError>) -> Option<T> {
@@ -877,27 +880,30 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document(layer))
+	}
+
+	fn combined_document_bounds(&self, include_artboards: bool, layer_bounds: impl Fn(&DocumentMetadata, LayerNodeIdentifier) -> Option<[DVec2; 2]>) -> Option<[DVec2; 2]> {
 		self.document_metadata
 			.all_layers()
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
+				// A layer clipped by its artboard contributes only the intersection of the two bounds
 				if !self.is_artboard(&layer.to_node(), &[])
 					&& let Some(artboard_node_identifier) = layer
 						.ancestors(self.document_metadata())
 						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
+					&& let Some(clip_input) = artboard.inputs.get(ARTBOARD_CLIP_INPUT_INDEX)
+					&& let NodeInput::Value { tagged_value, .. } = clip_input
+					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
 				{
-					let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
-					let clip_input = artboard.unwrap().inputs.get(5).unwrap();
-					if let NodeInput::Value { tagged_value, .. } = clip_input
-						&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
-					{
-						return Some(Quad::clip(
-							self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
-							self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
-						));
-					}
+					return Some(Quad::clip(
+						layer_bounds(&self.document_metadata, layer).unwrap_or_default(),
+						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
+					));
 				}
-				self.document_metadata.bounding_box_document(layer)
+				layer_bounds(&self.document_metadata, layer)
 			})
 			// Skip any layer bounds containing NaN to avoid poisoning the combined result
 			.filter(|[min, max]| min.is_finite() && max.is_finite())
@@ -914,29 +920,7 @@ impl NodeNetworkInterface {
 	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
 	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
 	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.document_metadata
-			.all_layers()
-			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| {
-				if !self.is_artboard(&layer.to_node(), &[])
-					&& let Some(artboard_node_identifier) = layer
-						.ancestors(self.document_metadata())
-						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
-					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
-					&& let Some(clip_input) = artboard.inputs.get(5)
-					&& let NodeInput::Value { tagged_value, .. } = clip_input
-					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
-				{
-					return Some(Quad::clip(
-						self.document_metadata.bounding_box_document_with_stroke(layer).unwrap_or_default(),
-						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
-					));
-				}
-				self.document_metadata.bounding_box_document_with_stroke(layer)
-			})
-			// Skip any layer bounds containing NaN to avoid poisoning the combined result
-			.filter(|[min, max]| min.is_finite() && max.is_finite())
-			.reduce(Quad::combine_bounds)
+		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
 	}
 
 	/// Calculates the selected layer bounds in document space
