@@ -1092,7 +1092,7 @@ impl NodeNetworkInterface {
 				let name_left = node_top_left.x + NAME_LEFT_OFFSET;
 				let icons_reserve = VISIBILITY_INSET_FROM_LAYER_RIGHT + icons_width + GRIP_WIDTH;
 				let name_right_max = node_top_left.x + width as f64 - icons_reserve;
-				let text_w = crate::messages::portfolio::document::overlays::utility_functions::text_width(&display_name, FONT_SIZE);
+				let text_w = text_width(&display_name, FONT_SIZE);
 				let name_right = (name_left + text_w).min(name_right_max);
 				if name_right > name_left {
 					// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.
