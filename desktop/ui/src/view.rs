@@ -60,7 +60,6 @@ impl ViewInfoReceiver {
 		Self { view_info: ViewInfo::new(), receiver }
 	}
 
-	/// Apply all pending updates and return the resulting view info.
 	pub(super) fn current(&mut self) -> ViewInfo {
 		for update in self.receiver.try_iter() {
 			self.view_info.apply_update(update);
