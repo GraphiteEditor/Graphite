@@ -1252,24 +1252,20 @@ impl NodeNetworkInterface {
 			};
 			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
 
-			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>();
+			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<HashSet<_>>();
 
-			// Select the reconnect node to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in remove_references_from_network");
-				return false;
-			};
-
-			let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+			// Build the stack dependents from the reconnected flow rather than the selection so the shifting works correctly
+			self.unload_stack_dependents(network_path);
+			self.load_stack_dependents_for_nodes(upstream_nodes.iter().copied().collect(), network_path);
 
 			// Shift up until there is either a collision or the disconnected node position is reached
 			let mut current_shift_distance = 0;
 			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
-				self.shift_selected_nodes(Direction::Up, false, network_path);
+				self.shift_nodes(upstream_nodes.clone(), Direction::Up, false, network_path);
 				current_shift_distance += 1;
 			}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			self.unload_stack_dependents(network_path);
 		}
 
 		true
