@@ -54,6 +54,12 @@ impl PlaneSender {
 	}
 
 	pub(crate) fn stage(&self, info: &cef::AcceleratedPaintInfo) -> Option<StagedFrame> {
+		let coded_size = &info.extra.coded_size;
+		if coded_size.width <= 0 || coded_size.height <= 0 {
+			tracing::error!("Accelerated paint delivered an invalid coded size: {}x{}", coded_size.width, coded_size.height);
+			return None;
+		}
+
 		let plane_count = (info.plane_count.max(0) as usize).min(info.planes.len());
 		let mut fds = Vec::with_capacity(plane_count);
 		let mut strides = [0u32; 4];
@@ -76,8 +82,8 @@ impl PlaneSender {
 			descriptor: FrameDescriptor {
 				seq: 0,
 				modifier: info.modifier,
-				width: info.extra.coded_size.width as u32,
-				height: info.extra.coded_size.height as u32,
+				width: coded_size.width as u32,
+				height: coded_size.height as u32,
 				format: *info.format.as_ref() as u32,
 				plane_count: plane_count as u32,
 				strides,

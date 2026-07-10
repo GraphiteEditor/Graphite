@@ -2,7 +2,7 @@ use std::fs::File;
 #[cfg(feature = "embedded_resources")]
 use std::io;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Component, PathBuf};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -34,11 +34,21 @@ pub enum WebResources {
 }
 
 pub(crate) fn load(path: PathBuf) -> Option<Resource> {
+	if path.components().any(|component| matches!(component, Component::ParentDir)) {
+		tracing::error!("Rejected resource path with a parent directory component: {path:?}");
+		return None;
+	}
+
 	let resources = if cfg!(feature = "embedded_resources") {
 		WebResources::Embedded
 	} else {
-		let path = std::env::var("GRAPHITE_RESOURCES").expect("GRAPHITE_RESOURCES must point to the frontend assets when embedded resources are disabled");
-		WebResources::External(path.into())
+		match std::env::var("GRAPHITE_RESOURCES") {
+			Ok(dir) => WebResources::External(dir.into()),
+			Err(_) => {
+				tracing::error!("GRAPHITE_RESOURCES must point to the frontend assets when embedded resources are disabled");
+				return None;
+			}
+		}
 	};
 
 	let path = if path.as_os_str().is_empty() { PathBuf::from("index.html") } else { path };

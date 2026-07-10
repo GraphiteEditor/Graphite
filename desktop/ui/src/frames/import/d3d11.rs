@@ -1,6 +1,7 @@
 use super::{TextureImportError, TextureImportResult, TextureImporter, texture_descriptor, wgpu_format};
 use cef::sys::cef_color_type_t;
 use std::os::raw::c_void;
+use wgpu::hal::api;
 
 pub struct D3D11Importer {
 	pub handle: *mut c_void,
@@ -15,16 +16,11 @@ impl TextureImporter for D3D11Importer {
 			return Err(TextureImportError::InvalidHandle("Null D3D11 shared texture handle".to_string()));
 		}
 
-		if is_d3d12_backend(device) {
-			match self.import_via_d3d12(device) {
-				Ok(texture) => {
-					tracing::trace!("Successfully imported D3D11 shared texture via D3D12");
-					return Ok(texture);
-				}
-				Err(e) => {
-					tracing::warn!("Failed to import D3D11 via D3D12: {}, trying Vulkan fallback", e);
-				}
-			}
+		let is_d3d12_backend = unsafe { device.as_hal::<api::Dx12>().is_some() };
+
+		if is_d3d12_backend {
+			let texture = self.import_via_d3d12(device)?;
+			return Ok(texture);
 		}
 
 		let texture = self.import_via_vulkan(device)?;
@@ -137,9 +133,4 @@ impl D3D11Importer {
 			shared_resource.ok_or_else(|| TextureImportError::InvalidHandle("Failed to get D3D12 resource from shared handle".to_string()))
 		}
 	}
-}
-
-fn is_d3d12_backend(device: &wgpu::Device) -> bool {
-	use wgpu::hal::api;
-	unsafe { device.as_hal::<api::Dx12>().is_some() }
 }

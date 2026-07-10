@@ -15,9 +15,19 @@ pub struct DmaBufImporter {
 
 impl TextureImporter for DmaBufImporter {
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult {
-		if self.fds.is_empty() {
-			return Err(TextureImportError::InvalidHandle("No DMA-BUF plane fds".to_string()));
+		if self.fds.len() != 1 {
+			return Err(TextureImportError::InvalidHandle(format!("Expected exactly one DMA-BUF plane fd, got {}", self.fds.len())));
 		}
+
+		if self.strides.len() != self.fds.len() || self.offsets.len() != self.fds.len() {
+			return Err(TextureImportError::InvalidHandle(format!(
+				"DMA-BUF plane count mismatch: {} fds, {} strides, {} offsets",
+				self.fds.len(),
+				self.strides.len(),
+				self.offsets.len()
+			)));
+		}
+
 		let texture = self.import_via_vulkan(device)?;
 		tracing::trace!("Successfully imported DMA-BUF texture via Vulkan");
 		Ok(texture)
@@ -81,7 +91,7 @@ impl DmaBufImporter {
 
 	fn create_vulkan_image_from_dmabuf(&self, hal_device: &<api::Vulkan as wgpu::hal::Api>::Device) -> Result<(vk::Image, vk::DeviceMemory), TextureImportError> {
 		let device = hal_device.raw_device();
-		let _instance = hal_device.shared_instance().raw_instance();
+		let instance = hal_device.shared_instance().raw_instance();
 
 		if self.width == 0 || self.height == 0 {
 			return Err(TextureImportError::InvalidHandle("Invalid DMA-BUF dimensions".to_string()));
@@ -102,13 +112,25 @@ impl DmaBufImporter {
 			.usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
 
-		// Set up DRM format modifier
-		let plane_layouts = self.create_subresource_layouts();
+		let plane_layouts = self
+			.offsets
+			.iter()
+			.zip(&self.strides)
+			.map(|(&offset, &stride)| vk::SubresourceLayout {
+				offset: offset as u64,
+				size: 0, // Will be calculated by driver
+				row_pitch: stride as u64,
+				array_pitch: 0,
+				depth_pitch: 0,
+			})
+			.collect::<Vec<_>>();
 		let mut drm_format_modifier = vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
 			.drm_format_modifier(self.modifier)
 			.plane_layouts(&plane_layouts);
 
-		let image_create_info = image_create_info.push_next(&mut drm_format_modifier);
+		let mut external_memory_info = vk::ExternalMemoryImageCreateInfo::default().handle_types(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
+
+		let image_create_info = image_create_info.push_next(&mut drm_format_modifier).push_next(&mut external_memory_info);
 
 		let image = unsafe {
 			device.create_image(&image_create_info, None).map_err(|e| TextureImportError::VulkanError {
@@ -128,11 +150,25 @@ impl DmaBufImporter {
 			});
 		}
 
+		let external_memory_fd = ash::khr::external_memory_fd::Device::new(instance, device);
+		let mut fd_properties = vk::MemoryFdPropertiesKHR::default();
+		if let Err(e) = unsafe { external_memory_fd.get_memory_fd_properties(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT, dup_fd, &mut fd_properties) } {
+			// SAFETY: import failed and the fd is still ours, need to clean up the image and close the fd
+			unsafe {
+				device.destroy_image(image, None);
+				libc::close(dup_fd);
+			}
+			return Err(TextureImportError::VulkanError {
+				operation: format!("Failed to query DMA-BUF fd memory properties: {e:?}"),
+			});
+		}
+
 		let mut import_memory_fd = vk::ImportMemoryFdInfoKHR::default().handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT).fd(dup_fd);
 
-		let memory_properties = unsafe { hal_device.shared_instance().raw_instance().get_physical_device_memory_properties(hal_device.raw_physical_device()) };
+		let memory_properties = unsafe { instance.get_physical_device_memory_properties(hal_device.raw_physical_device()) };
 
-		let Some(memory_type_index) = find_memory_type_index(memory_requirements.memory_type_bits, vk::MemoryPropertyFlags::empty(), &memory_properties) else {
+		let compatible_type_bits = memory_requirements.memory_type_bits & fd_properties.memory_type_bits;
+		let Some(memory_type_index) = find_memory_type_index(compatible_type_bits, vk::MemoryPropertyFlags::empty(), &memory_properties) else {
 			// SAFETY: import failed and the fd is still ours, need to clean up the image and close the fd
 			unsafe {
 				device.destroy_image(image, None);
@@ -174,18 +210,6 @@ impl DmaBufImporter {
 		}
 
 		Ok((image, device_memory))
-	}
-
-	fn create_subresource_layouts(&self) -> Vec<vk::SubresourceLayout> {
-		(0..self.fds.len())
-			.map(|i| vk::SubresourceLayout {
-				offset: self.offsets.get(i).copied().unwrap_or(0) as u64,
-				size: 0, // Will be calculated by driver
-				row_pitch: self.strides.get(i).copied().unwrap_or(0) as u64,
-				array_pitch: 0,
-				depth_pitch: 0,
-			})
-			.collect()
 	}
 }
 

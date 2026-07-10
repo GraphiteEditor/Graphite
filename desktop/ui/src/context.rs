@@ -69,18 +69,27 @@ impl CefContext {
 		let control_thread = std::thread::Builder::new()
 			.name("cef-host-control".to_string())
 			.spawn(move || {
-				let result = control(CefContextHandle);
+				let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| control(CefContextHandle)));
 				with_context(|context| {
-					context.browser.host().unwrap().close_browser(1);
+					if let Some(host) = context.browser.host() {
+						host.close_browser(1);
+					}
 				});
 				run_on_ui_thread(cef::quit_message_loop);
-				let _ = result_sender.send(result);
+				match result {
+					Ok(result) => {
+						let _ = result_sender.send(result);
+					}
+					Err(panic) => std::panic::resume_unwind(panic),
+				}
 			})
 			.expect("Failed to spawn the CEF control thread");
 		cef::run_message_loop();
 		drop(CONTEXT.take());
 		cef::shutdown();
-		let _ = control_thread.join();
+		if let Err(panic) = control_thread.join() {
+			std::panic::resume_unwind(panic);
+		}
 		result_receiver.recv().expect("The CEF control thread ended without a result")
 	}
 }
@@ -95,11 +104,12 @@ pub(crate) fn execute_helper_process() -> std::process::ExitCode {
 
 fn bootstrap(helper: bool) -> Args {
 	#[cfg(target_os = "macos")]
-	let _loader = {
+	{
 		let loader = cef::library_loader::LibraryLoader::new(&std::env::current_exe().unwrap(), helper);
 		assert!(loader.load());
-		loader
-	};
+		// LibraryLoader unloads the framework on drop
+		std::mem::forget(loader);
+	}
 	#[cfg(not(target_os = "macos"))]
 	let _ = helper;
 
@@ -109,13 +119,13 @@ fn bootstrap(helper: bool) -> Args {
 
 fn initialize(args: &Args, instance_dir: &Path, accelerated_paint: bool) -> Result<(), InitError> {
 	let mut app = App::new(BrowserProcessAppImpl::new(accelerated_paint));
-	if cef::initialize(Some(args.as_main_args()), Some(&platform_settings(instance_dir)), Some(&mut app), std::ptr::null_mut()) != 1 {
+	if cef::initialize(Some(args.as_main_args()), Some(&platform_settings(instance_dir)?), Some(&mut app), std::ptr::null_mut()) != 1 {
 		return Err(InitError::InitializationFailureCode(cef::get_exit_code() as u32));
 	}
 	Ok(())
 }
 
-fn platform_settings(instance_dir: &Path) -> Settings {
+fn platform_settings(instance_dir: &Path) -> Result<Settings, InitError> {
 	let log_severity = match std::env::var("GRAPHITE_BROWSER_LOG").unwrap_or_default().to_lowercase().as_str() {
 		"debug" => cef_log_severity_t::LOGSEVERITY_VERBOSE,
 		"info" => cef_log_severity_t::LOGSEVERITY_INFO,
@@ -125,9 +135,12 @@ fn platform_settings(instance_dir: &Path) -> Settings {
 		_ => cef_log_severity_t::LOGSEVERITY_FATAL,
 	};
 
+	let Some(root_cache_path) = instance_dir.to_str().map(CefString::from) else {
+		return Err(InitError::PathResolutionFailed(format!("non-UTF-8 instance directory path: {}", instance_dir.display())));
+	};
 	let base = Settings {
 		windowless_rendering_enabled: 1,
-		root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
+		root_cache_path,
 		cache_path: "".into(),
 		disable_signal_handlers: 1,
 		log_severity: LogSeverity::from(log_severity),
@@ -136,24 +149,31 @@ fn platform_settings(instance_dir: &Path) -> Settings {
 
 	#[cfg(target_os = "macos")]
 	{
-		let exe = std::env::current_exe().expect("cannot get current exe path");
-		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
-		Settings {
-			main_bundle_path: app_root.to_str().map(CefString::from).unwrap(),
+		let exe = std::env::current_exe().map_err(|e| InitError::PathResolutionFailed(format!("cannot get current exe path: {e}")))?;
+		let app_root = exe
+			.parent()
+			.and_then(|p| p.parent())
+			.and_then(|p| p.parent())
+			.ok_or_else(|| InitError::PathResolutionFailed(format!("executable is not inside an app bundle: {}", exe.display())))?;
+		let Some(main_bundle_path) = app_root.to_str().map(CefString::from) else {
+			return Err(InitError::PathResolutionFailed(format!("invalid app bundle path: {}", app_root.display())));
+		};
+		Ok(Settings {
+			main_bundle_path,
 			multi_threaded_message_loop: 0,
 			external_message_pump: 0,
 			no_sandbox: 1, // GPU helper crashes when running with sandbox
 			..base
-		}
+		})
 	}
 
 	#[cfg(not(target_os = "macos"))]
-	Settings {
+	Ok(Settings {
 		multi_threaded_message_loop: 1,
 		#[cfg(target_os = "linux")]
 		no_sandbox: 1,
 		..base
-	}
+	})
 }
 
 fn create_browser(delegate: BrowserDelegate, frames: FrameStreamer, view_info_sender: Sender<ViewInfoUpdate>, instance_dir: TempDir, accelerated_paint: bool) -> Result<BrowserContext, InitError> {
@@ -187,7 +207,9 @@ fn create_browser(delegate: BrowserDelegate, frames: FrameStreamer, view_info_se
 
 	let mut scheme_handler_factory = SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(delegate.clone()));
 	incognito_request_context.clear_scheme_handler_factories();
-	incognito_request_context.register_scheme_handler_factory(Some(&RESOURCE_SCHEME.into()), Some(&RESOURCE_DOMAIN.into()), Some(&mut scheme_handler_factory));
+	if incognito_request_context.register_scheme_handler_factory(Some(&RESOURCE_SCHEME.into()), Some(&RESOURCE_DOMAIN.into()), Some(&mut scheme_handler_factory)) != 1 {
+		return Err(InitError::SchemeHandlerRegistrationFailed);
+	}
 
 	let url = format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/");
 	browser_host_create_browser_sync(
@@ -220,6 +242,10 @@ pub(crate) enum InitError {
 	BrowserCreationFailed,
 	#[error("Request context creation failed")]
 	RequestContextCreationFailed,
+	#[error("Failed to resolve a required path: {0}")]
+	PathResolutionFailed(String),
+	#[error("Scheme handler registration failed")]
+	SchemeHandlerRegistrationFailed,
 }
 
 #[derive(Clone)]
@@ -261,7 +287,10 @@ impl BrowserContext {
 
 	fn refresh_view_info(&self) {
 		let view_info = self.delegate.view_info();
-		let host = self.browser.host().unwrap();
+		let Some(host) = self.browser.host() else {
+			tracing::error!("Browser host is not available, cannot refresh view info");
+			return;
+		};
 		host.set_zoom_level(view_info.zoom());
 		host.was_resized();
 
@@ -278,7 +307,11 @@ impl BrowserContext {
 impl Drop for BrowserContext {
 	fn drop(&mut self) {
 		tracing::debug!("Shutting down CEF");
-		self.browser.host().unwrap().close_browser(1);
+		if let Some(host) = self.browser.host() {
+			host.close_browser(1);
+		} else {
+			tracing::error!("Browser host is not available, cannot close browser");
+		}
 	}
 }
 
@@ -298,7 +331,9 @@ where
 {
 	let closure_task = ClosureTask::new(closure);
 	let mut task = Task::new(closure_task);
-	post_task(ThreadId::from(cef_thread_id_t::TID_UI), Some(&mut task));
+	if post_task(ThreadId::from(cef_thread_id_t::TID_UI), Some(&mut task)) != 1 {
+		tracing::error!("Failed to post a task to the CEF UI thread");
+	}
 }
 
 fn with_context<F>(closure: F)

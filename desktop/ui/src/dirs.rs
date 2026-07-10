@@ -9,8 +9,8 @@ const APP_DIRECTORY_NAME: &str = "Graphite";
 
 pub(crate) fn app_tmp_dir() -> PathBuf {
 	let path = std::env::temp_dir().join(APP_DIRECTORY_NAME);
-	if !path.exists() {
-		fs::create_dir_all(&path).unwrap_or_else(|_| panic!("Failed to create directory at {path:?}"));
+	if let Err(e) = fs::create_dir_all(&path) {
+		tracing::error!("Failed to create temp directory at {path:?}: {e}");
 	}
 	path
 }

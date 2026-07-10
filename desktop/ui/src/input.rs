@@ -55,10 +55,17 @@ pub(crate) struct KeyData {
 /// (cursor position, click counting, modifiers) along the way.
 pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Vec<InputEvent> {
 	match event {
-		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
+		WindowEvent::PointerMoved { position, .. } => {
 			if !input_state.cursor_move(position) {
 				return Vec::new();
 			}
+			vec![InputEvent::MouseMove {
+				data: input_state.mouse_data(),
+				leave: false,
+			}]
+		}
+		WindowEvent::PointerEntered { position, .. } => {
+			let _ = input_state.cursor_move(position);
 			vec![InputEvent::MouseMove {
 				data: input_state.mouse_data(),
 				leave: false,
@@ -73,7 +80,7 @@ pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Ve
 				leave: true,
 			}]
 		}
-		WindowEvent::PointerButton { state, button, .. } => {
+		WindowEvent::PointerButton { state, button, position, .. } => {
 			let mouse_button = match button {
 				ButtonSource::Mouse(mouse_button) => mouse_button,
 				_ => {
@@ -81,6 +88,7 @@ pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Ve
 				}
 			};
 
+			let _ = input_state.cursor_move(position);
 			let click_count = input_state.mouse_input(mouse_button, state).into();
 			let up = matches!(state, ElementState::Released);
 			let button = match mouse_button {

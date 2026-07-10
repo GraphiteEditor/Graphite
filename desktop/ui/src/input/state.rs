@@ -55,8 +55,8 @@ impl InputState {
 
 	pub(crate) fn mouse_data(&self) -> MouseData {
 		MouseData {
-			x: self.mouse_position.x as i32,
-			y: self.mouse_position.y as i32,
+			x: self.mouse_position.x,
+			y: self.mouse_position.y,
 			modifiers: self.cef_mouse_modifiers().into(),
 		}
 	}
@@ -64,14 +64,14 @@ impl InputState {
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct MousePosition {
-	x: usize,
-	y: usize,
+	x: i32,
+	y: i32,
 }
 impl From<&PhysicalPosition<f64>> for MousePosition {
 	fn from(position: &PhysicalPosition<f64>) -> Self {
 		Self {
-			x: position.x as usize,
-			y: position.y as usize,
+			x: position.x as i32,
+			y: position.y as i32,
 		}
 	}
 }
@@ -133,8 +133,8 @@ impl ClickTracker {
 			ElementState::Released => (record.up_count, record.up_position),
 		};
 
-		let dx = position.x.abs_diff(prev_position.x);
-		let dy = position.y.abs_diff(prev_position.y);
+		let dx = position.x.abs_diff(prev_position.x) as usize;
+		let dy = position.y.abs_diff(prev_position.y) as usize;
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 
 		let count = match (prev_count, within_time, within_dist) {

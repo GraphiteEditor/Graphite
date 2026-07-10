@@ -94,36 +94,47 @@ pub fn start() -> ExitCode {
 	}
 
 	let acceleration = if prefs.disable_ui_acceleration { Acceleration::Disabled } else { Acceleration::Auto };
-	let ui_context = ui_context.start(UiConfig { acceleration }).unwrap_or_else(|error| panic!("Failed to start the UI runtime: {error}"));
-	let ui = ui_context
-		.instance(&wgpu_context.device, &wgpu_context.queue)
-		.unwrap_or_else(|error| panic!("Failed to start the UI: {error}"));
+	let ui_context = match ui_context.start(UiConfig { acceleration }) {
+		Ok(context) => context,
+		Err(error) => {
+			tracing::error!("Failed to start the UI runtime: {error}");
+			return ExitCode::FAILURE;
+		}
+	};
+	let ui = match ui_context.instance(&wgpu_context.device, &wgpu_context.queue) {
+		Ok(ui) => ui,
+		Err(error) => {
+			tracing::error!("Failed to start the UI: {error}");
+			return ExitCode::FAILURE;
+		}
+	};
 	tracing::info!("UI runtime started successfully");
 
 	{
 		let ui = ui.clone();
 		let scheduler = app_event_scheduler.clone();
-		std::thread::Builder::new()
-			.name("ui-events".to_string())
-			.spawn(move || {
-				while let Some(event) = ui.recv() {
-					match event {
-						UiEvent::Ready => scheduler.schedule(AppEvent::WebCommunicationInitialized),
-						UiEvent::Frame(texture) => scheduler.schedule(AppEvent::UiUpdate(texture)),
-						UiEvent::Cursor(cursor) => scheduler.schedule(AppEvent::CursorChange(cursor)),
-						UiEvent::Message(message) => match wrapper::deserialize_editor_message(&message) {
-							Some(message) => scheduler.schedule(AppEvent::DesktopWrapperMessage(message)),
-							None => tracing::error!("Failed to deserialize web message"),
-						},
-						UiEvent::InitFailed(error) => {
-							tracing::error!("UI initialization failed: {error}");
-							scheduler.schedule(AppEvent::UiCrashed);
-						}
-						UiEvent::Crashed => scheduler.schedule(AppEvent::UiCrashed),
+		let spawned = std::thread::Builder::new().name("ui-events".to_string()).spawn(move || {
+			while let Some(event) = ui.recv() {
+				match event {
+					UiEvent::Ready => scheduler.schedule(AppEvent::WebCommunicationInitialized),
+					UiEvent::Frame(texture) => scheduler.schedule(AppEvent::UiUpdate(texture)),
+					UiEvent::Cursor(cursor) => scheduler.schedule(AppEvent::CursorChange(cursor)),
+					UiEvent::Message(message) => match wrapper::deserialize_editor_message(&message) {
+						Some(message) => scheduler.schedule(AppEvent::DesktopWrapperMessage(message)),
+						None => tracing::error!("Failed to deserialize web message"),
+					},
+					UiEvent::InitFailed(error) => {
+						tracing::error!("UI initialization failed: {error}");
+						scheduler.schedule(AppEvent::UiCrashed);
 					}
+					UiEvent::Crashed => scheduler.schedule(AppEvent::UiCrashed),
 				}
-			})
-			.expect("Failed to spawn the UI event bridge thread");
+			}
+		});
+		if let Err(error) = spawned {
+			tracing::error!("Failed to spawn the UI event bridge thread: {error}");
+			return ExitCode::FAILURE;
+		}
 	}
 
 	let app = App::new(ui.clone(), wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli.files);
@@ -157,14 +168,6 @@ pub fn start() -> ExitCode {
 		}
 		_ => {}
 	}
-
-	// Workaround for a Windows-specific exception that occurs when `app` is dropped.
-	// The issue causes the window to hang for a few seconds before closing.
-	// Appears to be related to CEF object destruction order.
-	// Calling `exit` bypasses rust teardown and lets Windows perform process cleanup.
-	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
-	#[cfg(target_os = "windows")]
-	std::process::exit(0);
 
 	#[cfg(not(target_os = "windows"))]
 	ExitCode::SUCCESS

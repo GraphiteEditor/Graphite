@@ -120,10 +120,6 @@ pub enum Acceleration {
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
-pub enum InitError {}
-
-#[derive(thiserror::Error, Debug)]
-#[non_exhaustive]
 pub enum UiError {
 	#[error("failed to bootstrap the UI backend: {0}")]
 	Bootstrap(String),

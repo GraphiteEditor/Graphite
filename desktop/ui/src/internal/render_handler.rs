@@ -51,7 +51,11 @@ impl ImplRenderHandler for RenderHandlerImpl {
 			return;
 		}
 
-		self.frames.stage_texture(info.unwrap());
+		let Some(info) = info else {
+			tracing::error!("Accelerated paint callback received no info about the painted frame");
+			return;
+		};
+		self.frames.stage_texture(info);
 		self.frames.publish();
 	}
 

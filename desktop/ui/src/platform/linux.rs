@@ -9,12 +9,12 @@ pub(crate) fn setup_command(command: &mut Command, #[cfg(feature = "accelerated_
 	// SAFETY: the closure runs in the forked child before exec and only makes async-signal-safe calls
 	unsafe {
 		command.pre_exec(move || {
-			// Tie the host's lifetime to the main process
+			// Tie the host lifetime to the main process
 			if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
 				return Err(std::io::Error::last_os_error());
 			}
 			if libc::getppid() != main_pid {
-				return Err(std::io::Error::other("main process died before PDEATHSIG was set"));
+				return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
 			}
 
 			// Move the host end of the frame socket to its advertised fd

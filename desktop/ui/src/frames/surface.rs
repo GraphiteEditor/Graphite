@@ -40,7 +40,7 @@ impl FrameSurface {
 				view_formats: &[],
 			}));
 		}
-		let texture = slot.as_ref().expect("Texture was just created");
+		let texture = slot.as_ref()?;
 
 		self.queue.write_texture(
 			wgpu::TexelCopyTextureInfo {

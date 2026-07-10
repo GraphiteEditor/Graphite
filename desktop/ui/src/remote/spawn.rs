@@ -163,20 +163,23 @@ pub(crate) fn spawn_host(acceleration: bool) -> Result<HostHandle, UiError> {
 		plane::PlaneReceiver::new(main_end)
 	});
 
-	let (hello_sender, hello_receiver) = mpsc::channel();
-	std::thread::Builder::new()
-		.name("cef-host-accept".to_string())
-		.spawn(move || {
-			let _ = hello_sender.send(server.accept());
-		})
-		.expect("Failed to spawn CEF host accept thread");
+	let (hello_tx, hello_rx) = mpsc::channel();
+	let accept_thread = std::thread::Builder::new().name("cef-host-accept".to_string()).spawn(move || {
+		let _ = hello_tx.send(server.accept());
+	});
+	if let Err(e) = accept_thread {
+		let _ = child.kill();
+		let _ = child.wait();
+		return Err(UiError::Bootstrap(format!("failed to spawn the host accept thread: {e}")));
+	}
 
 	let deadline = Instant::now() + HOST_HELLO_TIMEOUT;
 	let (event_receiver, hello) = loop {
-		match hello_receiver.recv_timeout(Duration::from_millis(100)) {
+		match hello_rx.recv_timeout(Duration::from_millis(100)) {
 			Ok(Ok(accepted)) => break accepted,
 			Ok(Err(e)) => {
 				let _ = child.kill();
+				let _ = child.wait();
 				return Err(UiError::Handshake(format!("failed to accept the host connection: {e}")));
 			}
 			Err(RecvTimeoutError::Timeout) => {
@@ -185,11 +188,13 @@ pub(crate) fn spawn_host(acceleration: bool) -> Result<HostHandle, UiError> {
 				}
 				if Instant::now() >= deadline {
 					let _ = child.kill();
+					let _ = child.wait();
 					return Err(UiError::HandshakeTimeout);
 				}
 			}
 			Err(RecvTimeoutError::Disconnected) => {
 				let _ = child.kill();
+				let _ = child.wait();
 				return Err(UiError::Handshake("the accept thread disappeared".to_string()));
 			}
 		}
@@ -202,6 +207,7 @@ pub(crate) fn spawn_host(acceleration: bool) -> Result<HostHandle, UiError> {
 	} = hello
 	else {
 		let _ = child.kill();
+		let _ = child.wait();
 		return Err(UiError::Handshake("the first message from the host was not Hello".to_string()));
 	};
 	tracing::info!("CEF host process connected (pid {pid})");
@@ -247,7 +253,7 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 		std::thread::Builder::new()
 			.name("cef-frames".to_string())
 			.spawn(move || crate::frames::receive::plane_receiver_loop(receiver, consumer))
-			.expect("Failed to spawn CEF frame receiver thread");
+			.map_err(|e| UiError::Bootstrap(format!("failed to spawn the frame receiver thread: {e}")))?;
 	}
 
 	{
@@ -258,7 +264,7 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 		std::thread::Builder::new()
 			.name("cef-host".to_string())
 			.spawn(move || event_receiver_loop(receiver, consumer, events, shutting_down, died_reported, shutdown_complete_sender))
-			.expect("Failed to spawn CEF host event receiver thread");
+			.map_err(|e| UiError::Bootstrap(format!("failed to spawn the host event receiver thread: {e}")))?;
 	}
 
 	{
@@ -288,7 +294,7 @@ pub(crate) fn start_instance(handle: &HostHandle, surface: FrameSurface, events:
 					}
 				}
 			})
-			.expect("Failed to spawn CEF host supervisor thread");
+			.map_err(|e| UiError::Bootstrap(format!("failed to spawn the host supervisor thread: {e}")))?;
 	}
 
 	Ok(shutdown_complete_receiver)

@@ -110,10 +110,17 @@ impl PlaneSender {
 	}
 
 	pub(crate) fn stage(&self, info: &cef::AcceleratedPaintInfo) -> Option<StagedFrame> {
+		let coded_size = &info.extra.coded_size;
+		if coded_size.width <= 0 || coded_size.height <= 0 {
+			tracing::error!("Accelerated paint delivered an invalid coded size: {}x{}", coded_size.width, coded_size.height);
+			return None;
+		}
+
 		let Some(surface) = std::ptr::NonNull::new(info.shared_texture_io_surface.cast::<IOSurfaceRef>()) else {
 			tracing::error!("Accelerated paint delivered a null IOSurface");
 			return None;
 		};
+
 		// SAFETY: CEF keeps the surface valid for the `on_accelerated_paint` callback.
 		let port = unsafe { surface.as_ref() }.create_mach_port();
 		if port == MACH_PORT_NULL {
@@ -123,8 +130,8 @@ impl PlaneSender {
 		Some(StagedFrame {
 			descriptor: FrameDescriptor {
 				seq: 0,
-				width: info.extra.coded_size.width as u32,
-				height: info.extra.coded_size.height as u32,
+				width: coded_size.width as u32,
+				height: coded_size.height as u32,
 				format: *info.format.as_ref() as u32,
 				_pad: 0,
 			},
@@ -155,9 +162,6 @@ impl PlaneSender {
 			descriptor,
 		};
 
-		// Kernel takes ownership of the surface and moves it to the receiver. We must not drop.
-		std::mem::forget(frame.surface);
-
 		// SAFETY: message is a well-formed complex message of the declared size.
 		let result = unsafe {
 			mach_msg(
@@ -173,6 +177,10 @@ impl PlaneSender {
 		if result != MACH_MSG_SUCCESS {
 			return Err(std::io::Error::other(format!("mach_msg send failed: {result:#x}")));
 		}
+
+		// Kernel took ownership of the surface and moves it to the receiver. We must not drop.
+		std::mem::forget(frame.surface);
+
 		Ok(())
 	}
 }

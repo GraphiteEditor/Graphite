@@ -67,6 +67,12 @@ impl PlaneSender {
 	}
 
 	pub(crate) fn stage(&self, info: &cef::AcceleratedPaintInfo) -> Option<StagedFrame> {
+		let coded_size = &info.extra.coded_size;
+		if coded_size.width <= 0 || coded_size.height <= 0 {
+			tracing::error!("Accelerated paint delivered an invalid coded size: {}x{}", coded_size.width, coded_size.height);
+			return None;
+		}
+
 		let handle = match self.main.duplicate_into(HANDLE(info.shared_texture_handle)) {
 			Ok(handle) => handle,
 			Err(e) => {
@@ -74,10 +80,11 @@ impl PlaneSender {
 				return None;
 			}
 		};
+
 		Some(StagedFrame {
 			handle: HandleInMain { handle, main: self.main.clone() },
-			width: info.extra.coded_size.width as u32,
-			height: info.extra.coded_size.height as u32,
+			width: coded_size.width as u32,
+			height: coded_size.height as u32,
 			format: *info.format.as_ref() as u32,
 		})
 	}
