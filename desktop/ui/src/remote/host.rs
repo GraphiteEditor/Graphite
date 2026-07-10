@@ -89,13 +89,6 @@ pub(crate) fn run() {
 		}
 		ControlOutcome::Disconnected => std::process::exit(0),
 	}
-
-	// Workaround for a Windows-specific exception that occurs when `context` is dropped.
-	// Appears to be related to CEF object destruction order.
-	// Calling `exit` bypasses rust teardown and lets Windows perform process cleanup.
-	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
-	#[cfg(target_os = "windows")]
-	std::process::exit(0);
 }
 
 enum ControlOutcome {
