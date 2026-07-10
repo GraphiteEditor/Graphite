@@ -211,7 +211,7 @@ The editor operates on its existing runtime types. Storage is a serialization la
                           │ to_runtime       │ from_runtime
                           │                  ▼
                 ┌─────────────────────────────────────────┐
-                │ Storage layer  (document-graph crate)    │
+                │ Storage layer  (document-graph crate)   │
                 │  Registry, RegistryDelta, Document      │
                 └─────────────────────────────────────────┘
                                    │
@@ -240,23 +240,23 @@ The two concerns live in downstream crates. `document-container` defines the `Co
 
 ```
             ┌─────────────────────────────────┐
-            │ editor                          │
+            │              editor             │
             └─────────────────────────────────┘
-                  │              │
-                  ▼              ▼
-            ┌───────────────┐  ┌──────────────────────────────┐
+                       │              │
+                       ▼              ▼
+            ┌────────────────┐  ┌──────────────────────────────┐
             │ document-graph │  │ document-format              │
-            │ (disk-unaware)│◀─│  Gdd handle, Layout, codec,  │
-            └───────────────┘  │  ExportOptions               │
-                               └──────────────────────────────┘
-                                              │
-                                              ▼
-                               ┌──────────────────────────────┐
-                               │ document-container           │
-                               │  Container backends + Archive│
-                               │  codecs (folder, memory,     │
-                               │  OPFS / zip, xz)             │
-                               └──────────────────────────────┘
+            │ (disk-unaware) │◀─│  Gdd handle, Layout, codec,  │
+            └────────────────┘  │  ExportOptions               │
+                                └──────────────────────────────┘
+                                                │
+                                                ▼
+                                ┌──────────────────────────────┐
+                                │ document-container           │
+                                │  Container backends + Archive│
+                                │  codecs (folder, memory,     │
+                                │  OPFS / zip, xz)             │
+                                └──────────────────────────────┘
 ```
 
 Arrows mean "depends on". The editor uses `Session` from `document-graph` at runtime and `Gdd` from `document-format` on save/load. `document-format` serializes `document-graph`'s types and delegates byte I/O to `document-container`. `document-graph` and `document-container` are independent leaves.
