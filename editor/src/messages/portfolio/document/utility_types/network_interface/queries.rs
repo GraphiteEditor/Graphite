@@ -1202,21 +1202,6 @@ impl NodeNetworkInterface {
 		Some(parent_metadata)
 	}
 
-	// /// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
-	// fn encapsulating_node_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNode> {
-	// 	let mut encapsulating_path = network_path.to_vec();
-	// 	let encapsulating_node_id = encapsulating_path.pop()?;
-	// 	let Some(parent_network) = self.network_mut(&encapsulating_path) else {
-	// 		log::error!("Could not get parent network in encapsulating_node_mut");
-	// 		return None;
-	// 	};
-	// 	let Some(encapsulating_node) = parent_network.nodes.mut(&encapsulating_node_id) else {
-	// 		log::error!("Could not get encapsulating node in encapsulating_node_mut");
-	// 		return None;
-	// 	};
-	// 	Some(encapsulating_node)
-	// }
-
 	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
 	pub(crate) fn encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
 		let mut encapsulating_path = network_path.to_vec();

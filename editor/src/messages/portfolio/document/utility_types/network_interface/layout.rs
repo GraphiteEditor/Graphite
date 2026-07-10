@@ -77,44 +77,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not set chain position for layer node {node_id}");
 		}
 		// let previous_upstream_node = self.upstream_output_connector(&InputConnector::node(*node_id, 0), network_path).and_then(|output| output.node_id());
-		// let Some(previous_upstream_node_position) = previous_upstream_node.and_then(|upstream| self.position_from_downstream_node(&upstream, network_path)) else {
-		// 	log::error!("Could not get previous_upstream_node_position");
-		// 	return;
-		// };
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		// Reload click target of the layer which encapsulate the chain
 		if let Some(downstream_layer) = self.downstream_layer_for_chain_node(node_id, network_path) {
 			self.unload_node_click_targets(&downstream_layer, network_path);
 		}
 		self.unload_all_nodes_bounding_box(network_path);
-
-		// let Some(new_upstream_node_position) = previous_upstream_node.and_then(|upstream| self.position_from_downstream_node(&upstream, network_path)) else {
-		// 	log::error!("Could not get new_upstream_node_position");
-		// 	return;
-		// };
-		// if let Some(previous_upstream_node) =   {
-		// 	let x_delta = new_upstream_node_position.x - previous_upstream_node_position.x;
-		// 	// Upstream node got shifted to left, so shift all upstream absolute sole dependents
-		// 	if x_delta != 0 {
-		// 		let upstream_absolute_nodes = SelectedNodes(
-		// 			self.upstream_flow_back_from_nodes(vec![previous_upstream_node], network_path, FlowType::UpstreamFlow)
-		// 				.into_iter()
-		// 				.filter(|node_id| self.is_absolute(node_id, network_path))
-		// 				.collect::<Vec<_>>(),
-		// 		);
-		// 		let old_selected_nodes = std::mem::replace(self.selected_nodes_mut(network_path).unwrap(), upstream_absolute_nodes);
-		// 		if x_delta < 0 {
-		// 			for _ in 0..x_delta.abs() {
-		// 				self.shift_selected_nodes(Direction::Left, false, network_path);
-		// 			}
-		// 		} else {
-		// 			for _ in 0..x_delta.abs() {
-		// 				self.shift_selected_nodes(Direction::Right, false, network_path);
-		// 			}
-		// 		}
-		// 		let _ = std::mem::replace(self.selected_nodes_mut(network_path).unwrap(), old_selected_nodes);
-		// 	}
-		// }
 	}
 
 	pub(crate) fn valid_upstream_chain_nodes(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<NodeId> {
