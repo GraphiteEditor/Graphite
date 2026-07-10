@@ -8,13 +8,13 @@ use crate::frames::surface::FrameSurface;
 use crate::remote::HostConfig;
 use crate::remote::messages::EventMessage;
 
-struct ParentProcess(HANDLE);
+struct MainProcess(HANDLE);
 
 // SAFETY: process handles may be used and closed from any thread.
-unsafe impl Send for ParentProcess {}
-unsafe impl Sync for ParentProcess {}
+unsafe impl Send for MainProcess {}
+unsafe impl Sync for MainProcess {}
 
-impl ParentProcess {
+impl MainProcess {
 	fn open(pid: u32) -> windows::core::Result<Self> {
 		// SAFETY: plain OpenProcess call; on success the handle is ours to close.
 		unsafe { OpenProcess(PROCESS_DUP_HANDLE, false, pid).map(Self) }
@@ -27,7 +27,7 @@ impl ParentProcess {
 		Ok(target.0 as u64)
 	}
 
-	fn close_in_parent(&self, handle: u64) {
+	fn close_in_main(&self, handle: u64) {
 		let mut reclaimed = HANDLE::default();
 		// SAFETY: `handle` came from `duplicate_into` and is valid.
 		unsafe {
@@ -41,7 +41,7 @@ impl ParentProcess {
 	}
 }
 
-impl Drop for ParentProcess {
+impl Drop for MainProcess {
 	fn drop(&mut self) {
 		// SAFETY: we own the process handle.
 		unsafe {
@@ -51,14 +51,14 @@ impl Drop for ParentProcess {
 }
 
 pub(crate) struct PlaneSender {
-	parent: Arc<ParentProcess>,
+	main: Arc<MainProcess>,
 	events: Arc<Mutex<IpcSender<EventMessage>>>,
 }
 
 impl PlaneSender {
 	pub(crate) fn from_config(config: &HostConfig, events: Arc<Mutex<IpcSender<EventMessage>>>) -> Option<Self> {
-		match ParentProcess::open(config.main_pid) {
-			Ok(parent) => Some(Self { parent: Arc::new(parent), events }),
+		match MainProcess::open(config.main_pid) {
+			Ok(main) => Some(Self { main: Arc::new(main), events }),
 			Err(e) => {
 				tracing::error!("Failed to open the main process for handle duplication, falling back to software frames: {e}");
 				None
@@ -67,7 +67,7 @@ impl PlaneSender {
 	}
 
 	pub(crate) fn stage(&self, info: &cef::AcceleratedPaintInfo) -> Option<StagedFrame> {
-		let handle = match self.parent.duplicate_into(HANDLE(info.shared_texture_handle)) {
+		let handle = match self.main.duplicate_into(HANDLE(info.shared_texture_handle)) {
 			Ok(handle) => handle,
 			Err(e) => {
 				tracing::error!("Failed to duplicate the shared texture handle into the main process: {e}");
@@ -75,7 +75,7 @@ impl PlaneSender {
 			}
 		};
 		Some(StagedFrame {
-			handle: HandleInParent { handle, parent: self.parent.clone() },
+			handle: HandleInMain { handle, main: self.main.clone() },
 			width: info.extra.coded_size.width as u32,
 			height: info.extra.coded_size.height as u32,
 			format: *info.format.as_ref() as u32,
@@ -103,20 +103,20 @@ impl PlaneSender {
 }
 
 pub(crate) struct StagedFrame {
-	handle: HandleInParent,
+	handle: HandleInMain,
 	width: u32,
 	height: u32,
 	format: u32,
 }
 
-struct HandleInParent {
+struct HandleInMain {
 	handle: u64,
-	parent: Arc<ParentProcess>,
+	main: Arc<MainProcess>,
 }
 
-impl Drop for HandleInParent {
+impl Drop for HandleInMain {
 	fn drop(&mut self) {
-		self.parent.close_in_parent(self.handle);
+		self.main.close_in_main(self.handle);
 	}
 }
 

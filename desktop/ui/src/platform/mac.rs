@@ -51,13 +51,13 @@ pub(crate) fn spawn_parent_watchdog(main_pid: u32) {
 		loop {
 			// SAFETY: getppid is always safe to call.
 			if unsafe { libc::getppid() } as u32 != main_pid {
-				tracing::warn!("Main process is gone, exiting CEF host");
+				tracing::warn!("Parent process is gone, exiting...");
 				std::process::exit(0);
 			}
 			std::thread::sleep(Duration::from_millis(500));
 		}
 	});
 	if let Err(e) = result {
-		tracing::error!("Failed to spawn the parent watchdog: {e}");
+		tracing::error!("Failed to spawn parent watchdog: {e}");
 	}
 }

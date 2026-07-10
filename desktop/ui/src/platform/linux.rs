@@ -5,15 +5,15 @@ use std::process::Command;
 use crate::frames::plane;
 
 pub(crate) fn setup_command(command: &mut Command, #[cfg(feature = "accelerated_paint")] host_frame_fd: Option<std::os::fd::RawFd>) {
-	let parent_pid = std::process::id() as libc::pid_t;
+	let main_pid = std::process::id() as libc::pid_t;
 	// SAFETY: the closure runs in the forked child before exec and only makes async-signal-safe calls
 	unsafe {
 		command.pre_exec(move || {
-			// Tie the host's lifetime to the parent process
+			// Tie the host's lifetime to the main process
 			if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
 				return Err(std::io::Error::last_os_error());
 			}
-			if libc::getppid() != parent_pid {
+			if libc::getppid() != main_pid {
 				return Err(std::io::Error::other("main process died before PDEATHSIG was set"));
 			}
 
