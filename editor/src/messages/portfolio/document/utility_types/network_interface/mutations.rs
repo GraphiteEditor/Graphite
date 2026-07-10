@@ -257,6 +257,25 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Refreshes the metadata invalidated when the encapsulating node's signature changes, demoting it from a layer if it is no longer eligible.
+	fn finish_signature_edit(&mut self, parent_id: NodeId, encapsulating_network_path: &[NodeId], network_path: &[NodeId]) {
+		// Update the metadata for the encapsulating node
+		self.unload_outward_wires(encapsulating_network_path);
+		self.unload_node_click_targets(&parent_id, encapsulating_network_path);
+		self.unload_all_nodes_bounding_box(encapsulating_network_path);
+		if !self.is_eligible_to_be_layer(&parent_id, encapsulating_network_path) && self.is_layer(&parent_id, encapsulating_network_path) {
+			self.set_to_node_or_layer(&parent_id, encapsulating_network_path, false);
+		}
+		if encapsulating_network_path.is_empty() {
+			self.load_structure();
+		}
+
+		// Unload the metadata for the nested network
+		self.unload_outward_wires(network_path);
+		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
+	}
+
 	pub fn remove_export(&mut self, export_index: usize, network_path: &[NodeId]) {
 		let mut encapsulating_network_path = network_path.to_vec();
 		let Some(parent_id) = encapsulating_network_path.pop() else {
@@ -301,21 +320,7 @@ impl NodeNetworkInterface {
 			network_metadata.persistent_metadata.reference = None;
 		}
 
-		// Update the metadata for the encapsulating node
-		self.unload_outward_wires(&encapsulating_network_path);
-		self.unload_node_click_targets(&parent_id, &encapsulating_network_path);
-		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
-		if !self.is_eligible_to_be_layer(&parent_id, &encapsulating_network_path) && self.is_layer(&parent_id, &encapsulating_network_path) {
-			self.set_to_node_or_layer(&parent_id, &encapsulating_network_path, false);
-		}
-		if encapsulating_network_path.is_empty() {
-			self.load_structure();
-		}
-
-		// Unload the metadata for the nested network
-		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
 	}
 
 	// First disconnects the import, then removes it
@@ -371,21 +376,7 @@ impl NodeNetworkInterface {
 			network_metadata.persistent_metadata.reference = None;
 		}
 
-		// Update the metadata for the encapsulating node
-		self.unload_outward_wires(encapsulating_network_path);
-		self.unload_node_click_targets(parent_id, encapsulating_network_path);
-		self.unload_all_nodes_bounding_box(encapsulating_network_path);
-		if !self.is_eligible_to_be_layer(parent_id, encapsulating_network_path) && self.is_layer(parent_id, encapsulating_network_path) {
-			self.set_to_node_or_layer(parent_id, encapsulating_network_path, false);
-		}
-		if encapsulating_network_path.is_empty() {
-			self.load_structure();
-		}
-
-		// Unload the metadata for the nested network
-		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.finish_signature_edit(*parent_id, encapsulating_network_path, network_path);
 	}
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
