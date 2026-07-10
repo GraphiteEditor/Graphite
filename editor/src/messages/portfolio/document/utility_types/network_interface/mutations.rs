@@ -1313,22 +1313,6 @@ impl NodeNetworkInterface {
 		network_metadata.persistent_metadata.previewing = Previewing::No;
 	}
 
-	// /// Sets the root node only if a node is being previewed
-	// pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
-	// 	if let Previewing::Yes { root_node_to_restore } = self.previewing {
-	// 		// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
-	// 		if let Some(root_node_to_restore) = root_node_to_restore {
-	// 			if root_node_to_restore.id != node_id {
-	// 				self.start_previewing(node_id, output_index);
-	// 			} else {
-	// 				self.stop_preview();
-	// 			}
-	// 		} else {
-	// 			self.stop_preview();
-	// 		}
-	// 	}
-	// }
-
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node {node_id} in set_visibility");
