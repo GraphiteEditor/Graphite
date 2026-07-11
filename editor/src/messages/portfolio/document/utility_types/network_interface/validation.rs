@@ -13,13 +13,6 @@ impl NodeNetworkInterface {
 	}
 }
 
-fn output_count(implementation: &DocumentNodeImplementation) -> usize {
-	match implementation {
-		DocumentNodeImplementation::Network(network) => network.exports.len(),
-		_ => 1,
-	}
-}
-
 fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: usize, violations: &mut Vec<String>) {
 	let node_metadata = &network_metadata.persistent_metadata.node_metadata;
 
@@ -46,7 +39,7 @@ fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadat
 	let validate_input = |input: &NodeInput, location: &str, violations: &mut Vec<String>| match input {
 		NodeInput::Node { node_id, output_index, .. } => match network.nodes.get(node_id) {
 			None => violations.push(format!("{location} in network {path:?} references nonexistent node {node_id}")),
-			Some(target) if *output_index >= output_count(&target.implementation) => {
+			Some(target) if *output_index >= target.implementation.output_count() => {
 				violations.push(format!("{location} in network {path:?} references nonexistent output {output_index} of node {node_id}"));
 			}
 			_ => {}

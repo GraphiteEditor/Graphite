@@ -239,23 +239,15 @@ impl Ports {
 	}
 
 	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
-		self.input_ports.iter().find_map(|(port_index, click_target)| {
-			if *port_index == index {
-				click_target.bounding_box().map(|bounds| bounds[0] + DVec2::new(8., 8.))
-			} else {
-				None
-			}
-		})
+		self.input_ports
+			.iter()
+			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
 	}
 
 	pub fn output_port_position(&self, index: usize) -> Option<DVec2> {
-		self.output_ports.iter().find_map(|(port_index, click_target)| {
-			if *port_index == index {
-				click_target.bounding_box().map(|bounds| bounds[0] + DVec2::new(8., 8.))
-			} else {
-				None
-			}
-		})
+		self.output_ports
+			.iter()
+			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
 	}
 }
 

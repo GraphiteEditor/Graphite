@@ -195,11 +195,6 @@ impl NodeTemplate {
 		(document_node, persistent_node_metadata)
 	}
 
-	/// The [`DocumentNode`] half alone, for callers performing raw network surgery.
-	pub fn into_document_node(self) -> DocumentNode {
-		self.into_parts().0
-	}
-
 	/// Resizes `input_metadata` to match `inputs` at every nesting level, filling gaps with defaults.
 	pub fn normalize_input_metadata(&mut self) {
 		self.input_metadata.resize_with(self.inputs.len(), InputMetadata::default);

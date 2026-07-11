@@ -56,10 +56,6 @@ impl NodeNetworkInterface {
 }
 
 impl<'a, 'p> NetworkView<'a, 'p> {
-	pub fn network(&self) -> &'a NodeNetwork {
-		self.network
-	}
-
 	pub fn network_metadata(&self) -> &'a NodeNetworkMetadata {
 		self.metadata
 	}
@@ -298,11 +294,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn upstream_output_connector(&self, input_connector: &InputConnector) -> Result<Option<OutputConnector>, NetworkError> {
-		Ok(match self.input(input_connector)? {
-			NodeInput::Node { node_id, output_index, .. } => Some(OutputConnector::node(*node_id, *output_index)),
-			NodeInput::Import { import_index, .. } => Some(OutputConnector::Import(*import_index)),
-			_ => None,
-		})
+		Ok(OutputConnector::from_input(self.input(input_connector)?))
 	}
 
 	/// Whether the node reaches the exports by following wires downstream.
@@ -333,16 +325,16 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 
 		while let Some(node) = stack.pop() {
 			for input in &node.inputs {
-				if let &NodeInput::Node { node_id: ref_id, .. } = input {
-					if already_visited.contains(&ref_id) {
+				if let &NodeInput::Node { node_id: upstream_id, .. } = input {
+					if already_visited.contains(&upstream_id) {
 						continue;
 					}
-					if ref_id == *target_node_id {
+					if upstream_id == *target_node_id {
 						return true;
 					}
-					let Some(ref_node) = self.network.nodes.get(&ref_id) else { continue };
-					already_visited.insert(ref_id);
-					stack.push(ref_node);
+					let Some(upstream_node) = self.network.nodes.get(&upstream_id) else { continue };
+					already_visited.insert(upstream_id);
+					stack.push(upstream_node);
 				}
 			}
 		}
