@@ -1519,6 +1519,7 @@ impl NodeNetworkInterface {
 		}
 
 		node_metadata.transient_metadata.layer_width.unload();
+		node_metadata.transient_metadata.owned_nodes.unload();
 
 		self.transaction_modified();
 		self.unload_stack_dependents(network_path);
