@@ -1198,6 +1198,15 @@ impl NodeNetworkInterface {
 			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| surviving_nodes.contains(node_id));
 		}
 
+		// Purge the deleted nodes' cached wire paths, since the per-node unload can no longer reach them once the nodes are gone
+		if let Some(network_metadata) = self.network_metadata(network_path) {
+			network_metadata
+				.transient_metadata
+				.wires
+				.borrow_mut()
+				.retain(|connector, _| connector.node_id().is_none_or(|node_id| !delete_nodes.contains(&node_id)));
+		}
+
 		self.unload_all_nodes_bounding_box(network_path);
 		// Instead of unloaded all node click targets, just unload the nodes upstream from the deleted nodes. unload_upstream_node_click_targets will not work since the nodes have been deleted.
 		self.unload_all_nodes_click_targets(network_path);
