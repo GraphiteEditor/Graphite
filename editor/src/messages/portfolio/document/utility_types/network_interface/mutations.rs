@@ -1110,13 +1110,16 @@ impl NodeNetworkInterface {
 		}
 
 		// Layer membership is fixed during the expansion phase, so gather it once for the sole-dependent closure
-		let layer_nodes = self
-			.nested_network(network_path)
-			.map(|network| network.nodes.keys().copied().collect::<Vec<_>>())
-			.unwrap_or_default()
-			.into_iter()
-			.filter(|candidate| self.is_layer(candidate, network_path))
-			.collect::<HashSet<_>>();
+		let layer_nodes = if delete_children {
+			self.nested_network(network_path)
+				.map(|network| network.nodes.keys().copied().collect::<Vec<_>>())
+				.unwrap_or_default()
+				.into_iter()
+				.filter(|candidate| self.is_layer(candidate, network_path))
+				.collect::<HashSet<_>>()
+		} else {
+			HashSet::new()
+		};
 
 		let mut delete_nodes = HashSet::new();
 		for node_id in &nodes_to_delete {
