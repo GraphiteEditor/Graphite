@@ -2414,22 +2414,26 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
 	}
 
-	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_undo()?;
-
+	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
+	fn install_history_snapshot(&mut self, mut network_interface: NodeNetworkInterface, viewport: &ViewportMessageHandler) -> NodeNetworkInterface {
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
 		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
 
-		//Update the metadata transform based on document PTZ
+		// Update the metadata transform based on document PTZ
 		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		network_interface.set_document_to_viewport_transform(transform);
 
 		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
 		network_interface.load_structure();
 
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+		std::mem::replace(&mut self.network_interface, network_interface)
+	}
+
+	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
+		// If there is no history return and don't broadcast SelectionChanged
+		let network_interface = self.history.pop_undo()?;
+		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -2454,20 +2458,9 @@ impl DocumentMessageHandler {
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_redo()?;
+		let network_interface = self.history.pop_redo()?;
+		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
-		// Set the previous network navigation metadata to the current navigation metadata
-		network_interface.copy_all_navigation_metadata(&self.network_interface);
-		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-		//Update the metadata transform based on document PTZ
-		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		network_interface.set_document_to_viewport_transform(transform);
-
-		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
-		network_interface.load_structure();
-
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
