@@ -23,16 +23,25 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
+	if parsed.attributes.skip_impl {
+		return;
+	}
+
 	// An `Item` primary shares its element-wise frame with ranked parameters; a `List`/`ListDyn` aggregation primary accepts
 	// them as fixed ranked inputs; a `()` generator has no primary and draws its frame from the ranked parameters themselves.
 	let ranked = |ty: &Type| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
-	let primary_permits_item_params = match parsed.fields.first().map(|field| &field.ty) {
+	let primary = parsed.primary_input_field();
+	let primary_permits_item_params = match primary.map(|(_, field)| &field.ty) {
 		Some(ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) => is_unit_type(ty) || ranked(ty) || implementations.iter().any(ranked),
 		Some(ParsedFieldType::Node(NodeParsedField { output_type, implementations, .. })) => ranked(output_type) || implementations.iter().any(|implementation| ranked(&implementation.output)),
 		None => false,
 	};
+	let primary_index = primary.map(|(index, _)| index);
 
-	for field in parsed.fields.iter().skip(1) {
+	for (index, field) in parsed.fields.iter().enumerate() {
+		if Some(index) == primary_index || field.is_environment() {
+			continue;
+		}
 		let ParsedField {
 			ty: ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }),
 			pat_ident,
@@ -62,7 +71,7 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		return;
 	}
 
-	let Some(primary) = parsed.fields.first() else { return };
+	let Some((_, primary)) = parsed.primary_input_field() else { return };
 	let ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) = &primary.ty else {
 		return;
 	};
@@ -79,10 +88,6 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 			);
 		}
 		return;
-	}
-
-	if primary.is_data_field {
-		emit_error!(primary.pat_ident.span(), "The `Item<T>` primary input `{}` cannot be a #[data] field", primary.pat_ident.ident);
 	}
 
 	if implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "Item")) {

@@ -5,6 +5,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput,
 use graph_craft::generic;
 use graphene_std::Context;
 use graphene_std::ContextFeatures;
+use graphene_std::list::Item;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
@@ -84,12 +85,12 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					..Default::default()
 				},
 				DocumentNode {
-					call_argument: concrete!(graphene_std::application_io::RenderConfig),
+					call_argument: concrete!(Context),
 					inputs: vec![NodeInput::node(NodeId(4), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
-						extract: ContextFeatures::INDEX,
+						// INDEX is never read; it forces a nullification and cache pair onto the `data` parameter's wire so the render cache keys on a stable context
+						extract: ContextFeatures::VARARGS | ContextFeatures::INDEX,
 						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					},
 					..Default::default()
@@ -114,7 +115,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 			..Default::default()
 		},
 	];
-	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&PlatformEditorApi)))];
+	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(Item<&PlatformEditorApi>)))];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],

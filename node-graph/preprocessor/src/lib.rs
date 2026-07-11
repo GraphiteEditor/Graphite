@@ -67,7 +67,10 @@ impl Preprocessor {
 				let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
 					let id = NodeId::new();
 					let resource_node = DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
+						inputs: vec![
+							NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
+							NodeInput::value(TaggedValue::ResourceHash(hash), false),
+						],
 						implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
 						..Default::default()
 					};

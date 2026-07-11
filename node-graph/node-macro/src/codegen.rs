@@ -42,6 +42,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	// Separate data fields from regular fields
 	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields.iter().partition(|f| f.is_data_field);
+	// The primary's position among the regular fields, which `#[scope]` fields may precede (`#[data]` fields are already partitioned out)
+	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
 	// Extract function generics used by data fields
 	let data_field_generics: Vec<_> = fn_generics
@@ -199,7 +201,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				implementations, ty, value_source, ..
 			}) => match implementations.first() {
 				// A primary's scalar `#[default]` parses as a bare element (unranked, promoted at resolution); without one it defaults to an empty List
-				Some(implementation_ty) if index == 0 && element_wise => match value_source {
+				Some(implementation_ty) if Some(index) == primary_regular_index && element_wise => match value_source {
 					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
 					_ => quote!(Some(#core_types::list!(#implementation_ty))),
 				},
@@ -212,6 +214,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							.iter()
 							.any(|generic| matches!(generic, syn::GenericParam::Type(param) if type_contains_ident(&element_ty, &param.ident))) =>
 					{
+						// The fn's lifetimes are elided since the metadata registration fn declares none of them
+						let ty = substitute_lifetimes(ty.clone(), "_");
+						let element_ty = substitute_lifetimes(element_ty, "_");
 						match value_source {
 							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element_ty))),
 							_ => quote!(Some(concrete!(#ty, #element_ty))),
@@ -321,7 +326,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 
 				let ty = match (peel_item(ty), primary_wire) {
-					(Some(element_ty), Some(wrap)) => wrap.apply(core_types, &element_ty),
+					(Some(element_ty), Some(wrap)) if !field.is_environment() => wrap.apply(core_types, &element_ty),
 					_ => ty.clone(),
 				};
 				Some(quote!(#ty: #core_types::misc::Clampable))
@@ -330,8 +335,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	future_idents.extend((0..regular_fields.len()).map(|id| format_ident!("F{}", id)));
 
-	// Builds every field's where-clause bounds, optionally wrapping the primary field's wire type for the element-wise variants.
-	// `list_content` additionally lifts a lazy primary connector's `Item<E>` output to `List<E>` for the list-content variant.
+	// Builds every field's where-clause bounds, wrapping each ranked connector's wire type for the element-wise variants
+	// while environment fields keep their declared type. `list_content` additionally lifts a lazy primary connector's
+	// `Item<E>` output to `List<E>` for the list-content variant.
 	let build_field_clauses = |primary_wire: Option<WireWrapper>, list_content: bool| -> Vec<TokenStream2> {
 		regular_fields
 			.iter()
@@ -342,7 +348,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				(ParsedFieldType::Regular(RegularParsedField { ty, .. }), _) => {
 					let ty = match (peel_item(ty), primary_wire) {
 						// An `Item<T>`-declared connector contributes its element type to the wire wrapping
-						(Some(element_ty), Some(wrap)) => wrap.apply(core_types, &element_ty),
+						(Some(element_ty), Some(wrap)) if !field.is_environment() => wrap.apply(core_types, &element_ty),
 						_ => ty.clone(),
 					};
 					let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
@@ -353,7 +359,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					)
 				}
 				(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
-					let output_type = if list_content && index == 0 {
+					let output_type = if list_content && Some(index) == primary_regular_index {
 						let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 						WireWrapper::List.apply(core_types, &element_ty)
 					} else {
@@ -476,11 +482,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#serialize_impl
 	};
 
-	// The mapped variant zips every ranked connector by frame slot (longest-list, last-element repeats), broadcasting bare parameters by clone
+	// The mapped variant zips every ranked connector by frame slot (longest-list, last-element repeats), broadcasting bare and environment parameters by clone
 	let mapped_eval_impl = mapped_variant.then(|| {
 		let ranked_names: Vec<_> = regular_fields
 			.iter()
-			.filter(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+			.filter(|field| !field.is_environment() && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
 			.map(|field| &field.pat_ident.ident)
 			.collect();
 
@@ -489,7 +495,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.map(|field| {
 				let name = &field.pat_ident.ident;
 				match &field.ty {
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some() => quote! {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.is_environment() && peel_item(ty).is_some() => quote! {
 						#name.clone_item(__slot_index.min(#name.len() - 1)).expect("A zip slot index is always within bounds")
 					},
 					ParsedFieldType::Regular(_) => quote!(#name.clone()),
@@ -547,11 +553,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// The list-content variant evaluates a lazy primary's whole content `List` once, then feeds each slot into the kernel as a
 	// precomputed stub (ambient footprint, no index stamp), zipping ranked params by slot with the frame taken from the content length.
 	let list_content_eval_impl = list_content_variant.then(|| {
-		let primary_name = &regular_fields[0].pat_ident.ident;
+		let primary_index = primary_regular_index.expect("A list-content variant always has a lazy primary");
+		let primary_name = &regular_fields[primary_index].pat_ident.ident;
 
 		let ranked_names: Vec<_> = regular_fields
 			.iter()
-			.filter(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+			.filter(|field| !field.is_environment() && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
 			.map(|field| &field.pat_ident.ident)
 			.collect();
 
@@ -560,11 +567,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.enumerate()
 			.map(|(index, field)| {
 				let name = &field.pat_ident.ident;
-				if index == 0 {
+				if index == primary_index {
 					return quote!(&__stub);
 				}
 				match &field.ty {
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some() => quote! {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.is_environment() && peel_item(ty).is_some() => quote! {
 						#name.clone_item(__slot_index.min(#name.len() - 1)).expect("A zip slot index is always within bounds")
 					},
 					ParsedFieldType::Regular(_) => quote!(#name.clone()),
@@ -1004,10 +1011,7 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 		return None;
 	}
 
-	let field = parsed.fields.first()?;
-	if field.is_data_field {
-		return None;
-	}
+	let (_, field) = parsed.primary_input_field()?;
 
 	match &field.ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => peel_item(ty),
@@ -1026,9 +1030,9 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 		return false;
 	}
 
-	let mut regular_fields = parsed.fields.iter().filter(|field| !field.is_data_field);
-	match regular_fields.next().map(|field| &field.ty) {
-		Some(ParsedFieldType::Node(_)) => regular_fields.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some())),
+	let mut input_fields = parsed.fields.iter().filter(|field| !field.is_environment());
+	match input_fields.next().map(|field| &field.ty) {
+		Some(ParsedFieldType::Node(_)) => input_fields.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some())),
 		_ => true,
 	}
 }
@@ -1039,10 +1043,7 @@ fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
 		return false;
 	}
 
-	let Some(primary) = parsed.fields.first() else { return false };
-	if primary.is_data_field {
-		return false;
-	}
+	let Some((primary_index, primary)) = parsed.primary_input_field() else { return false };
 	let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &primary.ty else { return false };
 	if !is_unit_type(ty) {
 		return false;
@@ -1051,8 +1052,8 @@ fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
 	parsed
 		.fields
 		.iter()
-		.skip(1)
-		.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+		.enumerate()
+		.any(|(index, field)| index != primary_index && !field.is_environment() && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
 }
 
 /// Whether the type is the unit type `()`, which marks a generator with no primary input.
@@ -1062,7 +1063,7 @@ fn is_unit_type(ty: &syn::Type) -> bool {
 
 /// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).
 fn generates_list_content_variant(parsed: &ParsedNodeFn) -> bool {
-	primary_item_element(parsed).is_some() && matches!(parsed.fields.first().map(|field| &field.ty), Some(ParsedFieldType::Node(_)))
+	primary_item_element(parsed).is_some() && matches!(parsed.primary_input_field().map(|(_, field)| &field.ty), Some(ParsedFieldType::Node(_)))
 }
 
 /// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
@@ -1114,6 +1115,7 @@ fn generate_register_node_impl(
 	let unit = parse_quote!(gcore::Context);
 
 	let regular_fields: Vec<_> = parsed.fields.iter().filter(|f| !f.is_data_field).collect();
+	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
 	let parameter_types: Vec<_> = regular_fields
 		.iter()
@@ -1175,8 +1177,8 @@ fn generate_register_node_impl(
 				let field_name = field_names[j];
 				let (input_type, output_type) = &types[i.min(types.len() - 1)];
 				// Rankedness comes from the field's declared type; its #[implementations(...)] entries are bare element types
-				let field_is_ranked = matches!(&regular_fields[j].ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some());
-				let is_lazy_primary = j == 0 && matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
+				let field_is_ranked = !regular_fields[j].is_environment() && matches!(&regular_fields[j].ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some());
+				let is_lazy_primary = Some(j) == primary_regular_index && matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
 				// The list-content variant lifts its lazy primary connector's `Item<E>` content to `List<E>`; ranked params follow the variant's param wrap.
 				// A `List`-wrapped signature is also spelled with bare `List<...>` tokens, which `fn_type_fut!` matches syntactically to construct the structural form.
 				let (output_type, signature_type) = if is_lazy_primary && variant == RegisterVariant::ListContent {

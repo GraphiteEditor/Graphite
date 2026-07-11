@@ -340,7 +340,7 @@ fn dash_pattern(
 	Item::new_from_element(DashPattern::from(lengths))
 }
 
-#[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
+#[node_macro::node(category("Repeat"), name("Copy to Points"), path(core_types::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,

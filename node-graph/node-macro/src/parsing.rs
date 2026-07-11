@@ -120,6 +120,21 @@ pub struct ParsedField {
 	pub is_data_field: bool,
 }
 
+impl ParsedField {
+	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
+	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
+	pub(crate) fn is_environment(&self) -> bool {
+		self.is_data_field
+			|| matches!(
+				&self.ty,
+				ParsedFieldType::Regular(RegularParsedField {
+					value_source: ParsedValueSource::Scope(_),
+					..
+				})
+			)
+	}
+}
+
 #[derive(Clone, Debug)]
 pub enum ParsedFieldType {
 	Regular(RegularParsedField),
@@ -936,6 +951,12 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 }
 
 impl ParsedNodeFn {
+	/// The node's primary: the first argument (non-environment) field, whose declared shape classifies the node
+	/// as an element-wise kernel, aggregation, or generator. Returns the field with its index in `fields`.
+	pub(crate) fn primary_input_field(&self) -> Option<(usize, &ParsedField)> {
+		self.fields.iter().enumerate().find(|(_, field)| !field.is_environment())
+	}
+
 	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());

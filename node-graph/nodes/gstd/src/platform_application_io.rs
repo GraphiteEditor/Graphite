@@ -195,8 +195,8 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn create_canvas(_: impl Ctx) -> CanvasHandle {
-	CanvasHandle::new()
+async fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
+	Item::new_from_element(CanvasHandle::new())
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
@@ -213,13 +213,13 @@ async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	)]
 	data: List<T>,
 	footprint: Item<Footprint>,
-	canvas: CanvasHandle,
+	canvas: Item<CanvasHandle>,
 ) -> List<Raster<CPU>>
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
 	let mut data = data;
-	let mut canvas = canvas;
+	let mut canvas = canvas.into_element();
 	use glam::{DAffine2, DVec2};
 
 	let footprint = footprint.into_element();
@@ -276,29 +276,39 @@ where
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a PlatformEditorApi {
+pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
 	editor_api
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Resource {
-	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	application_io.load_resource(hash).await.unwrap_or_else(|| {
-		panic!("Resource {hash} not found");
-	})
+pub async fn resource<'a: 'n>(
+	_: impl Ctx,
+	/// The scope-provided editor API giving access to the platform's resource storage.
+	#[scope(editor_api::IDENTIFIER)]
+	editor_api: Item<&'a PlatformEditorApi>,
+	/// The content hash identifying which stored resource to load.
+	hash: Item<ResourceHash>,
+) -> Item<Resource> {
+	let hash = hash.into_element();
+	let application_io = editor_api.into_element().application_io.as_ref().expect("ApplicationIo must be available when using resources");
+	let resource = application_io.load_resource(hash).await.unwrap_or_else(|| panic!("Resource {hash} not found"));
+	Item::new_from_element(resource)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
-	editor_api
+pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
+	let executor = editor_api
+		.into_element()
 		.application_io
 		.as_ref()
-		.expect("ApplicationIo not not available")
+		.expect("ApplicationIo not available")
 		.gpu_executor()
-		.expect("GPU executor not available")
+		.expect("GPU executor not available");
+	Item::new_from_element(executor)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
-	editor_api.application_io.as_ref()?.gpu_executor()
+pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
+	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor());
+	Item::new_from_element(executor)
 }

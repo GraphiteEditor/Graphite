@@ -137,7 +137,7 @@ impl DynamicExecutor {
 
 impl<I> Executor<I, TaggedValue> for &DynamicExecutor
 where
-	I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe,
+	I: StaticType + 'static + Send + Sync,
 {
 	fn execute(&self, input: I) -> LocalFuture<'_, Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move {

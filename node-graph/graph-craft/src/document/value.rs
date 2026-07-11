@@ -181,12 +181,12 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Box::new(x),
+					Self::RenderOutput(x) => Box::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Box::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Box::new(node),
 					Self::ContextFeatures(features) => Box::new(features),
 					Self::EditorApi(x) => Box::new(x),
-					Self::ResourceHash(x) => Box::new(x),
+					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
 			}
 
@@ -223,12 +223,12 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Arc::new(x),
+					Self::RenderOutput(x) => Arc::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Arc::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextFeatures(features) => Arc::new(features),
 					Self::EditorApi(x) => Arc::new(x),
-					Self::ResourceHash(x) => Arc::new(x),
+					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
 			}
 
@@ -252,12 +252,12 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(_) => concrete!(RenderOutput),
+					Self::RenderOutput(_) => concrete!(Item<RenderOutput>),
 					Self::NodeIdPath(_) => concrete!(Item<NodeIdPath>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextFeatures(_) => concrete!(ContextFeatures),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
-					Self::ResourceHash(_) => concrete!(ResourceHash),
+					Self::EditorApi(_) => concrete!(Item<&PlatformEditorApi>),
+					Self::ResourceHash(_) => concrete!(Item<ResourceHash>),
 				};
 
 				// The generated arms and `TypeDefault` descriptors carry name-encoded `List` types, which this converts to the structural form
@@ -281,7 +281,7 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(downcast::<Item<RenderOutput>>(input).unwrap().into_element())),
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
@@ -303,7 +303,7 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(Item::<RenderOutput>::clone(input.downcast_ref().unwrap()).into_element())),
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", std::any::type_name_of_val(input))),
 				}
 			}
@@ -744,7 +744,7 @@ impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<
 	type Output = FutureAny<'i>;
 	#[inline(always)]
 	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(self.0.as_ref()) as DAny<'i> })
+		Box::pin(async move { Box::new(Item::new_from_element(self.0.as_ref())) as DAny<'i> })
 	}
 }
 

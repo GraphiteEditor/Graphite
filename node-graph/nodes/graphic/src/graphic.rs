@@ -771,7 +771,7 @@ pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations
 }
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Color"), name("Colors to Gradient"))]
 fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
 	let colors = colors.into_flattened_list::<Color>();
 	let total_colors = colors.len();
