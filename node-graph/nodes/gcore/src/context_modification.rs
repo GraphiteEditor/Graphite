@@ -52,7 +52,7 @@ async fn context_modification<T>(
 		Context -> List<Color>,
 		Context -> List<Artboard>,
 		Context -> List<Gradient>,
-		Context -> AttributeValueDyn,
+		Context -> Item<AttributeValueDyn>,
 		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,

@@ -647,8 +647,6 @@ pub enum Promotion {
 	WrapItem(Type),
 	/// Wraps a bare wire into a `List<X>` connector as a one-element list.
 	WrapList(Type),
-	/// Unwraps an `Item<X>` wire onto a bare machinery connector.
-	UnwrapItem(Type),
 	/// Bundles a whole `List<X>` wire into one opaque `Item<Bundle<X>>` cell.
 	Bundle(Type),
 	/// Unbundles an `Item<Bundle<X>>` wire back into the whole `List<X>`.
@@ -662,7 +660,6 @@ impl Promotion {
 			Self::ItemToList(element) => ("ItemToListNode", element),
 			Self::WrapItem(element) => ("WrapItemNode", element),
 			Self::WrapList(element) => ("WrapListNode", element),
-			Self::UnwrapItem(element) => ("UnwrapItemNode", element),
 			Self::Bundle(element) => ("BundleNode", element),
 			Self::Unbundle(element) => ("UnbundleNode", element),
 		};
@@ -875,11 +872,6 @@ impl TypingContext {
 						// A bare wire may feed an `Item<X>` connector via a wrap
 						(Type::Concrete(from_descriptor), Type::Concrete(_)) if to_value.item_element_name() == Some(&from_descriptor.name) => {
 							Some(Promotion::WrapItem(named_element(&from_descriptor.name)))
-						}
-
-						// An `Item<X>` wire may feed a bare machinery connector via an unwrap, since bare connectors are attribute-blind
-						(Type::Concrete(_), Type::Concrete(to_descriptor)) if from_value.item_element_name() == Some(&to_descriptor.name) => {
-							Some(Promotion::UnwrapItem(named_element(&to_descriptor.name)))
 						}
 
 						_ => None,

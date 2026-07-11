@@ -1,8 +1,7 @@
 use crate::Node;
-use crate::list::{AttributeValueDyn, Item, List, ListDyn};
+use crate::list::{Item, List, ListDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
-use graphene_hash::CacheHash;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -69,15 +68,6 @@ impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
 			})
 			.collect();
 		list
-	}
-}
-
-/// Wraps a value into a type-erased attribute value. Lets nodes that take a per-item value source
-/// (such as `write_attribute`'s value-producing input) be generic over the destination list type
-/// alone, with the compiler-inserted convert handling each concrete value type at the wire level.
-impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeValueDyn, ()> for T {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
-		AttributeValueDyn(Box::new(self))
 	}
 }
 

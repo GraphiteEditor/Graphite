@@ -308,7 +308,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeId
 /// is evaluated once per item, with the item's index and the item itself (as a `List` containing only that item,
 /// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
 /// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
-/// The value is type-erased into an `AttributeValueDyn` by an auto-inserted convert node, so this node only
+/// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted field adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
@@ -338,8 +338,8 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	/// The attribute name (key) to write or replace.
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	#[implementations(Context -> AttributeValueDyn)]
-	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
+	#[implementations(Context -> Item<AttributeValueDyn>)]
+	value: impl Node<'n, Context<'static>, Output = Item<AttributeValueDyn>>,
 ) -> List<T> {
 	let name = name.into_element();
 
@@ -347,7 +347,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
 		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(row)).with_index(index);
-		let v = value.eval(owned_ctx.into_context()).await;
+		let v = value.eval(owned_ctx.into_context()).await.into_element();
 		content.set_attribute_value_dyn(&name, index, v);
 	}
 	content

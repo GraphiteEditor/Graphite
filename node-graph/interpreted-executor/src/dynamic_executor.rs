@@ -790,6 +790,55 @@ mod test {
 		assert_eq!(result.map(|item| *item.element()), Some(3.), "The bare value should arrive wrapped as an Item");
 	}
 
+	// The Write Attribute value slot: an Item wire's element boxes into a type-erased attribute value, and a stored bare value reaches the same row via a wrap promotion
+	#[test]
+	fn item_wire_boxes_into_the_attribute_value_connector() {
+		use graphene_std::list::AttributeValueDyn;
+
+		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
+		let mut wrap_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		wrap_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::WrapItemNode<f64>");
+		let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+		attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<AttributeValueDyn>");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(2),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), wrap_node), (NodeId(2), attribute_adapter_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("An Item<f64> wire should resolve the attribute value boxing row");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The boxing constructor should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(2), context));
+		let boxed = result.expect("The boxed attribute value should arrive as an Item");
+		assert_eq!(
+			boxed.element().0.as_any().downcast_ref::<f64>(),
+			Some(&3.),
+			"The stored value should be the bare element, not the whole Item"
+		);
+
+		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(5.).into()), vec![NodeId(0)]);
+		let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<AttributeValueDyn>");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), attribute_adapter_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A bare value should wrap-promote into the attribute value boxing row");
+		assert!(typing_context.promotions(NodeId(1)).is_some(), "The bare value should be raised by a wrap promotion");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The wrap and boxing constructors should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		let boxed = result.expect("The promoted bare value should arrive boxed as an Item");
+		assert_eq!(boxed.element().0.as_any().downcast_ref::<f64>(), Some(&5.), "The stored value should be the bare element");
+	}
+
 	#[test]
 	fn list_wire_variant_resolves_and_executes() {
 		let tree = compile_bounding_box_network(TaggedValue::TypeDefault(descriptor!(List<Vector>)));

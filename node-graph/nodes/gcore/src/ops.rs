@@ -1,4 +1,5 @@
-use core_types::list::{Bundle, Item, List};
+use core_types::graphene_hash::CacheHash;
+use core_types::list::{AttributeValueDyn, Bundle, Item, List};
 use core_types::{Ctx, ExtractFootprint, ops::Convert, transform::Footprint};
 use std::marker::PhantomData;
 
@@ -16,10 +17,25 @@ fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty
 	value.into()
 }
 
-/// Unwraps a ranked wire's item into its bare element for a machinery connector that takes bare values, discarding attributes.
+/// Boxes a ranked wire's element into a type-erased attribute value, carrying the cell's attributes through the wire.
 #[node_macro::node(category(""), skip_impl)]
-fn unwrap_item<'i, T: 'i + Send>(_: impl Ctx, value: Item<T>) -> T {
-	value.into_element()
+fn item_to_attribute_value<'i, T: 'i + Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
+	_: impl Ctx,
+	value: Item<T>,
+	_element_ty: PhantomData<AttributeValueDyn>,
+) -> Item<AttributeValueDyn> {
+	let (element, attributes) = value.into_parts();
+	Item::from_parts(AttributeValueDyn(Box::new(element)), attributes)
+}
+
+/// Boxes a whole `List` wire as one type-erased attribute value, for attributes whose per-item value is itself a collection.
+#[node_macro::node(category(""), skip_impl)]
+fn list_to_attribute_value<'i, T: 'i + Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
+	_: impl Ctx,
+	value: T,
+	_element_ty: PhantomData<AttributeValueDyn>,
+) -> Item<AttributeValueDyn> {
+	Item::new_from_element(AttributeValueDyn(Box::new(value)))
 }
 
 /// Wraps a whole `List` onto the wire as one rank-0 `Item<Bundle<T>>` so an entire collection can feed a connector that carries it as one opaque cell.

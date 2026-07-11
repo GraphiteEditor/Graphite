@@ -415,8 +415,7 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 // ==================
 
 /// Type-erased single attribute value, used as a node graph parameter type.
-/// Lets a node accept a value of any concrete type via the auto-inserted `Convert<AttributeValueDyn, ()>`
-/// without monomorphizing over the value type.
+/// Lets a node accept a value of any valid concrete type via the auto-inserted field adapter conversion without monomorphizing over the value type.
 pub struct AttributeValueDyn(pub Box<dyn AnyAttributeValue>);
 
 impl Clone for AttributeValueDyn {

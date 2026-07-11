@@ -63,26 +63,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<BlendMode>, to: ListDyn),
 		convert_node!(from: List<graphene_std::vector::style::GradientType>, to: ListDyn),
 		convert_node!(from: List<graphene_std::vector::style::GradientSpreadMethod>, to: ListDyn),
-		// Type-erased attribute value conversions for the `Write Attribute` node, so it monomorphizes only over the destination `List` type.
-		convert_node!(from: f64, to: AttributeValueDyn),
-		convert_node!(from: u32, to: AttributeValueDyn),
-		convert_node!(from: u64, to: AttributeValueDyn),
-		convert_node!(from: bool, to: AttributeValueDyn),
-		convert_node!(from: String, to: AttributeValueDyn),
-		convert_node!(from: DVec2, to: AttributeValueDyn),
-		convert_node!(from: DAffine2, to: AttributeValueDyn),
-		convert_node!(from: Color, to: AttributeValueDyn),
-		convert_node!(from: BlendMode, to: AttributeValueDyn),
-		convert_node!(from: graphene_std::vector::style::GradientType, to: AttributeValueDyn),
-		convert_node!(from: graphene_std::vector::style::GradientSpreadMethod, to: AttributeValueDyn),
-		convert_node!(from: List<String>, to: AttributeValueDyn),
-		convert_node!(from: Item<NodeIdPath>, to: AttributeValueDyn),
-		convert_node!(from: List<Color>, to: AttributeValueDyn),
-		convert_node!(from: List<Gradient>, to: AttributeValueDyn),
-		convert_node!(from: List<Vector>, to: AttributeValueDyn),
-		convert_node!(from: List<Raster<CPU>>, to: AttributeValueDyn),
-		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
-		convert_node!(from: List<Graphic>, to: AttributeValueDyn),
 		convert_node!(from: DVec2, to: DVec2),
 		convert_node!(from: List<Vector>, to: List<Vector>),
 		convert_node!(from: DVec2, to: List<Vector>),
@@ -164,7 +144,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<BlendMode>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<graphene_std::vector::style::GradientType>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<graphene_std::vector::style::GradientSpreadMethod>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Graphic]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::text::Font]),
@@ -203,7 +183,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<&PlatformEditorApi>, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<RenderIntermediate>, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<RenderOutput>, Context => graphene_std::ContextFeatures]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn, Context => graphene_std::ContextFeatures]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => ListDyn, Context => graphene_std::ContextFeatures]),
 		#[cfg(target_family = "wasm")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<CanvasHandle>, Context => graphene_std::ContextFeatures]),
@@ -251,7 +231,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<u32>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<u64>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
 		#[cfg(target_family = "wasm")]
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<CanvasHandle>]),
@@ -390,30 +370,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// An unwrap adapter inserted by type resolution when an Item wire feeds a bare machinery connector, such as Write Attribute's erased value slot
-	macro_rules! unwrap_item_node {
-		(element: $element:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::UnwrapItemNode<", stringify!($element), ">"]),
-				|mut args| {
-					Box::pin(async move {
-						let node = graphene_std::ops::UnwrapItemNode::new(graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()));
-						let any: DynAnyNode<Context, $element, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let node = graphene_std::ops::UnwrapItemNode::new(graphene_std::any::PanicNode::<
-						Context,
-						core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>,
-					>::new());
-					let params = vec![fn_type_fut!(Context, Item<$element>)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					node_io
-				},
-			)
-		};
-	}
 	// A whole-List bundle adapter inserted by type resolution when a List wire feeds an Item<Bundle<X>> connector
 	macro_rules! bundle_node {
 		(element: $element:ty) => {
@@ -465,17 +421,16 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
-	// Registers the rank adapters (FieldAdapterNode, ItemToListNode, WrapItemNode, WrapListNode, UnwrapItemNode) for each element type
+	// Registers the rank adapters (FieldAdapterNode, ItemToListNode, WrapItemNode, WrapListNode) for each element type
 	macro_rules! rank_adapter_nodes {
 		($($element:ty),* $(,)?) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
 			$(
 				entries.extend(field_adapter_node!(element: $element));
-				// The promotion adapters inserted by type resolution: a singleton raise, a bare wrap, a bare wrap-raise, and a bare-connector unwrap
+				// The promotion adapters inserted by type resolution: a singleton raise, a bare wrap, and a bare wrap-raise
 				entries.push(field_adapter_node!(name: "ItemToListNode", from: Item<$element>, to: List<$element>, element: $element));
 				entries.push(field_adapter_node!(name: "WrapItemNode", from: $element, to: Item<$element>, element: $element));
 				entries.push(field_adapter_node!(name: "WrapListNode", from: $element, to: List<$element>, element: $element));
-				entries.push(unwrap_item_node!(element: $element));
 			)*
 			entries
 		}};
@@ -642,6 +597,39 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(field_adapter_cast_star!(from: u64, to: [f64, f32, u32, i32, i64]));
 	node_types.extend(field_adapter_cast_star!(from: i32, to: [f64, f32, u32, u64, i64]));
 	node_types.extend(field_adapter_cast_star!(from: i64, to: [f64, f32, u32, u64, i32]));
+	// The sanctioned attribute value conversions: an Item wire's elements box per cell, while a List wire boxes whole as one value
+	macro_rules! attribute_value_node {
+		(Item<$element:ty>) => {
+			field_adapter_convert_node!(node: ItemToAttributeValueNode, from: Item<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
+		};
+		(List<$element:ty>) => {
+			field_adapter_convert_node!(node: ListToAttributeValueNode, from: List<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
+		};
+	}
+	let attribute_value_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+		attribute_value_node!(Item<f64>),
+		attribute_value_node!(Item<u32>),
+		attribute_value_node!(Item<u64>),
+		attribute_value_node!(Item<bool>),
+		attribute_value_node!(Item<String>),
+		attribute_value_node!(Item<DVec2>),
+		attribute_value_node!(Item<DAffine2>),
+		attribute_value_node!(Item<Color>),
+		attribute_value_node!(Item<BlendMode>),
+		attribute_value_node!(Item<GradientType>),
+		attribute_value_node!(Item<GradientSpreadMethod>),
+		attribute_value_node!(List<String>),
+		attribute_value_node!(List<Color>),
+		attribute_value_node!(List<Gradient>),
+		attribute_value_node!(List<Vector>),
+		attribute_value_node!(List<Raster<CPU>>),
+		#[cfg(feature = "gpu")]
+		attribute_value_node!(List<Raster<GPU>>),
+		attribute_value_node!(List<Graphic>),
+		// TODO: Move to the `Item` arm once the layer path column is normalized to store a bare `NodeIdPath`
+		field_adapter_convert_node!(node: ListToAttributeValueNode, from: Item<NodeIdPath>, to: Item<AttributeValueDyn>, element: AttributeValueDyn),
+	];
+	node_types.extend(attribute_value_rows);
 	// Whole-List Transform companion rows: a rank-1 content wire composes the matrix onto every item
 	macro_rules! transform_list_node {
 		(element: $element:ty) => {
@@ -712,7 +700,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|| new_name.contains("ItemToListNode")
 			|| new_name.contains("WrapItemNode")
 			|| new_name.contains("WrapListNode")
-			|| new_name.contains("UnwrapItemNode")
 			|| new_name.contains("BundleNode")
 			|| new_name.contains("UnbundleNode"))
 			&& let Some((path, _generics)) = new_name.split_once("<")
