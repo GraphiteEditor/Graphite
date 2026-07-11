@@ -2,6 +2,7 @@
 //! Each test also sweeps `validate_invariants` so any desync between the network and its metadata tree fails loudly.
 
 use super::{InputConnector, OutputConnector, Previewing, RootNode, TransactionStatus};
+use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -190,26 +191,13 @@ fn merge_definition() -> DefinitionIdentifier {
 	DefinitionIdentifier::Network("Merge".to_string())
 }
 
-async fn create_node_at(editor: &mut EditorTestUtils, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
-	let node_id = NodeId::new();
-	editor
-		.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
-			node_id: Some(node_id),
-			node_type,
-			xy: Some((x, y)),
-			add_transaction: true,
-		})
-		.await;
-	node_id
-}
-
 #[tokio::test]
 async fn layer_stacking_follows_wiring() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let upper = create_node_at(&mut editor, merge_definition(), 20, 10).await;
-	let lower = create_node_at(&mut editor, merge_definition(), 20, 16).await;
+	let upper = editor.create_node_by_name_at(merge_definition(), 20, 10).await;
+	let lower = editor.create_node_by_name_at(merge_definition(), 20, 16).await;
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.set_to_node_or_layer(&upper, &[], true);
@@ -237,8 +225,8 @@ async fn chain_membership_follows_wiring() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let layer = create_node_at(&mut editor, merge_definition(), 20, 10).await;
-	let node = create_node_at(&mut editor, rectangle_definition(), 15, 10).await;
+	let layer = editor.create_node_by_name_at(merge_definition(), 20, 10).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 15, 10).await;
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.set_to_node_or_layer(&layer, &[], true);
@@ -268,8 +256,8 @@ async fn move_layer_to_stack_builds_the_layer_stack() {
 	let artboard = NodeId::new();
 	editor.handle_message(new_artboard_message(artboard)).await;
 
-	let first = create_node_at(&mut editor, merge_definition(), 0, 30).await;
-	let second = create_node_at(&mut editor, merge_definition(), 0, 40).await;
+	let first = editor.create_node_by_name_at(merge_definition(), 0, 30).await;
+	let second = editor.create_node_by_name_at(merge_definition(), 0, 40).await;
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.set_to_node_or_layer(&first, &[], true);
@@ -292,11 +280,59 @@ async fn move_layer_to_stack_builds_the_layer_stack() {
 }
 
 #[tokio::test]
+async fn drag_offsets_do_not_outlive_programmatic_shifts() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+
+	let first = editor.create_node_by_name_at(merge_definition(), 0, 30).await;
+	let second = editor.create_node_by_name_at(merge_definition(), 0, 40).await;
+	let third = editor.create_node_by_name_at(merge_definition(), 0, 50).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&first, &[], true);
+	network_interface.set_to_node_or_layer(&second, &[], true);
+	network_interface.set_to_node_or_layer(&third, &[], true);
+
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(first, network_interface), artboard_layer, 0, &[]);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(second, network_interface), artboard_layer, 1, &[]);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(third, network_interface), artboard_layer, 2, &[]);
+
+	// Making room while inserting into the stack pushes neighbors with drag-offset bookkeeping that must not outlive the operation
+	for node_id in [first, second, third] {
+		assert_eq!(network_interface.drag_offset(&node_id, &[]), 0, "Inserting into a stack should not leave a drag offset on {node_id}");
+	}
+
+	// Deleting the middle layer collapses the stack upward, which must also leave no offsets behind
+	network_interface.delete_nodes(vec![second], false, &[]);
+	assert_eq!(network_interface.drag_offset(&third, &[]), 0, "Collapsing the deleted layer's space should not leave a drag offset");
+
+	// A later nudge must move the survivor by exactly one unit, without replaying any restore toward its pre-collapse position
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![third] }).await;
+	let network_interface = &editor.active_document().network_interface;
+	let before = network_interface.position(&third, &[]).expect("Surviving layer should have a position");
+	editor
+		.handle_message(NodeGraphMessage::ShiftSelectedNodes {
+			direction: Direction::Down,
+			rubber_band: false,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	let after = network_interface.position(&third, &[]).expect("Surviving layer should have a position");
+	assert_eq!(after.y - before.y, 1, "A single nudge should move the layer exactly one unit");
+
+	assert_invariants(&editor, "after stack pushes, a delete collapse, and a nudge");
+}
+
+#[tokio::test]
 async fn signature_edits_keep_parallel_metadata_in_sync() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let merge = create_node_at(&mut editor, merge_definition(), 0, 0).await;
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
@@ -334,7 +370,7 @@ async fn toggle_preview_transitions_with_a_connected_export() {
 
 	let artboard = NodeId::new();
 	editor.handle_message(new_artboard_message(artboard)).await;
-	let node = create_node_at(&mut editor, rectangle_definition(), 0, 20).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	let export_node = |network_interface: &super::NodeNetworkInterface| network_interface.input_from_connector(&InputConnector::Export(0), &[]).and_then(|input| input.as_node());

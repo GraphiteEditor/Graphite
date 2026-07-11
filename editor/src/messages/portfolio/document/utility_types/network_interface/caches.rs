@@ -245,6 +245,9 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.stack_dependents.unload();
+
+		// Drag offsets are only meaningful relative to the stack dependents snapshot they were accumulated against, so they must not outlive it
+		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
 	}
 
 	/// The vertical distance the node has been pushed from its resting position during the current drag.
