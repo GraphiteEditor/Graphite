@@ -280,7 +280,7 @@ impl NodeNetworkInterface {
 		if !shift_without_push {
 			for node_id in node_ids.clone() {
 				if self.is_layer(&node_id, network_path) {
-					self.with_owned_nodes(&node_id, network_path, |owned_nodes| {
+					self.with_owned_nodes_if_loaded(&node_id, network_path, |owned_nodes| {
 						for owned_node in owned_nodes {
 							node_ids.remove(owned_node);
 						}
@@ -403,7 +403,7 @@ impl NodeNetworkInterface {
 						shifted_nodes.insert(*node_id);
 						self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
 
-						if self.with_stack_dependents(network_path, |stack_dependents| matches!(stack_dependents.get(node_id), Some(LayerOwner::None))) == Some(true) {
+						if self.with_stack_dependents_if_loaded(network_path, |stack_dependents| matches!(stack_dependents.get(node_id), Some(LayerOwner::None))) == Some(true) {
 							self.add_drag_offset(node_id, shift_sign, network_path);
 						}
 
@@ -443,7 +443,7 @@ impl NodeNetworkInterface {
 				}
 				if seed_nodes
 					.iter()
-					.any(|seed_node| seed_node == node_id || self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.contains(seed_node)) == Some(true))
+					.any(|seed_node| seed_node == node_id || self.with_owned_nodes_if_loaded(node_id, network_path, |owned_nodes| owned_nodes.contains(seed_node)) == Some(true))
 				{
 					return None;
 				};
@@ -497,7 +497,7 @@ impl NodeNetworkInterface {
 
 		self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
 
-		match self.with_stack_dependents(network_path, |stack_dependents| stack_dependents.get(node_id).cloned()) {
+		match self.with_stack_dependents_if_loaded(network_path, |stack_dependents| stack_dependents.get(node_id).cloned()) {
 			Some(Some(LayerOwner::None)) => self.add_drag_offset(node_id, shift_sign, network_path),
 			Some(Some(LayerOwner::Layer(_))) => log::error!("Node being shifted with a push should not be owned"),
 			Some(None) => log::error!("Could not get layer owner in vertical_shift_with_push for node {node_id}"),
@@ -517,7 +517,7 @@ impl NodeNetworkInterface {
 		}
 
 		// Shift the nodes that are owned by the layer (if any)
-		if let Some(owned_nodes) = self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.clone()) {
+		if let Some(owned_nodes) = self.with_owned_nodes_if_loaded(node_id, network_path, |owned_nodes| owned_nodes.clone()) {
 			for owned_node in owned_nodes {
 				if self.is_absolute(&owned_node, network_path) {
 					self.try_shift_node(&owned_node, IVec2::new(0, shift_sign), shifted_nodes, network_path);
@@ -531,50 +531,54 @@ impl NodeNetworkInterface {
 		self.try_load_stack_dependents(network_path);
 
 		// Check collisions and for all owned nodes and recursively shift them
-		let nodes_to_shift = self.with_stack_dependents(network_path, |stack_dependents| {
-			let mut nodes_to_shift = Vec::new();
+		let nodes_to_shift = self.with_stack_dependents_if_loaded(network_path, |stack_dependents| {
+			// Hot path during drags: borrow the owned nodes for the sweep rather than cloning them per call
+			let collect_collisions = |owned_nodes: &HashSet<NodeId>| {
+				let mut nodes_to_shift = Vec::new();
 
-			let owned_nodes = self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.clone()).unwrap_or_default();
+				for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
+					for node_to_check_collision in stack_dependents {
+						// Do not check collision between any of the owned nodes or the shifted node
+						if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
+							continue;
+						}
 
-			for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
-				for node_to_check_collision in stack_dependents {
-					// Do not check collision between any of the owned nodes or the shifted node
-					if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
-						continue;
-					}
+						if node_to_check_collision.0 == current_node {
+							continue;
+						}
+						let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
+							log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
+							continue;
+						};
 
-					if node_to_check_collision.0 == current_node {
-						continue;
-					}
-					let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
-						log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
-						continue;
-					};
+						let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
+							log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
+							continue;
+						};
+						// If the nodes do not intersect horizontally, then there is no collision
+						if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
+							continue;
+						}
+						// Do not check collision if the nodes are currently intersecting
+						if current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1 {
+							continue;
+						}
 
-					let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
-						log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
-						continue;
-					};
-					// If the nodes do not intersect horizontally, then there is no collision
-					if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
-						continue;
-					}
-					// Do not check collision if the nodes are currently intersecting
-					if current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1 {
-						continue;
-					}
+						current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
+						current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
 
-					current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
-					current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
-
-					let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
-					if collision {
-						nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
+						let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
+						if collision {
+							nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
+						}
 					}
 				}
-			}
 
-			nodes_to_shift
+				nodes_to_shift
+			};
+
+			self.with_owned_nodes_if_loaded(node_id, network_path, collect_collisions)
+				.unwrap_or_else(|| collect_collisions(&HashSet::new()))
 		});
 
 		let Some(nodes_to_shift) = nodes_to_shift else {

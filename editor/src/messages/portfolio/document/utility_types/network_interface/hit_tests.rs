@@ -39,7 +39,7 @@ impl NodeNetworkInterface {
 			}
 		});
 		nodes.into_iter().for_each(|node_id| {
-			self.with_loaded_node_click_targets(&node_id, network_path, |node_click_targets| {
+			self.with_node_click_targets(&node_id, network_path, |node_click_targets| {
 				let mut node_path = String::new();
 
 				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
@@ -146,7 +146,7 @@ impl NodeNetworkInterface {
 		let clicked_nodes = nodes
 			.iter()
 			.filter(|node_id| {
-				self.with_loaded_node_click_targets(node_id, network_path, |transient_node_metadata| {
+				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata.node_click_target.intersect_point_no_stroke(point)
 				}) == Some(true)
 			})
@@ -181,7 +181,7 @@ impl NodeNetworkInterface {
 		node_ids
 			.iter()
 			.filter_map(|node_id| {
-				self.with_loaded_node_click_targets(node_id, network_path, |transient_node_metadata| {
+				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
 						match click_target_type {
 							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
@@ -216,7 +216,7 @@ impl NodeNetworkInterface {
 			.collect::<Vec<_>>()
 			.iter()
 			.filter_map(|node_id| {
-				self.with_loaded_node_click_targets(node_id, network_path, |transient_node_metadata| {
+				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata
 						.port_click_targets
 						.clicked_input_port_from_point(point)
@@ -246,7 +246,7 @@ impl NodeNetworkInterface {
 		nodes
 			.iter()
 			.filter_map(|node_id| {
-				self.with_loaded_node_click_targets(node_id, network_path, |transient_node_metadata| {
+				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata
 						.port_click_targets
 						.clicked_output_port_from_point(point)
@@ -266,7 +266,7 @@ impl NodeNetworkInterface {
 	pub fn input_position(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => self
-				.with_loaded_node_click_targets(node_id, network_path, |transient_node_metadata| {
+				.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata.port_click_targets.input_port_position(*input_index)
 				})
 				.flatten(),
@@ -279,7 +279,7 @@ impl NodeNetworkInterface {
 	pub fn output_position(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => self
-				.with_loaded_node_click_targets(node_id, network_path, |transient_node_metadata| {
+				.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata.port_click_targets.output_port_position(*output_index)
 				})
 				.flatten(),

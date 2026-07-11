@@ -91,7 +91,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Reads the stack dependents through &self if they are already loaded.
-	pub(crate) fn with_stack_dependents<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<NodeId, LayerOwner>) -> R) -> Option<R> {
+	pub(crate) fn with_stack_dependents_if_loaded<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<NodeId, LayerOwner>) -> R) -> Option<R> {
 		self.network_metadata(network_path)?.transient_metadata.stack_dependents.with_loaded(read)
 	}
 
@@ -454,7 +454,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Reads the owned nodes of a layer through &self if they are loaded.
-	pub(crate) fn with_owned_nodes<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
+	pub(crate) fn with_owned_nodes_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
 		let layer_node = self.node_metadata(node_id, network_path)?;
 		if !layer_node.persistent_metadata.is_layer() {
 			return None;
@@ -938,25 +938,29 @@ impl NodeNetworkInterface {
 	}
 
 	/// Loads the node click targets if needed, then reads them through &self.
-	pub(crate) fn with_loaded_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
+	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
 		self.try_load_node_click_targets(node_id, network_path);
-		self.with_node_click_targets(node_id, network_path, read)
+		self.with_node_click_targets_if_loaded(node_id, network_path, read)
 	}
 
 	/// Reads the modify import/export click targets through &self, loading them first if needed.
 	pub(crate) fn with_modify_import_export<R>(&self, network_path: &[NodeId], read: impl FnOnce(&ModifyImportExportClickTarget) -> R) -> Option<R> {
+		self.try_load_modify_import_export(network_path);
+		self.network_metadata(network_path)?.transient_metadata.modify_import_export.with_loaded(read)
+	}
+
+	fn try_load_modify_import_export(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in modify_import_export");
-			return None;
+			return;
 		};
 		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
 			self.load_modify_import_export(network_path);
 		}
-		self.network_metadata(network_path)?.transient_metadata.modify_import_export.with_loaded(read)
 	}
 
 	/// Reads the node click targets through &self if they are already loaded.
-	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
+	pub(crate) fn with_node_click_targets_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
 		let node_metadata = self.node_metadata(node_id, network_path)?;
 		let result = node_metadata.transient_metadata.click_targets.with_loaded(read);
 		if result.is_none() {
@@ -1095,8 +1099,8 @@ impl NodeNetworkInterface {
 				let name_left = node_top_left.x + NAME_LEFT_OFFSET;
 				let icons_reserve = VISIBILITY_INSET_FROM_LAYER_RIGHT + icons_width + GRIP_WIDTH;
 				let name_right_max = node_top_left.x + width as f64 - icons_reserve;
-				let text_w = text_width(&display_name, FONT_SIZE);
-				let name_right = (name_left + text_w).min(name_right_max);
+				let name_width = text_width(&display_name, FONT_SIZE);
+				let name_right = (name_left + name_width).min(name_right_max);
 				if name_right > name_left {
 					// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.
 					let name_top = node_top_left.y + HALF_GRID_SIZE as f64;
@@ -1142,7 +1146,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn try_get_node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.with_node_click_targets(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
+		self.with_node_click_targets_if_loaded(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
 			.flatten()
 	}
 
