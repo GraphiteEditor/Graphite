@@ -603,6 +603,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Artboard,
 		Resource,
 	));
+	#[cfg(feature = "gpu")]
+	node_types.extend(rank_adapter_nodes!(Raster<GPU>));
 	// Registers the whole-List bundle adapters for each value type whose entire list may be selected or carried as one opaque cell
 	macro_rules! bundle_adapter_nodes {
 		($($element:ty),* $(,)?) => {{

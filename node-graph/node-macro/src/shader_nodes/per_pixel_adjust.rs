@@ -242,7 +242,7 @@ impl PerPixelAdjustCodegen<'_> {
 			description: "".to_string(),
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
-				ty: parse_quote!(&'a WgpuExecutor),
+				ty: parse_quote!(#gcore::list::Item<&'a WgpuExecutor>),
 				exposed: true,
 				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode")),
 				number_soft_min: None,
@@ -297,7 +297,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let entry_point_name = &self.entry_point_name;
 		let body = quote! {
 			{
-				#executor.shader_runtime().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
+				#executor.into_element().shader_runtime().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
