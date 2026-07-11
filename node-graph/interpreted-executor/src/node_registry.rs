@@ -316,19 +316,23 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Option<&wgpu_executor::WgpuExecutor>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>]),
 	];
-	// The per-connector field adapter, registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged
+	// The per-connector field adapter, registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged.
+	// The `name` arm registers the same rank-shifting node under a resolution-time promotion adapter identifier instead.
 	macro_rules! field_adapter_node {
 		(element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-			field_adapter_node!(from: $element, to: Item<$element>, element: $element),
-			field_adapter_node!(from: Item<$element>, to: Item<$element>, element: $element),
-			field_adapter_node!(from: List<$element>, to: List<$element>, element: $element),
+				field_adapter_node!(from: $element, to: Item<$element>, element: $element),
+				field_adapter_node!(from: Item<$element>, to: Item<$element>, element: $element),
+				field_adapter_node!(from: List<$element>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 		(from: $from:ty, to: $to:ty, element: $element:ty) => {
+			field_adapter_node!(name: "FieldAdapterNode", from: $from, to: $to, element: $element)
+		};
+		(name: $name:literal, from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::FieldAdapterNode<", stringify!($element), ">"]),
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::", $name, "<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
 						let node = graphene_std::ops::FieldAdapterNode::new(
@@ -386,88 +390,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// A singleton raise adapter inserted by type resolution when an Item wire feeds a List connector
-	macro_rules! item_to_list_node {
-		(element: $element:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ItemToListNode<", stringify!($element), ">"]),
-				|mut args| {
-					Box::pin(async move {
-						let node = graphene_std::ops::FieldAdapterNode::new(
-							graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
-						);
-						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let node = graphene_std::ops::FieldAdapterNode::new(
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
-					);
-					let params = vec![fn_type_fut!(Context, Item<$element>)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					node_io
-				},
-			)
-		};
-	}
-	// A bare-value wrap adapter inserted by type resolution when a bare wire feeds an Item connector
-	macro_rules! wrap_item_node {
-		(element: $element:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::WrapItemNode<", stringify!($element), ">"]),
-				|mut args| {
-					Box::pin(async move {
-						let node = graphene_std::ops::FieldAdapterNode::new(
-							graphene_std::any::downcast_node::<Context, $element>(args.pop().unwrap()),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<Item<$element>>)),
-						);
-						let any: DynAnyNode<Context, Item<$element>, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let node = graphene_std::ops::FieldAdapterNode::new(
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $element> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<Item<$element>>)),
-					);
-					let params = vec![fn_type_fut!(Context, $element)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					node_io
-				},
-			)
-		};
-	}
-	// A bare-value wrap-raise adapter inserted by type resolution when a bare wire feeds a List connector
-	macro_rules! wrap_list_node {
-		(element: $element:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::WrapListNode<", stringify!($element), ">"]),
-				|mut args| {
-					Box::pin(async move {
-						let node = graphene_std::ops::FieldAdapterNode::new(
-							graphene_std::any::downcast_node::<Context, $element>(args.pop().unwrap()),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
-						);
-						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let node = graphene_std::ops::FieldAdapterNode::new(
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $element> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<List<$element>>)),
-					);
-					let params = vec![fn_type_fut!(Context, $element)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					node_io
-				},
-			)
-		};
-	}
-	// A legacy unwrap adapter inserted by type resolution when an Item wire feeds a bare connector predating ranked wires
+	// An unwrap adapter inserted by type resolution when an Item wire feeds a bare machinery connector, such as Write Attribute's erased value slot
 	macro_rules! unwrap_item_node {
 		(element: $element:ty) => {
 			(
@@ -548,9 +471,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
 			$(
 				entries.extend(field_adapter_node!(element: $element));
-				entries.push(item_to_list_node!(element: $element));
-				entries.push(wrap_item_node!(element: $element));
-				entries.push(wrap_list_node!(element: $element));
+				// The promotion adapters inserted by type resolution: a singleton raise, a bare wrap, a bare wrap-raise, and a bare-connector unwrap
+				entries.push(field_adapter_node!(name: "ItemToListNode", from: Item<$element>, to: List<$element>, element: $element));
+				entries.push(field_adapter_node!(name: "WrapItemNode", from: $element, to: Item<$element>, element: $element));
+				entries.push(field_adapter_node!(name: "WrapListNode", from: $element, to: List<$element>, element: $element));
 				entries.push(unwrap_item_node!(element: $element));
 			)*
 			entries

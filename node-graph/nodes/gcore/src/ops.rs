@@ -16,7 +16,7 @@ fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty
 	value.into()
 }
 
-/// Unwraps a ranked wire's item into its bare element for a legacy connector that predates ranked wires, discarding attributes.
+/// Unwraps a ranked wire's item into its bare element for a machinery connector that takes bare values, discarding attributes.
 #[node_macro::node(category(""), skip_impl)]
 fn unwrap_item<'i, T: 'i + Send>(_: impl Ctx, value: Item<T>) -> T {
 	value.into_element()
