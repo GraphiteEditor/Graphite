@@ -618,6 +618,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		attribute_value_node!(Item<BlendMode>),
 		attribute_value_node!(Item<GradientType>),
 		attribute_value_node!(Item<GradientSpreadMethod>),
+		attribute_value_node!(Item<NodeIdPath>),
 		attribute_value_node!(List<String>),
 		attribute_value_node!(List<Color>),
 		attribute_value_node!(List<Gradient>),
@@ -626,8 +627,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		attribute_value_node!(List<Raster<GPU>>),
 		attribute_value_node!(List<Graphic>),
-		// TODO: Move to the `Item` arm once the layer path column is normalized to store a bare `NodeIdPath`
-		field_adapter_convert_node!(node: ListToAttributeValueNode, from: Item<NodeIdPath>, to: Item<AttributeValueDyn>, element: AttributeValueDyn),
 	];
 	node_types.extend(attribute_value_rows);
 	// Whole-List Transform companion rows: a rank-1 content wire composes the matrix onto every item

@@ -50,7 +50,7 @@ pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> List<Vecto
 
 	let vectors = to_path(text, &font, typesetting, separate_glyphs);
 	let transform = item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
-	let layer_path = item.attribute::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH).cloned();
+	let layer_path = item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).cloned();
 	let blend_mode = item.attribute::<BlendMode>(ATTR_BLEND_MODE).copied();
 	let opacity = item.attribute::<f64>(ATTR_OPACITY).copied();
 	let opacity_fill = item.attribute::<f64>(ATTR_OPACITY_FILL).copied();

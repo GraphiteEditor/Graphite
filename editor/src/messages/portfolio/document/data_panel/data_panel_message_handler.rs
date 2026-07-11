@@ -624,7 +624,7 @@ impl TableItemLayout for Raster<GPU> {
 		format!("Raster ({} x {})", self.data().width(), self.data().height())
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new("Raster is a texture on the GPU and cannot currently be displayed here").widget_instance()];
+		let widgets = vec![TextLabel::new("This raster data is a texture on the GPU. It currently cannot be displayed here.").widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -1059,9 +1059,9 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 /// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
 /// types so the caller can fall back to a debug-formatted [`TextLabel`].
 fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
-	// `Item<NodeIdPath>` (e.g. the `editor:layer_path` attribute) drills into its inner path list, matching `drilldown_attribute_layout`.
-	if let Some(path) = any.downcast_ref::<Item<NodeIdPath>>() {
-		return Some(path.element().0.value_widget(target, data));
+	// `NodeIdPath` (e.g. the `editor:layer_path` attribute) drills into its inner path list, matching `drilldown_attribute_layout`.
+	if let Some(path) = any.downcast_ref::<NodeIdPath>() {
+		return Some(path.0.value_widget(target, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
@@ -1119,10 +1119,10 @@ fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut Lay
 /// Mirrors [`dispatch_value_widget`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `Item<NodeIdPath>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
+	// `NodeIdPath` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
 	// resolves against the prefix made up of preceding items. Handled before the generic blanket impl.
-	if let Some(path) = any.downcast_ref::<Item<NodeIdPath>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(&path.element().0, data));
+	if let Some(path) = any.downcast_ref::<NodeIdPath>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&path.0, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {

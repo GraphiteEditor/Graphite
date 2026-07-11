@@ -633,7 +633,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute(ATTR_EDITOR_LAYER_PATH, Item::new_from_element(layer_path.clone()));
+		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
 		base.push(row);
 	}
 

@@ -581,7 +581,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						let layer_path: List<NodeId> = list.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, 0).into_element().0;
+						let layer_path: List<NodeId> = list.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).0;
 						let layer = layer_path.iter_element_values().next_back().copied();
 						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
@@ -800,7 +800,7 @@ impl Render for List<Artboard> {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, index).into_element().0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
@@ -972,7 +972,7 @@ impl Render for List<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, index).into_element().0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -1054,9 +1054,9 @@ impl Render for List<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
-			element.new_ids_from_hash(layer.element().0.iter_element_values().next_back().copied());
+			element.new_ids_from_hash(layer.0.iter_element_values().next_back().copied());
 		}
 	}
 }
@@ -1575,7 +1575,7 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, index).into_element().0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -2572,7 +2572,7 @@ impl Render for List<String> {
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
 		for index in 0..self.len() {
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, index).into_element().0;
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let Some(element_id) = caller_element_id.or(layer) else { continue };
 

@@ -23,7 +23,7 @@ pub const ATTR_OPACITY: &str = "opacity";
 pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 /// `bool` for whether an item inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
-/// `Item<NodeIdPath>` path from the root network to the layer node owning this item.
+/// `NodeIdPath` path from the root network to the layer node owning this item.
 /// Used by editor tools to route clicks/selection back to the originating layer.
 pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// `List<Graphic>` snapshot of the upstream content that fed into a destructive merge

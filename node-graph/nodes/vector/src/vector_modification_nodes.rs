@@ -22,9 +22,9 @@ async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Box<Vec
 		let len = node_path.len();
 		node_path.into_iter().take(len.saturating_sub(1)).collect()
 	};
-	let existing = vector.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH).into_element().0;
+	let existing = vector.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).0;
 	let layer_path = if existing.is_empty() { subgraph_path } else { existing };
-	vector.set_attribute(ATTR_EDITOR_LAYER_PATH, Item::new_from_element(NodeIdPath(layer_path)));
+	vector.set_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath(layer_path));
 
 	vector
 }

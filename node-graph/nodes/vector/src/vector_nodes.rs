@@ -1412,7 +1412,7 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, index).into_element().0;
+		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
@@ -2766,7 +2766,7 @@ async fn morph<I: IntoGraphicList>(
 	if content.attribute::<bool>(ATTR_CLIPPING_MASK, source_index).is_some() {
 		item.set_attribute(ATTR_CLIPPING_MASK, lerped_clip);
 	}
-	if let Some(layer_path) = content.attribute::<Item<NodeIdPath>>(ATTR_EDITOR_LAYER_PATH, primary_index) {
+	if let Some(layer_path) = content.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, primary_index) {
 		item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
 	}
 	item.set_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
