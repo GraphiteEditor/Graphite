@@ -226,35 +226,26 @@ impl NodeNetworkInterface {
 		self.unload_modify_import_export(network_path);
 	}
 
-	// First disconnects the export, then removes it
-	/// Disconnects every wire fed by the given import within the network.
-	pub(crate) fn disconnect_import_wires(&mut self, import_index: usize, network_path: &[NodeId]) {
-		let Some(wires_for_import) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::Import(import_index)).cloned()) else {
-			log::error!("Could not get outward wires in disconnect_import_wires");
-			return;
-		};
-		let Some(wires_for_import) = wires_for_import else {
-			log::error!("Could not get outward wires for import in disconnect_import_wires");
-			return;
-		};
-		for downstream_connection in wires_for_import {
-			self.disconnect_input(&downstream_connection, network_path);
-		}
+	/// Disconnects every wire fed by the given import within the network. Returns false without mutating if the import's wires cannot be resolved.
+	pub(crate) fn disconnect_import_wires(&mut self, import_index: usize, network_path: &[NodeId]) -> bool {
+		self.disconnect_output_wires(&OutputConnector::Import(import_index), network_path)
 	}
 
-	/// Disconnects every wire fed by the given output within the network.
-	pub(crate) fn disconnect_output_wires(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) {
+	/// Disconnects every wire fed by the given output within the network. Returns false without mutating if the output's wires cannot be resolved.
+	pub(crate) fn disconnect_output_wires(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> bool {
 		let Some(downstream_connections) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()) else {
 			log::error!("Could not get outward wires in disconnect_output_wires");
-			return;
+			return false;
 		};
 		let Some(downstream_connections) = downstream_connections else {
-			log::error!("Could not get downstream connections in disconnect_output_wires");
-			return;
+			log::error!("Could not get downstream connections for {output_connector:?} in disconnect_output_wires");
+			return false;
 		};
 		for downstream_connection in downstream_connections {
 			self.disconnect_input(&downstream_connection, network_path);
 		}
+
+		true
 	}
 
 	/// Refreshes the metadata invalidated when the encapsulating node's signature changes, demoting it from a layer if it is no longer eligible.
@@ -346,9 +337,11 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// Disconnect all upstream connections
-		self.disconnect_import_wires(import_index, network_path);
-		// Shift inputs connected to to imports at a higher index down one
+		// Disconnect all upstream connections, aborting before any mutation if the import's wires cannot be resolved
+		if !self.disconnect_import_wires(import_index, network_path) {
+			return;
+		}
+		// Shift inputs connected to imports at a higher index down one
 		for (output_connector, input_wire) in new_import_mapping {
 			self.create_wire(&output_connector, &input_wire, network_path);
 		}
