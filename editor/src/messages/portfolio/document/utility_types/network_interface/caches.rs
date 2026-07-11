@@ -679,38 +679,20 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn get_input_center(&self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		fn port_center(ports: &Ports, index: usize) -> Option<DVec2> {
-			ports
-				.input_ports
-				.iter()
-				.find_map(|(input_index, click_target)| if index == *input_index { click_target.bounding_box_center() } else { None })
-		}
-
 		match input {
-			InputConnector::Node { node_id, input_index } => {
-				self.try_load_node_click_targets(node_id, network_path);
-				self.with_node_click_targets(node_id, network_path, |click_targets| port_center(&click_targets.port_click_targets, *input_index))
-					.flatten()
-			}
-			InputConnector::Export(export_index) => self.with_import_export_ports(network_path, |ports| port_center(ports, *export_index)).flatten(),
+			InputConnector::Node { node_id, input_index } => self
+				.with_node_click_targets(node_id, network_path, |click_targets| click_targets.port_click_targets.input_port_position(*input_index))
+				.flatten(),
+			InputConnector::Export(export_index) => self.with_import_export_ports(network_path, |ports| ports.input_port_position(*export_index)).flatten(),
 		}
 	}
 
 	pub fn get_output_center(&self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		fn port_center(ports: &Ports, index: usize) -> Option<DVec2> {
-			ports
-				.output_ports
-				.iter()
-				.find_map(|(output_index, click_target)| if index == *output_index { click_target.bounding_box_center() } else { None })
-		}
-
 		match output {
-			OutputConnector::Node { node_id, output_index } => {
-				self.try_load_node_click_targets(node_id, network_path);
-				self.with_node_click_targets(node_id, network_path, |click_targets| port_center(&click_targets.port_click_targets, *output_index))
-					.flatten()
-			}
-			OutputConnector::Import(import_index) => self.with_import_export_ports(network_path, |ports| port_center(ports, *import_index)).flatten(),
+			OutputConnector::Node { node_id, output_index } => self
+				.with_node_click_targets(node_id, network_path, |click_targets| click_targets.port_click_targets.output_port_position(*output_index))
+				.flatten(),
+			OutputConnector::Import(import_index) => self.with_import_export_ports(network_path, |ports| ports.output_port_position(*import_index)).flatten(),
 		}
 	}
 
