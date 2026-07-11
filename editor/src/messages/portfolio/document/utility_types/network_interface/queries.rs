@@ -80,14 +80,11 @@ impl NodeNetworkInterface {
 
 	/// Runs an encapsulating-node query, staying silent for the document network which has no encapsulating node.
 	fn query_encapsulating<'a, 'p, T>(&'a self, network_path: &'p [NodeId], caller: &str, query: impl FnOnce(NetworkView<'a, 'p>) -> Result<T, NetworkError>) -> Option<T> {
-		match self.view(network_path).and_then(query) {
-			Ok(value) => Some(value),
-			Err(NetworkError::NoEncapsulatingNode) => None,
-			Err(error) => {
-				log::error!("{error} in {caller}");
-				None
-			}
-		}
+		self.query(network_path, caller, |view| match query(view) {
+			Err(NetworkError::NoEncapsulatingNode) => Ok(None),
+			result => result.map(Some),
+		})
+		.flatten()
 	}
 
 	/// Get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
@@ -153,11 +150,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn number_of_imports(&self, network_path: &[NodeId]) -> usize {
-		self.view(network_path).map(|view| view.number_of_imports()).unwrap_or_default()
+		self.query(network_path, "number_of_imports", |view| Ok(view.number_of_imports())).unwrap_or_default()
 	}
 
 	pub fn number_of_exports(&self, network_path: &[NodeId]) -> usize {
-		self.view(network_path).map(|view| view.number_of_exports()).unwrap_or_default()
+		self.query(network_path, "number_of_exports", |view| Ok(view.number_of_exports())).unwrap_or_default()
 	}
 
 	pub(crate) fn number_of_displayed_inputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
@@ -172,7 +169,7 @@ impl NodeNetworkInterface {
 	/// Whether the node has an exposed input at index 0 to accept the horizontal flow from upstream.
 	/// A node without one (e.g. a generator) can only be the most-upstream node in a chain.
 	pub fn has_primary_input(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.view(network_path).and_then(|view| view.has_primary_input(node_id)).unwrap_or_default()
+		self.query(network_path, "has_primary_input", |view| view.has_primary_input(node_id)).unwrap_or_default()
 	}
 
 	pub fn number_of_outputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
@@ -829,7 +826,7 @@ impl NodeNetworkInterface {
 
 	/// The given network's pinned nodes in display order: pinning appends, dragging rearranges, and any not yet recorded go last.
 	pub fn ordered_pinned_nodes(&self, network_path: &[NodeId]) -> Vec<NodeId> {
-		self.view(network_path).map(|view| view.ordered_pinned_nodes()).unwrap_or_default()
+		self.query(network_path, "ordered_pinned_nodes", |view| Ok(view.ordered_pinned_nodes())).unwrap_or_default()
 	}
 
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -863,15 +860,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn hidden_primary_export(&self, network_path: &[NodeId]) -> bool {
-		self.view(network_path).map(|view| view.hidden_primary_export()).unwrap_or_default()
+		self.query(network_path, "hidden_primary_export", |view| Ok(view.hidden_primary_export())).unwrap_or_default()
 	}
 
 	pub fn hidden_primary_output(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.view(network_path).and_then(|view| view.hidden_primary_output(node_id)).unwrap_or_default()
+		self.query(network_path, "hidden_primary_output", |view| view.hidden_primary_output(node_id)).unwrap_or_default()
 	}
 
 	pub fn hidden_primary_import(&self, network_path: &[NodeId]) -> bool {
-		self.view(network_path).map(|view| view.hidden_primary_import()).unwrap_or_default()
+		self.query(network_path, "hidden_primary_import", |view| Ok(view.hidden_primary_import())).unwrap_or_default()
 	}
 
 	pub fn is_absolute(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -889,7 +886,7 @@ impl NodeNetworkInterface {
 	/// Whether the node is an Artboard node by identity, regardless of whether it currently participates in the scene.
 	/// Callers that care about scene membership should source their layers from the document structure or check connectivity separately.
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.view(network_path).map(|view| view.is_artboard(node_id)).unwrap_or_default()
+		self.query(network_path, "is_artboard", |view| Ok(view.is_artboard(node_id))).unwrap_or_default()
 	}
 
 	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.
