@@ -350,62 +350,37 @@ pub struct NodeNetworkPersistentMetadata {
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 }
 
-/// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
-#[derive(Debug, Default, Clone)]
-pub enum TransientMetadata<T> {
-	Loaded(T),
-	#[default]
-	Unloaded,
-}
-
-impl<T> TransientMetadata<T> {
-	/// Set the current transient metadata to unloaded
-	pub fn unload(&mut self) {
-		*self = TransientMetadata::Unloaded;
-	}
-
-	pub fn is_loaded(&self) -> bool {
-		matches!(self, TransientMetadata::Loaded(_))
-	}
-}
-
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
 #[derive(Debug, Clone)]
-pub(crate) struct TransientCache<T>(std::cell::RefCell<TransientMetadata<T>>);
+pub(crate) struct TransientCache<T>(std::cell::RefCell<Option<T>>);
 
 impl<T> Default for TransientCache<T> {
 	fn default() -> Self {
-		TransientCache(std::cell::RefCell::new(TransientMetadata::Unloaded))
+		TransientCache(std::cell::RefCell::new(None))
 	}
 }
 
 impl<T> TransientCache<T> {
 	pub(crate) fn is_loaded(&self) -> bool {
-		self.0.borrow().is_loaded()
+		self.0.borrow().is_some()
 	}
 
 	pub(crate) fn store(&self, value: T) {
-		*self.0.borrow_mut() = TransientMetadata::Loaded(value);
+		*self.0.borrow_mut() = Some(value);
 	}
 
 	pub(crate) fn unload(&self) {
-		*self.0.borrow_mut() = TransientMetadata::Unloaded;
+		*self.0.borrow_mut() = None;
 	}
 
 	/// Runs `read` on the cached value if it is loaded.
 	pub(crate) fn with_loaded<R>(&self, read: impl FnOnce(&T) -> R) -> Option<R> {
-		match &*self.0.borrow() {
-			TransientMetadata::Loaded(value) => Some(read(value)),
-			TransientMetadata::Unloaded => None,
-		}
+		self.0.borrow().as_ref().map(read)
 	}
 
 	/// Direct access without runtime borrow tracking, for callers already holding exclusive access.
 	pub(crate) fn get_loaded_mut(&mut self) -> Option<&mut T> {
-		match self.0.get_mut() {
-			TransientMetadata::Loaded(value) => Some(value),
-			TransientMetadata::Unloaded => None,
-		}
+		self.0.get_mut().as_mut()
 	}
 }
 
