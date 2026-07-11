@@ -807,9 +807,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
-							// 6: Combine Paths
+							// 6: Flatten Path
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::combine_paths::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::flatten_path::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(5), 0)],
 								..Default::default()
 							},
@@ -884,7 +884,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 6: Combine Paths
+								// 6: Flatten Path
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(35, 0)),

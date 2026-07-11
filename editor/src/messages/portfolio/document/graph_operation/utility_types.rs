@@ -433,17 +433,17 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 
-		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
+		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
 			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
-				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
-					log::error!("Combine Paths does not exist in ModifyInputsContext::existing_node_id");
+				let Some(flatten_path_definition) = resolve_proto_node_type(graphene_std::vector_nodes::flatten_path::IDENTIFIER) else {
+					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
 				};
 				let node_id = NodeId::new();
-				self.network_interface.insert_node(node_id, combine_paths_definition.default_node_template(), &[]);
+				self.network_interface.insert_node(node_id, flatten_path_definition.default_node_template(), &[]);
 				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
 			}
 		}
