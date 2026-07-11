@@ -1168,7 +1168,8 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			for input_index in 0..self.number_of_displayed_inputs(delete_node_id, network_path) {
+			// Disconnect every input by position, since hidden inputs make the displayed count undershoot the index of a later exposed wire
+			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
 				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
 			}
 
