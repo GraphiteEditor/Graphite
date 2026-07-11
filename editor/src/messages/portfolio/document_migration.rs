@@ -95,10 +95,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::animation::AnimationTimeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::debug::clone::IDENTIFIER,
-		aliases: &["graphene_core::ops::CloneNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::extract_xy::extract_xy::IDENTIFIER,
 		aliases: &["graphene_core::ops::ExtractXyNode"],
 	},
