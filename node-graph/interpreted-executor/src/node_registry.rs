@@ -61,8 +61,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<BlendMode>, to: ListDyn),
 		convert_node!(from: List<GradientType>, to: ListDyn),
 		convert_node!(from: List<GradientSpreadMethod>, to: ListDyn),
-		convert_node!(from: List<Vector>, to: List<Vector>),
-		convert_node!(from: Item<DVec2>, to: List<Vector>),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>, converter: &WgpuExecutor),
 		#[cfg(feature = "gpu")]

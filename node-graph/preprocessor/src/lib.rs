@@ -188,8 +188,9 @@ impl Preprocessor {
 							Some(input) => {
 								let input_ty = input.nested_type();
 
-								// A single-registered ranked field also gets the input adapter, so bare values wrap and convertible elements cast
-								if let Some(element_name) = input_ty.identifier_name().strip_prefix("Item<").and_then(|rest| rest.strip_suffix('>')) {
+								// A single-registered ranked field also gets the input adapter, so ranked wires pass through and convertible elements cast
+								let type_name = input_ty.identifier_name();
+								if let Some(element_name) = type_name.strip_prefix("Item<").or_else(|| type_name.strip_prefix("List<")).and_then(|rest| rest.strip_suffix('>')) {
 									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::InputAdapterNode<{element_name}>"));
 									if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
 										generated_nodes += 1;

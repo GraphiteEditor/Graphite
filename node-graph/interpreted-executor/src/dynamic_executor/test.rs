@@ -323,6 +323,28 @@ fn value_wires_materialize_as_items_at_resolution() {
 	assert_eq!(transform.translation, DVec2::new(7., 0.), "The translation should compose onto the gained transform attribute");
 }
 
+// A position's Item wire converts through the vector input adapter into a single-anchor path, which the ItemToList promotion can then raise at a List connector
+#[test]
+fn position_value_converts_through_the_vector_input_adapter() {
+	let position_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::DVec2(glam::DVec2::new(3., 4.)).into()), vec![NodeId(0)]);
+
+	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<Vector>");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), position_node), (NodeId(1), input_adapter_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("An Item<DVec2> wire should resolve the adapter's element conversion row");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The conversion constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
+}
+
 #[test]
 fn value_wire_passes_through_the_input_adapter_as_item() {
 	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
