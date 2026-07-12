@@ -93,10 +93,10 @@ pub trait FromAnchorPosition {
 	fn from_anchor_position(position: DVec2) -> Self;
 }
 
-// Converts a position into a vector path composed of a single anchor point
-impl<T: FromAnchorPosition + Send> Convert<List<T>, ()> for DVec2 {
+// Converts a position's Item wire into a vector path composed of a single anchor point
+impl<T: FromAnchorPosition + Send> Convert<List<T>, ()> for Item<DVec2> {
 	async fn convert(self, _: Footprint, _: ()) -> List<T> {
-		List::new_from_item(Item::new_from_element(T::from_anchor_position(self)))
+		List::new_from_item(Item::new_from_element(T::from_anchor_position(self.into_element())))
 	}
 }
 

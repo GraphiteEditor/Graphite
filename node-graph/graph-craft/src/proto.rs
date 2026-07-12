@@ -397,7 +397,7 @@ impl ProtoNetwork {
 		let we_introduce_new_deps = !combined_deps.contains(new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
 			} else if we_introduce_new_deps || deps != combined_deps {
@@ -643,10 +643,6 @@ pub struct TypingContext {
 pub enum Promotion {
 	/// Raises an `Item<X>` wire onto a `List<X>` connector as a one-element list.
 	ItemToList(Type),
-	/// Wraps a bare wire into an `Item<X>` connector.
-	WrapItem(Type),
-	/// Wraps a bare wire into a `List<X>` connector as a one-element list.
-	WrapList(Type),
 	/// Bundles a whole `List<X>` wire into one opaque `Item<Bundle<X>>` cell.
 	Bundle(Type),
 	/// Unbundles an `Item<Bundle<X>>` wire back into the whole `List<X>`.
@@ -658,20 +654,10 @@ impl Promotion {
 	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
 		let (node_name, element) = match self {
 			Self::ItemToList(element) => ("ItemToListNode", element),
-			Self::WrapItem(element) => ("WrapItemNode", element),
-			Self::WrapList(element) => ("WrapListNode", element),
 			Self::Bundle(element) => ("BundleNode", element),
 			Self::Unbundle(element) => ("UnbundleNode", element),
 		};
 		ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::{node_name}<{}>", element.identifier_name()))
-	}
-
-	/// A wrap-raise counts double since it spans two rank steps, keeping the all-Item variant ahead of the mapped one for fully bare inputs
-	fn cost(&self) -> usize {
-		match self {
-			Self::WrapList(_) => 2,
-			_ => 1,
-		}
 	}
 }
 
@@ -824,15 +810,6 @@ impl TypingContext {
 				// The transitional `Item<X>` cell is still an opaque concrete type, so relating it to its element takes one name peel;
 				// every `List` relation is matched structurally.
 				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
-					fn named_element(name: &str) -> Type {
-						Type::Concrete(TypeDescriptor {
-							id: None,
-							name: Cow::Owned(name.to_string()),
-							alias: None,
-							size: 0,
-							align: 0,
-						})
-					}
 					fn concrete_name(ty: &Type) -> Option<&str> {
 						match ty {
 							Type::Concrete(descriptor) => Some(&descriptor.name),
@@ -856,9 +833,6 @@ impl TypingContext {
 							Some(Promotion::ItemToList((**element).clone()))
 						}
 
-						// A bare wire may feed a `List<X>` connector via a wrap and singleton raise
-						(Type::Concrete(from_descriptor), Type::List(element)) if Some(from_descriptor.name.as_ref()) == concrete_name(element) => Some(Promotion::WrapList((**element).clone())),
-
 						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
 						(Type::List(element), Type::Concrete(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
 							Some(Promotion::Bundle((**element).clone()))
@@ -867,11 +841,6 @@ impl TypingContext {
 						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
 						(Type::Concrete(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
 							Some(Promotion::Unbundle((**element).clone()))
-						}
-
-						// A bare wire may feed an `Item<X>` connector via a wrap
-						(Type::Concrete(from_descriptor), Type::Concrete(_)) if to_value.item_element_name() == Some(&from_descriptor.name) => {
-							Some(Promotion::WrapItem(named_element(&from_descriptor.name)))
 						}
 
 						_ => None,
@@ -893,15 +862,12 @@ impl TypingContext {
 					})
 					.collect::<Vec<_>>();
 
-				// Prefer the variant needing the cheapest promotions, so a rank-0 wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
-				fn promotion_cost(required_promotions: &[(usize, Promotion)]) -> usize {
-					required_promotions.iter().map(|(_, promotion)| promotion.cost()).sum()
-				}
-				promotable_matches.sort_by_key(|(_, required_promotions)| promotion_cost(required_promotions));
-				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| promotion_cost(required_promotions));
+				// Prefer the variant needing the fewest promotions, so an Item wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
+				promotable_matches.sort_by_key(|(_, required_promotions)| required_promotions.len());
+				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| required_promotions.len());
 				let tied_at_minimum = promotable_matches
 					.iter()
-					.take_while(|(_, required_promotions)| Some(promotion_cost(required_promotions)) == minimum_promotions)
+					.take_while(|(_, required_promotions)| Some(required_promotions.len()) == minimum_promotions)
 					.count();
 
 				if tied_at_minimum == 1 {

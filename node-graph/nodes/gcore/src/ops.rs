@@ -91,14 +91,6 @@ async fn input_adapter_cast<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx
 	Item::from_parts(value.convert(footprint, ()).await, attributes)
 }
 
-/// The bare-wire counterpart of `input_adapter_cast`, wrapping a value onto the ranked wire as an `Item` of the connector's element type.
-#[node_macro::node(category(""), skip_impl)]
-async fn input_adapter_cast_wrap<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, _element_ty: PhantomData<E>) -> Item<E> {
-	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
-
-	Item::new_from_element(value.convert(footprint, ()).await)
-}
-
 /// The `List` counterpart of `input_adapter_cast`, casting every element to the connector's numeric element type.
 #[node_macro::node(category(""), skip_impl)]
 async fn input_adapter_cast_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
