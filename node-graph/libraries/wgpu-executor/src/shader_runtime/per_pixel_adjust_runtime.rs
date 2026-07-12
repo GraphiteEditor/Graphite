@@ -234,7 +234,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.draw(0..3, 0..1);
 
 				let attributes = textures.clone_item_attributes(index);
-				Item::from_parts(Raster::new(GPU { texture: tex_out.into() }), attributes)
+				Item::from_parts(Raster::new_gpu(tex_out), attributes)
 			})
 			.collect::<List<_>>();
 		context.queue.submit([cmd.finish()]);
