@@ -261,7 +261,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -285,7 +285,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;

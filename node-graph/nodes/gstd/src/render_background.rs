@@ -5,9 +5,9 @@ use core_types::uuid::generate_uuid;
 use core_types::{Ctx, ExtractFootprint};
 use glam::{Affine2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphic_types::raster_types::Texture;
 use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
-use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
@@ -147,7 +147,7 @@ pub struct CompositeBackgroundArgs<'a> {
 
 impl AsyncWgpuPipeline for CompositeBackground {
 	type Args<'a> = CompositeBackgroundArgs<'a>;
-	type Out = Arc<wgpu::Texture>;
+	type Out = Texture;
 
 	fn create(executor: &WgpuExecutor) -> Self {
 		let device = &executor.context().device;

@@ -22,7 +22,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
-use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
+use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
@@ -198,7 +198,7 @@ impl Default for SvgRender {
 
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
-	pub resource_overrides: Vec<(peniko::ImageBrush, wgpu::Texture)>,
+	pub resource_overrides: Vec<(peniko::ImageBrush, Texture)>,
 }
 
 #[derive(Default, Clone, Copy, Hash, graphene_hash::CacheHash)]
@@ -1945,7 +1945,7 @@ impl Render for List<Raster<GPU>> {
 			.with_extend(peniko::Extend::Repeat);
 			let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
-			context.resource_overrides.push((image, raster.data().clone()));
+			context.resource_overrides.push((image, raster.texture.clone()));
 
 			if layer {
 				scene.pop_layer()
