@@ -275,15 +275,15 @@ fn nullification_chain_network(value: TaggedValue) -> ProtoNetwork {
 fn the_nullification_chain_resolves_for_ranked_enum_wires() {
 	use graphene_std::vector::style::StrokeAlign;
 
-	// The bare form, as a constant enum wire presents to the inserted cache chain
-	let network = nullification_chain_network(TaggedValue::StrokeAlign(StrokeAlign::default()));
-	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("A bare StrokeAlign wire should resolve through the compiler's cache chain");
-
 	// The Item form, as a wrapped input adapter's output presents to the chain
 	let network = nullification_chain_network(TaggedValue::TypeDefault(descriptor!(Item<StrokeAlign>)));
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<StrokeAlign> wire should resolve through the compiler's cache chain");
+
+	// The List form, as a whole-list enum wire presents to the chain
+	let network = nullification_chain_network(TaggedValue::TypeDefault(descriptor!(List<StrokeAlign>)));
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("A List<StrokeAlign> wire should resolve through the compiler's cache chain");
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn bare_value_promotes_to_item_wire() {
 fn bare_modification_promotes_to_item_wire() {
 	use graphene_std::vector::VectorModification;
 
-	let modification = TaggedValue::VectorModification(Box::new(VectorModification::default()));
+	let modification = TaggedValue::VectorModification(Default::default());
 	let value_node = ProtoNode::value(ConstructionArgs::Value(modification.into()), vec![NodeId(0)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
