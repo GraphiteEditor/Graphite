@@ -23,7 +23,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
+use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping, cursor_rect};
 use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
@@ -102,6 +102,7 @@ pub enum TextToolMessage {
 	Copy,
 	Cut,
 	PasteText { text: String },
+	AutoPanCursor,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -615,6 +616,7 @@ impl TextToolData {
 		self.blink_tick += 1;
 		spawn_blink_timer(self.blink_tick, responses);
 		responses.add(OverlaysMessage::Draw);
+		responses.add(TextToolMessage::AutoPanCursor);
 	}
 
 	/// Deletes the currently selected text and returns true if there was a selection to delete.
@@ -837,7 +839,12 @@ impl Fsm for TextToolFsmState {
 					let far = graphene_std::text::bounding_box(&tool_data.new_text, &font_resource, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
-						overlay_context.quad(layer_to_viewport * quad, None, Some(fill_color));
+						let transformed_quad = layer_to_viewport * quad;
+						overlay_context.quad(transformed_quad, None, Some(fill_color));
+
+						if lines_clipping(&tool_data.new_text, &font_resource, editing_text.typesetting) {
+							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+						}
 					}
 
 					if let Some(selection_start) = tool_data.selection_start_byte_offset {
@@ -1727,6 +1734,55 @@ impl Fsm for TextToolFsmState {
 					tool_data.blink_tick += 1;
 					spawn_blink_timer(tool_data.blink_tick, responses);
 					responses.add(OverlaysMessage::Draw);
+				}
+				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Editing, TextToolMessage::AutoPanCursor) => {
+				if let Some(editing_text) = tool_data.editing_text.as_ref() {
+					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+					let layer_to_viewport = if !document.metadata().layer_exists(tool_data.layer) {
+						document.metadata().document_to_viewport * editing_text.transform
+					} else {
+						let t = document
+							.metadata()
+							.transform_to_viewport_with_first_transform_node_if_group(tool_data.layer, &document.network_interface);
+						if t.matrix2.determinant() == 0. {
+							document.metadata().document_to_viewport * editing_text.transform
+						} else {
+							t
+						}
+					};
+
+					let cursor_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+					let [top_left, bottom_right] = cursor_rect(&tool_data.new_text, &font_resource, editing_text.typesetting, cursor_offset, 0.0);
+
+					let cursor_start = layer_to_viewport.transform_point2(DVec2::new(top_left.x, top_left.y));
+					let cursor_end = layer_to_viewport.transform_point2(DVec2::new(top_left.x, bottom_right.y));
+
+					let viewport_size = viewport.size().into_dvec2();
+
+					let min_x = cursor_start.x.min(cursor_end.x);
+					let max_x = cursor_start.x.max(cursor_end.x);
+					let min_y = cursor_start.y.min(cursor_end.y);
+					let max_y = cursor_start.y.max(cursor_end.y);
+
+					let mut delta = DVec2::ZERO;
+
+					if max_y > viewport_size.y {
+						delta.y = viewport_size.y - max_y;
+					} else if min_y < 0.0 {
+						delta.y = -min_y;
+					}
+
+					if max_x > viewport_size.x {
+						delta.x = viewport_size.x - max_x;
+					} else if min_x < 0.0 {
+						delta.x = -min_x;
+					}
+
+					if delta != DVec2::ZERO {
+						responses.add(NavigationMessage::CanvasPan { delta });
+					}
 				}
 				TextToolFsmState::Editing
 			}
