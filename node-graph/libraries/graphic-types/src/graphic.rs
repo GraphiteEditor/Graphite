@@ -1,7 +1,7 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
-use core_types::ops::{FromAnchorPosition, ListConvert};
+use core_types::ops::FromAnchorPosition;
 use core_types::render_complexity::RenderComplexity;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
@@ -553,22 +553,6 @@ impl BoundingBox for Graphic {
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
-	}
-}
-
-impl ListConvert<Graphic> for Vector {
-	fn convert_item(self) -> Graphic {
-		Graphic::Vector(List::new_from_element(self))
-	}
-}
-impl ListConvert<Graphic> for Raster<CPU> {
-	fn convert_item(self) -> Graphic {
-		Graphic::RasterCPU(List::new_from_element(self))
-	}
-}
-impl ListConvert<Graphic> for Raster<GPU> {
-	fn convert_item(self) -> Graphic {
-		Graphic::RasterGPU(List::new_from_element(self))
 	}
 }
 

@@ -1,5 +1,4 @@
 use crate::Node;
-use crate::list::{Item, List, ListDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
 use std::future::Future;
@@ -44,46 +43,6 @@ pub trait Convert<T, C>: Sized {
 	/// Converts this type into the (usually inferred) output type.
 	#[must_use]
 	fn convert(self, footprint: Footprint, converter: C) -> impl Future<Output = T> + Send;
-}
-
-impl<T: ToString + Send> Convert<String, ()> for T {
-	/// Converts this type into a `String` using its `ToString` implementation.
-	#[inline]
-	async fn convert(self, _: Footprint, _converter: ()) -> String {
-		self.to_string()
-	}
-}
-
-pub trait ListConvert<U> {
-	fn convert_item(self) -> U;
-}
-
-impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> List<U> {
-		let list: List<U> = self
-			.into_iter()
-			.map(|row| {
-				let (element, attributes) = row.into_parts();
-				Item::from_parts(element.convert_item(), attributes)
-			})
-			.collect();
-		list
-	}
-}
-
-/// Erases a `List<T>`'s element type, exposing only its attributes and row count. Lets nodes that
-/// only need attribute access (such as the `read_attribute_*` family) take a single `ListDyn` input
-/// instead of monomorphizing over every possible carrier list type.
-impl<T: Send> Convert<ListDyn, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> ListDyn {
-		self.into()
-	}
-}
-
-impl Convert<DVec2, ()> for DVec2 {
-	async fn convert(self, _: Footprint, _: ()) -> DVec2 {
-		self
-	}
 }
 
 /// Constructs `Self` from a single anchor point at the given position. Implemented by the vector crate's

@@ -70,14 +70,6 @@ impl From<DVec2> for Vector {
 	}
 }
 
-// Identity item conversion so `List<Vector>` satisfies the blanket `Convert<List<U>, ()> for List<T>`, letting its
-// auto-inserted input wrapper be a `ConvertNode` (which also accepts a `DVec2` anchor position) rather than an `IntoNode`.
-impl core_types::ops::ListConvert<Vector> for Vector {
-	fn convert_item(self) -> Vector {
-		self
-	}
-}
-
 impl core_types::transform::BakeTransform for Vector {
 	fn bake_transform(&mut self, transform: &glam::DAffine2) {
 		for (_, point) in self.point_domain.positions_mut() {

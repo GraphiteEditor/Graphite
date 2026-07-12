@@ -23,52 +23,12 @@ use graphene_std::vector::misc::{BooleanOperation, BoxCorners, CentroidType, Ext
 use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
-use node_registry_macros::{async_node, convert_node, into_node};
+use node_registry_macros::async_node;
 use std::collections::HashMap;
-#[cfg(feature = "gpu")]
-use wgpu_executor::WgpuExecutor;
 
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let mut node_types: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		// ==========
-		// INTO NODES
-		// ==========
-		#[cfg(feature = "gpu")]
-		into_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>),
-		into_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>),
-		into_node!(from: List<Graphic>, to: List<Graphic>),
-		// =============
-		// CONVERT NODES
-		// =============
-		convert_node!(from: List<Vector>, to: List<Graphic>),
-		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
-		// Type-erased list conversions for the `Read Attribute` and `Count Elements` nodes, so they need no monomorphization over the content type.
-		convert_node!(from: List<Artboard>, to: ListDyn),
-		convert_node!(from: List<Graphic>, to: ListDyn),
-		convert_node!(from: List<Vector>, to: ListDyn),
-		convert_node!(from: List<Raster<CPU>>, to: ListDyn),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: ListDyn),
-		convert_node!(from: List<Color>, to: ListDyn),
-		convert_node!(from: List<Gradient>, to: ListDyn),
-		convert_node!(from: List<f64>, to: ListDyn),
-		convert_node!(from: List<bool>, to: ListDyn),
-		convert_node!(from: List<String>, to: ListDyn),
-		convert_node!(from: List<DAffine2>, to: ListDyn),
-		convert_node!(from: List<BlendMode>, to: ListDyn),
-		convert_node!(from: List<GradientType>, to: ListDyn),
-		convert_node!(from: List<GradientSpreadMethod>, to: ListDyn),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>, converter: &WgpuExecutor),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<CPU>>, to: List<Raster<GPU>>, converter: &WgpuExecutor),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>, converter: &WgpuExecutor),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Raster<CPU>>, converter: &WgpuExecutor),
 		// =============
 		// MONITOR NODES
 		// =============
@@ -180,24 +140,39 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>]),
 	];
 	// The per-connector input adapter, registered per element type: an `Item` or `List` wire passes through unchanged.
-	// The `name` arm registers the same rank-shifting node under a resolution-time promotion adapter identifier instead.
+	// The `name` arm registers an `Into`-based whole-wire shift under the given identifier, serving the `ListDyn` erasure rows.
 	macro_rules! input_adapter_node {
 		(element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				input_adapter_node!(from: Item<$element>, to: Item<$element>, element: $element),
-				input_adapter_node!(from: List<$element>, to: List<$element>, element: $element),
+				input_adapter_node!(passthrough: Item<$element>, element: $element),
+				input_adapter_node!(passthrough: List<$element>, element: $element),
 			];
 			entries
 		}};
-		(from: $from:ty, to: $to:ty, element: $element:ty) => {
-			input_adapter_node!(name: "InputAdapterNode", from: $from, to: $to, element: $element)
+		(passthrough: $ty:ty, element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["input_adapter<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::downcast_node::<Context, $ty>(args.pop().unwrap()));
+						let any: DynAnyNode<Context, $ty, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $ty> + Send>>>::new());
+					let params = vec![fn_type_fut!(Context, $ty)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
 		};
 		(name: $name:literal, from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::", $name, "<", stringify!($element), ">"]),
+				ProtoNodeIdentifier::new(concat![$name, "<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::InputAdapterNode::new(
+						let node = graphene_core::ops::IntoNode::new(
 							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 						);
@@ -206,7 +181,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::InputAdapterNode::new(
+					let node = graphene_core::ops::IntoNode::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 					);
@@ -217,22 +192,22 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// A conversion adapter registered under the same `InputAdapterNode<$element>` identifier so a convertible-but-not-identical
+	// A conversion row registered under the same `input_adapter<$element>` identifier so a convertible-but-not-identical
 	// ranked wire can feed an `Item<$element>` connector, converting each element via `Into`
-	macro_rules! input_adapter_convert_node {
+	macro_rules! input_adapter_row {
 		(from_element: $from:ty, element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				input_adapter_convert_node!(node: InputAdapterConvertNode, from: Item<$from>, to: Item<$element>, element: $element),
-				input_adapter_convert_node!(node: InputAdapterConvertListNode, from: List<$from>, to: List<$element>, element: $element),
+				input_adapter_row!(node: IntoItemNode, from: Item<$from>, to: Item<$element>, element: $element),
+				input_adapter_row!(node: IntoListNode, from: List<$from>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 		(node: $node:ident, from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::InputAdapterNode<", stringify!($element), ">"]),
+				ProtoNodeIdentifier::new(concat!["input_adapter<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::$node::new(
+						let node = graphene_core::ops::$node::new(
 							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
 						);
@@ -241,11 +216,35 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::$node::new(
+					let node = graphene_core::ops::$node::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
 					);
 					let params = vec![fn_type_fut!(Context, $from)];
+					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					node_io
+				},
+			)
+		};
+	}
+	// The promotion adapter inserted by type resolution when an Item wire feeds a List connector: the singleton raise
+	macro_rules! item_to_list_node {
+		(element: $element:ty) => {
+			(
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ItemToListNode<", stringify!($element), ">"]),
+				|mut args| {
+					Box::pin(async move {
+						let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()));
+						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::PanicNode::<
+						Context,
+						core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>,
+					>::new());
+					let params = vec![fn_type_fut!(Context, Item<$element>)];
 					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
 					node_io
 				},
@@ -259,13 +258,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::BundleNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::BundleNode::new(graphene_std::any::downcast_node::<Context, List<$element>>(args.pop().unwrap()));
+						let node = graphene_core::ops::BundleNode::new(graphene_std::any::downcast_node::<Context, List<$element>>(args.pop().unwrap()));
 						let any: DynAnyNode<Context, Item<Bundle<$element>>, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
 				},
 				{
-					let node = graphene_std::ops::BundleNode::new(graphene_std::any::PanicNode::<
+					let node = graphene_core::ops::BundleNode::new(graphene_std::any::PanicNode::<
 						Context,
 						core::pin::Pin<Box<dyn core::future::Future<Output = List<$element>> + Send>>,
 					>::new());
@@ -283,13 +282,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::UnbundleNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::UnbundleNode::new(graphene_std::any::downcast_node::<Context, Item<Bundle<$element>>>(args.pop().unwrap()));
+						let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::downcast_node::<Context, Item<Bundle<$element>>>(args.pop().unwrap()));
 						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
 				},
 				{
-					let node = graphene_std::ops::UnbundleNode::new(graphene_std::any::PanicNode::<
+					let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::PanicNode::<
 						Context,
 						core::pin::Pin<Box<dyn core::future::Future<Output = Item<Bundle<$element>>> + Send>>,
 					>::new());
@@ -303,14 +302,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
-	// Registers the rank adapters (InputAdapterNode, ItemToListNode) for each element type
+	// Registers the rank adapters (input_adapter, ItemToListNode) for each element type
 	macro_rules! rank_adapter_nodes {
 		($($element:ty),* $(,)?) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
 			$(
 				entries.extend(input_adapter_node!(element: $element));
-				// The promotion adapter inserted by type resolution: a singleton raise onto a List connector
-				entries.push(input_adapter_node!(name: "ItemToListNode", from: Item<$element>, to: List<$element>, element: $element));
+				entries.push(item_to_list_node!(element: $element));
 			)*
 			entries
 		}};
@@ -365,6 +363,33 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	));
 	#[cfg(feature = "gpu")]
 	node_types.extend(rank_adapter_nodes!(Raster<GPU>));
+	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `Count Elements`): any `List` wire erases its element type
+	macro_rules! list_dyn_rows {
+		($($element:ty),* $(,)?) => {{
+			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				$(input_adapter_node!(name: "input_adapter", from: List<$element>, to: ListDyn, element: ListDyn),)*
+			];
+			entries
+		}};
+	}
+	node_types.push(input_adapter_node!(passthrough: ListDyn, element: ListDyn));
+	node_types.extend(list_dyn_rows!(
+		Artboard,
+		Graphic,
+		Vector,
+		Raster<CPU>,
+		Color,
+		Gradient,
+		f64,
+		bool,
+		String,
+		DAffine2,
+		BlendMode,
+		GradientType,
+		GradientSpreadMethod
+	));
+	#[cfg(feature = "gpu")]
+	node_types.extend(list_dyn_rows!(Raster<GPU>));
 	// Registers the whole-List bundle adapters for each value type whose entire list may be selected or carried as one opaque cell
 	macro_rules! bundle_adapter_nodes {
 		($($element:ty),* $(,)?) => {{
@@ -458,45 +483,45 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		RowsOrColumns,
 	));
 	// A position wire may feed a ranked vector connector, each position becoming a single-anchor vector
-	node_types.extend(input_adapter_convert_node!(from_element: DVec2, element: Vector));
+	node_types.extend(input_adapter_row!(from_element: DVec2, element: Vector));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
-	node_types.extend(input_adapter_convert_node!(from_element: String, element: DashPattern));
+	node_types.extend(input_adapter_row!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
-	node_types.extend(input_adapter_convert_node!(from_element: f64, element: DashPattern));
+	node_types.extend(input_adapter_row!(from_element: f64, element: DashPattern));
 	// A string wire may feed the ranked `Item<BoxCorners>` connector by parsing each element into a set of corner values
-	node_types.extend(input_adapter_convert_node!(from_element: String, element: BoxCorners));
+	node_types.extend(input_adapter_row!(from_element: String, element: BoxCorners));
 	// A number wire may feed the ranked `Item<BoxCorners>` connector, each number becoming a uniform radius for all four corners
-	node_types.extend(input_adapter_convert_node!(from_element: f64, element: BoxCorners));
+	node_types.extend(input_adapter_row!(from_element: f64, element: BoxCorners));
 	// Numeric wires cast between element types at a ranked connector, as `Convert` does for bare numeric wires
-	macro_rules! input_adapter_cast_node {
+	macro_rules! numeric_convert_node {
 		(from_element: $from:ty, element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				input_adapter_convert_node!(node: InputAdapterCastNode, from: Item<$from>, to: Item<$element>, element: $element),
-				input_adapter_convert_node!(node: InputAdapterCastListNode, from: List<$from>, to: List<$element>, element: $element),
+				input_adapter_row!(node: ConvertItemNode, from: Item<$from>, to: Item<$element>, element: $element),
+				input_adapter_row!(node: ConvertListNode, from: List<$from>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 	}
-	macro_rules! input_adapter_cast_star {
+	macro_rules! numeric_convert_star {
 		(from: $from:ty, to: [$($to:ty),*]) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
-			$(entries.extend(input_adapter_cast_node!(from_element: $from, element: $to));)*
+			$(entries.extend(numeric_convert_node!(from_element: $from, element: $to));)*
 			entries
 		}};
 	}
-	node_types.extend(input_adapter_cast_star!(from: f64, to: [f32, u32, u64, i32, i64]));
-	node_types.extend(input_adapter_cast_star!(from: f32, to: [f64, u32, u64, i32, i64]));
-	node_types.extend(input_adapter_cast_star!(from: u32, to: [f64, f32, u64, i32, i64]));
-	node_types.extend(input_adapter_cast_star!(from: u64, to: [f64, f32, u32, i32, i64]));
-	node_types.extend(input_adapter_cast_star!(from: i32, to: [f64, f32, u32, u64, i64]));
-	node_types.extend(input_adapter_cast_star!(from: i64, to: [f64, f32, u32, u64, i32]));
+	node_types.extend(numeric_convert_star!(from: f64, to: [f32, u32, u64, i32, i64]));
+	node_types.extend(numeric_convert_star!(from: f32, to: [f64, u32, u64, i32, i64]));
+	node_types.extend(numeric_convert_star!(from: u32, to: [f64, f32, u64, i32, i64]));
+	node_types.extend(numeric_convert_star!(from: u64, to: [f64, f32, u32, i32, i64]));
+	node_types.extend(numeric_convert_star!(from: i32, to: [f64, f32, u32, u64, i64]));
+	node_types.extend(numeric_convert_star!(from: i64, to: [f64, f32, u32, u64, i32]));
 	// The sanctioned attribute value conversions: an Item wire's elements box per cell, while a List wire boxes whole as one value
 	macro_rules! attribute_value_node {
 		(Item<$element:ty>) => {
-			input_adapter_convert_node!(node: ItemToAttributeValueNode, from: Item<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
+			input_adapter_row!(node: ItemToAttributeValueNode, from: Item<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
 		};
 		(List<$element:ty>) => {
-			input_adapter_convert_node!(node: ListToAttributeValueNode, from: List<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
+			input_adapter_row!(node: ListToAttributeValueNode, from: List<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
 		};
 	}
 	let attribute_value_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
@@ -559,15 +584,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// This might be caused by the stringify! macro
 		let mut new_name = id.as_str().replace('\n', " ");
 
-		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode")
-			|| new_name.contains("ConvertNode")
-			|| new_name.contains("InputAdapterNode")
-			|| new_name.contains("ItemToListNode")
-			|| new_name.contains("BundleNode")
-			|| new_name.contains("UnbundleNode"))
-			&& let Some((path, _generics)) = new_name.split_once("<")
-		{
+		// Remove struct generics for all nodes except the adapter identifiers, whose element suffix distinguishes their rows
+		let element_suffixed_adapter = new_name.starts_with("input_adapter<")
+			|| new_name.starts_with("graphene_core::ops::ItemToListNode<")
+			|| new_name.starts_with("graphene_core::ops::BundleNode<")
+			|| new_name.starts_with("graphene_core::ops::UnbundleNode<");
+		if !element_suffixed_adapter && let Some((path, _generics)) = new_name.split_once("<") {
 			new_name = path.to_string();
 		}
 
@@ -618,67 +640,5 @@ mod node_registry_macros {
 		};
 	}
 
-	macro_rules! into_node {
-		(from: $from:ty, to: $to:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
-				|mut args| {
-					Box::pin(async move {
-						let node = graphene_std::ops::IntoNode::new(
-							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
-						);
-						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let node = graphene_std::ops::IntoNode::new(
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
-					);
-					let params = vec![fn_type_fut!(Context, $from)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					node_io
-				},
-			)
-		};
-	}
-	macro_rules! convert_node {
-		(from: $from:ty, to: $to:ty) => {
-			convert_node!(from: $from, to: $to, converter: ())
-		};
-		(from: $from:ty, to: $to:ty, converter: $convert:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
-				|mut args| {
-					Box::pin(async move {
-						let mut args = args.drain(..);
-						let node = graphene_std::ops::ConvertNode::new(
-							graphene_std::any::downcast_node::<Context, $from>(args.next().expect("Convert node did not get first argument")),
-							graphene_std::any::downcast_node::<Context, $convert>(args.next().expect("Convert node did not get converter argument")),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
-						);
-						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let node = graphene_std::ops::ConvertNode::new(
-
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $convert> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
-					);
-					let params = vec![fn_type_fut!(Context, $from), fn_type_fut!(Context, $convert)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					node_io
-				},
-			)
-		};
-	}
-
 	pub(crate) use async_node;
-	pub(crate) use convert_node;
-	pub(crate) use into_node;
 }

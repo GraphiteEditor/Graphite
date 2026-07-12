@@ -154,7 +154,7 @@ impl Preprocessor {
 							let name = list_input.nested_type().identifier_name();
 							name.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')).unwrap_or(&name).to_string()
 						};
-						let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::InputAdapterNode<{element_name}>"));
+						let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
 
 						let document_node = if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
 							generated_nodes += 1;
@@ -188,10 +188,15 @@ impl Preprocessor {
 							Some(input) => {
 								let input_ty = input.nested_type();
 
-								// A single-registered ranked field also gets the input adapter, so ranked wires pass through and convertible elements cast
+								// A single-registered ranked field gets the input adapter, so ranked wires pass through and convertible elements cast
 								let type_name = input_ty.identifier_name();
-								if let Some(element_name) = type_name.strip_prefix("Item<").or_else(|| type_name.strip_prefix("List<")).and_then(|rest| rest.strip_suffix('>')) {
-									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::InputAdapterNode<{element_name}>"));
+								let element_name = type_name
+									.strip_prefix("Item<")
+									.or_else(|| type_name.strip_prefix("List<"))
+									.and_then(|rest| rest.strip_suffix('>'))
+									.or_else(|| (type_name == "ListDyn").then_some("ListDyn"));
+								if let Some(element_name) = element_name {
+									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
 									if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
 										generated_nodes += 1;
 										let mut original_location = OriginalLocation::default();
@@ -207,26 +212,11 @@ impl Preprocessor {
 									}
 								}
 
-								let mut inputs = vec![NodeInput::import(input.clone(), i)];
-
-								let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", input_ty.identifier_name()));
-								let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", input_ty.identifier_name()));
-
-								let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.as_str() == into_node_identifier.as_str()) {
-									generated_nodes += 1;
-									into_node_identifier
-								} else if into_node_registry.keys().any(|ident| ident.as_str() == convert_node_identifier.as_str()) {
-									generated_nodes += 1;
-									inputs.push(NodeInput::value(TaggedValue::None, false));
-									convert_node_identifier
-								} else {
-									passthrough_node.clone()
-								};
 								let mut original_location = OriginalLocation::default();
 								original_location.auto_convert_index = Some(i);
 								DocumentNode {
-									inputs,
-									implementation: DocumentNodeImplementation::ProtoNode(proto_node),
+									inputs: vec![NodeInput::import(input.clone(), i)],
+									implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 									visible: true,
 									original_location,
 									..Default::default()

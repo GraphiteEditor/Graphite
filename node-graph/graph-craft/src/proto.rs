@@ -652,12 +652,12 @@ pub enum Promotion {
 impl Promotion {
 	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
 	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
-		let (node_name, element) = match self {
-			Self::ItemToList(element) => ("ItemToListNode", element),
-			Self::Bundle(element) => ("BundleNode", element),
-			Self::Unbundle(element) => ("UnbundleNode", element),
+		let (adapter_name, element) = match self {
+			Self::ItemToList(element) => ("graphene_core::ops::ItemToListNode", element),
+			Self::Bundle(element) => ("graphene_core::ops::BundleNode", element),
+			Self::Unbundle(element) => ("graphene_core::ops::UnbundleNode", element),
 		};
-		ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::{node_name}<{}>", element.identifier_name()))
+		ProtoNodeIdentifier::with_owned_string(format!("{adapter_name}<{}>", element.identifier_name()))
 	}
 }
 
