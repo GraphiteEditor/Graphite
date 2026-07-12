@@ -790,6 +790,32 @@ mod test {
 		assert_eq!(result.map(|item| *item.element()), Some(3.), "The bare value should arrive wrapped as an Item");
 	}
 
+	// Path Modify's ranked modification parameter: a bare `Box<VectorModification>` wraps onto the `Item` wire through its field adapter,
+	// exercising the nested-generic identifier round-trip between the registered `stringify!` name and the preprocessor's simplified name
+	#[test]
+	fn bare_modification_promotes_to_item_wire() {
+		use graphene_std::vector::VectorModification;
+
+		let modification = TaggedValue::VectorModification(Box::new(VectorModification::default()));
+		let value_node = ProtoNode::value(ConstructionArgs::Value(modification.into()), vec![NodeId(0)]);
+
+		let mut field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		field_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<Box<VectorModification>>");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), field_adapter_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A bare Box<VectorModification> should resolve the promotion variant");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion constructor should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<Box<VectorModification>>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert!(result.is_some(), "The bare modification should arrive wrapped as an Item");
+	}
+
 	// The Write Attribute value slot: an Item wire's element boxes into a type-erased attribute value, and a stored bare value reaches the same row via a wrap promotion
 	#[test]
 	fn item_wire_boxes_into_the_attribute_value_connector() {

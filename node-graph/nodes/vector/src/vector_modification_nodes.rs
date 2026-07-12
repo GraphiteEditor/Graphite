@@ -8,9 +8,9 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Box<VectorModification>, node_path: Item<NodeIdPath>) -> Item<Vector> {
+async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<NodeIdPath>) -> Item<Vector> {
 	let mut vector = vector;
-	modification.apply(vector.element_mut());
+	modification.into_element().apply(vector.element_mut());
 
 	// Drop the stale click-target override so hit testing uses the geometry the user is now editing
 	vector.remove_attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET);

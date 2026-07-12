@@ -21,9 +21,9 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::render_node::RenderIntermediate;
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
-use graphene_std::vector::Vector;
 use graphene_std::vector::misc::{BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns};
 use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::{Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
 use std::collections::HashMap;
@@ -470,6 +470,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		BoxCorners,
 		NodeIdPath,
 		BrushTrace,
+		Box<VectorModification>,
 		XY,
 		ScaleType,
 		Footprint,
