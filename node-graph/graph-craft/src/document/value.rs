@@ -184,7 +184,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => Box::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Box::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(features),
+					Self::ContextFeatures(features) => Box::new(Item::new_from_element(features)),
 					Self::EditorApi(x) => Box::new(x),
 					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
@@ -226,7 +226,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => Arc::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Arc::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(features),
+					Self::ContextFeatures(features) => Arc::new(Item::new_from_element(features)),
 					Self::EditorApi(x) => Arc::new(x),
 					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
@@ -255,7 +255,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => concrete!(Item<RenderOutput>),
 					Self::NodeIdPath(_) => concrete!(Item<NodeIdPath>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => concrete!(ContextFeatures),
+					Self::ContextFeatures(_) => concrete!(Item<ContextFeatures>),
 					Self::EditorApi(_) => concrete!(Item<&PlatformEditorApi>),
 					Self::ResourceHash(_) => concrete!(Item<ResourceHash>),
 				};

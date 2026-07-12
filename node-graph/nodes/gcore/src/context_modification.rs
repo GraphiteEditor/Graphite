@@ -57,9 +57,9 @@ async fn context_modification<T>(
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
-	features_to_keep: ContextFeatures,
+	features_to_keep: Item<ContextFeatures>,
 ) -> T {
-	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep);
+	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep.into_element());
 
 	value.eval(Some(new_context.into())).await
 }
