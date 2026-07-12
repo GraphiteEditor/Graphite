@@ -23,7 +23,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping, cursor_rect};
+use graphene_std::text::{Font, TextAlign, TypesettingConfig, cursor_rect, lines_clipping};
 use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
