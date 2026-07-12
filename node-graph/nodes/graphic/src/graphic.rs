@@ -308,7 +308,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeId
 /// is evaluated once per item, with the item's index and the item itself (as a `List` containing only that item,
 /// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
 /// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
-/// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted field adapter, so this node only
+/// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted input adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(

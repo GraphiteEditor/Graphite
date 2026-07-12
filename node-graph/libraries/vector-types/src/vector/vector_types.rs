@@ -63,7 +63,7 @@ impl core_types::ops::FromAnchorPosition for Vector {
 	}
 }
 
-// Lets a position wire feed a ranked vector connector through the field adapter's element conversion
+// Lets a position wire feed a ranked vector connector through the input adapter's element conversion
 impl From<DVec2> for Vector {
 	fn from(position: DVec2) -> Self {
 		<Self as core_types::ops::FromAnchorPosition>::from_anchor_position(position)

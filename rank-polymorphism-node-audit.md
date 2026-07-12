@@ -4,13 +4,13 @@ Classification of all 271 live `#[node_macro::node]` definitions (July 2026, mas
 
 ## Rubric summary
 
-- Wires carry `Item<T>` (rank 0) or `List<T>` (rank 1). Each input connector declares a **cell rank**; the compiler maps kernels over excess rank (the **frame**), zipping framed connectors (longest-list, last-element repeats) and broadcasting unframed ones. Output rank = kernel output rank + frame rank. Rank-2 results force-flatten (concatenate) until tree spines land.
+- Wires carry `Item<T>` (rank 0) or `List<T>` (rank 1). Each input declares a **cell rank**; the compiler maps kernels over excess rank (the **frame**), zipping framed inputs (longest-list, last-element repeats) and broadcasting unframed ones. Output rank = kernel output rank + frame rank. Rank-2 results force-flatten (concatenate) until tree spines land.
 - Classification is by **intended semantics**, not today's signatures (bulk-converted `List<T>` carries no signal). Element-wise is the default; rank 1 only for genuine whole-list needs.
-- **Classes:** `element-wise` (all data connectors rank 0 → rank 0, includes generators), `floor` (rank 1 → rank 1), `reducer` (rank 1 → rank 0), `expander` (rank 0 → rank 1), `mixed` (differing cell ranks), `infrastructure` (exempt).
-- **Lazy connectors** (`Context -> T`, one evaluation per frame slot): only for (1) frame-synthesizers, (2) demand-context modifiers (Footprint et al.), and (3) evaluation-control (Memoize, Monitor, Switch — nodes whose purpose is deciding whether/when upstream evaluates).
+- **Classes:** `element-wise` (all data inputs rank 0 → rank 0, includes generators), `floor` (rank 1 → rank 1), `reducer` (rank 1 → rank 0), `expander` (rank 0 → rank 1), `mixed` (differing cell ranks), `infrastructure` (exempt).
+- **Lazy inputs** (`Context -> T`, one evaluation per frame slot): only for (1) frame-synthesizers, (2) demand-context modifiers (Footprint et al.), and (3) evaluation-control (Memoize, Monitor, Switch — nodes whose purpose is deciding whether/when upstream evaluates).
 - **Attrs**: node reads/writes ATTR_* values; authored as an element-wise `Item<T>` kernel with direct attribute access, classified by semantic rank.
 - No `Option` outputs. `Default::default()` is the fallback only when a node's own semantics define no answer; nodes may define richer valid domains (negative from-end indexing, clamping) as non-failures.
-- Notation: `name: Item<T>` = rank-0 connector, `name: List<T>` = rank-1 connector, `name: Context -> Item<T> (lazy)` = lazy connector. `DEVIATION:` marks observable behavior changes vs. today.
+- Notation: `name: Item<T>` = rank-0 input, `name: List<T>` = rank-1 input, `name: Context -> Item<T> (lazy)` = lazy input. `DEVIATION:` marks observable behavior changes vs. today.
 
 ## Summary statistics
 
@@ -31,12 +31,12 @@ By area: math 57 (100% element-wise), vector 58, graphic 31, text 33, raster 31,
 
 1. **The element-wise default holds overwhelmingly.** Every math node, every raster adjustment, every string operation, nearly every vector modifier, and all generators classify as rank 0. The true rank-1 floors number in the single digits (Assign Colors, Pack Strips, Extend, the Flatten family) plus a handful of reducers and expanders.
 2. **A third lazy category is needed: evaluation-control.** Memoize's entire purpose is skipping upstream evaluation on cache hit; Monitor is compiler-inserted plumbing; Switch's short-circuiting branches are the user-facing member of this category. None meets the two authored-node lazy criteria, and none should — they warrant an explicit exemption alongside frame-synthesizers and demand-context modifiers.
-3. **The demand-context-modifier criterion generalizes beyond Footprint.** Quantize Real Time / Quantize Animation Time rewrite the time in context before upstream evaluates; Area/Centroid reset the Footprint to default for resolution-independence. All are legitimate lazy connectors under "modifies context before upstream evaluates."
+3. **The demand-context-modifier criterion generalizes beyond Footprint.** Quantize Real Time / Quantize Animation Time rewrite the time in context before upstream evaluates; Area/Centroid reset the Footprint to default for resolution-independence. All are legitimate lazy inputs under "modifies context before upstream evaluates."
 4. **A recurring deviation family: hidden whole-list aggregation.** Many measure-style nodes silently reduce across the list today (Count Points, Path Length, Area, Centroid, Point Inside, Dimensions, Sample Gradient, Image Color Palette, plus the progression-family subpath flattening in Cut Path / Position on Path / Tangent on Path / Morph's path). All are reclassified element-wise; recovering the old aggregate behavior requires composing with explicit reducers.
 5. **New companion nodes needed** to recover composability lost by removing hidden aggregation: generic numeric reducers (Sum, Average, Minimum, Maximum over a `List`), boolean reducers (Any, All), a Filter/Cull node (`List<T> + List<bool> mask`), and a Sort node. Count Elements already exists as the list-length reducer. Also: a Corners node (`List<f64> -> Item<Corners<f64>>` via CSS shorthand expansion) and a Separate Glyphs expander (split out of Text to Vector).
 6. **Failure-case pattern:** several generators return an empty `List` on failure today (Hex to Color, QR Code, Image decode, Noise Pattern / Mandelbrot offscreen). Rank-0 output cannot be empty; these become `Default::default()` values. If "absent" must be representable, that's the future exception/invalid-signal channel, not empty lists.
-7. **Byte-blob representation split (gstd), RESOLVED:** `Arc<[u8]>` rank-0 blobs vs. `List<u8>` per-byte lists were used inconsistently. Unify on a rank-0 blob type, turning String to Bytes, Image to Bytes, and Post Request's body into plain element-wise connectors.
-8. **Evidence the refactor is needed:** Black & White's bare `tint: Color` parameter — exactly the rank-0 connector shape this refactor prescribes — currently causes a type error that hides the node (in-code TODO). The three "apply once to the list's parent" TODOs in blending are fixed outright by rank-0 wires.
+7. **Byte-blob representation split (gstd), RESOLVED:** `Arc<[u8]>` rank-0 blobs vs. `List<u8>` per-byte lists were used inconsistently. Unify on a rank-0 blob type, turning String to Bytes, Image to Bytes, and Post Request's body into plain element-wise inputs.
+8. **Evidence the refactor is needed:** Black & White's bare `tint: Color` parameter — exactly the rank-0 input shape this refactor prescribes — currently causes a type error that hides the node (in-code TODO). The three "apply once to the list's parent" TODOs in blending are fixed outright by rank-0 wires.
 
 ## Resolved decisions (Keavon, July 2026)
 
@@ -44,12 +44,12 @@ By area: math 57 (100% element-wise), vector 58, graphic 31, text 33, raster 31,
 2. **Raster zip-mismatch cases adopt clean rank semantics.** Plural raster data isn't used in the wild; past ad-hoc behaviors are removed: Mix uses longest-zip; Combine Channels uses longest-zip with default-raster slots for mismatched dimensions; Mask passes the image through on degenerate stencils.
 3. **Rectangle corner radii become a `Corners<f64>` value type** following CSS expansion rules (reusable wherever four-value expansion applies). A new Corners node converts `List<f64> -> Item<Corners<f64>>` via the shorthand rules.
 4. **Centroid is element-wise** like the other measure nodes. Group centroid composes as Flatten Path + Centroid (identical recipe to Bounding Box); the flag only applied to aggregating per-shape outputs directly, which needs area weights.
-5. **Empty-input passthroughs dropped** (Gradient Map / Fill / Stroke): rank-0 default semantics apply; connectors get sensible `#[default(...)]` values where useful.
+5. **Empty-input passthroughs dropped** (Gradient Map / Fill / Stroke): rank-0 default semantics apply; inputs get sensible `#[default(...)]` values where useful.
 6. **Attach Attribute merges into Write Attribute** (both new/undocumented; no real-artwork usage).
 7. **Nodes define their own valid domains.** Negative from-end indexing and clamping are legitimate node semantics, not failures; `Default::default()` applies only when the node itself has no defined answer. Index Points keeps its behavior unchanged.
 8. **Some / Unwrap Option / Size Of deleted** — vestigial and unused.
 9. **Byte-blob unification adopted:** a rank-0 blob type replaces `List<u8>`; Post Request's body, String to Bytes, and Image to Bytes become element-wise.
-10. **Dash patterns become a `DashPattern` value type** (amending the Stroke row's rank-1 `List<f64>` cell): `List<T>` is reserved for frames and attribute-carrying collections; compound values whose inner elements never hold attributes (dash sequences, corner radii) are value types, keeping their connectors rank 0 and frameable. Cascades to the Vec-looking TaggedValue variants.
+10. **Dash patterns become a `DashPattern` value type** (amending the Stroke row's rank-1 `List<f64>` cell): `List<T>` is reserved for frames and attribute-carrying collections; compound values whose inner elements never hold attributes (dash sequences, corner radii) are value types, keeping their inputs rank 0 and frameable. Cascades to the Vec-looking TaggedValue variants.
 11. **Text to Vector splits in two:** the compound-path-per-string node (element-wise) and a Separate Glyphs expander.
 
 ## Deletions, merges, and splits
@@ -74,9 +74,9 @@ By area: math 57 (100% element-wise), vector 58, graphic 31, text 33, raster 31,
 
 ## Math (57 nodes — all element-wise)
 
-All in `node-graph/nodes/math/src/lib.rs`. Zero rank-1 connectors in the entire crate; every node zips/broadcasts. Attributes now flow through math nodes (fixing today's attribute-dropping hole).
+All in `node-graph/nodes/math/src/lib.rs`. Zero rank-1 inputs in the entire crate; every node zips/broadcasts. Attributes now flow through math nodes (fixing today's attribute-dropping hole).
 
-| Node | Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Math | 39 | `operand_a: Item<T>, expression: Item<String>, operand_b: Item<T> -> Item<T>` | element-wise | no | — | Parse/eval failure -> 0 (already default-safe); per-element expressions want parse caching |
 | Add | 84 | `augend: Item<A>, addend: Item<B> -> Item<A::Output>` | element-wise | no | — | |
@@ -138,10 +138,10 @@ All in `node-graph/nodes/math/src/lib.rs`. Zero rank-1 connectors in the entire 
 
 ## Vector (43 nodes in vector_nodes.rs + vector_modification_nodes.rs)
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Assign Colors | vector_nodes.rs:73 | `content: List<Vector>, fill: Item<bool>, stroke: Item<bool>, gradient: Item<GradientStops>, reverse: Item<bool>, randomize: Item<bool>, seed: Item<SeedValue>, repeat_every: Item<u32> -> List<Vector>` | floor | no | attrs | Genuine floor (spreads by index over list length). Gradient today reads only row 0 -> Item. Assign/spread family direction per assign-transform-nodes branch |
-| Fill | vector_nodes.rs:138 | `content: Item<Vector>, fill: Item<Fill> -> Item<Vector>` | element-wise | no | no | DEVIATION: `List<Color>` fill today collapses to one fill; zip gives per-element fills (resolution 5: adopted). Backup-color connectors are UI-state stash |
+| Fill | vector_nodes.rs:138 | `content: Item<Vector>, fill: Item<Fill> -> Item<Vector>` | element-wise | no | no | DEVIATION: `List<Color>` fill today collapses to one fill; zip gives per-element fills (resolution 5: adopted). Backup-color inputs are UI-state stash |
 | Stroke | vector_nodes.rs:197 | `content: Item<Vector>, color: Item<Color>, weight: Item<f64>, align: Item<StrokeAlign>, cap: Item<StrokeCap>, join: Item<StrokeJoin>, miter_limit: Item<f64>, paint_order: Item<PaintOrder>, dash_lengths: List<f64>, dash_offset: Item<f64> -> Item<Vector>` | mixed | no | attrs | `dash_lengths` is one whole dash pattern (genuine rank 1). DEVIATION: color today uses `element(0)` for all elements |
 | Copy to Points | vector_nodes.rs:256 | DELETE | mixed | — | attrs | N×M points×content cross-product, decomposed by Transform broadcast + assign/spread nodes |
 | Round Corners | vector_nodes.rs:336 | `source: Item<Vector>, radius: Item<f64>, roundness: Item<f64>, edge_length_limit: Item<f64>, min_angle_threshold: Item<f64> -> Item<Vector>` | element-wise | no | attrs | World-space via ATTR_TRANSFORM |
@@ -186,7 +186,7 @@ All in `node-graph/nodes/math/src/lib.rs`. Zero rank-1 connectors in the entire 
 
 ## Generators, Boolean, Brush (15 nodes)
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Circle | generator_nodes.rs:59 | `radius: Item<f64> -> Item<Vector>` | element-wise | no | no | Generator emits rank 0; `List<f64>` radii frames into `List<Vector>` |
 | Arc | generator_nodes.rs:72 | `radius: Item<f64>, start_angle: Item<f64>, sweep_angle: Item<f64>, arc_type: Item<ArcType> -> Item<Vector>` | element-wise | no | no | |
@@ -201,14 +201,14 @@ All in `node-graph/nodes/math/src/lib.rs`. Zero rank-1 connectors in the entire 
 | Grid | generator_nodes.rs:310 | `grid_type: Item<GridType>, spacing: Item<DVec2>, columns: Item<u32>, rows: Item<u32>, angles: Item<DVec2> -> Item<Vector>` | element-wise | no | no | Emits one mesh element |
 | Boolean Operation | path-bool/lib.rs:26 | `content: List<Graphic>, operation: Item<BooleanOperation> -> Item<Vector>` | reducer | no | attrs | Genuinely order-dependent whole-list; output drops from 1-item List to Item (existing TODO acknowledges) |
 | Brush Stamp Generator | brush/brush.rs:66 | (skip_impl internal) | infrastructure | no | no | Would be element-wise if exposed |
-| Blit | brush/brush.rs:86 | (skip_impl internal) | infrastructure | flag | attrs | `positions` is a whole-list fold; `BlendFn` Node connector fails lazy criteria (low stakes, internal) |
+| Blit | brush/brush.rs:86 | (skip_impl internal) | infrastructure | flag | attrs | `positions` is a whole-list fold; `BlendFn` Node input fails lazy criteria (low stakes, internal) |
 | Brush | brush/brush.rs:191 | `background: Item<Raster<CPU>>, trace: List<BrushStroke>, cache: #[data] -> Item<Raster<CPU>>` | mixed | no | attrs | `trace` genuinely sequential rank 1. DEVIATION: today paints only background element 0 (code TODO resolved by framing) |
 
 ## Graphic / list manipulation (31 nodes)
 
-This is the list-manipulation core, so rank-1 density is legitimately high here — each rank-1 connector is a genuine whole-list need.
+This is the list-manipulation core, so rank-1 density is legitimately high here — each rank-1 input is a genuine whole-list need.
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Index Elements | graphic.rs:16 | `list: List<T>, index: Item<i64> -> Item<T>` | mixed | no | — | Out-of-bounds -> default (already). A List of indices frames into a gather node |
 | Omit Element | graphic.rs:47 | `list: List<T>, index: Item<i64> -> List<T>` | mixed | no | — | Filtering = rank 1. Out-of-range -> unchanged (keep) |
@@ -233,7 +233,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 
 ## Text (33 nodes)
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | String Value | text/lib.rs:187 | `string: Item<String> -> Item<String>` | element-wise | no | no | Value generator |
 | As String | text/lib.rs:193 | `value: Item<String> -> Item<String>` | element-wise | no | no | Debug passthrough |
@@ -242,7 +242,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 | String Slice | text/lib.rs:213 | `string: Item<String>, start: Item<f64>, end: Item<f64> -> Item<String>` | element-wise | no | no | Grapheme-indexed within one string |
 | String Truncate | text/lib.rs:236 | `string: Item<String>, length: Item<u32>, suffix: Item<String> -> Item<String>` | element-wise | no | no | |
 | Format Number | text/lib.rs:264 | `number: Item<f64>, decimal_places: Item<u32>, decimal_separator: Item<String>, fixed_decimals: Item<bool>, use_thousands_separator: Item<bool>, thousands_separator: Item<String>, start_at_10000: Item<bool> -> Item<String>` | element-wise | no | no | |
-| String to Number | text/lib.rs:362 | `string: Item<String>, fallback: Item<f64> -> Item<f64>` | element-wise | no | no | Explicit fallback connector (better than Default) |
+| String to Number | text/lib.rs:362 | `string: Item<String>, fallback: Item<f64> -> Item<f64>` | element-wise | no | no | Explicit fallback input (better than Default) |
 | String Trim | text/lib.rs:374 | `string: Item<String>, start: Item<bool>, end: Item<bool> -> Item<String>` | element-wise | no | no | |
 | String Escape | text/lib.rs:398 | `string: Item<String>, unescape: Item<bool> -> Item<String>` | element-wise | no | no | |
 | String Reverse | text/lib.rs:411 | `string: Item<String> -> Item<String>` | element-wise | no | no | Graphemes within one string, not list order |
@@ -273,7 +273,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 
 `T` ranges over `Raster<CPU> | Color | GradientStops`; per-pixel/per-stop looping stays inside the `Adjust`/`Blend` traits, whose impls move from `List<X>` down to bare `X`. GPU (`shader_node`) machinery unchanged; kernel params stay bare for uniform compatibility.
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Luminance | adjustments.rs:52 | `input: Item<T>, luminance_calc: Item<LuminanceCalculation> -> Item<T>` | element-wise | no | no | |
 | Gamma Correction | adjustments.rs:77 | `input: Item<T>, gamma: Item<f32>, inverse: Item<bool> -> Item<T>` | element-wise | no | no | |
@@ -309,7 +309,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 
 ## Transform, Repeat, Blending (16 nodes)
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Transform | transform_nodes.rs:14 | `content: Context -> Item<T> (lazy), translation: Item<DVec2>, rotation: Item<f64>, scale: Item<DVec2>, skew: Item<DVec2> -> Item<T>` | element-wise | content (footprint modifier) | attrs | THE broadcast node (replaces Repeat on Points). DAffine2/DVec2 value implementations need an eager value-kernel sibling |
 | Reset Transform | transform_nodes.rs:57 | `content: Item<T>, reset_translation: Item<bool>, reset_rotation: Item<bool>, reset_scale: Item<bool> -> Item<T>` | element-wise | no | attrs | Implemented as an Item kernel |
@@ -330,7 +330,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 
 ## Gcore (24 nodes)
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Read Graphic | context.rs:10 | `-> Item<Graphic>` | element-wise | no | no | Vararg generator. DEVIATION: today returns singleton `List<Graphic>`; binding site (`List::new_from_item`) confirms one-element-per-iteration intent |
 | Read Vector | context.rs:18 | `-> Item<Vector>` | element-wise | no | no | Same |
@@ -348,7 +348,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 | Size Of | debug.rs:16 | DELETE | element-wise | no | no | Vestigial and unused (resolution 8) |
 | Some | debug.rs:22 | DELETE | element-wise | no | no | Vestigial; existed to make Option values, which wires ban (resolution 8) |
 | Unwrap Option | debug.rs:28 | DELETE | element-wise | no | no | Vestigial; paired with Some (resolution 8) |
-| Clone | debug.rs:34 | (by-reference wire test) | infrastructure | no | no | By-reference connectors are a question mark under Item/List wires |
+| Clone | debug.rs:34 | (by-reference wire test) | infrastructure | no | no | By-reference inputs are a question mark under Item/List wires |
 | Passthrough | ops.rs:9 | `content: Item<T> -> Item<T>` | element-wise | no | no | Identity at any rank |
 | Into | ops.rs:14 | `value: Item<T> -> Item<O>` | element-wise | no | no | Compiler-inserted conversion |
 | Convert | ops.rs:19 | `value: Item<T> -> Item<O>` | element-wise | no | no | Value conversion; eager footprint read |
@@ -359,7 +359,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 
 ## Gstd / render pipeline (21 nodes)
 
-| Node | File:Line | Proposed connectors -> output | Class | Lazy | Attrs | Notes |
+| Node | File:Line | Proposed inputs -> output | Class | Lazy | Attrs | Notes |
 |---|---|---|---|---|---|---|
 | Get Request | platform_application_io.rs:49 | `url: Item<String>, discard_result: Item<bool>, headers: Item<String> -> Item<String>` | element-wise | no | no | Framing a URL list issues N requests |
 | Post Request | platform_application_io.rs:82 | `url: Item<String>, body: Item<Blob>, discard_result: Item<bool>, headers: Item<String> -> Item<String>` | element-wise | no | no | Blob unification adopted (resolution 9) |
@@ -373,7 +373,7 @@ This is the list-manipulation core, so rank-1 density is legitimately high here 
 | Resource | platform_application_io.rs:270 | `hash: Item<ResourceHash> -> Item<Resource>` | element-wise | no | no | DEVIATION: panics on missing today; becomes `Resource::default()` + logged error (no-panic policy) |
 | Wgpu Executor | platform_application_io.rs:278 | (scope) | infrastructure | no | no | |
 | Try Wgpu Executor | platform_application_io.rs:288 | (scope) | infrastructure | no | no | Option on infra scope wire: exempt from no-Option rule |
-| Render Intermediate | render_node.rs:26 | (render sink) | infrastructure | flag | no | Lazy connector fails both criteria as written but plausibly inherits evaluation-control justification from the sink chain |
+| Render Intermediate | render_node.rs:26 | (render sink) | infrastructure | flag | no | Lazy input fails both criteria as written but plausibly inherits evaluation-control justification from the sink chain |
 | Render | render_node.rs:77 | (render sink) | infrastructure | no | no | |
 | Create Context | render_node.rs:150 | (context synthesizer) | infrastructure | yes (context modifier) | no | Synthesizes footprint/time/pointer/varargs before upstream eval |
 | Render Pixel Preview | render_pixel_preview.rs:11 | (render sink) | infrastructure | yes (context modifier) | no | Modifies Footprint for logical-resolution upstream |

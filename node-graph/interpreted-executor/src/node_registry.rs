@@ -295,26 +295,26 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Option<&wgpu_executor::WgpuExecutor>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>]),
 	];
-	// The per-connector field adapter, registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged.
+	// The per-connector input adapter, registered per element type: a bare value wraps into an `Item`, while `Item` and `List` wires pass through unchanged.
 	// The `name` arm registers the same rank-shifting node under a resolution-time promotion adapter identifier instead.
-	macro_rules! field_adapter_node {
+	macro_rules! input_adapter_node {
 		(element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				field_adapter_node!(from: $element, to: Item<$element>, element: $element),
-				field_adapter_node!(from: Item<$element>, to: Item<$element>, element: $element),
-				field_adapter_node!(from: List<$element>, to: List<$element>, element: $element),
+				input_adapter_node!(from: $element, to: Item<$element>, element: $element),
+				input_adapter_node!(from: Item<$element>, to: Item<$element>, element: $element),
+				input_adapter_node!(from: List<$element>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 		(from: $from:ty, to: $to:ty, element: $element:ty) => {
-			field_adapter_node!(name: "FieldAdapterNode", from: $from, to: $to, element: $element)
+			input_adapter_node!(name: "InputAdapterNode", from: $from, to: $to, element: $element)
 		};
 		(name: $name:literal, from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::", $name, "<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_std::ops::FieldAdapterNode::new(
+						let node = graphene_std::ops::InputAdapterNode::new(
 							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 						);
@@ -323,7 +323,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					})
 				},
 				{
-					let node = graphene_std::ops::FieldAdapterNode::new(
+					let node = graphene_std::ops::InputAdapterNode::new(
 						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
 						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
 					);
@@ -334,19 +334,19 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			)
 		};
 	}
-	// A conversion adapter registered under the same `FieldAdapterNode<$element>` identifier so a convertible-but-not-identical
+	// A conversion adapter registered under the same `InputAdapterNode<$element>` identifier so a convertible-but-not-identical
 	// ranked wire can feed an `Item<$element>` connector, converting each element via `Into`
-	macro_rules! field_adapter_convert_node {
+	macro_rules! input_adapter_convert_node {
 		(from_element: $from:ty, element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				field_adapter_convert_node!(node: FieldAdapterConvertNode, from: Item<$from>, to: Item<$element>, element: $element),
-				field_adapter_convert_node!(node: FieldAdapterConvertListNode, from: List<$from>, to: List<$element>, element: $element),
+				input_adapter_convert_node!(node: InputAdapterConvertNode, from: Item<$from>, to: Item<$element>, element: $element),
+				input_adapter_convert_node!(node: InputAdapterConvertListNode, from: List<$from>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 		(node: $node:ident, from: $from:ty, to: $to:ty, element: $element:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::FieldAdapterNode<", stringify!($element), ">"]),
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::InputAdapterNode<", stringify!($element), ">"]),
 				|mut args| {
 					Box::pin(async move {
 						let node = graphene_std::ops::$node::new(
@@ -420,16 +420,16 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// ==================
 	// RANK ADAPTER NODES
 	// ==================
-	// Registers the rank adapters (FieldAdapterNode, ItemToListNode, WrapItemNode, WrapListNode) for each element type
+	// Registers the rank adapters (InputAdapterNode, ItemToListNode, WrapItemNode, WrapListNode) for each element type
 	macro_rules! rank_adapter_nodes {
 		($($element:ty),* $(,)?) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
 			$(
-				entries.extend(field_adapter_node!(element: $element));
+				entries.extend(input_adapter_node!(element: $element));
 				// The promotion adapters inserted by type resolution: a singleton raise, a bare wrap, and a bare wrap-raise
-				entries.push(field_adapter_node!(name: "ItemToListNode", from: Item<$element>, to: List<$element>, element: $element));
-				entries.push(field_adapter_node!(name: "WrapItemNode", from: $element, to: Item<$element>, element: $element));
-				entries.push(field_adapter_node!(name: "WrapListNode", from: $element, to: List<$element>, element: $element));
+				entries.push(input_adapter_node!(name: "ItemToListNode", from: Item<$element>, to: List<$element>, element: $element));
+				entries.push(input_adapter_node!(name: "WrapItemNode", from: $element, to: Item<$element>, element: $element));
+				entries.push(input_adapter_node!(name: "WrapListNode", from: $element, to: List<$element>, element: $element));
 			)*
 			entries
 		}};
@@ -564,46 +564,46 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		RowsOrColumns,
 	));
 	// A position wire may feed a ranked vector connector, each position becoming a single-anchor vector
-	node_types.extend(field_adapter_convert_node!(from_element: DVec2, element: Vector));
+	node_types.extend(input_adapter_convert_node!(from_element: DVec2, element: Vector));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
-	node_types.extend(field_adapter_convert_node!(from_element: String, element: DashPattern));
+	node_types.extend(input_adapter_convert_node!(from_element: String, element: DashPattern));
 	// A number wire may feed the ranked `Item<DashPattern>` dash connector, each number broadcasting element-wise as a one-length pattern
-	node_types.extend(field_adapter_convert_node!(from_element: f64, element: DashPattern));
+	node_types.extend(input_adapter_convert_node!(from_element: f64, element: DashPattern));
 	// A string wire may feed the ranked `Item<BoxCorners>` connector by parsing each element into a set of corner values
-	node_types.extend(field_adapter_convert_node!(from_element: String, element: BoxCorners));
+	node_types.extend(input_adapter_convert_node!(from_element: String, element: BoxCorners));
 	// A number wire may feed the ranked `Item<BoxCorners>` connector, each number becoming a uniform radius for all four corners
-	node_types.extend(field_adapter_convert_node!(from_element: f64, element: BoxCorners));
+	node_types.extend(input_adapter_convert_node!(from_element: f64, element: BoxCorners));
 	// Numeric wires cast between element types at a ranked connector, as `Convert` does for bare numeric wires
-	macro_rules! field_adapter_cast_node {
+	macro_rules! input_adapter_cast_node {
 		(from_element: $from:ty, element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-				field_adapter_convert_node!(node: FieldAdapterCastWrapNode, from: $from, to: Item<$element>, element: $element),
-				field_adapter_convert_node!(node: FieldAdapterCastNode, from: Item<$from>, to: Item<$element>, element: $element),
-				field_adapter_convert_node!(node: FieldAdapterCastListNode, from: List<$from>, to: List<$element>, element: $element),
+				input_adapter_convert_node!(node: InputAdapterCastWrapNode, from: $from, to: Item<$element>, element: $element),
+				input_adapter_convert_node!(node: InputAdapterCastNode, from: Item<$from>, to: Item<$element>, element: $element),
+				input_adapter_convert_node!(node: InputAdapterCastListNode, from: List<$from>, to: List<$element>, element: $element),
 			];
 			entries
 		}};
 	}
-	macro_rules! field_adapter_cast_star {
+	macro_rules! input_adapter_cast_star {
 		(from: $from:ty, to: [$($to:ty),*]) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
-			$(entries.extend(field_adapter_cast_node!(from_element: $from, element: $to));)*
+			$(entries.extend(input_adapter_cast_node!(from_element: $from, element: $to));)*
 			entries
 		}};
 	}
-	node_types.extend(field_adapter_cast_star!(from: f64, to: [f32, u32, u64, i32, i64]));
-	node_types.extend(field_adapter_cast_star!(from: f32, to: [f64, u32, u64, i32, i64]));
-	node_types.extend(field_adapter_cast_star!(from: u32, to: [f64, f32, u64, i32, i64]));
-	node_types.extend(field_adapter_cast_star!(from: u64, to: [f64, f32, u32, i32, i64]));
-	node_types.extend(field_adapter_cast_star!(from: i32, to: [f64, f32, u32, u64, i64]));
-	node_types.extend(field_adapter_cast_star!(from: i64, to: [f64, f32, u32, u64, i32]));
+	node_types.extend(input_adapter_cast_star!(from: f64, to: [f32, u32, u64, i32, i64]));
+	node_types.extend(input_adapter_cast_star!(from: f32, to: [f64, u32, u64, i32, i64]));
+	node_types.extend(input_adapter_cast_star!(from: u32, to: [f64, f32, u64, i32, i64]));
+	node_types.extend(input_adapter_cast_star!(from: u64, to: [f64, f32, u32, i32, i64]));
+	node_types.extend(input_adapter_cast_star!(from: i32, to: [f64, f32, u32, u64, i64]));
+	node_types.extend(input_adapter_cast_star!(from: i64, to: [f64, f32, u32, u64, i32]));
 	// The sanctioned attribute value conversions: an Item wire's elements box per cell, while a List wire boxes whole as one value
 	macro_rules! attribute_value_node {
 		(Item<$element:ty>) => {
-			field_adapter_convert_node!(node: ItemToAttributeValueNode, from: Item<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
+			input_adapter_convert_node!(node: ItemToAttributeValueNode, from: Item<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
 		};
 		(List<$element:ty>) => {
-			field_adapter_convert_node!(node: ListToAttributeValueNode, from: List<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
+			input_adapter_convert_node!(node: ListToAttributeValueNode, from: List<$element>, to: Item<AttributeValueDyn>, element: AttributeValueDyn)
 		};
 	}
 	let attribute_value_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
@@ -695,7 +695,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
 		if !(new_name.contains("IntoNode")
 			|| new_name.contains("ConvertNode")
-			|| new_name.contains("FieldAdapterNode")
+			|| new_name.contains("InputAdapterNode")
 			|| new_name.contains("ItemToListNode")
 			|| new_name.contains("WrapItemNode")
 			|| new_name.contains("WrapListNode")

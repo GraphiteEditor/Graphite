@@ -555,8 +555,8 @@ mod test {
 		let content_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);
 		let distance_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(10.).into()), vec![NodeId(1)]);
 
-		let mut field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-		field_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<f64>");
+		let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
+		input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<f64>");
 
 		let mut offset_points_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
 		offset_points_node.identifier = ProtoNodeIdentifier::new("core_types::vector::OffsetPointsNode");
@@ -564,7 +564,7 @@ mod test {
 		ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(3),
-			nodes: vec![(NodeId(0), content_node), (NodeId(1), distance_node), (NodeId(2), field_adapter_node), (NodeId(3), offset_points_node)],
+			nodes: vec![(NodeId(0), content_node), (NodeId(1), distance_node), (NodeId(2), input_adapter_node), (NodeId(3), offset_points_node)],
 		}
 	}
 
@@ -610,14 +610,14 @@ mod test {
 		let mut next_id = 1;
 		for (value, element) in parameters {
 			let value_id = NodeId(next_id);
-			let field_adapter_id = NodeId(next_id + 1);
+			let input_adapter_id = NodeId(next_id + 1);
 			next_id += 2;
 
 			nodes.push((value_id, ProtoNode::value(ConstructionArgs::Value(value.into()), vec![value_id])));
-			let mut field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![value_id]), vec![field_adapter_id]);
-			field_adapter_node.identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::FieldAdapterNode<{element}>"));
-			nodes.push((field_adapter_id, field_adapter_node));
-			transform_inputs.push(field_adapter_id);
+			let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![value_id]), vec![input_adapter_id]);
+			input_adapter_node.identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::InputAdapterNode<{element}>"));
+			nodes.push((input_adapter_id, input_adapter_node));
+			transform_inputs.push(input_adapter_id);
 		}
 
 		let output = NodeId(next_id);
@@ -677,7 +677,7 @@ mod test {
 
 		let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![10., 20., 30.]).into()), vec![NodeId(1)]);
 		let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-		radius_adapter.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<f64>");
+		radius_adapter.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<f64>");
 
 		let mut circle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
 		circle_node.identifier = graphene_std::vector_nodes::circle::IDENTIFIER;
@@ -726,7 +726,7 @@ mod test {
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bare StrokeAlign wire should resolve through the compiler's cache chain");
 
-		// The Item form, as a wrapped field adapter's output presents to the chain
+		// The Item form, as a wrapped input adapter's output presents to the chain
 		let network = nullification_chain_network(TaggedValue::TypeDefault(descriptor!(Item<StrokeAlign>)));
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("An Item<StrokeAlign> wire should resolve through the compiler's cache chain");
@@ -773,13 +773,13 @@ mod test {
 	fn bare_value_promotes_to_item_wire() {
 		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
 
-		let mut field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-		field_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<f64>");
+		let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<f64>");
 
 		let network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(1),
-			nodes: vec![(NodeId(0), value_node), (NodeId(1), field_adapter_node)],
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), input_adapter_node)],
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bare f64 should resolve the promotion variant");
@@ -790,7 +790,7 @@ mod test {
 		assert_eq!(result.map(|item| *item.element()), Some(3.), "The bare value should arrive wrapped as an Item");
 	}
 
-	// Path Modify's ranked modification parameter: a bare `Box<VectorModification>` wraps onto the `Item` wire through its field adapter,
+	// Path Modify's ranked modification parameter: a bare `Box<VectorModification>` wraps onto the `Item` wire through its input adapter,
 	// exercising the nested-generic identifier round-trip between the registered `stringify!` name and the preprocessor's simplified name
 	#[test]
 	fn bare_modification_promotes_to_item_wire() {
@@ -799,13 +799,13 @@ mod test {
 		let modification = TaggedValue::VectorModification(Box::new(VectorModification::default()));
 		let value_node = ProtoNode::value(ConstructionArgs::Value(modification.into()), vec![NodeId(0)]);
 
-		let mut field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-		field_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<Box<VectorModification>>");
+		let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<Box<VectorModification>>");
 
 		let network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(1),
-			nodes: vec![(NodeId(0), value_node), (NodeId(1), field_adapter_node)],
+			nodes: vec![(NodeId(0), value_node), (NodeId(1), input_adapter_node)],
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bare Box<VectorModification> should resolve the promotion variant");
@@ -825,7 +825,7 @@ mod test {
 		let mut wrap_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 		wrap_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::WrapItemNode<f64>");
 		let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-		attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<AttributeValueDyn>");
+		attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<AttributeValueDyn>");
 
 		let network = ProtoNetwork {
 			inputs: vec![],
@@ -847,7 +847,7 @@ mod test {
 
 		let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(5.).into()), vec![NodeId(0)]);
 		let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-		attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<AttributeValueDyn>");
+		attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<AttributeValueDyn>");
 
 		let network = ProtoNetwork {
 			inputs: vec![],
@@ -885,12 +885,12 @@ mod test {
 		wrap_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::WrapItemNode<String>");
 
 		let delimiter_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(",".into()).into()), vec![NodeId(2)]);
-		let mut delimiter_field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
-		delimiter_field_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<String>");
+		let mut delimiter_input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
+		delimiter_input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<String>");
 
 		let escaping_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(false).into()), vec![NodeId(4)]);
-		let mut escaping_field_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(4)]), vec![NodeId(5)]);
-		escaping_field_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::FieldAdapterNode<bool>");
+		let mut escaping_input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(4)]), vec![NodeId(5)]);
+		escaping_input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<bool>");
 
 		let output = NodeId(6);
 		let mut string_split_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(3), NodeId(5)]), vec![output]);
@@ -903,9 +903,9 @@ mod test {
 				(NodeId(0), string_node),
 				(NodeId(1), wrap_node),
 				(NodeId(2), delimiter_node),
-				(NodeId(3), delimiter_field_adapter_node),
+				(NodeId(3), delimiter_input_adapter_node),
 				(NodeId(4), escaping_node),
-				(NodeId(5), escaping_field_adapter_node),
+				(NodeId(5), escaping_input_adapter_node),
 				(output, string_split_node),
 			],
 		};
