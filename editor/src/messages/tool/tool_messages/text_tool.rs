@@ -520,6 +520,14 @@ enum TextEditType {
 	InsertNewline,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum TextSelectionType {
+	#[default]
+	Character,
+	Word,
+	Paragraph,
+}
+
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
 	layer: LayerNodeIdentifier,
@@ -543,6 +551,8 @@ struct TextToolData {
 	history: Vec<TextToolHistoryState>,
 	history_index: usize,
 	last_edit_type: TextEditType,
+	selection_type: TextSelectionType,
+	word_selection_origin: Option<(usize, usize)>,
 }
 
 impl TextToolData {
@@ -556,6 +566,28 @@ impl TextToolData {
 			}
 		}
 		None
+	}
+
+	fn get_word_bounds(text: &str, offset: usize) -> (usize, usize) {
+		let offset = offset.min(text.len());
+		let prefix = &text[..offset];
+		let suffix = &text[offset..];
+
+		let word_start = prefix.rfind(|c: char| c.is_whitespace()).map(|i| i + prefix[i..].chars().next().unwrap().len_utf8()).unwrap_or(0);
+		let word_end = suffix.find(|c: char| c.is_whitespace()).map(|i| offset + i).unwrap_or(text.len());
+
+		(word_start, word_end)
+	}
+
+	fn get_line_bounds(text: &str, offset: usize) -> (usize, usize) {
+		let offset = offset.min(text.len());
+		let prefix = &text[..offset];
+		let suffix = &text[offset..];
+
+		let line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+		let line_end = suffix.find('\n').map(|i| offset + i).unwrap_or(text.len());
+
+		(line_start, line_end)
 	}
 
 	fn delete_empty_layer(&mut self, responses: &mut VecDeque<Message>) -> TextToolFsmState {
@@ -895,8 +927,10 @@ impl Fsm for TextToolFsmState {
 					&& clicked_text_layer_path == tool_data.layer
 				{
 					let click_offset = tool_data.find_closest_byte_offset(document, input.mouse.position, fonts, responses).unwrap_or(tool_data.new_text.len());
-					tool_data.cursor_byte_offset = click_offset;
-					tool_data.selection_start_byte_offset = Some(click_offset);
+					if tool_data.selection_type == TextSelectionType::Character {
+						tool_data.cursor_byte_offset = click_offset;
+						tool_data.selection_start_byte_offset = Some(click_offset);
+					}
 					tool_data.dragging_to_select = true;
 					tool_data.last_edit_type = TextEditType::None;
 					tool_data.reset_cursor_blink(responses);
@@ -982,7 +1016,33 @@ impl Fsm for TextToolFsmState {
 					let new_offset = tool_data
 						.find_closest_byte_offset(document, input.mouse.position, fonts, responses)
 						.unwrap_or(tool_data.cursor_byte_offset);
-					tool_data.cursor_byte_offset = new_offset;
+
+					if tool_data.selection_type == TextSelectionType::Word {
+						let (word_start, word_end) = TextToolData::get_word_bounds(&tool_data.new_text, new_offset);
+						if let Some((origin_start, origin_end)) = tool_data.word_selection_origin {
+							if new_offset >= origin_start {
+								tool_data.selection_start_byte_offset = Some(origin_start);
+								tool_data.cursor_byte_offset = word_end;
+							} else {
+								tool_data.selection_start_byte_offset = Some(origin_end);
+								tool_data.cursor_byte_offset = word_start;
+							}
+						}
+					} else if tool_data.selection_type == TextSelectionType::Paragraph {
+						let (line_start, line_end) = TextToolData::get_line_bounds(&tool_data.new_text, new_offset);
+						if let Some((origin_start, origin_end)) = tool_data.word_selection_origin {
+							if new_offset >= origin_start {
+								tool_data.selection_start_byte_offset = Some(origin_start);
+								tool_data.cursor_byte_offset = line_end;
+							} else {
+								tool_data.selection_start_byte_offset = Some(origin_end);
+								tool_data.cursor_byte_offset = line_start;
+							}
+						}
+					} else {
+						tool_data.cursor_byte_offset = new_offset;
+					}
+
 					tool_data.last_edit_type = TextEditType::None;
 					responses.add(OverlaysMessage::Draw);
 				}
@@ -996,6 +1056,7 @@ impl Fsm for TextToolFsmState {
 						tool_data.selection_start_byte_offset = None;
 					}
 					tool_data.dragging_to_select = false;
+					tool_data.selection_type = TextSelectionType::Character;
 					tool_data.reset_cursor_blink(responses);
 				}
 				TextToolFsmState::Editing
@@ -1130,15 +1191,13 @@ impl Fsm for TextToolFsmState {
 
 			(TextToolFsmState::Editing, TextToolMessage::DoubleClick) => {
 				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
-				let prefix = &tool_data.new_text[..offset];
-				let suffix = &tool_data.new_text[offset..];
-
-				let word_start = prefix.rfind(|c: char| c.is_whitespace()).map(|i| i + prefix[i..].chars().next().unwrap().len_utf8()).unwrap_or(0);
-				let word_end = suffix.find(|c: char| c.is_whitespace()).map(|i| offset + i).unwrap_or(tool_data.new_text.len());
+				let (word_start, word_end) = TextToolData::get_word_bounds(&tool_data.new_text, offset);
 
 				if word_start != word_end {
 					tool_data.selection_start_byte_offset = Some(word_start);
 					tool_data.cursor_byte_offset = word_end;
+					tool_data.selection_type = TextSelectionType::Word;
+					tool_data.word_selection_origin = Some((word_start, word_end));
 					tool_data.last_edit_type = TextEditType::None;
 					tool_data.reset_cursor_blink(responses);
 				}
@@ -1146,15 +1205,13 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TripleClick) => {
 				let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
-				let prefix = &tool_data.new_text[..offset];
-				let suffix = &tool_data.new_text[offset..];
-
-				let line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-				let line_end = suffix.find('\n').map(|i| offset + i).unwrap_or(tool_data.new_text.len());
+				let (line_start, line_end) = TextToolData::get_line_bounds(&tool_data.new_text, offset);
 
 				if line_start != line_end {
 					tool_data.selection_start_byte_offset = Some(line_start);
 					tool_data.cursor_byte_offset = line_end;
+					tool_data.selection_type = TextSelectionType::Paragraph;
+					tool_data.word_selection_origin = Some((line_start, line_end));
 					tool_data.last_edit_type = TextEditType::None;
 					tool_data.reset_cursor_blink(responses);
 				}

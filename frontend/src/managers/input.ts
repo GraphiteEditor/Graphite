@@ -40,8 +40,14 @@ const listeners: Listener[] = [
 	{ target: window, eventName: "pointermove", action: (e: PointerEvent) => editorWrapper && documentStore && onPointerMove(e, editorWrapper, documentStore) },
 	{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => editorWrapper && dialogStore && onPointerDown(e, editorWrapper, dialogStore) },
 	{ target: window, eventName: "pointerup", action: (e: PointerEvent) => editorWrapper && onPointerUp(e, editorWrapper) },
-	{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
-	{ target: window, eventName: "mouseup", action: (e: MouseEvent) => editorWrapper && onPotentialDoubleClick(e, editorWrapper) },
+	{
+		target: window,
+		eventName: "mousedown",
+		action: (e: MouseEvent) => {
+			onMouseDown(e);
+			if (editorWrapper) onPotentialDoubleClick(e, editorWrapper);
+		},
+	},
 	{ target: window, eventName: "wheel", action: (e: WheelEvent) => editorWrapper && onWheelScroll(e, editorWrapper), options: { passive: false } },
 	{ target: window, eventName: "focusout", action: () => onFocusOut() },
 	{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },

@@ -99,13 +99,17 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 	if (e.repeat && NO_KEY_REPEAT_MODIFIER_KEYS.includes(key)) return;
 
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
-		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		if (isEditingText && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-			editor.onTextInput(e.key);
-			return;
+
+		if (isEditingText) {
+			if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+				e.preventDefault();
+				if (!e.repeat) editor.onTextInput(e.key);
+				return;
+			}
 		}
 
+		e.preventDefault();
 		editor.onKeyDown(key, modifiers, e.repeat);
 		return;
 	}
@@ -194,7 +198,7 @@ export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 	if (!(isTargetingCanvas instanceof Element)) return;
 
-	// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
+	// We check `e.button` because we want to know specifically which button was clicked for the event
 	let buttons = 1;
 	if (e.button === BUTTON_LEFT) buttons = 1; // Left
 	if (e.button === BUTTON_RIGHT) buttons = 2; // Right
