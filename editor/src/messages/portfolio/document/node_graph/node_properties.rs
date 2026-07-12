@@ -254,65 +254,71 @@ pub(crate) fn property_from_type(
 				// For all other types, use TypeId-based matching
 				_ => {
 					use std::any::TypeId;
+
+					// A stored value rides an `Item<T>` wire, so a widget dispatches on either the bare element `T` or its `Item<T>` cell
+					fn id_is<T: 'static>(id: TypeId) -> bool {
+						id == TypeId::of::<T>() || id == TypeId::of::<Item<T>>()
+					}
+
 					match concrete_type.id {
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if x == TypeId::of::<f64>() || x == TypeId::of::<f32>() => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
-						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
-						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
-						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
-						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
-						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<Gradient>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
+						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
+						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
+						Some(x) if id_is::<String>(x) => text_widget(default_info).into(),
+						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", "", None, false),
+						Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
+						Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<Item<BrushTrace>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
-						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
-						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
-						Some(x) if x == TypeId::of::<Box<VectorModification>>() => vector_modification_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<Image<Color>>() => image_data_widget(default_info).into(),
+						Some(x) if id_is::<Font>(x) => font_widget(default_info),
+						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
+						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
+						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
-						Some(x) if x == TypeId::of::<ReferencePoint>() => reference_point_widget(default_info, false).into(),
-						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
+						Some(x) if id_is::<ReferencePoint>(x) => reference_point_widget(default_info, false).into(),
+						Some(x) if id_is::<BlendMode>(x) => blend_mode_widget(default_info),
 						// =========================
 						// AUTO-GENERATED ENUM TYPES
 						// =========================
-						Some(x) if x == TypeId::of::<GradientType>() => enum_choice::<GradientType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<GradientSpreadMethod>() => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StringCapitalization>() => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<CellularReturnType>() => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<DomainWarpType>() => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<RelativeAbsolute>() => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<GridType>() => enum_choice::<GridType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StrokeCap>() => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StrokeJoin>() => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RowsOrColumns>() => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<ExtrudeJoiningAlgorithm>() => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<QRCodeErrorCorrectionLevel>() => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<ScaleType>() => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<InterpolationDistribution>() => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientType>(x) => enum_choice::<GradientType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientSpreadMethod>(x) => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<XY>(x) => enum_choice::<XY>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<PaintOrder>(x) => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<LuminanceCalculation>(x) => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
 						// =====
 						// OTHER
 						// =====

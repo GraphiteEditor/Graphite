@@ -454,13 +454,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Gradient,
 		Artboard,
 	));
-	// The compiler wraps a ranked connector's broadcast sibling in a Memoize plus context nullification pair, so both must pass
-	// through every ranked element type. These fill in the enum and newtype ranks that the hand lists above omit. The identifiers
-	// are passed explicitly because `stringify!` mangles whitespace when the path tokens come through this nested macro layer.
+	// The compiler wraps a ranked connector's broadcast sibling in a Memoize plus context nullification pair, and the editor's test
+	// instrumentation monitors any wire, so all three must pass through every ranked element type the hand lists above omit.
+	// The identifiers are passed explicitly because `stringify!` mangles whitespace when the path tokens come through this nested macro layer.
 	macro_rules! cache_chain_nodes {
 		(each: $value:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 				async_node!(identifier: graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => $value]),
+				async_node!(identifier: graphene_core::memo::monitor::IDENTIFIER, graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => $value]),
 				async_node!(identifier: graphene_core::context_modification::context_modification::IDENTIFIER, graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => $value, Context => Item<graphene_std::ContextFeatures>]),
 			];
 			entries
@@ -501,6 +502,19 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		ReferencePoint,
 		CentroidType,
 		BooleanOperation,
+		NoiseType,
+		FractalType,
+		CellularDistanceFunction,
+		CellularReturnType,
+		DomainWarpType,
+		graphene_std::animation::RealTimeMode,
+		graphene_std::vector::misc::GridType,
+		graphene_std::vector::misc::ArcType,
+		graphene_std::vector::misc::SpiralType,
+		graphene_std::text::TextAlign,
+		graphene_std::vector::QRCodeErrorCorrectionLevel,
+		Box<VectorModification>,
+		graphene_std::text::Font,
 		InterpolationDistribution,
 		RowsOrColumns,
 	));

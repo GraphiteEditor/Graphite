@@ -653,8 +653,8 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	 	List<Color>,
 		List<Gradient>,
 		List<String>,
-		DAffine2,
-		DVec2,
+		Item<DAffine2>,
+		Item<DVec2>,
 	)]
 	content: T,
 ) -> Item<Graphic> {

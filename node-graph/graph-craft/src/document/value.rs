@@ -77,7 +77,7 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
-			/// Stored compactly as a `Gradient`, materializing as the bare stops at runtime. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Gradient`, materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
@@ -170,14 +170,14 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
-					Self::Color(color) => Box::new(color),
-					Self::Gradient(stops) => Box::new(stops),
+					Self::Color(color) => Box::new(Item::new_from_element(color)),
+					Self::Gradient(stops) => Box::new(Item::new_from_element(stops)),
 					Self::FillChoice(choice) => Box::new(graphic_types::graphic::fill_choice_to_paint(choice)),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Box::new(x), )*
+					$( Self::$identifier(x) => Box::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -212,14 +212,14 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
-					Self::Color(color) => Arc::new(color),
-					Self::Gradient(stops) => Arc::new(stops),
+					Self::Color(color) => Arc::new(Item::new_from_element(color)),
+					Self::Gradient(stops) => Arc::new(Item::new_from_element(stops)),
 					Self::FillChoice(choice) => Arc::new(graphic_types::graphic::fill_choice_to_paint(choice)),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Arc::new(x), )*
+					$( Self::$identifier(x) => Arc::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -241,14 +241,14 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					Self::F64Array(_) => list!(f64),
-					Self::Color(_) => concrete!(Color),
-					Self::Gradient(_) => concrete!(Gradient),
+					Self::Color(_) => concrete!(Item<Color>),
+					Self::Gradient(_) => concrete!(Item<Gradient>),
 					Self::FillChoice(_) => list!(Graphic),
 					Self::BrushStrokes(_) => concrete!(Item<BrushTrace>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(_) => concrete!($ty), )*
+					$( Self::$identifier(_) => concrete!(Item<$ty>), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -278,6 +278,7 @@ macro_rules! tagged_value {
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(downcast::<Item<$ty>>(input).unwrap().into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -300,6 +301,7 @@ macro_rules! tagged_value {
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(Item::<$ty>::clone(input.downcast_ref().unwrap()).into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -319,10 +321,10 @@ macro_rules! tagged_value {
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
-						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
-						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::Gradient(Gradient::default())) }
+						if name == std::any::type_name::<Color>() || name == std::any::type_name::<Item<Color>>() { return Some(TaggedValue::Color(Color::default())) }
+						if name == std::any::type_name::<Gradient>() || name == std::any::type_name::<Item<Gradient>>() { return Some(TaggedValue::Gradient(Gradient::default())) }
 						if name == std::any::type_name::<List<Graphic>>() { return Some(TaggedValue::FillChoice(FillChoice::default())) }
-						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
+						$( if name == std::any::type_name::<$ty>() || name == std::any::type_name::<Item<$ty>>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<Item<BrushTrace>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.

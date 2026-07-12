@@ -1034,14 +1034,14 @@ mod test {
 		}
 
 		/// Grabs a ranked (`Item<E>`) input's recorded value as its bare element `E`.
-		/// The type resolver inserts the promotion adapter between the input monitor and the connector, so the monitor records the element ahead of the wrap.
+		/// A stored value materializes as an `Item<E>` wire, so the monitor records the whole cell and this unwraps its element.
 		pub fn grab_ranked_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<<Input::Result as RankedResult>::Element>
 		where
 			Input::Result: RankedResult,
 		{
 			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
-			Self::downcast_record::<<Input::Result as RankedResult>::Element>(dynamic)
+			Self::downcast_record::<Item<<Input::Result as RankedResult>::Element>>(dynamic).map(|item| item.into_element())
 		}
 
 		pub fn grab_input_from_layer<Input: NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>

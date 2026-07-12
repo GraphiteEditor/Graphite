@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
@@ -362,23 +362,23 @@ impl IntoGraphicList for List<String> {
 	}
 }
 
-impl IntoGraphicList for DAffine2 {
+impl IntoGraphicList for Item<DAffine2> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::default())
 	}
 }
 
 // DAffine2
-impl From<DAffine2> for Graphic {
-	fn from(_: DAffine2) -> Self {
+impl From<Item<DAffine2>> for Graphic {
+	fn from(_: Item<DAffine2>) -> Self {
 		Graphic::default()
 	}
 }
 
 // DVec2
-impl From<DVec2> for Graphic {
-	fn from(position: DVec2) -> Self {
-		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position)))
+impl From<Item<DVec2>> for Graphic {
+	fn from(position: Item<DVec2>) -> Self {
+		Graphic::Vector(List::new_from_element(Vector::from_anchor_position(position.into_element())))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore

@@ -14,8 +14,8 @@ fn push_node_sync() {
 	let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 	futures::executor::block_on(future).unwrap();
 	let _node = tree.get(NodeId(0)).unwrap();
-	let result = futures::executor::block_on(tree.eval(NodeId(0), ()));
-	assert_eq!(result, Some(2_u32));
+	let result: Option<Item<u32>> = futures::executor::block_on(tree.eval(NodeId(0), ()));
+	assert_eq!(result.map(|item| *item.element()), Some(2_u32));
 }
 
 /// Builds a two-node network feeding the given value into Bounding Box, whose primary input registers both `Item<Vector>` and `List<Vector>` wire variants.
@@ -104,7 +104,7 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	assert_eq!(stack.len(), 1, "The rank-0 content should contribute exactly one graphic to the stack");
 }
 
-/// Builds a network feeding the given content plus a promoted bare distance into Offset Points, whose distance connector is ranked `Item<f64>`.
+/// Builds a network feeding the given content plus an f64 distance value into Offset Points, whose distance input is ranked `Item<f64>`.
 fn offset_points_network(content: TaggedValue) -> ProtoNetwork {
 	let content_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);
 	let distance_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(10.).into()), vec![NodeId(1)]);
@@ -287,7 +287,7 @@ fn the_nullification_chain_resolves_for_ranked_enum_wires() {
 }
 
 #[test]
-fn bare_wires_promote_to_item_connectors_at_resolution() {
+fn value_wires_materialize_as_items_at_resolution() {
 	use glam::{DAffine2, DVec2};
 
 	let values = [
@@ -312,19 +312,19 @@ fn bare_wires_promote_to_item_connectors_at_resolution() {
 		nodes,
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("Bare wires should resolve Item connectors via wrap promotion");
-	assert_eq!(typing_context.promotions(NodeId(5)).map(Vec::len), Some(5), "All five bare inputs should be wrapped");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The wrap adapters should instantiate");
+	typing_context.update(&network).expect("Value wires should materialize as Items and resolve the all-Item variant");
+	assert!(typing_context.promotions(NodeId(5)).is_none(), "Already-Item value wires should need no promotion");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The all-Item variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<DAffine2>> = futures::executor::block_on(tree.eval(NodeId(5), context));
-	let item = result.expect("A bare matrix should flow through Transform as an Item");
+	let item = result.expect("A value matrix should flow through Transform as an Item");
 	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
 	assert_eq!(transform.translation, DVec2::new(7., 0.), "The translation should compose onto the gained transform attribute");
 }
 
 #[test]
-fn bare_value_promotes_to_item_wire() {
+fn value_wire_passes_through_the_input_adapter_as_item() {
 	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
@@ -336,18 +336,18 @@ fn bare_value_promotes_to_item_wire() {
 		nodes: vec![(NodeId(0), value_node), (NodeId(1), input_adapter_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("A bare f64 should resolve the promotion variant");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion constructor should instantiate");
+	typing_context.update(&network).expect("An f64 value's Item wire should resolve the adapter's passthrough row");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
-	assert_eq!(result.map(|item| *item.element()), Some(3.), "The bare value should arrive wrapped as an Item");
+	assert_eq!(result.map(|item| *item.element()), Some(3.), "The value should arrive as an Item");
 }
 
-// Path Modify's ranked modification parameter: a bare `Box<VectorModification>` wraps onto the `Item` wire through its input adapter,
+// Path Modify's ranked modification parameter: a `Box<VectorModification>` value rides the `Item` wire through its input adapter,
 // exercising the nested-generic identifier round-trip between the registered `stringify!` name and the preprocessor's simplified name
 #[test]
-fn bare_modification_promotes_to_item_wire() {
+fn modification_value_rides_the_item_wire_through_its_input_adapter() {
 	use graphene_std::vector::VectorModification;
 
 	let modification = TaggedValue::VectorModification(Default::default());
@@ -362,44 +362,20 @@ fn bare_modification_promotes_to_item_wire() {
 		nodes: vec![(NodeId(0), value_node), (NodeId(1), input_adapter_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("A bare Box<VectorModification> should resolve the promotion variant");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion constructor should instantiate");
+	typing_context.update(&network).expect("A modification value's Item wire should resolve the adapter's passthrough row");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Box<VectorModification>>> = futures::executor::block_on(tree.eval(NodeId(1), context));
-	assert!(result.is_some(), "The bare modification should arrive wrapped as an Item");
+	assert!(result.is_some(), "The modification should arrive as an Item");
 }
 
-// The Write Attribute value slot: an Item wire's element boxes into a type-erased attribute value, and a stored bare value reaches the same row via a wrap promotion
+// The Write Attribute value input: a value's Item wire boxes its element into a type-erased attribute value through the input adapter
 #[test]
 fn item_wire_boxes_into_the_attribute_value_connector() {
 	use graphene_std::list::AttributeValueDyn;
 
 	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
-	let mut wrap_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-	wrap_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::WrapItemNode<f64>");
-	let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-	attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<AttributeValueDyn>");
-
-	let network = ProtoNetwork {
-		inputs: vec![],
-		output: NodeId(2),
-		nodes: vec![(NodeId(0), value_node), (NodeId(1), wrap_node), (NodeId(2), attribute_adapter_node)],
-	};
-	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("An Item<f64> wire should resolve the attribute value boxing row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The boxing constructor should instantiate");
-
-	let context: Context = None;
-	let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(2), context));
-	let boxed = result.expect("The boxed attribute value should arrive as an Item");
-	assert_eq!(
-		boxed.element().0.as_any().downcast_ref::<f64>(),
-		Some(&3.),
-		"The stored value should be the bare element, not the whole Item"
-	);
-
-	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(5.).into()), vec![NodeId(0)]);
 	let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	attribute_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<AttributeValueDyn>");
 
@@ -409,14 +385,18 @@ fn item_wire_boxes_into_the_attribute_value_connector() {
 		nodes: vec![(NodeId(0), value_node), (NodeId(1), attribute_adapter_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).expect("A bare value should wrap-promote into the attribute value boxing row");
-	assert!(typing_context.promotions(NodeId(1)).is_some(), "The bare value should be raised by a wrap promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The wrap and boxing constructors should instantiate");
+	typing_context.update(&network).expect("An Item<f64> wire should resolve the attribute value boxing row");
+	assert!(typing_context.promotions(NodeId(1)).is_none(), "The already-Item value wire should need no promotion");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The boxing constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(1), context));
-	let boxed = result.expect("The promoted bare value should arrive boxed as an Item");
-	assert_eq!(boxed.element().0.as_any().downcast_ref::<f64>(), Some(&5.), "The stored value should be the bare element");
+	let boxed = result.expect("The boxed attribute value should arrive as an Item");
+	assert_eq!(
+		boxed.element().0.as_any().downcast_ref::<f64>(),
+		Some(&3.),
+		"The stored value should be the bare element, not the whole Item"
+	);
 }
 
 #[test]
@@ -433,21 +413,19 @@ fn list_wire_variant_resolves_and_executes() {
 
 #[test]
 fn expander_flattens_under_the_frame() {
-	// A bare string wrapped onto an Item wire feeds String Split's expander primary; its parameters ride Item wires via promotion
+	// A string value's Item wire feeds String Split's expander primary; its parameters ride Item wires through their input adapters
 	let string_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("a,b".into()).into()), vec![NodeId(0)]);
-	let mut wrap_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-	wrap_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::WrapItemNode<String>");
 
-	let delimiter_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(",".into()).into()), vec![NodeId(2)]);
-	let mut delimiter_input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
+	let delimiter_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(",".into()).into()), vec![NodeId(1)]);
+	let mut delimiter_input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
 	delimiter_input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<String>");
 
-	let escaping_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(false).into()), vec![NodeId(4)]);
-	let mut escaping_input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(4)]), vec![NodeId(5)]);
+	let escaping_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(false).into()), vec![NodeId(3)]);
+	let mut escaping_input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(3)]), vec![NodeId(4)]);
 	escaping_input_adapter_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::InputAdapterNode<bool>");
 
-	let output = NodeId(6);
-	let mut string_split_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(3), NodeId(5)]), vec![output]);
+	let output = NodeId(5);
+	let mut string_split_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2), NodeId(4)]), vec![output]);
 	string_split_node.identifier = graphene_std::text_nodes::string_split::IDENTIFIER;
 
 	let network = ProtoNetwork {
@@ -455,11 +433,10 @@ fn expander_flattens_under_the_frame() {
 		output,
 		nodes: vec![
 			(NodeId(0), string_node),
-			(NodeId(1), wrap_node),
-			(NodeId(2), delimiter_node),
-			(NodeId(3), delimiter_input_adapter_node),
-			(NodeId(4), escaping_node),
-			(NodeId(5), escaping_input_adapter_node),
+			(NodeId(1), delimiter_node),
+			(NodeId(2), delimiter_input_adapter_node),
+			(NodeId(3), escaping_node),
+			(NodeId(4), escaping_input_adapter_node),
 			(output, string_split_node),
 		],
 	};

@@ -20,7 +20,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
-		Context -> DAffine2,
+		Context -> Item<DAffine2>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	/// Coordinate of the top-left corner of the artboard within the document.
