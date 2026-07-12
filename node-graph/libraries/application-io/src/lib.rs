@@ -11,10 +11,10 @@ use vector_types::vector::style::RenderMode;
 pub use graphene_resource as resource;
 
 #[cfg(feature = "wgpu")]
-pub use raster_types::Texture as ImageTexture;
+pub use raster_types::Texture;
 #[cfg(not(feature = "wgpu"))]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
-pub struct ImageTexture;
+pub struct Texture; // TODO: Consider removing this
 
 pub trait ApplicationIo {
 	type Executor;

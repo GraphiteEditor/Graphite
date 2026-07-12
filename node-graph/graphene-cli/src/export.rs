@@ -67,9 +67,9 @@ pub async fn export_document(
 				std::fs::write(&output_path, svg)?;
 				log::info!("Exported SVG to: {}", output_path.display());
 			}
-			RenderOutputType::Texture(image_texture) => {
+			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
-				let gpu_raster = Raster::<GPU>::new_gpu(image_texture);
+				let gpu_raster = Raster::<GPU>::new_gpu(texture);
 				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
 
@@ -200,8 +200,8 @@ pub async fn export_gif(
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
 			TaggedValue::RenderOutput(output) => match output.data {
-				RenderOutputType::Texture(image_texture) => {
-					let gpu_raster = Raster::<GPU>::new_gpu(image_texture);
+				RenderOutputType::Texture(texture) => {
+					let gpu_raster = Raster::<GPU>::new_gpu(texture);
 					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
 					cpu_raster.to_flat_u8()
 				}

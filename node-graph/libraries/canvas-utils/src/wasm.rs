@@ -1,6 +1,6 @@
 use dyn_any::DynAny;
 #[cfg(feature = "wgpu")]
-use graphene_application_io::ImageTexture;
+use graphene_application_io::Texture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use web_sys::js_sys::{Object, Reflect};
@@ -23,7 +23,7 @@ pub trait Canvas {
 
 #[cfg(feature = "wgpu")]
 pub trait CanvasSurface: Canvas {
-	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor);
+	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor);
 }
 
 #[derive(Clone, DynAny)]
@@ -85,10 +85,10 @@ impl Canvas for CanvasSurfaceHandle {
 }
 #[cfg(feature = "wgpu")]
 impl CanvasSurface for CanvasSurfaceHandle {
-	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) {
+	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor) {
 		let context = executor.context();
 
-		let source_texture: &wgpu::Texture = image_texture.as_ref();
+		let source_texture: &wgpu::Texture = texture.as_ref();
 
 		let surface = self.surface(executor);
 
