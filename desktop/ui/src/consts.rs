@@ -9,6 +9,8 @@ pub(crate) const WINDOWLESS_FRAME_RATE: i32 = 60;
 pub(crate) const FRAMES_IN_FLIGHT_LIMIT: u64 = 3;
 pub(crate) const FRAME_SEGMENT_POOL_SIZE: u64 = FRAMES_IN_FLIGHT_LIMIT + 1; // allow one extra staged frame
 pub(crate) const FRAME_SEGMENT_GRANULARITY: usize = 2 * 1024 * 1024; // 2 MiB
+#[cfg(feature = "accelerated_paint")]
+pub(crate) const FRAME_ACK_TIMEOUT: Duration = Duration::from_millis(250);
 
 pub(crate) const HOST_HELLO_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) const HOST_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);

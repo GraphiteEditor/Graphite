@@ -123,7 +123,12 @@ impl FrameStreamer {
 			&& let Some(plane) = &self.0.plane
 		{
 			match plane.send(claim.seq(), frame) {
-				Ok(()) => claim.commit(),
+				Ok(()) => {
+					if !claim.wait_for_ack() {
+						tracing::warn!("Accelerated frame {} was not acked", claim.seq());
+					}
+					claim.commit();
+				}
 				Err(e) => tracing::debug!("Failed to send accelerated frame to main process: {e}"),
 			}
 		}
