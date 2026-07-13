@@ -1,15 +1,24 @@
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "accelerated_paint")]
+use super::import::ContentMapping;
+#[cfg(feature = "accelerated_paint")]
+use super::resample::Resampler;
+
 #[derive(Clone)]
 pub(crate) struct FrameSurface {
 	device: wgpu::Device,
 	queue: wgpu_sync::Queue,
 	slot: Arc<Mutex<Option<wgpu::Texture>>>,
+	#[cfg(feature = "accelerated_paint")]
+	resampler: Resampler,
 }
 
 impl FrameSurface {
 	pub(crate) fn new(device: wgpu::Device, queue: wgpu_sync::Queue) -> Self {
 		Self {
+			#[cfg(feature = "accelerated_paint")]
+			resampler: Resampler::new(device.clone()),
 			device,
 			queue,
 			slot: Arc::new(Mutex::new(None)),
@@ -66,7 +75,7 @@ impl FrameSurface {
 	}
 
 	#[cfg(feature = "accelerated_paint")]
-	pub(crate) fn import_texture(&self, importer: impl crate::frames::import::TextureImporter) -> Option<wgpu::Texture> {
+	pub(crate) fn import_texture(&self, importer: impl crate::frames::import::TextureImporter, content_rect: crate::frames::import::ContentRect) -> Option<wgpu::Texture> {
 		let imported = match importer.import_to_wgpu(&self.device) {
 			Ok(texture) => texture,
 			Err(e) => {
@@ -75,45 +84,75 @@ impl FrameSurface {
 			}
 		};
 
-		let size = wgpu::Extent3d {
-			width: imported.width(),
-			height: imported.height(),
-			depth_or_array_layers: 1,
-		};
-		let owned = self.device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("CEF Imported Frame Copy"),
-			size,
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: imported.format(),
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-			view_formats: &[],
-		});
-
 		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("CEF Frame Copy Encoder"),
 		});
-		encoder.copy_texture_to_texture(
-			wgpu::TexelCopyTextureInfo {
-				texture: &imported,
-				mip_level: 0,
-				origin: wgpu::Origin3d::ZERO,
-				aspect: wgpu::TextureAspect::All,
-			},
-			wgpu::TexelCopyTextureInfo {
-				texture: &owned,
-				mip_level: 0,
-				origin: wgpu::Origin3d::ZERO,
-				aspect: wgpu::TextureAspect::All,
-			},
-			size,
-		);
+		let output = match content_rect.mapping(imported.width(), imported.height()) {
+			ContentMapping::Identity => {
+				let output = self.device.create_texture(&wgpu::TextureDescriptor {
+					label: Some("CEF Imported Frame Copy"),
+					size: imported.size(),
+					mip_level_count: 1,
+					sample_count: 1,
+					dimension: wgpu::TextureDimension::D2,
+					format: imported.format(),
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+					view_formats: &[],
+				});
+				encoder.copy_texture_to_texture(
+					wgpu::TexelCopyTextureInfo {
+						texture: &imported,
+						mip_level: 0,
+						origin: wgpu::Origin3d::ZERO,
+						aspect: wgpu::TextureAspect::All,
+					},
+					wgpu::TexelCopyTextureInfo {
+						texture: &output,
+						mip_level: 0,
+						origin: wgpu::Origin3d::ZERO,
+						aspect: wgpu::TextureAspect::All,
+					},
+					imported.size(),
+				);
+				output
+			}
+			ContentMapping::Scaled(content_rect) => {
+				let output = self.device.create_texture(&wgpu::TextureDescriptor {
+					label: Some("CEF Imported Scaled Frame Copy"),
+					size: wgpu::Extent3d {
+						width: content_rect.source_width,
+						height: content_rect.source_height,
+						depth_or_array_layers: 1,
+					},
+					mip_level_count: 1,
+					sample_count: 1,
+					dimension: wgpu::TextureDimension::D2,
+					format: imported.format(),
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+					view_formats: &[],
+				});
+				let size = wgpu::Extent3d {
+					width: content_rect.width,
+					height: content_rect.height,
+					depth_or_array_layers: 1,
+				};
+				self.resampler.encode(
+					&mut encoder,
+					&imported,
+					wgpu::Origin3d {
+						x: content_rect.x,
+						y: content_rect.y,
+						z: 0,
+					},
+					size,
+					&output,
+				);
+				output
+			}
+		};
 
-		let submission = self.queue.submit(std::iter::once(encoder.finish()));
+		let submission = self.queue.submit([encoder.finish()]);
 
-		// Block until the copy is done, so the caller's ack cannot free CEF to
-		// overwrite the shared texture while the copy is still reading it.
 		let _ = self.device.poll(wgpu::PollType::Wait {
 			submission_index: Some(submission),
 			timeout: None,
@@ -123,7 +162,7 @@ impl FrameSurface {
 			tracing::error!("Failed to lock the frame surface");
 			return None;
 		};
-		*slot = Some(owned.clone());
-		Some(owned)
+		*slot = Some(output.clone());
+		Some(output)
 	}
 }

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::{CloseHandle, DUPLICATE_CLOSE_SOURCE, DUPLICATE_SAME_ACCESS, DuplicateHandle, HANDLE};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_DUP_HANDLE};
 
+use crate::frames::import::ContentRect;
 use crate::frames::surface::FrameSurface;
 use crate::remote::HostConfig;
 use crate::remote::messages::EventMessage;
@@ -86,6 +87,7 @@ impl PlaneSender {
 			width: coded_size.width as u32,
 			height: coded_size.height as u32,
 			format: *info.format.as_ref() as u32,
+			content: ContentRect::try_from(info).ok(),
 		})
 	}
 
@@ -96,6 +98,7 @@ impl PlaneSender {
 			width: frame.width,
 			height: frame.height,
 			format: frame.format,
+			content: frame.content,
 		};
 		let sender = self.events.lock().map_err(|_| std::io::Error::other("the host message sender lock is poisoned"))?;
 		match sender.send(message) {
@@ -114,6 +117,7 @@ pub(crate) struct StagedFrame {
 	width: u32,
 	height: u32,
 	format: u32,
+	content: Option<ContentRect>,
 }
 
 struct HandleInMain {
@@ -133,16 +137,18 @@ pub(crate) struct WireFrame {
 	width: u32,
 	height: u32,
 	format: u32,
+	content: Option<ContentRect>,
 }
 
 impl WireFrame {
-	pub(crate) fn new(seq: u64, handle: u64, width: u32, height: u32, format: u32) -> Self {
+	pub(crate) fn new(seq: u64, handle: u64, width: u32, height: u32, format: u32, content: Option<ContentRect>) -> Self {
 		Self {
 			seq,
 			handle: ReceivedHandle(handle),
 			width,
 			height,
 			format,
+			content,
 		}
 	}
 
@@ -152,7 +158,8 @@ impl WireFrame {
 
 	pub(crate) fn import(self, surface: &FrameSurface) -> Option<wgpu::Texture> {
 		let format = super::wire_color_type(self.format)?;
-		surface.import_texture(crate::frames::import::d3d11::D3D11Importer::from_parts(self.handle.0, self.width, self.height, format))
+		let content = self.content.unwrap_or_default();
+		surface.import_texture(crate::frames::import::d3d11::D3D11Importer::from_parts(self.handle.0, self.width, self.height, format), content)
 	}
 }
 

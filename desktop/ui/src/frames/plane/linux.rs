@@ -19,6 +19,12 @@ struct FrameDescriptor {
 	plane_count: u32,
 	strides: [u32; 4],
 	offsets: [u32; 4],
+	content_x: u32,
+	content_y: u32,
+	content_width: u32,
+	content_height: u32,
+	source_width: u32,
+	source_height: u32,
 }
 
 const DESCRIPTOR_BYTES: usize = std::mem::size_of::<FrameDescriptor>();
@@ -78,6 +84,7 @@ impl PlaneSender {
 			offsets[i] = plane.offset as u32;
 		}
 
+		let content = crate::frames::import::ContentRect::try_from(info).unwrap_or_default();
 		Some(StagedFrame {
 			descriptor: FrameDescriptor {
 				seq: 0,
@@ -88,6 +95,12 @@ impl PlaneSender {
 				plane_count: plane_count as u32,
 				strides,
 				offsets,
+				content_x: content.x,
+				content_y: content.y,
+				content_width: content.width,
+				content_height: content.height,
+				source_width: content.source_width,
+				source_height: content.source_height,
 			},
 			fds,
 		})
@@ -230,6 +243,14 @@ impl WireFrame {
 		let descriptor = self.descriptor;
 		let format = super::wire_color_type(descriptor.format)?;
 		let plane_count = (descriptor.plane_count as usize).min(self.fds.len());
+		let content = crate::frames::import::ContentRect {
+			x: descriptor.content_x,
+			y: descriptor.content_y,
+			width: descriptor.content_width,
+			height: descriptor.content_height,
+			source_width: descriptor.source_width,
+			source_height: descriptor.source_height,
+		};
 		let importer = crate::frames::import::dmabuf::DmaBufImporter::from_parts(
 			self.fds,
 			descriptor.strides[..plane_count].to_vec(),
@@ -239,6 +260,6 @@ impl WireFrame {
 			descriptor.height,
 			format,
 		);
-		surface.import_texture(importer)
+		surface.import_texture(importer, content)
 	}
 }

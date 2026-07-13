@@ -380,8 +380,15 @@ fn handle_message(
 			}
 		}
 		#[cfg(all(target_os = "windows", feature = "accelerated_paint"))]
-		EventMessage::AcceleratedFrame { seq, handle, width, height, format } => {
-			let frame = PendingFrame::Accelerated(plane::WireFrame::new(seq, handle, width, height, format));
+		EventMessage::AcceleratedFrame {
+			seq,
+			handle,
+			width,
+			height,
+			format,
+			content,
+		} => {
+			let frame = PendingFrame::Accelerated(plane::WireFrame::new(seq, handle, width, height, format, content));
 			if newest_frame.as_ref().is_none_or(|newest| newest.seq() < frame.seq()) {
 				*newest_frame = Some(frame);
 			}

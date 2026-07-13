@@ -41,6 +41,12 @@ struct FrameDescriptor {
 	width: u32,
 	height: u32,
 	format: u32,
+	content_x: u32,
+	content_y: u32,
+	content_width: u32,
+	content_height: u32,
+	source_width: u32,
+	source_height: u32,
 	_pad: u32,
 }
 
@@ -127,12 +133,20 @@ impl PlaneSender {
 			tracing::error!("Failed to wrap the IOSurface in a mach port");
 			return None;
 		}
+
+		let content = crate::frames::import::ContentRect::try_from(info).unwrap_or_default();
 		Some(StagedFrame {
 			descriptor: FrameDescriptor {
 				seq: 0,
 				width: coded_size.width as u32,
 				height: coded_size.height as u32,
 				format: *info.format.as_ref() as u32,
+				content_x: content.x,
+				content_y: content.y,
+				content_width: content.width,
+				content_height: content.height,
+				source_width: content.source_width,
+				source_height: content.source_height,
 				_pad: 0,
 			},
 			surface: SendRight(port),
@@ -277,7 +291,15 @@ impl WireFrame {
 		};
 		let io_surface_ref: &IOSurfaceRef = &io_surface;
 
+		let content = crate::frames::import::ContentRect {
+			x: descriptor.content_x,
+			y: descriptor.content_y,
+			width: descriptor.content_width,
+			height: descriptor.content_height,
+			source_width: descriptor.source_width,
+			source_height: descriptor.source_height,
+		};
 		let importer = crate::frames::import::iosurface::IOSurfaceImporter::from_parts(io_surface_ref as *const _ as *mut std::os::raw::c_void, descriptor.width, descriptor.height, format);
-		surface.import_texture(importer)
+		surface.import_texture(importer, content)
 	}
 }
