@@ -361,7 +361,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	));
 	#[cfg(feature = "gpu")]
 	node_types.extend(rank_adapter_nodes!(Raster<GPU>));
-	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `Count Elements`): any `List` wire erases its element type
+	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `List Length`): any `List` wire erases its element type
 	macro_rules! list_dyn_rows {
 		($($element:ty),* $(,)?) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![

@@ -9,10 +9,10 @@ use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
 use vector_types::{Gradient, GradientStop, ReferencePoint};
 
-/// Returns the list with the element at the specified index removed.
+/// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"))]
-pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
+#[node_macro::node(category("General"), name("Remove at Index"))]
+pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
@@ -47,10 +47,10 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 
 /// Returns the item at the specified index in a `List`, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("General"))]
-pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
+#[node_macro::node(category("General"), name("Item at Index"))]
+pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
-	/// The `List` of data to extract from.
+	/// The `List` of data to take the item from.
 	#[implementations(
 		List<String>,
 		List<bool>,

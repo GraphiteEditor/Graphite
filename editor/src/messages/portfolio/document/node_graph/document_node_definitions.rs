@@ -453,9 +453,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::import(generic!(T), 4)],
 								..Default::default()
 							},
-							// 1: Count Elements (number of subpaths)
+							// 1: List Length (number of subpaths)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::count_elements::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::list_length::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								..Default::default()
 							},
@@ -604,7 +604,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 1: Count Elements
+								// 1: List Length
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
@@ -1287,16 +1287,16 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
+							// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extract_element::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 2: omit_element at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
+							// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
 								..Default::default()
 							},
 						]

@@ -160,13 +160,18 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::graphic::FlattenVectorNode", "graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::extract_element::IDENTIFIER,
+		node: graphene_std::graphic::item_at_index::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::IndexNode",
 			"graphene_core::graphic::IndexNode",
 			"graphene_core::graphic::IndexElementsNode",
 			"graphic_nodes::graphic::IndexElementsNode",
+			"graphic_nodes::graphic::ExtractElementNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::OmitElementNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
@@ -775,7 +780,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::ClosePathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::count_elements::IDENTIFIER,
+		node: graphene_std::vector::list_length::IDENTIFIER,
 		aliases: &["graphene_core::vector::CountElementsNode"],
 	},
 	NodeReplacement {
@@ -2395,7 +2400,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (5 inputs: content, progression, reverse, distribution, path).
 	// The old progression used integer part for pair selection (range 0..N-1 where N is the number of content objects).
 	// The new progression uses fractional 0..1 for euclidean traversal through all objects.
-	// We insert Count Elements → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
+	// We insert List Length → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
 	// For the common 2-object case (N=2), this divides by 1 which is a no-op, preserving identical behavior.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -2410,14 +2415,14 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Create Count Elements node: counts content `List` items → N
-		let Some(count_elements_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
-			log::error!("Could not get count_elements node from definition when upgrading morph");
+		// Create List Length node: counts content `List` items → N
+		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
+			log::error!("Could not get list_length node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
-		let count_elements_template = count_elements_def.default_node_template();
-		let count_elements_id = NodeId::new();
+		let list_length_template = list_length_def.default_node_template();
+		let list_length_id = NodeId::new();
 
 		// Create Subtract node: N → N-1
 		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
@@ -2439,10 +2444,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let divide_id = NodeId::new();
 
 		// Insert and position nodes
-		document.network_interface.insert_node(count_elements_id, count_elements_template, network_path);
+		document.network_interface.insert_node(list_length_id, list_length_template, network_path);
 		document
 			.network_interface
-			.shift_absolute_node_position(&count_elements_id, morph_position + IVec2::new(-21, 2), network_path);
+			.shift_absolute_node_position(&list_length_id, morph_position + IVec2::new(-21, 2), network_path);
 
 		document.network_interface.insert_node(subtract_id, subtract_template, network_path);
 		document.network_interface.shift_absolute_node_position(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
@@ -2450,13 +2455,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.insert_node(divide_id, divide_template, network_path);
 		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
 
-		// Wire: content source → Count Elements input 0
-		document.network_interface.set_input(&InputConnector::node(count_elements_id, 0), old_inputs[0].clone(), network_path);
+		// Wire: content source → List Length input 0
+		document.network_interface.set_input(&InputConnector::node(list_length_id, 0), old_inputs[0].clone(), network_path);
 
-		// Wire: Count Elements output → Subtract input 0 (minuend)
+		// Wire: List Length output → Subtract input 0 (minuend)
 		document
 			.network_interface
-			.set_input(&InputConnector::node(subtract_id, 0), NodeInput::node(count_elements_id, 0), network_path);
+			.set_input(&InputConnector::node(subtract_id, 0), NodeInput::node(list_length_id, 0), network_path);
 
 		// Wire: old progression → Divide input 0 (numerator)
 		document.network_interface.set_input(&InputConnector::node(divide_id, 0), old_inputs[1].clone(), network_path);
