@@ -1,7 +1,7 @@
 use super::*;
 use core_types::Context;
-use core_types::descriptor;
 use core_types::list::{Item, List};
+use core_types::{item, list};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::vector::Vector;
@@ -41,7 +41,7 @@ fn compile_bounding_box_network(content: TaggedValue) -> BorrowTree {
 
 #[test]
 fn item_wire_variant_resolves_and_executes() {
-	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)));
+	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(item!(Vector)));
 
 	let context: Context = None;
 	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
@@ -53,7 +53,7 @@ fn item_wire_variant_resolves_and_executes() {
 
 #[test]
 fn item_wire_promotes_to_list_connector() {
-	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<f64>)).into()), vec![NodeId(0)]);
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(f64)).into()), vec![NodeId(0)]);
 
 	let mut sum_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	sum_node.identifier = ProtoNodeIdentifier::new("math_nodes::SumNode");
@@ -77,12 +77,12 @@ fn item_wire_promotes_to_list_connector() {
 // wrapped `Item<Graphic>` raises again at Extend's `List` connector, so layers accept rank-0 chains without new machinery
 #[test]
 fn rank_0_content_promotes_through_the_layer_coercion_path() {
-	let content_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(Item<Vector>)).into()), vec![NodeId(0)]);
+	let content_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(Vector)).into()), vec![NodeId(0)]);
 
 	let mut wrap_graphic_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	wrap_graphic_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::WrapGraphicNode");
 
-	let base_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>)).into()), vec![NodeId(2)]);
+	let base_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(2)]);
 
 	let mut extend_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2), NodeId(1)]), vec![NodeId(3)]);
 	extend_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::ExtendNode");
@@ -124,7 +124,7 @@ fn offset_points_network(content: TaggedValue) -> ProtoNetwork {
 
 #[test]
 fn mixed_rank_connectors_resolve_via_promotion() {
-	let network = offset_points_network(TaggedValue::TypeDefault(descriptor!(List<Vector>)));
+	let network = offset_points_network(TaggedValue::TypeDefault(list!(Vector)));
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context
 		.update(&network)
@@ -139,7 +139,7 @@ fn mixed_rank_connectors_resolve_via_promotion() {
 
 #[test]
 fn all_item_connectors_resolve_without_promotion() {
-	let network = offset_points_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)));
+	let network = offset_points_network(TaggedValue::TypeDefault(item!(Vector)));
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("All-Item connectors should resolve the rank-0 variant exactly");
 	assert!(typing_context.promotions(NodeId(3)).is_none(), "No promotion should be needed at rank 0");
@@ -186,7 +186,7 @@ fn transform_network(content: TaggedValue, rotation: TaggedValue) -> ProtoNetwor
 fn transform_composes_onto_item_wire() {
 	use glam::{DAffine2, DVec2};
 
-	let network = transform_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)), TaggedValue::F64(0.));
+	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::F64(0.));
 	let output = network.output;
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Transform should resolve its rank-0 variant");
@@ -204,7 +204,7 @@ fn transform_composes_onto_item_wire() {
 fn transform_broadcasts_item_content_across_a_framed_parameter() {
 	use glam::DAffine2;
 
-	let network = transform_network(TaggedValue::TypeDefault(descriptor!(Item<Vector>)), TaggedValue::F64Array(vec![0., 90.]));
+	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::F64Array(vec![0., 90.]));
 	let output = network.output;
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context
@@ -276,12 +276,12 @@ fn the_nullification_chain_resolves_for_ranked_enum_wires() {
 	use graphene_std::vector::style::StrokeAlign;
 
 	// The Item form, as a wrapped input adapter's output presents to the chain
-	let network = nullification_chain_network(TaggedValue::TypeDefault(descriptor!(Item<StrokeAlign>)));
+	let network = nullification_chain_network(TaggedValue::TypeDefault(item!(StrokeAlign)));
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<StrokeAlign> wire should resolve through the compiler's cache chain");
 
 	// The List form, as a whole-list enum wire presents to the chain
-	let network = nullification_chain_network(TaggedValue::TypeDefault(descriptor!(List<StrokeAlign>)));
+	let network = nullification_chain_network(TaggedValue::TypeDefault(list!(StrokeAlign)));
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<StrokeAlign> wire should resolve through the compiler's cache chain");
 }
@@ -448,7 +448,7 @@ fn item_wire_boxes_into_the_attribute_value_connector() {
 
 #[test]
 fn list_wire_variant_resolves_and_executes() {
-	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(descriptor!(List<Vector>)));
+	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(list!(Vector)));
 
 	let context: Context = None;
 	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
@@ -506,8 +506,8 @@ fn expander_flattens_under_the_frame() {
 fn whole_list_switches_as_one_bundle() {
 	// One bool selecting between two whole `List<Graphic>` stacks: each branch bundles into a rank-0 cell, and the result unbundles back to the flat stack
 	let condition_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(0)]);
-	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>)).into()), vec![NodeId(1)]);
-	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>)).into()), vec![NodeId(2)]);
+	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(1)]);
+	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(2)]);
 
 	let mut switch_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	switch_node.identifier = ProtoNodeIdentifier::new("math_nodes::SwitchNode");
@@ -547,12 +547,12 @@ fn whole_list_switches_as_one_bundle() {
 #[test]
 fn a_bundle_unbundles_into_a_list_connector() {
 	// A bundled wire (sourced here from a BundleNode, as a Switch branch produces one) feeding Extend's whole-`List` base connector
-	let stack_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>)).into()), vec![NodeId(0)]);
+	let stack_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(0)]);
 
 	let mut bundle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	bundle_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::BundleNode<Graphic>");
 
-	let new_layers_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(descriptor!(List<graphene_std::Graphic>)).into()), vec![NodeId(2)]);
+	let new_layers_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(2)]);
 
 	let mut extend_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	extend_node.identifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::ExtendNode");

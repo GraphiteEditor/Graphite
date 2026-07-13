@@ -767,7 +767,8 @@ impl TypingContext {
 				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
 				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
-				// Lists of the same rank are compared element-wise
+				// Ranked wrappers of the same rank are compared element-wise
+				(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
 				(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
@@ -807,8 +808,7 @@ impl TypingContext {
 		match valid_impls.as_slice() {
 			[] => {
 				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter.
-				// The transitional `Item<X>` cell is still an opaque concrete type, so relating it to its element takes one name peel;
-				// every `List` relation is matched structurally.
+				// Every rank relation is matched structurally; only the `Bundle` layer inside an `Item` cell remains name-encoded.
 				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
 					fn concrete_name(ty: &Type) -> Option<&str> {
 						match ty {
@@ -829,17 +829,13 @@ impl TypingContext {
 
 					match (from_value, to_value) {
 						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
-						(Type::Concrete(_), Type::List(element)) if from_value.item_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
-							Some(Promotion::ItemToList((**element).clone()))
-						}
+						(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some(Promotion::ItemToList((**element).clone())),
 
 						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
-						(Type::List(element), Type::Concrete(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
-							Some(Promotion::Bundle((**element).clone()))
-						}
+						(Type::List(element), Type::Item(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some(Promotion::Bundle((**element).clone())),
 
 						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
-						(Type::Concrete(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
+						(Type::Item(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
 							Some(Promotion::Unbundle((**element).clone()))
 						}
 

@@ -1,5 +1,5 @@
 use graph_craft::document::NodeId;
-use graphene_std::Type;
+use graphene_std::{Type, simplify_identifier_name};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -19,16 +19,14 @@ pub enum FrontendGraphDataType {
 
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
-		// Color a wire by its element type, peeling a rank-0 `Item<>` or rank-1 `List<>` wrapper (and a whole-list `Bundle<>` cell) so all ranks share the element's color
-		let name = input.nested_type().identifier_name();
-		let element = name
-			.strip_prefix("Item<")
-			.or_else(|| name.strip_prefix("List<"))
-			.and_then(|inner| inner.strip_suffix('>'))
-			.unwrap_or(name.as_str());
-		let element = element.strip_prefix("Bundle<").and_then(|inner| inner.strip_suffix('>')).unwrap_or(element);
+		// Color a wire by its element type, peeling a rank-0 `Item` or rank-1 `List` wrapper (and a whole-list `Bundle` cell) so all ranks share the element's color
+		let nested_type = input.nested_type();
+		let element = match nested_type.bundle_element_name() {
+			Some(bundle_element) => simplify_identifier_name(bundle_element),
+			None => nested_type.list_element().unwrap_or(nested_type).identifier_name(),
+		};
 
-		match element {
+		match element.as_str() {
 			"Vector" => Self::Vector,
 			"Graphic" => Self::Graphic,
 			"Artboard" => Self::Artboard,

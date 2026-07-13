@@ -22,7 +22,7 @@ use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
-use graphene_std::list::{Item, List};
+use graphene_std::list::List;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
@@ -255,9 +255,9 @@ pub(crate) fn property_from_type(
 				_ => {
 					use std::any::TypeId;
 
-					// A stored value rides an `Item<T>` wire, so a widget dispatches on either the bare element `T` or its `Item<T>` cell
+					// The compiler peels a rank-0 `Item` cell to its element before this arm runs, so widgets dispatch on the bare element `T`
 					fn id_is<T: 'static>(id: TypeId) -> bool {
-						id == TypeId::of::<T>() || id == TypeId::of::<Item<T>>()
+						id == TypeId::of::<T>()
 					}
 
 					match concrete_type.id {
@@ -273,7 +273,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 						Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<Item<BrushTrace>>() => brush_strokes_widget(default_info).into(),
+						Some(x) if id_is::<BrushTrace>(x) => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -327,11 +327,9 @@ pub(crate) fn property_from_type(
 				}
 			}
 		}
+		Type::Item(element) => return property_from_type(node_id, index, element, number_options, unit, display_decimal_places, step, context),
 		Type::List(element) => match element.as_ref() {
 			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
-			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Gradient>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Graphic>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),

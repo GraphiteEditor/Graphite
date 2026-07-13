@@ -63,15 +63,15 @@ impl TypeSource {
 		self.compiled_nested_type().is_some_and(|ty| matches!(ty, Type::List(_)) || ty.bundle_element_name().is_some())
 	}
 
-	/// The element type's identifier name with any rank-0 `Item<>` or rank-1 `List<>` wrapper peeled, so semantic type checks can be rank-agnostic.
+	/// The element type's identifier name with any rank-0 `Item` or rank-1 `List` wrapper peeled, so semantic type checks can be rank-agnostic.
 	pub fn compiled_element_name(&self) -> Option<String> {
-		let name = self.compiled_nested_type()?.identifier_name();
-		let element = name
-			.strip_prefix("Item<")
-			.or_else(|| name.strip_prefix("List<"))
-			.and_then(|inner| inner.strip_suffix('>'))
-			.unwrap_or(&name);
-		Some(element.to_string())
+		let nested_type = self.compiled_nested_type()?;
+		// A rank-0 `Item` or rank-1 `List` peels to its element; a bare value reports itself
+		let element = match nested_type {
+			Type::Item(element) | Type::List(element) => element.as_ref(),
+			other => other,
+		};
+		Some(element.identifier_name())
 	}
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
@@ -205,17 +205,14 @@ impl NodeNetworkInterface {
 
 		// A List-typed default drops to its Item counterpart (when that has a default value and the connector accepts rank 0),
 		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0
-		let guaranteed_name = guaranteed_type.nested_type().identifier_name();
-		if let Some(element) = guaranteed_name.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')) {
-			let item_name = format!("Item<{element}>");
-			if let Some(item_type) = self
+		if let Some(element) = guaranteed_type.nested_type().list_element()
+			&& let Some(item_type) = self
 				.potential_valid_input_types(input_connector, network_path)
 				.into_iter()
-				.find(|ty| ty.nested_type().identifier_name() == item_name)
-				&& let Some(item_default) = TaggedValue::from_type(&item_type)
-			{
-				return item_default;
-			}
+				.find(|ty| matches!(ty.nested_type(), Type::Item(item_element) if item_element.as_ref() == element))
+			&& let Some(item_default) = TaggedValue::from_type(&item_type)
+		{
+			return item_default;
 		}
 
 		TaggedValue::from_type_or_none(&guaranteed_type)

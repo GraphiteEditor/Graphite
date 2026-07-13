@@ -33,6 +33,8 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) where_clause: Option<WhereClause>,
 	pub(crate) input: Input,
 	pub(crate) output_type: Type,
+	/// The peeled `Item` element of `output_type`, if the node returns `Item<T>`.
+	pub(crate) output_element: Option<Type>,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
@@ -126,8 +128,8 @@ impl ParsedField {
 	pub(crate) fn is_environment(&self) -> bool {
 		self.is_data_field
 			|| matches!(
-				&self.ty,
-				ParsedFieldType::Regular(RegularParsedField {
+				self.ty.regular(),
+				Some(RegularParsedField {
 					value_source: ParsedValueSource::Scope(_),
 					..
 				})
@@ -138,7 +140,78 @@ impl ParsedField {
 #[derive(Clone, Debug)]
 pub enum ParsedFieldType {
 	Regular(RegularParsedField),
+	/// Declared `Item<T>`: a rank-0 cell carrying element `T`; the field's `ty` keeps the full declared type.
+	Item {
+		field: RegularParsedField,
+		element: Type,
+	},
+	/// Declared `List<T>`: a whole-list wire carrying element `T`; the field's `ty` keeps the full declared type.
+	List {
+		field: RegularParsedField,
+		element: Type,
+	},
 	Node(NodeParsedField),
+}
+
+/// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
+fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
+	let syn::Type::Path(type_path) = ty else { return None };
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != wrapper {
+		return None;
+	}
+
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else { return None };
+	match arguments.args.first()? {
+		syn::GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	}
+}
+
+pub(crate) fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "Item")
+}
+
+pub(crate) fn peel_list(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "List")
+}
+
+impl ParsedFieldType {
+	/// Classifies a value field by its declared type: `Item<T>` and `List<T>` become the ranked variants carrying
+	/// element `T` (the field keeps the full declared type), and anything else stays `Regular`.
+	pub(crate) fn classify(field: RegularParsedField) -> ParsedFieldType {
+		if let Some(element) = peel_item(&field.ty) {
+			ParsedFieldType::Item { field, element }
+		} else if let Some(element) = peel_list(&field.ty) {
+			ParsedFieldType::List { field, element }
+		} else {
+			ParsedFieldType::Regular(field)
+		}
+	}
+
+	/// The shared value-field data, present for every value field (`Regular`, `Item`, `List`) but not a lazy `Node`.
+	pub fn regular(&self) -> Option<&RegularParsedField> {
+		match self {
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => Some(field),
+			ParsedFieldType::Node(_) => None,
+		}
+	}
+
+	/// The element type `T` of a rank-0 `Item<T>` field, or `None` for any other shape.
+	pub fn item_element(&self) -> Option<&Type> {
+		match self {
+			ParsedFieldType::Item { element, .. } => Some(element),
+			_ => None,
+		}
+	}
+
+	/// The element type `T` of a whole-list `List<T>` field, or `None` for any other shape.
+	pub fn list_element(&self) -> Option<&Type> {
+		match self {
+			ParsedFieldType::List { element, .. } => Some(element),
+			_ => None,
+		}
+	}
 }
 
 /// A single numeric endpoint within a `#[soft(..)]` or `#[hard(..)]` bounds range.
@@ -263,6 +336,8 @@ pub struct RegularParsedField {
 pub struct NodeParsedField {
 	pub input_type: Type,
 	pub output_type: Type,
+	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
+	pub output_element: Option<Type>,
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
@@ -525,6 +600,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 
 	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
+	let output_element = peel_item(&output_type);
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let description = input_fn
@@ -553,6 +629,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 		fn_generics,
 		input,
 		output_type,
+		output_element,
 		is_async,
 		fields,
 		where_clause,
@@ -831,11 +908,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
+		let output_element = peel_item(&output_type);
+
 		Ok(ParsedField {
 			pat_ident,
 			ty: ParsedFieldType::Node(NodeParsedField {
 				input_type,
 				output_type,
+				output_element,
 				implementations,
 			}),
 			name,
@@ -876,7 +956,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 		Ok(ParsedField {
 			pat_ident,
-			ty: ParsedFieldType::Regular(RegularParsedField {
+			ty: ParsedFieldType::classify(RegularParsedField {
 				exposed,
 				number_soft_min,
 				number_soft_max,
@@ -1116,6 +1196,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
@@ -1186,6 +1267,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
+			output_element: None,
 			is_async: false,
 			fields: vec![
 				ParsedField {
@@ -1196,6 +1278,7 @@ mod tests {
 					ty: ParsedFieldType::Node(NodeParsedField {
 						input_type: parse_quote!(Footprint),
 						output_type: parse_quote!(T),
+						output_element: None,
 						implementations: Punctuated::new(),
 					}),
 					number_display_decimal_places: None,
@@ -1270,6 +1353,7 @@ mod tests {
 				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
@@ -1336,6 +1420,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<P>>),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
@@ -1414,6 +1499,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
@@ -1495,6 +1581,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<CPU>>),
+			output_element: None,
 			is_async: true,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
@@ -1561,6 +1648,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
+			output_element: None,
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),

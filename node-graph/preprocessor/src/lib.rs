@@ -150,9 +150,9 @@ impl Preprocessor {
 					if inputs.len() != 1
 						&& let Some(list_input) = collapse_item_list_pair(inputs)
 					{
-						let element_name = {
-							let name = list_input.nested_type().identifier_name();
-							name.strip_prefix("List<").and_then(|rest| rest.strip_suffix('>')).unwrap_or(&name).to_string()
+						let element_name = match list_input.nested_type() {
+							Type::List(element) => element.identifier_name(),
+							nested => nested.identifier_name(),
 						};
 						let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
 
@@ -189,12 +189,11 @@ impl Preprocessor {
 								let input_ty = input.nested_type();
 
 								// A single-registered ranked field gets the input adapter, so ranked wires pass through and convertible elements cast
-								let type_name = input_ty.identifier_name();
-								let element_name = type_name
-									.strip_prefix("Item<")
-									.or_else(|| type_name.strip_prefix("List<"))
-									.and_then(|rest| rest.strip_suffix('>'))
-									.or_else(|| (type_name == "ListDyn").then_some("ListDyn"));
+								let element_name = match input_ty {
+									Type::Item(element) => Some(element.identifier_name()),
+									Type::List(element) => Some(element.identifier_name()),
+									_ => (input_ty.identifier_name() == "ListDyn").then(|| "ListDyn".to_string()),
+								};
 								if let Some(element_name) = element_name {
 									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
 									if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
@@ -314,12 +313,13 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io.inputs.get(index)) else {
 				return NodeInput::value(TaggedValue::None, true);
 			};
-			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
+			let ty = ty.clone().normalize_rank();
+			let exposed = if index == 0 { ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 			match &field.value_source {
 				RegistryValueSource::None => {}
 				RegistryValueSource::Default(data) => {
-					if let Some(custom_default) = TaggedValue::from_primitive_string(data, ty) {
+					if let Some(custom_default) = TaggedValue::from_primitive_string(data, &ty) {
 						return NodeInput::value(custom_default, exposed);
 					} else {
 						// It is incredibly useful to get a warning when the default type cannot be parsed rather than defaulting to `()`.
@@ -330,22 +330,13 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			};
 
 			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Properties panel widgets
-			if let Type::Concrete(descriptor) = ty
-				&& let Some(element_name) = descriptor.name.strip_prefix("core_types::list::Item<").and_then(|inner| inner.strip_suffix('>'))
+			if let Type::Item(element) = &ty
+				&& let Some(type_default) = TaggedValue::from_type(element)
 			{
-				let element_type = Type::Concrete(TypeDescriptor {
-					id: None,
-					name: element_name.to_string().into(),
-					alias: None,
-					size: 0,
-					align: 0,
-				});
-				if let Some(type_default) = TaggedValue::from_type(&element_type) {
-					return NodeInput::value(type_default, exposed);
-				}
+				return NodeInput::value(type_default, exposed);
 			}
 
-			if let Some(type_default) = TaggedValue::from_type(ty) {
+			if let Some(type_default) = TaggedValue::from_type(&ty) {
 				return NodeInput::value(type_default, exposed);
 			}
 
@@ -376,9 +367,9 @@ fn collapse_item_list_pair(types: &HashSet<Type>) -> Option<&Type> {
 	}
 
 	for (item, list) in [(first, second), (second, first)] {
-		if let Type::List(element) = list.nested_type()
-			&& let Type::Concrete(element_descriptor) = element.as_ref()
-			&& item.nested_type().item_element_name() == Some(&element_descriptor.name)
+		if let Type::List(list_element) = list.nested_type()
+			&& let Type::Item(item_element) = item.nested_type()
+			&& list_element == item_element
 		{
 			return Some(list);
 		}

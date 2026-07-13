@@ -228,7 +228,7 @@ fn qr_code(
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	size: Item<f64>,
 	error_correction: Item<QRCodeErrorCorrectionLevel>,
-	#[default(false)] individual_squares: Item<bool>,
+	individual_squares: Item<bool>,
 ) -> Item<Vector> {
 	let (text, error_correction) = (text.into_element(), error_correction.into_element());
 	let (has_size, size, individual_squares) = (*has_size.element(), *size.element(), *individual_squares.element());

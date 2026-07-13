@@ -55,10 +55,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 
 			// Check if this generic is used in any data field type
-			data_fields.iter().any(|field| match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => type_contains_ident(ty, generic_ident),
-				_ => false,
-			})
+			data_fields
+				.iter()
+				.any(|field| field.ty.regular().is_some_and(|regular| type_contains_ident(&regular.ty, generic_ident)))
 		})
 		.cloned()
 		.collect();
@@ -116,9 +115,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// Generate struct fields: data fields (concrete types) + regular fields (generic types)
 	let data_field_defs = data_fields.iter().map(|field| {
 		let name = &field.pat_ident.ident;
-		let ty = match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
-			_ => unreachable!("Data fields must be Regular types, not Node types"),
+		let Some(RegularParsedField { ty, .. }) = field.ty.regular() else {
+			unreachable!("Data fields cannot be lazy `Node` inputs")
 		};
 		quote! { pub(super) #name: #ty }
 	});
@@ -135,12 +133,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let data_field_idents: Vec<_> = data_fields.iter().map(|f| &f.pat_ident).collect();
 	let data_field_types: Vec<_> = data_fields
 		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
-				let ty = ty.clone();
-				quote!(&#ty)
-			}
-			_ => unreachable!("Data fields must be Regular types, not Node types"),
+		.map(|field| {
+			let Some(RegularParsedField { ty, .. }) = field.ty.regular() else {
+				unreachable!("Data fields cannot be lazy `Node` inputs")
+			};
+			let ty = ty.clone();
+			quote!(&#ty)
 		})
 		.collect();
 
@@ -148,11 +146,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let field_types: Vec<_> = regular_fields
 		.iter()
 		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
 			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match parsed.is_async {
 				true => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
 				false => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = #output_type>),
 			},
+			value => value.regular().expect("a non-node field is a value field").ty.clone(),
 		})
 		.collect();
 
@@ -169,8 +167,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let value_sources: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { value_source, .. }) => match value_source {
+		.map(|field| match field.ty.regular() {
+			Some(RegularParsedField { value_source, .. }) => match value_source {
 				ParsedValueSource::Default(data) => {
 					// Check if the data is a string literal by parsing the token stream
 					let data_str = data.to_string();
@@ -189,17 +187,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 				_ => quote!(RegistryValueSource::None),
 			},
-			_ => quote!(RegistryValueSource::None),
+			None => quote!(RegistryValueSource::None),
 		})
 		.collect();
 
 	let default_types: Vec<_> = regular_fields
 		.iter()
 		.enumerate()
-		.map(|(index, field)| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField {
-				implementations, ty, value_source, ..
-			}) => match implementations.first() {
+		.map(|(index, field)| {
+			let Some(RegularParsedField { implementations, value_source, .. }) = field.ty.regular() else {
+				return quote!(None);
+			};
+			match implementations.first() {
 				// A primary's scalar `#[default]` parses as a bare element (unranked, promoted at resolution); without one it defaults to an empty List
 				Some(implementation_ty) if Some(index) == primary_regular_index && element_wise => match value_source {
 					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
@@ -207,34 +206,34 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				},
 				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
 				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
-				// without one it keeps the declared `Item<T>` wire type tagged with the element's alias (so the rank-0 Properties widget still dispatches, e.g. `Progression`), and `node_inputs` peels to `T` if no `Item` type default exists
-				None => match peel_item(ty) {
-					Some(element_ty)
-						if !fn_generics
-							.iter()
-							.any(|generic| matches!(generic, syn::GenericParam::Type(param) if type_contains_ident(&element_ty, &param.ident))) =>
+				// without one it keeps the structural `Type::Item` wire type with the element's alias on its descriptor (so the rank-0 Properties widget still dispatches, e.g. `Progression`), and `node_inputs` peels to `T` if no `Item` type default exists
+				None => match &field.ty {
+					ParsedFieldType::Item {
+						field: RegularParsedField { value_source, .. },
+						element,
+					} if !fn_generics
+						.iter()
+						.any(|generic| matches!(generic, syn::GenericParam::Type(param) if type_contains_ident(element, &param.ident))) =>
 					{
 						// The fn's lifetimes are elided since the metadata registration fn declares none of them
-						let ty = substitute_lifetimes(ty.clone(), "_");
-						let element_ty = substitute_lifetimes(element_ty, "_");
+						let element = substitute_lifetimes(element.clone(), "_");
 						match value_source {
-							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element_ty))),
-							_ => quote!(Some(concrete!(#ty, #element_ty))),
+							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element))),
+							_ => quote!(Some(#core_types::item!(#element, #element))),
 						}
 					}
 					_ => quote!(None),
 				},
-			},
-			_ => quote!(None),
+			}
 		})
 		.collect();
 
 	let bound_values = |select: fn(&RegularParsedField) -> &Option<NumberBound>| -> Vec<_> {
 		regular_fields
 			.iter()
-			.map(|field| match &field.ty {
-				ParsedFieldType::Regular(regular) => select(regular).as_ref().map_or(quote!(None), |bound| quote!(Some(#bound))),
-				_ => quote!(None),
+			.map(|field| match field.ty.regular() {
+				Some(regular) => select(regular).as_ref().map_or(quote!(None), |bound| quote!(Some(#bound))),
+				None => quote!(None),
 			})
 			.collect()
 	};
@@ -244,9 +243,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let number_hard_max_values = bound_values(|field| &field.number_hard_max);
 	let number_mode_range_values: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { number_mode_range, .. }) => quote!(#number_mode_range),
-			_ => quote!(false),
+		.map(|field| match field.ty.regular() {
+			Some(RegularParsedField { number_mode_range, .. }) => quote!(#number_mode_range),
+			None => quote!(false),
 		})
 		.collect();
 	let number_display_decimal_places: Vec<_> = regular_fields
@@ -259,9 +258,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { exposed, .. }) => quote!(#exposed),
-			_ => quote!(true),
+		.map(|field| match field.ty.regular() {
+			Some(RegularParsedField { exposed, .. }) => quote!(#exposed),
+			None => quote!(true),
 		})
 		.collect();
 
@@ -269,18 +268,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let eval_args = regular_fields.iter().map(|field| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
-			ParsedFieldType::Regular { .. } => {
-				quote! { let #name = self.#name.eval(__input.clone()).await; }
-			}
 			ParsedFieldType::Node { .. } => {
 				quote! { let #name = &self.#name; }
+			}
+			_ => {
+				quote! { let #name = self.#name.eval(__input.clone()).await; }
 			}
 		}
 	});
 
 	// Only regular fields can have min/max constraints
-	let min_max_args = regular_fields.iter().map(|field| match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { number_hard_min, number_hard_max, .. }) => {
+	let min_max_args = regular_fields.iter().map(|field| match field.ty.regular() {
+		Some(RegularParsedField { number_hard_min, number_hard_max, .. }) => {
 			let name = &field.pat_ident.ident;
 			let mut tokens = quote!();
 			if let Some(min) = number_hard_min {
@@ -296,15 +295,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			tokens
 		}
-		ParsedFieldType::Node { .. } => quote!(),
+		None => quote!(),
 	});
 
 	let all_implementation_types = fields.iter().flat_map(|field| match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => implementations.iter().cloned().collect::<Vec<_>>(),
 		ParsedFieldType::Node(NodeParsedField { implementations, .. }) => implementations
 			.iter()
 			.flat_map(|implementation| [implementation.input.clone(), implementation.output.clone()])
-			.collect(),
+			.collect::<Vec<_>>(),
+		value => value.regular().map_or_else(Vec::new, |regular| regular.implementations.iter().cloned().collect()),
 	});
 	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
 
@@ -315,18 +314,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		regular_fields
 			.iter()
 			.filter_map(|field| {
-				let ParsedFieldType::Regular(RegularParsedField {
+				let RegularParsedField {
 					ty, number_hard_min, number_hard_max, ..
-				}) = &field.ty
-				else {
-					return None;
-				};
+				} = field.ty.regular()?;
 				if number_hard_min.is_none() && number_hard_max.is_none() {
 					return None;
 				}
 
-				let ty = match (peel_item(ty), primary_wire) {
-					(Some(element_ty), Some(wrap)) if !field.is_environment() => wrap.apply(core_types, &element_ty),
+				let ty = match (&field.ty, primary_wire) {
+					(ParsedFieldType::Item { element, .. }, Some(wrap)) if !field.is_environment() => wrap.apply(core_types, element),
 					_ => ty.clone(),
 				};
 				Some(quote!(#ty: #core_types::misc::Clampable))
@@ -344,23 +340,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.zip(node_generics.iter())
 			.zip(future_idents.iter())
 			.enumerate()
-			.map(|(index, ((field, name), fut_ident))| match (&field.ty, *is_async) {
-				(ParsedFieldType::Regular(RegularParsedField { ty, .. }), _) => {
-					let ty = match (peel_item(ty), primary_wire) {
-						// An `Item<T>`-declared connector contributes its element type to the wire wrapping
-						(Some(element_ty), Some(wrap)) if !field.is_environment() => wrap.apply(core_types, &element_ty),
-						_ => ty.clone(),
-					};
-					let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
-					quote!(
-						#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
-						for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
-						#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
-					)
-				}
-				(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
+			.map(|(index, ((field, name), fut_ident))| match &field.ty {
+				ParsedFieldType::Node(NodeParsedField {
+					input_type,
+					output_type,
+					output_element,
+					..
+				}) => {
+					if !*is_async {
+						unreachable!("Found node which takes an impl Node<> input but is not async")
+					}
 					let output_type = if list_content && Some(index) == primary_regular_index {
-						let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
+						let element_ty = output_element.clone().unwrap_or_else(|| output_type.clone());
 						WireWrapper::List.apply(core_types, &element_ty)
 					} else {
 						output_type.clone()
@@ -370,7 +361,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
 					)
 				}
-				(ParsedFieldType::Node { .. }, false) => unreachable!("Found node which takes an impl Node<> input but is not async"),
+				value => {
+					let declared = &value.regular().expect("a non-node field is a value field").ty;
+					let ty = match (value, primary_wire) {
+						// An `Item<T>`-declared connector contributes its element type to the wire wrapping
+						(ParsedFieldType::Item { element, .. }, Some(wrap)) if !field.is_environment() => wrap.apply(core_types, element),
+						_ => declared.clone(),
+					};
+					let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
+					quote!(
+						#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
+						for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
+						#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
+					)
+				}
 			})
 			.collect()
 	};
@@ -396,12 +400,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// The mapped variant clones bare parameters and clones ranked connectors' items per frame slot, so both need Clone
 	let param_clone_clauses: Vec<TokenStream2> = regular_fields
 		.iter()
-		.filter_map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => match peel_item(ty) {
-				Some(element_ty) => Some(quote!(#element_ty: Clone)),
-				None => Some(quote!(#ty: Clone)),
-			},
-			ParsedFieldType::Node(_) => None,
+		.filter_map(|field| {
+			let RegularParsedField { ty, .. } = field.ty.regular()?;
+			Some(match &field.ty {
+				ParsedFieldType::Item { element, .. } => quote!(#element: Clone),
+				_ => quote!(#ty: Clone),
+			})
 		})
 		.collect();
 	let mapped_struct_where_clause = mapped_variant.then(|| {
@@ -486,7 +490,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let mapped_eval_impl = mapped_variant.then(|| {
 		let ranked_names: Vec<_> = regular_fields
 			.iter()
-			.filter(|field| !field.is_environment() && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+			.filter(|field| !field.is_environment() && matches!(&field.ty, ParsedFieldType::Item { .. }))
 			.map(|field| &field.pat_ident.ident)
 			.collect();
 
@@ -495,11 +499,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.map(|field| {
 				let name = &field.pat_ident.ident;
 				match &field.ty {
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.is_environment() && peel_item(ty).is_some() => quote! {
+					ParsedFieldType::Node(_) => quote!(#name),
+					ParsedFieldType::Item { .. } if !field.is_environment() => quote! {
 						#name.clone_item(__slot_index.min(#name.len() - 1)).expect("A zip slot index is always within bounds")
 					},
-					ParsedFieldType::Regular(_) => quote!(#name.clone()),
-					ParsedFieldType::Node(_) => quote!(#name),
+					_ => quote!(#name.clone()),
 				}
 			})
 			.collect();
@@ -513,7 +517,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 
 		// An expander kernel (returning `List<U>`) flat-maps under the frame per the rank-2 force-flatten rule; a map kernel pushes one item per slot
-		let (mapped_output_type, initial_output, collect_result) = match peel_item(output_type) {
+		let (mapped_output_type, initial_output, collect_result) = match parsed.output_element.as_ref() {
 			Some(element_ty) => (
 				quote!(#core_types::list::List<#element_ty>),
 				quote!(#core_types::list::List::with_capacity(__frame_length)),
@@ -558,7 +562,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		let ranked_names: Vec<_> = regular_fields
 			.iter()
-			.filter(|field| !field.is_environment() && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+			.filter(|field| !field.is_environment() && matches!(&field.ty, ParsedFieldType::Item { .. }))
 			.map(|field| &field.pat_ident.ident)
 			.collect();
 
@@ -571,16 +575,16 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					return quote!(&__stub);
 				}
 				match &field.ty {
-					ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.is_environment() && peel_item(ty).is_some() => quote! {
+					ParsedFieldType::Node(_) => quote!(#name),
+					ParsedFieldType::Item { .. } if !field.is_environment() => quote! {
 						#name.clone_item(__slot_index.min(#name.len() - 1)).expect("A zip slot index is always within bounds")
 					},
-					ParsedFieldType::Regular(_) => quote!(#name.clone()),
-					ParsedFieldType::Node(_) => quote!(#name),
+					_ => quote!(#name.clone()),
 				}
 			})
 			.collect();
 
-		let (list_content_output_type, initial_output, collect_result) = match peel_item(output_type) {
+		let (list_content_output_type, initial_output, collect_result) = match parsed.output_element.as_ref() {
 			Some(element_ty) => (
 				quote!(#core_types::list::List<#element_ty>),
 				quote!(#core_types::list::List::with_capacity(__frame_length)),
@@ -885,10 +889,9 @@ fn generate_node_input_references(
 
 		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
 			let mut ty = match &parsed_input.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
-				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
-			}
-			.clone();
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
+				value => value.regular().expect("a non-node field is a value field").ty.clone(),
+			};
 
 			// The element-wise primary input's document wire carries the mapped List form
 			if Some(input_index) == parsed.primary_input_field().map(|(primary_index, _)| primary_index)
@@ -1014,8 +1017,9 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	let (_, field) = parsed.primary_input_field()?;
 
 	match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => peel_item(ty),
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => peel_item(output_type),
+		ParsedFieldType::Node(NodeParsedField { output_element, .. }) => output_element.clone(),
+		ParsedFieldType::Item { element, .. } => Some(element.clone()),
+		_ => None,
 	}
 }
 
@@ -1032,7 +1036,7 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 
 	let mut input_fields = parsed.fields.iter().filter(|field| !field.is_environment());
 	match input_fields.next().map(|field| &field.ty) {
-		Some(ParsedFieldType::Node(_)) => input_fields.any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some())),
+		Some(ParsedFieldType::Node(_)) => input_fields.any(|field| matches!(&field.ty, ParsedFieldType::Item { .. })),
 		_ => true,
 	}
 }
@@ -1044,7 +1048,7 @@ fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
 	}
 
 	let Some((primary_index, primary)) = parsed.primary_input_field() else { return false };
-	let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &primary.ty else { return false };
+	let Some(RegularParsedField { ty, .. }) = primary.ty.regular() else { return false };
 	if !is_unit_type(ty) {
 		return false;
 	}
@@ -1053,7 +1057,7 @@ fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
 		.fields
 		.iter()
 		.enumerate()
-		.any(|(index, field)| index != primary_index && !field.is_environment() && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some()))
+		.any(|(index, field)| index != primary_index && !field.is_environment() && matches!(&field.ty, ParsedFieldType::Item { .. }))
 }
 
 /// Whether the type is the unit type `()`, which marks a generator with no primary input.
@@ -1064,25 +1068,6 @@ fn is_unit_type(ty: &syn::Type) -> bool {
 /// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).
 fn generates_list_content_variant(parsed: &ParsedNodeFn) -> bool {
 	primary_item_element(parsed).is_some() && matches!(parsed.primary_input_field().map(|(_, field)| &field.ty), Some(ParsedFieldType::Node(_)))
-}
-
-/// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
-fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
-	let syn::Type::Path(type_path) = ty else { return None };
-	let segment = type_path.path.segments.last()?;
-	if segment.ident != wrapper {
-		return None;
-	}
-
-	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else { return None };
-	match arguments.args.first()? {
-		GenericArgument::Type(inner) => Some(inner.clone()),
-		_ => None,
-	}
-}
-
-pub(crate) fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
-	peel_wrapper(ty, "Item")
 }
 
 fn generate_register_node_impl(
@@ -1121,13 +1106,6 @@ fn generate_register_node_impl(
 		.iter()
 		.map(|field| {
 			match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { implementations, ty, .. }) => {
-					if !implementations.is_empty() {
-						implementations.iter().map(|ty| (&unit, ty)).collect()
-					} else {
-						vec![(&unit, ty)]
-					}
-				}
 				ParsedFieldType::Node(NodeParsedField {
 					implementations,
 					input_type,
@@ -1138,6 +1116,14 @@ fn generate_register_node_impl(
 						implementations.iter().map(|impl_| (&impl_.input, &impl_.output)).collect()
 					} else {
 						vec![(input_type, output_type)]
+					}
+				}
+				value => {
+					let RegularParsedField { implementations, ty, .. } = value.regular().expect("a non-node field is a value field");
+					if !implementations.is_empty() {
+						implementations.iter().map(|ty| (&unit, ty)).collect()
+					} else {
+						vec![(&unit, ty)]
 					}
 				}
 			}
@@ -1177,10 +1163,10 @@ fn generate_register_node_impl(
 				let field_name = field_names[j];
 				let (input_type, output_type) = &types[i.min(types.len() - 1)];
 				// Rankedness comes from the field's declared type; its #[implementations(...)] entries are bare element types
-				let field_is_ranked = !regular_fields[j].is_environment() && matches!(&regular_fields[j].ty, ParsedFieldType::Regular(RegularParsedField { ty, .. }) if peel_item(ty).is_some());
+				let field_is_ranked = !regular_fields[j].is_environment() && matches!(&regular_fields[j].ty, ParsedFieldType::Item { .. });
 				let is_lazy_primary = Some(j) == primary_regular_index && matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
 				// The list-content variant lifts its lazy primary connector's `Item<E>` content to `List<E>`; ranked params follow the variant's param wrap.
-				// A `List`-wrapped signature is also spelled with bare `List<...>` tokens, which `fn_type_fut!` matches syntactically to construct the structural form.
+				// A ranked signature is spelled with bare `Item<...>`/`List<...>` tokens, which `fn_type_fut!` matches syntactically to construct the structural form.
 				let (output_type, signature_type) = if is_lazy_primary && variant == RegisterVariant::ListContent {
 					let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 					(WireWrapper::List.apply(&gcore, &element_ty), Some(quote!(List<#element_ty>)))
@@ -1188,8 +1174,11 @@ fn generate_register_node_impl(
 					match (field_is_ranked, variant.param_wrap()) {
 						(true, Some(wrap)) => {
 							let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
-							let signature = matches!(wrap, WireWrapper::List).then(|| quote!(List<#element_ty>));
-							(wrap.apply(&gcore, &element_ty), signature)
+							let signature = match wrap {
+								WireWrapper::List => quote!(List<#element_ty>),
+								WireWrapper::Item => quote!(Item<#element_ty>),
+							};
+							(wrap.apply(&gcore, &element_ty), Some(signature))
 						}
 						_ => (output_type.clone(), None),
 					}

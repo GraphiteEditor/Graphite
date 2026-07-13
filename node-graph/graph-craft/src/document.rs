@@ -121,6 +121,18 @@ impl OriginalLocation {
 	}
 }
 impl DocumentNode {
+	/// Normalizes this node's stored types (call argument, `Import` input types, `TypeDefault` value payloads, and any nested network) to their structural form.
+	/// Applied once at ingestion (document migration and clipboard paste) so no name-encoded ranked type enters a live document.
+	pub fn normalize_stored_types(&mut self) {
+		self.call_argument = self.call_argument.clone().normalize_rank();
+		for input in &mut self.inputs {
+			normalize_input_stored_type(input);
+		}
+		if let Some(network) = self.implementation.get_network_mut() {
+			network.normalize_stored_types();
+		}
+	}
+
 	/// Locate the input that is a [`NodeInput::Import`] at index `offset` and replace it with a [`NodeInput::Node`].
 	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, source: impl Iterator<Item = Source>, skip: usize) {
 		let (index, _) = self
@@ -220,7 +232,7 @@ pub enum DocumentNodeMetadata {
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
-			DocumentNodeMetadata::DocumentNodePath => concrete!(core_types::list::Item<core_types::list::NodeIdPath>),
+			DocumentNodeMetadata::DocumentNodePath => item!(core_types::list::NodeIdPath),
 		}
 	}
 }
@@ -235,10 +247,10 @@ impl NodeInput {
 		Self::Value { tagged_value, exposed }
 	}
 
-	/// Constructs a `NodeInput::Value` whose tagged value is `TaggedValue::TypeDefault(td)`, recording only the
+	/// Constructs a `NodeInput::Value` whose tagged value is `TaggedValue::TypeDefault(ty)`, recording only the
 	/// type so the runtime materializes its default rather than baking a placeholder value into the saved document.
-	pub fn type_default(td: core_types::TypeDescriptor, exposed: bool) -> Self {
-		Self::value(TaggedValue::TypeDefault(td), exposed)
+	pub fn type_default(ty: Type, exposed: bool) -> Self {
+		Self::value(TaggedValue::TypeDefault(ty.normalize_rank()), exposed)
 	}
 
 	pub const fn import(import_type: Type, import_index: usize) -> Self {
@@ -270,8 +282,8 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
-			// Documents saved before the structural `List` form persist name-encoded import types, normalized here on ingestion
-			NodeInput::Import { import_type, .. } => import_type.clone().normalize_rank(),
+			// Stored import types are normalized to their structural form once at document migration
+			NodeInput::Import { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
 			NodeInput::Reflection(_) => concrete!(Metadata),
@@ -724,7 +736,33 @@ impl ScopeChain<'_> {
 }
 
 /// Functions for compiling the network
+/// Normalizes the ranked types an input can store: an `Import`'s type or a value's `TypeDefault` payload.
+fn normalize_input_stored_type(input: &mut NodeInput) {
+	match input {
+		NodeInput::Import { import_type, .. } => *import_type = import_type.clone().normalize_rank(),
+		NodeInput::Value { tagged_value, .. } => {
+			if let TaggedValue::TypeDefault(ty) = &**tagged_value {
+				let normalized = ty.clone().normalize_rank();
+				if normalized != *ty {
+					*tagged_value = TaggedValue::TypeDefault(normalized).into();
+				}
+			}
+		}
+		_ => {}
+	}
+}
+
 impl NodeNetwork {
+	/// Normalizes every stored type in the network (exports and each node's types) to the structural form, recursively.
+	pub fn normalize_stored_types(&mut self) {
+		for export in &mut self.exports {
+			normalize_input_stored_type(export);
+		}
+		for node in self.nodes.values_mut() {
+			node.normalize_stored_types();
+		}
+	}
+
 	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.exports.iter_mut().for_each(|output| {

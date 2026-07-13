@@ -1,11 +1,10 @@
 use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::generic;
+use graph_craft::{concrete, item};
 use graphene_std::Context;
 use graphene_std::ContextFeatures;
-use graphene_std::list::Item;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
@@ -115,7 +114,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 			..Default::default()
 		},
 	];
-	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(Item<&PlatformEditorApi>)))];
+	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), item!(&PlatformEditorApi)))];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],

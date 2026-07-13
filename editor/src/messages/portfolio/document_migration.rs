@@ -7,9 +7,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
-use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graph_craft::{Type, item};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::ProtoNodeIdentifier;
@@ -1129,6 +1129,7 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
+	document.network_interface.document_network_mut().normalize_stored_types();
 
 	let network = document.network_interface.document_network().clone();
 
@@ -2616,11 +2617,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let modification = modification.clone();
 			let was_exposed = *exposed;
 
-			document.network_interface.set_input(
-				&InputConnector::node(*node_id, 0),
-				NodeInput::type_default(descriptor!(graphene_std::list::Item<graphene_std::vector::Vector>), true),
-				network_path,
-			);
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::type_default(item!(graphene_std::vector::Vector), true), network_path);
 
 			if !was_exposed {
 				document
@@ -2665,8 +2664,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				.input_from_connector(&InputConnector::node(*node_id, index), network_path)
 				.is_some_and(|stored_input| match stored_input {
 					NodeInput::Value { tagged_value, .. } => match &**tagged_value {
-						TaggedValue::TypeDefault(stored_descriptor) if stored_descriptor.name.starts_with("core_types::list::List<") => {
-							!matches!(definition_input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, TaggedValue::TypeDefault(definition_descriptor) if definition_descriptor.name == stored_descriptor.name))
+						TaggedValue::TypeDefault(stored_type) if matches!(stored_type, Type::List(_)) => {
+							!matches!(definition_input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, TaggedValue::TypeDefault(definition_type) if definition_type == stored_type))
 						}
 						_ => false,
 					},

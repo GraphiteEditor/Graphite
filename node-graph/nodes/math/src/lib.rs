@@ -43,7 +43,7 @@ fn math<T: num_traits::float::Float>(
 	#[implementations(f64, f32)]
 	operand_a: Item<T>,
 	/// A math expression that may incorporate "A" and/or "B", such as `sqrt(A + B) - B^2`.
-	#[default(A + B)]
+	#[default("A + B")]
 	expression: Item<String>,
 	/// The value of "B" when calculating the expression.
 	#[implementations(f64, f32)]
