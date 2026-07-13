@@ -1793,6 +1793,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				false,
 				Color::TRANSPARENT,
 			),
+			(
+				graphene_std::raster_nodes::adjustments::black_and_white::IDENTIFIER,
+				graphene_std::raster_nodes::adjustments::black_and_white::TintInput::INDEX,
+				false,
+				Color::BLACK,
+			),
+			(
+				graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+				graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput::INDEX,
+				false,
+				Color::BLACK,
+			),
+			(
+				graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
+				graphene_std::raster_nodes::std_nodes::empty_image::ColorInput::INDEX,
+				false,
+				Color::WHITE,
+			),
 		];
 		for &(ref identifier, index, is_paint, fallback) in conversions {
 			if reference != DefinitionIdentifier::ProtoNode(identifier.clone()) {
