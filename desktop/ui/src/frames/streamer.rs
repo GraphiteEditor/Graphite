@@ -51,11 +51,6 @@ impl FrameStreamer {
 			return;
 		}
 
-		if buffer.chunks_exact(4).all(|pixel| pixel[3] == 0) {
-			tracing::debug!("Skipping fully transparent {width}x{height} frame from CEF");
-			return;
-		}
-
 		let Some(claim) = self.0.sequence.claim() else {
 			return;
 		};

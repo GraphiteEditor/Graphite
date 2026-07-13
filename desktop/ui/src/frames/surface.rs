@@ -33,6 +33,11 @@ impl FrameSurface {
 			return None;
 		};
 
+		if buffer.chunks_exact(4).take(width as usize).all(|pixel| pixel[3] == 0) {
+			tracing::debug!("Skipping fully transparent frame");
+			return None;
+		}
+
 		if slot.as_ref().is_none_or(|texture| texture.width() != width || texture.height() != height) {
 			*slot = Some(self.device.create_texture(&wgpu::TextureDescriptor {
 				label: Some("CEF Texture"),
@@ -96,7 +101,7 @@ impl FrameSurface {
 					sample_count: 1,
 					dimension: wgpu::TextureDimension::D2,
 					format: imported.format(),
-					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
 					view_formats: &[],
 				});
 				encoder.copy_texture_to_texture(
@@ -128,7 +133,7 @@ impl FrameSurface {
 					sample_count: 1,
 					dimension: wgpu::TextureDimension::D2,
 					format: imported.format(),
-					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
 					view_formats: &[],
 				});
 				let size = wgpu::Extent3d {
@@ -151,12 +156,21 @@ impl FrameSurface {
 			}
 		};
 
+		let blank_check = blank_check::encode_readback(&self.device, &mut encoder, &output);
+
 		let submission = self.queue.submit([encoder.finish()]);
+
+		let blank_check = blank_check.map();
 
 		let _ = self.device.poll(wgpu::PollType::Wait {
 			submission_index: Some(submission),
 			timeout: None,
 		});
+
+		if blank_check.is_blank() {
+			tracing::debug!("Skipping fully transparent accelerated frame");
+			return None;
+		}
 
 		let Ok(mut slot) = self.slot.lock() else {
 			tracing::error!("Failed to lock the frame surface");
@@ -164,5 +178,86 @@ impl FrameSurface {
 		};
 		*slot = Some(output.clone());
 		Some(output)
+	}
+}
+
+#[cfg(feature = "accelerated_paint")]
+mod blank_check {
+	use std::sync::mpsc;
+
+	const STRIP_BYTES: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+	const STRIP_TEXELS: u32 = STRIP_BYTES / 4;
+
+	pub(super) fn encode_readback(device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture) -> PendingBlankCheck {
+		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+			label: Some("CEF Blank Check"),
+			size: STRIP_BYTES as u64,
+			usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+			mapped_at_creation: false,
+		});
+		let width = texture.width().min(STRIP_TEXELS);
+		encoder.copy_texture_to_buffer(
+			wgpu::TexelCopyTextureInfo {
+				texture,
+				mip_level: 0,
+				origin: wgpu::Origin3d {
+					x: (texture.width() - width) / 2,
+					y: 0,
+					z: 0,
+				},
+				aspect: wgpu::TextureAspect::All,
+			},
+			wgpu::TexelCopyBufferInfo {
+				buffer: &buffer,
+				layout: wgpu::TexelCopyBufferLayout {
+					offset: 0,
+					bytes_per_row: Some(STRIP_BYTES),
+					rows_per_image: None,
+				},
+			},
+			wgpu::Extent3d {
+				width,
+				height: 1,
+				depth_or_array_layers: 1,
+			},
+		);
+		PendingBlankCheck { buffer, width }
+	}
+
+	pub(super) struct PendingBlankCheck {
+		buffer: wgpu::Buffer,
+		width: u32,
+	}
+
+	impl PendingBlankCheck {
+		pub(super) fn map(self) -> MappedBlankCheck {
+			let (sender, receiver) = mpsc::channel();
+			self.buffer.slice(..u64::from(self.width) * 4).map_async(wgpu::MapMode::Read, move |result| {
+				let _ = sender.send(result);
+			});
+			MappedBlankCheck {
+				buffer: self.buffer,
+				width: self.width,
+				receiver,
+			}
+		}
+	}
+
+	pub(super) struct MappedBlankCheck {
+		buffer: wgpu::Buffer,
+		width: u32,
+		receiver: mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
+	}
+
+	impl MappedBlankCheck {
+		pub(super) fn is_blank(self) -> bool {
+			match self.receiver.try_recv() {
+				Ok(Ok(())) => {
+					let slice = self.buffer.slice(..u64::from(self.width) * 4);
+					slice.get_mapped_range().chunks_exact(4).all(|texel| texel[3] == 0)
+				}
+				_ => false,
+			}
+		}
 	}
 }
