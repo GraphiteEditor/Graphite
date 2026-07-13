@@ -15,7 +15,6 @@ async fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
-		Context -> (),
 		Context -> Item<bool>,
 		Context -> Item<u32>,
 		Context -> Item<u64>,

@@ -182,10 +182,9 @@ fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, Str
 				}
 
 				if is_bare_generic(output_type, &parsed.fn_generics) {
-					// A unit row stays legal: the compiler's cache chain composes onto `()` value wires and generator primaries
 					for row in implementations {
 						let output = &row.output;
-						if !ranked(output) && !is_unit_type(output) {
+						if !ranked(output) {
 							violations.push((
 								output.span(),
 								format!(
@@ -538,16 +537,30 @@ mod tests {
 	}
 
 	#[test]
-	fn a_lazy_generic_output_with_ranked_and_unit_rows_passes() {
+	fn a_lazy_generic_output_with_ranked_rows_passes() {
 		let messages = violations(
 			quote::quote!(category("Test")),
 			quote::quote!(
-				fn cache<T>(_: impl Ctx, #[implementations(Context -> (), Context -> Item<f64>, Context -> ListDyn)] value: impl Node<Context, Output = T>) -> T {
+				fn cache<T>(_: impl Ctx, #[implementations(Context -> Item<f64>, Context -> ListDyn)] value: impl Node<Context, Output = T>) -> T {
 					T::default()
 				}
 			),
 		);
 		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn a_lazy_unit_row_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn cache<T>(_: impl Ctx, #[implementations(Context -> (), Context -> Item<f64>)] value: impl Node<Context, Output = T>) -> T {
+					T::default()
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("row output `()` of the lazy input `value` must be ranked"), "{messages:?}");
 	}
 
 	#[test]

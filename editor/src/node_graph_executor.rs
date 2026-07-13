@@ -953,11 +953,17 @@ mod test {
 				let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
 				for input in &mut node.inputs {
 					let node_id = NodeId::new();
-					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
-					monitor_nodes.push((old_input, node_id));
 					path.push(node_id);
 					monitor_node_ids.push(path.clone());
 					path.pop();
+
+					// A None value is a unit wire with nothing to record and no Monitor row, so its slot stays a dead path that introspects as absent
+					if matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None)) {
+						continue;
+					}
+
+					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+					monitor_nodes.push((old_input, node_id));
 				}
 				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
 					path.push(*id);
