@@ -10,16 +10,15 @@ use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, 
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::ProtoNodeIdentifier;
-use graphene_std::list::List;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::BoxCorners;
-use graphene_std::vector::style::{DashPattern, FillChoice, PaintOrder, StrokeAlign};
-use graphene_std::{Color, Graphic};
+use graphene_std::vector::style::{DashPattern, PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1615,9 +1614,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			Some(TaggedValue::LegacyFill(old_fill)) => {
 				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
-					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::FillChoice(FillChoice::None),
-					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::FillChoice(FillChoice::Solid(*color)),
-					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::FillChoice(FillChoice::Gradient(gradient.stops.clone())),
+					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
+					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
+					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
 				};
 				document
 					.network_interface
@@ -1754,76 +1753,51 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// TODO: Eventually remove this migration document upgrade code
-	// Paint moved to the `FillChoice` value type: paint inputs holding plain color/gradient values convert to it,
-	// while a legacy "no color" (`FillChoice::None` restored by the deserializer) on plain color connectors becomes a color
+	// A legacy "no color" on a plain color connector (`TaggedValue::no_paint()` restored by the deserializer) becomes a color,
+	// since only paint connectors keep the no-paint choice
 	{
-		let migrate_paint_input = |input: &NodeInput| -> Option<NodeInput> {
-			let NodeInput::Value { tagged_value, exposed } = input else { return None };
-			let choice = match &*tagged_value.clone().into_inner() {
-				TaggedValue::Color(color) => FillChoice::Solid(*color),
-				TaggedValue::Gradient(stops) => FillChoice::Gradient(stops.clone()),
-				_ => return None,
-			};
-			Some(NodeInput::value(TaggedValue::FillChoice(choice), *exposed))
-		};
 		let migrate_color_input = |input: &NodeInput, fallback: Color| -> Option<NodeInput> {
 			let NodeInput::Value { tagged_value, exposed } = input else { return None };
-			let TaggedValue::FillChoice(choice) = &*tagged_value.clone().into_inner() else { return None };
-			Some(NodeInput::value(TaggedValue::Color(choice.as_solid().unwrap_or(fallback)), *exposed))
+			if !tagged_value.is_no_paint() {
+				return None;
+			}
+			Some(NodeInput::value(TaggedValue::Color(fallback), *exposed))
 		};
 
-		let conversions: &[(ProtoNodeIdentifier, usize, bool, Color)] = &[
-			(
-				graphene_std::vector::fill::IDENTIFIER,
-				graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX,
-				true,
-				Color::BLACK,
-			),
-			(
-				graphene_std::vector::stroke::IDENTIFIER,
-				graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX,
-				true,
-				Color::BLACK,
-			),
-			(graphene_std::vector::fill::IDENTIFIER, graphene_std::vector::fill::BackupColorInput::INDEX, false, Color::BLACK),
+		let conversions: &[(ProtoNodeIdentifier, usize, Color)] = &[
+			(graphene_std::vector::fill::IDENTIFIER, graphene_std::vector::fill::BackupColorInput::INDEX, Color::BLACK),
 			(
 				graphene_std::artboard::create_artboard::IDENTIFIER,
 				graphene_std::artboard::create_artboard::BackgroundInput::INDEX,
-				false,
 				Color::WHITE,
 			),
 			(
 				graphene_std::math_nodes::color_value::IDENTIFIER,
 				graphene_std::math_nodes::color_value::ColorInput::INDEX,
-				false,
 				Color::TRANSPARENT,
 			),
 			(
 				graphene_std::raster_nodes::adjustments::black_and_white::IDENTIFIER,
 				graphene_std::raster_nodes::adjustments::black_and_white::TintInput::INDEX,
-				false,
 				Color::BLACK,
 			),
 			(
 				graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
 				graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput::INDEX,
-				false,
 				Color::BLACK,
 			),
 			(
 				graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
 				graphene_std::raster_nodes::std_nodes::empty_image::ColorInput::INDEX,
-				false,
 				Color::WHITE,
 			),
 		];
-		for &(ref identifier, index, is_paint, fallback) in conversions {
+		for &(ref identifier, index, fallback) in conversions {
 			if reference != DefinitionIdentifier::ProtoNode(identifier.clone()) {
 				continue;
 			}
 			let Some(input) = node.inputs.get(index) else { continue };
-			let migrated = if is_paint { migrate_paint_input(input) } else { migrate_color_input(input, fallback) };
-			if let Some(migrated) = migrated {
+			if let Some(migrated) = migrate_color_input(input, fallback) {
 				document.network_interface.set_input(&InputConnector::node(*node_id, index), migrated, network_path);
 			}
 		}

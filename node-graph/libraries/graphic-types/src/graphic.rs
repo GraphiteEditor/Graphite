@@ -206,18 +206,6 @@ pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool 
 	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
 }
 
-/// Materializes a paint picker choice as the canonical single-graphic `List<Graphic>` paint form.
-pub fn fill_choice_to_paint(choice: vector_types::vector::style::FillChoice) -> List<Graphic> {
-	use vector_types::vector::style::FillChoice;
-
-	let graphic = match choice {
-		FillChoice::None => Graphic::None,
-		FillChoice::Solid(color) => Graphic::Color(List::new_from_element(color)),
-		FillChoice::Gradient(stops) => Graphic::Gradient(List::new_from_element(stops)),
-	};
-	List::new_from_element(graphic)
-}
-
 /// Stores a paint attribute in its canonical `List<Graphic>` form, the only representation paint readers accept.
 pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
 	attributes.insert(key, paint.into_graphic_list());

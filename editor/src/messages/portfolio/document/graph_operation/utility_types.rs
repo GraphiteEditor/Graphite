@@ -15,7 +15,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{FillChoice, GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{Gradient, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
@@ -464,8 +464,8 @@ impl<'a> ModifyInputsContext<'a> {
 		if let Some(color) = color {
 			self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
 		}
-		let fill_choice = color.map_or(FillChoice::None, FillChoice::Solid);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::FillChoice(fill_choice), false), false);
+		let fill_value = color.map_or_else(TaggedValue::no_paint, TaggedValue::Color);
+		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
 	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
@@ -479,7 +479,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
-			NodeInput::value(TaggedValue::FillChoice(FillChoice::Gradient(gradient)), false),
+			NodeInput::value(TaggedValue::Gradient(gradient), false),
 			true,
 		);
 
@@ -725,11 +725,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX);
-		self.set_input_with_refresh(
-			input_connector,
-			NodeInput::value(TaggedValue::FillChoice(color.map_or(FillChoice::None, FillChoice::Solid)), false),
-			true,
-		);
+		self.set_input_with_refresh(input_connector, NodeInput::value(color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);

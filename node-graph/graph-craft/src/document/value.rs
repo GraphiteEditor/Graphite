@@ -14,8 +14,8 @@ use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
+use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::Gradient;
-use graphic_types::vector_types::vector::style::{DashPattern, FillChoice};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -73,7 +73,7 @@ macro_rules! tagged_value {
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
 			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
-			/// is routed to `FillChoice::None` by `deserialize_tagged_value_with_legacy_migration`.
+			/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
@@ -82,9 +82,6 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(Gradient),
-			/// The state of a Fill or Stroke node's paint picker: no paint, a solid color, or a gradient.
-			/// Materializes as the canonical single-graphic `List<Graphic>` paint at runtime via `to_dynany`/`to_any`.
-			FillChoice(FillChoice),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
@@ -130,7 +127,6 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
-					Self::FillChoice(choice) => choice.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
@@ -172,7 +168,6 @@ macro_rules! tagged_value {
 					}
 					Self::Color(color) => Box::new(Item::new_from_element(color)),
 					Self::Gradient(stops) => Box::new(Item::new_from_element(stops)),
-					Self::FillChoice(choice) => Box::new(graphic_types::graphic::fill_choice_to_paint(choice)),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -214,7 +209,6 @@ macro_rules! tagged_value {
 					}
 					Self::Color(color) => Arc::new(Item::new_from_element(color)),
 					Self::Gradient(stops) => Arc::new(Item::new_from_element(stops)),
-					Self::FillChoice(choice) => Arc::new(graphic_types::graphic::fill_choice_to_paint(choice)),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -243,7 +237,6 @@ macro_rules! tagged_value {
 					Self::F64Array(_) => list!(f64),
 					Self::Color(_) => concrete!(Item<Color>),
 					Self::Gradient(_) => concrete!(Item<Gradient>),
-					Self::FillChoice(_) => list!(Graphic),
 					Self::BrushStrokes(_) => concrete!(Item<BrushTrace>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -365,7 +358,6 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
-					Self::FillChoice(choice) => format!("FillChoice({choice:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -609,7 +601,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
 					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(|color| TaggedValue::FillChoice(FillChoice::Solid(color)))?,
+					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
@@ -625,7 +617,7 @@ impl TaggedValue {
 				match descriptor.name.as_ref() {
 					name if name == std::any::type_name::<Color>() => to_color(string).map(TaggedValue::Color),
 					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					name if name == std::any::type_name::<Graphic>() => to_color(string).map(|color| TaggedValue::FillChoice(FillChoice::Solid(color))),
+					name if name == std::any::type_name::<Graphic>() => to_color(string).map(TaggedValue::Color),
 					name if name == std::any::type_name::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient),
 					_ => None,
 				}
@@ -638,6 +630,16 @@ impl TaggedValue {
 			TaggedValue::U32(x) => *x,
 			_ => panic!("Passed value is not of type u32"),
 		}
+	}
+
+	/// The stored form of a paint input's red-slash "no paint" choice: the `List<Graphic>` type default, materializing as an empty paint list.
+	pub fn no_paint() -> Self {
+		TaggedValue::TypeDefault(descriptor!(List<Graphic>))
+	}
+
+	/// Whether this is the `List<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
+	pub fn is_no_paint(&self) -> bool {
+		matches!(self, TaggedValue::TypeDefault(td) if td.name.as_ref() == std::any::type_name::<List<Graphic>>())
 	}
 }
 
@@ -654,6 +656,7 @@ impl TaggedValue {
 /// - `Vector` (or alias `VectorData`):
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
 ///     - empty → `TaggedValue::TypeDefault(descriptor!(List<Vector>))`
+/// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::Gradient` (gradient), or `TaggedValue::no_paint()` (none)
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
 // TODO: Eventually remove this migration document upgrade code
@@ -692,7 +695,21 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			}
 			// The `Color` tag used to carry `Option<Color>`, where a `null` payload was the red-slash "no paint" choice
 			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable" if content.is_null() => {
-				return Ok(MemoHash::new(TaggedValue::FillChoice(FillChoice::None)));
+				return Ok(MemoHash::new(TaggedValue::no_paint()));
+			}
+			// The removed `FillChoice` variant decomposes into the plain paint values
+			"FillChoice" => {
+				if let Some(payload) = content.as_object() {
+					if let Some(solid) = payload.get("Solid") {
+						let color: Color = serde_json::from_value(solid.clone()).map_err(serde::de::Error::custom)?;
+						return Ok(MemoHash::new(TaggedValue::Color(color)));
+					}
+					if let Some(gradient) = payload.get("Gradient") {
+						let gradient: Gradient = serde_json::from_value(gradient.clone()).map_err(serde::de::Error::custom)?;
+						return Ok(MemoHash::new(TaggedValue::Gradient(gradient)));
+					}
+				}
+				return Ok(MemoHash::new(TaggedValue::no_paint()));
 			}
 			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<Gradient>`.
 			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `Gradient` has none of those (it has `position`/`midpoint`/`color`).

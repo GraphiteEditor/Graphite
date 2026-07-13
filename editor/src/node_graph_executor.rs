@@ -1028,6 +1028,18 @@ mod test {
 				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
 		}
 
+		/// Like [`Self::grab_all_input`], but downcasting the recorded values to `Output` instead of the marker's `Result`.
+		/// Useful when a stored value's wire form (e.g. `Item<Color>`) differs from the declared row types the marker's generic accepts.
+		pub fn grab_all_input_as<'a, Input: NodeInputDecleration + 'a, Output: Send + Sync + Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
+			self.protonodes_by_name
+				.get(&Input::identifier())
+				.map_or([].as_slice(), |x| x.as_slice())
+				.iter()
+				.filter_map(|inputs| inputs.get(Input::INDEX))
+				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
+				.filter_map(Instrumented::downcast_record::<Output>)
+		}
+
 		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
 		where
 			Input::Result: Send + Sync + Clone + 'static,

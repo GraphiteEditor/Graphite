@@ -9,7 +9,8 @@ use dyn_any::DynAny;
 use glam::DAffine2;
 use std::f64::consts::{PI, TAU};
 
-/// Describes an editable fill choice, storing color or gradient stops without gradient placement metadata.
+/// The editor's in-memory paint picker state, storing color or gradient stops without gradient placement metadata.
+/// Not stored in documents: paint inputs hold the picked value as a plain color, gradient, or no-paint type default.
 ///
 /// Can be None, a solid [Color], or a linear/radial [Gradient].
 ///

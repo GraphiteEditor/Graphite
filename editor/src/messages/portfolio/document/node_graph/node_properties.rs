@@ -15,7 +15,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::{Type, concrete, list};
+use graph_craft::{Type, concrete};
 use graphene_std::Graphic;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
@@ -36,7 +36,7 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	DashPattern, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -1206,46 +1206,37 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	// Add the color input
-	match &**tagged_value {
-		TaggedValue::Color(color) => widgets.push(
-			color_button
-				.value(FillChoiceUI::from(&FillChoice::Solid(*color)))
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT)),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		TaggedValue::FillChoice(choice) => widgets.push(
-			color_button
-				.value(FillChoiceUI::from(choice))
-				.on_update(update_value(|input: &ColorInput| TaggedValue::FillChoice(FillChoice::from(&input.value)), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		TaggedValue::Gradient(stops) => widgets.push(
-			color_button
-				.value(FillChoiceUI::from(&FillChoice::Gradient(stops.clone())))
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_default()),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		// A disconnected paint wire stores the empty-list type default, which the picker presents as no fill
-		TaggedValue::TypeDefault(descriptor) if descriptor.name.as_ref() == std::any::type_name::<List<Graphic>>() => widgets.push(
-			color_button
-				.value(FillChoiceUI::from(&FillChoice::None))
-				.on_update(update_value(|input: &ColorInput| TaggedValue::FillChoice(FillChoice::from(&input.value)), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		x => warn!("Color {x:?}"),
-	}
+	let widget_value = match &**tagged_value {
+		TaggedValue::Color(color) => FillChoiceUI::Solid(SRGBA8::from(*color)),
+		TaggedValue::Gradient(stops) => FillChoiceUI::Gradient(GradientUI::from(stops)),
+		value if value.is_no_paint() => FillChoiceUI::None,
+		x => {
+			warn!("Color {x:?}");
+			return LayoutGroup::row(widgets);
+		}
+	};
+
+	// A paint input (`allow_none`) stores the pick as a plain color, gradient, or no-paint type default,
+	// while a plain color or gradient input always keeps its own value type
+	let on_update: fn(&ColorInput) -> TaggedValue = if color_button.allow_none {
+		|input| match &input.value {
+			FillChoiceUI::None => TaggedValue::no_paint(),
+			FillChoiceUI::Solid(srgba) => TaggedValue::Color(Color::from(*srgba)),
+			FillChoiceUI::Gradient(gradient_ui) => TaggedValue::Gradient(Gradient::from(gradient_ui)),
+		}
+	} else if matches!(&**tagged_value, TaggedValue::Gradient(_)) {
+		|input| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_default())
+	} else {
+		|input| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT))
+	};
+
+	widgets.push(
+		color_button
+			.value(widget_value)
+			.on_update(update_value(on_update, node_id, index))
+			.on_commit(commit_value)
+			.widget_instance(),
+	);
 
 	LayoutGroup::row(widgets)
 }
@@ -2507,9 +2498,6 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Other,
 	}
 
-	let connector = InputConnector::node(node_id, FillInput::<List<Graphic>>::INDEX);
-	let input_type = context.network_interface.input_type(&connector, context.selection_network_path);
-
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
 	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Graphic>>::INDEX, false, context));
 
@@ -2521,48 +2509,27 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	// bounding-box default transform needs the layer, and it falls back to a unit box when there isn't one.
 	let layer = root_layer_for_chain_node(node_id, context);
 
-	let fill = match input_type.compiled_nested_type() {
-		Some(ty) if ty == &list!(Graphic) => match get_document_node(node_id, context) {
-			Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
-				Some(TaggedValue::FillChoice(FillChoice::None)) => ResolvedFill::Solid(None),
-				Some(TaggedValue::TypeDefault(descriptor)) if descriptor.name.as_ref() == std::any::type_name::<List<Graphic>>() => ResolvedFill::Solid(None),
-				Some(TaggedValue::FillChoice(FillChoice::Solid(color))) => ResolvedFill::Solid(Some(*color)),
-				Some(TaggedValue::FillChoice(FillChoice::Gradient(_))) => {
-					match graph_modification_utils::read_fill_node_gradient(document_node, || {
-						layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
-					}) {
-						Some(gradient) => ResolvedFill::Gradient {
-							gradient: gradient.stops,
-							gradient_type: gradient.gradient_type,
-							spread_method: gradient.spread_method,
-							transform: gradient.transform,
-							transform_is_value: gradient.transform_is_value,
-						},
-						None => ResolvedFill::Other,
-					}
-				}
-				_ => ResolvedFill::Other,
-			},
-			Err(_) => ResolvedFill::Other,
-		},
-		Some(ty) if ty == &list!(Gradient) => {
-			// Read this node's own inputs rather than the layer's nearest Fill, which may be a different node when Fills are chained
-			if let Ok(document_node) = get_document_node(node_id, context)
-				&& let Some(gradient) = graph_modification_utils::read_fill_node_gradient(document_node, || {
+	let fill = match get_document_node(node_id, context) {
+		Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
+			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
+			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
+			Some(TaggedValue::Gradient(_)) => {
+				match graph_modification_utils::read_fill_node_gradient(document_node, || {
 					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
 				}) {
-				ResolvedFill::Gradient {
-					gradient: gradient.stops,
-					gradient_type: gradient.gradient_type,
-					spread_method: gradient.spread_method,
-					transform: gradient.transform,
-					transform_is_value: gradient.transform_is_value,
+					Some(gradient) => ResolvedFill::Gradient {
+						gradient: gradient.stops,
+						gradient_type: gradient.gradient_type,
+						spread_method: gradient.spread_method,
+						transform: gradient.transform,
+						transform_is_value: gradient.transform_is_value,
+					},
+					None => ResolvedFill::Other,
 				}
-			} else {
-				ResolvedFill::Other
 			}
-		}
-		_ => ResolvedFill::Other,
+			_ => ResolvedFill::Other,
+		},
+		Err(_) => ResolvedFill::Other,
 	};
 
 	let (backup_color, backup_gradient) = match get_document_node(node_id, context) {
@@ -2587,11 +2554,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(
-					move |_| TaggedValue::FillChoice(FillChoice::Gradient(stops.reversed())),
-					node_id,
-					FillInput::<List<Graphic>>::INDEX,
-				))
+				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2616,7 +2579,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::<List<Graphic>>::INDEX,
-				value: TaggedValue::FillChoice(color.map_or(FillChoice::None, FillChoice::Solid)),
+				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
 			}
 			.into(),
 		];
@@ -2638,7 +2601,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::<List<Graphic>>::INDEX,
-				value: TaggedValue::FillChoice(FillChoice::Gradient(gradient.clone())),
+				value: TaggedValue::Gradient(gradient.clone()),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
@@ -2679,18 +2642,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			RadioEntryData::new("solid")
 				.label("Solid")
 				.on_update(update_value(
-					move |_| TaggedValue::FillChoice(backup_color.map_or(FillChoice::None, FillChoice::Solid)),
+					move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
 					node_id,
 					FillInput::<List<Graphic>>::INDEX,
 				))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(
-					move |_| TaggedValue::FillChoice(FillChoice::Gradient(backup_gradient.clone())),
-					node_id,
-					FillInput::<List<Graphic>>::INDEX,
-				))
+				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
 				.on_commit(commit_value),
 		];
 
