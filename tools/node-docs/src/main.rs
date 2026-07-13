@@ -1,7 +1,6 @@
 mod page_catalog;
 mod page_category;
 mod page_node;
-mod signatures;
 mod utility;
 
 use crate::utility::*;
@@ -9,12 +8,6 @@ use convert_case::{Case, Casing};
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	// The signatures mode prints a node signature listing and a non-purely-`Item` report instead of generating pages
-	if std::env::args().any(|arg| arg == "--signatures") {
-		signatures::print_signature_report();
-		return Ok(());
-	}
-
 	let output_path = std::env::args_os()
 		.nth(1)
 		.ok_or("Usage: node-docs <output-directory>")?
