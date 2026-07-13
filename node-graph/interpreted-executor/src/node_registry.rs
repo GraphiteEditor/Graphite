@@ -381,6 +381,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		f64,
 		bool,
 		String,
+		DVec2,
 		DAffine2,
 		BlendMode,
 		GradientType,
