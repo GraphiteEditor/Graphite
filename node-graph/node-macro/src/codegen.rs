@@ -891,7 +891,7 @@ fn generate_node_input_references(
 			.clone();
 
 			// The element-wise primary input's document wire carries the mapped List form
-			if input_index == 0
+			if Some(input_index) == parsed.primary_input_field().map(|(primary_index, _)| primary_index)
 				&& let Some(element_ty) = primary_item_element(parsed)
 			{
 				ty = parse_quote!(#core_types::list::List<#element_ty>);
