@@ -24,12 +24,7 @@ impl TextureImporter for IOSurfaceImporter {
 
 impl IOSurfaceImporter {
 	pub fn from_parts(handle: *mut c_void, width: u32, height: u32, format: cef_color_type_t) -> Self {
-		Self {
-			handle,
-			format,
-			width,
-			height,
-		}
+		Self { handle, format, width, height }
 	}
 
 	fn get_metal_desc(&self, texture_desc: &TextureDescriptor) -> Result<Retained<MTLTextureDescriptor>, TextureImportError> {
