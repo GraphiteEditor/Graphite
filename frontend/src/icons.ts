@@ -110,7 +110,7 @@ import AlignRight from "/../branding/assets/icon-16px-solid/align-right.svg";
 import AlignTop from "/../branding/assets/icon-16px-solid/align-top.svg";
 import AlignVerticalCenter from "/../branding/assets/icon-16px-solid/align-vertical-center.svg";
 import Artboard from "/../branding/assets/icon-16px-solid/artboard.svg";
-import BooleanDifference from "/../branding/assets/icon-16px-solid/boolean-difference.svg";
+import BooleanExclude from "/../branding/assets/icon-16px-solid/boolean-difference.svg";
 import BooleanDivide from "/../branding/assets/icon-16px-solid/boolean-divide.svg";
 import BooleanIntersect from "/../branding/assets/icon-16px-solid/boolean-intersect.svg";
 import BooleanSubtractBack from "/../branding/assets/icon-16px-solid/boolean-subtract-back.svg";
@@ -250,7 +250,7 @@ const SOLID_16PX = {
 	AlignTop: { svg: AlignTop, size: 16 },
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
 	Artboard: { svg: Artboard, size: 16 },
-	BooleanDifference: { svg: BooleanDifference, size: 16 },
+	BooleanExclude: { svg: BooleanExclude, size: 16 },
 	BooleanDivide: { svg: BooleanDivide, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },

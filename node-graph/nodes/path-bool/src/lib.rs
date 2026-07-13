@@ -18,8 +18,6 @@ use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, 
 pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
-// TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
-// TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
@@ -30,34 +28,42 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	content: I,
 	/// Which boolean operation to perform on the paths.
 	///
-	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
-	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
-	/// Intersection cuts away all but the overlapping areas shared by every path.
-	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	/// - **Union**: combines all paths while cutting out overlapping areas (even the interiors of a single path).
+	/// - **Subtraction**: cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
+	/// - **Intersection**: cuts away all but the overlapping areas shared by every path.
+	/// - **Exclude**: cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	/// - **Trim**: cuts away the overlapping areas from back objects.
+	/// - **Crop**: crops every shape using the topmost object and removes overlapping areas from objects behind it.
 	operation: BooleanOperation,
 ) -> List<Vector> {
 	let content = content.into_graphic_list();
 
 	// The first index is the bottom of the stack
 	let flattened = flatten_vector(&content);
-	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
+
+	let mut result_vector_list = match operation {
+		BooleanOperation::Union | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack | BooleanOperation::Intersect | BooleanOperation::Exclude => {
+			single_pass_boolean_operation(&flattened, operation)
+		}
+		BooleanOperation::Trim | BooleanOperation::Crop => cascading_subtract(&flattened, operation),
+	};
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	if result_vector_list.element_mut(0).is_some() {
-		let transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::IDENTITY);
+	for i in 0..result_vector_list.len() {
+		let transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, i);
+		result_vector_list.set_attribute(ATTR_TRANSFORM, i, DAffine2::IDENTITY);
 
-		let result_vector = result_vector_list.element_mut(0).unwrap();
+		let result_vector = result_vector_list.element_mut(i).unwrap();
 		Vector::transform(result_vector, transform);
 		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
-		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
+		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, i, content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
+		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, i);
+		result_vector_list.element_mut(i).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
 	result_vector_list
@@ -123,22 +129,44 @@ impl WindingNumber {
 			BooleanOperation::SubtractFront => self.elems.first().is_some_and(is_in) && self.elems.iter().skip(1).all(is_out),
 			BooleanOperation::SubtractBack => self.elems.last().is_some_and(is_in) && self.elems.iter().rev().skip(1).all(is_out),
 			BooleanOperation::Intersect => !self.elems.is_empty() && self.elems.iter().all(is_in),
-			BooleanOperation::Difference => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
+			BooleanOperation::Exclude => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
+			BooleanOperation::Trim => unreachable!(),
+			BooleanOperation::Crop => unreachable!(),
 		}
+	}
+
+	fn subtract_front_at(&self, i: usize) -> bool {
+		let is_in = |v: &i16| *v != 0;
+
+		self.elems.get(i).is_some_and(is_in) && self.elems.iter().skip(i + 1).all(|v| !is_in(v))
+	}
+
+	fn crop_visible_at(&self, i: usize) -> bool {
+		let is_in = |v: &i16| *v != 0;
+
+		if self.elems.is_empty() {
+			return false;
+		}
+
+		let top_index = self.elems.len() - 1;
+
+		if i >= top_index {
+			return false;
+		}
+
+		self.elems.get(i).is_some_and(is_in) && self.elems.get(top_index).is_some_and(is_in) && self.elems[i + 1..top_index].iter().all(|v| !is_in(v))
 	}
 }
 
-fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
-	const EPSILON: f64 = 1e-5;
+fn single_pass_boolean_operation(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
 	let mut list = List::new();
-	let mut paths = Vec::new();
 
 	let copy_from_index = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
 		if !vector.is_empty() { Some(0) } else { None }
 	} else {
 		if !vector.is_empty() { Some(vector.len() - 1) } else { None }
 	};
-	let mut row = if let Some(index) = copy_from_index {
+	let mut item = if let Some(index) = copy_from_index {
 		let mut attributes = vector.clone_item_attributes(index);
 		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
@@ -156,26 +184,95 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		Item::<Vector>::default()
 	};
 
+	let top = match try_create_topology(vector) {
+		Some(top) => top,
+		None => {
+			list.push(item);
+			return list;
+		}
+	};
+
+	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
+
+	if contours.contours().next().is_some() {
+		append_linesweeper_contours(item.element_mut(), &contours);
+		list.push(item);
+	}
+
+	list
+}
+
+fn cascading_subtract(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
+	let mut list = List::new();
+
+	let top = match try_create_topology(vector) {
+		Some(top) => top,
+		None => return list,
+	};
+
+	for i in 0..vector.len() {
+		let contours = match boolean_operation {
+			BooleanOperation::Crop if i == vector.len() - 1 => top.contours(|winding| winding.is_inside(BooleanOperation::SubtractBack)),
+
+			BooleanOperation::Crop => top.contours(|winding| winding.crop_visible_at(i)),
+
+			_ => top.contours(|winding| winding.subtract_front_at(i)),
+		};
+
+		if contours.contours().next().is_none() {
+			continue;
+		}
+
+		let source = match vector.element(i) {
+			Some(source) => source,
+			None => continue,
+		};
+
+		let mut attributes = vector.clone_item_attributes(i);
+		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
+
+		let mut element = Vector {
+			stroke: source.stroke.clone(),
+			..Default::default()
+		};
+
+		if boolean_operation == BooleanOperation::Crop && i == vector.len() - 1 {
+			attributes.remove::<List<Graphic>>(ATTR_FILL);
+			element.stroke = None;
+		}
+
+		append_linesweeper_contours(&mut element, &contours);
+
+		let item = Item::from_parts(element, attributes);
+		list.push(item);
+	}
+
+	list
+}
+
+fn try_create_topology(vector: &List<Vector>) -> Option<Topology<WindingNumber>> {
+	const EPSILON: f64 = 1e-5;
+
+	let mut paths = Vec::new();
+
 	for index in 0..vector.len() {
 		let element = vector.element(index).unwrap();
 		paths.push(to_bez_path(element, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
 	}
 
-	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
-		Ok(top) => top,
+	match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
+		Ok(top) => Some(top),
 		Err(e) => {
 			log::error!("Boolean operation failed while building topology: {e}");
-			list.push(row);
-			return list;
+			None
 		}
-	};
-	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
-		row.element_mut().append_subpath(subpath, false);
 	}
+}
 
-	list.push(row);
-	list
+fn append_linesweeper_contours(vector: &mut Vector, contours: &linesweeper::topology::Contours) {
+	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
+		vector.append_subpath(subpath, false);
+	}
 }
 
 fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
@@ -270,7 +367,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 
 					// Recursively flatten the inner `List` into the output `List<Vector>`
 					let flattened = flatten_vector(&graphic);
-					let unioned = boolean_operation_on_vector_list(&flattened, BooleanOperation::Union);
+					let unioned = single_pass_boolean_operation(&flattened, BooleanOperation::Union);
 
 					unioned.into_iter().collect::<Vec<_>>()
 				}
@@ -410,5 +507,242 @@ pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
 			log::error!("Boolean Operation failed (a: {} segments, b: {} segments): {e}", a.segments().count(), b.segments().count());
 			Vec::new()
 		}
+	}
+}
+//TODO: Add styles for inputs and style asserts for outputs once the requirements are defined
+#[cfg(test)]
+mod test {
+	use super::*;
+	use core_types::OwnedContextImpl;
+	use core_types::list::{Item, List};
+	use kurbo::{DEFAULT_ACCURACY, Rect, Shape};
+	use vector_types::Vector;
+
+	fn create_input_shapes(include_third_shape: bool) -> List<Vector> {
+		let square = Vector::from_bezpath(Rect::new(-4., -4., 4., 4.).to_path(DEFAULT_ACCURACY));
+		let rectangle = Vector::from_bezpath(Rect::new(2., -2., 8., 2.).to_path(DEFAULT_ACCURACY));
+		let mut shapes = List::new_from_element(square);
+		shapes.push(Item::new_from_element(rectangle));
+
+		if include_third_shape {
+			let rectangle = Vector::from_bezpath(Rect::new(-2., -6., 5., 0.).to_path(DEFAULT_ACCURACY));
+			shapes.push(Item::new_from_element(rectangle));
+		}
+
+		shapes
+	}
+
+	fn create_no_overlap_input_shapes() -> List<Vector> {
+		let square = Vector::from_bezpath(Rect::new(-4., -4., 4., 4.).to_path(DEFAULT_ACCURACY));
+		let rectangle = Vector::from_bezpath(Rect::new(5., -2., 5., 2.).to_path(DEFAULT_ACCURACY));
+		let mut shapes = List::new_from_element(square);
+		shapes.push(Item::new_from_element(rectangle));
+
+		shapes
+	}
+
+	fn assert_anchor_positions(vector: &Vector, expected_anchors: &[DVec2]) {
+		const EPSILON: f64 = 1e-5;
+		let anchors = vector.point_domain.positions();
+
+		assert_eq!(anchors.len(), expected_anchors.len(), "Anchor count mismatch");
+
+		for (i, expected) in expected_anchors.iter().enumerate() {
+			let actual = anchors[i];
+			let distance = (actual - *expected).length();
+
+			assert!(distance < EPSILON, "Anchor {i} mismatch: expected {expected:?}, got {actual:?}, distance {distance}");
+		}
+	}
+
+	fn assert_shapes_geometry(generated: &List<Vector>, expected_anchors: Vec<Vec<DVec2>>) {
+		assert_eq!(generated.len(), expected_anchors.len(), "Shape count mismatch");
+
+		for (i, expected) in expected_anchors.iter().enumerate() {
+			let result_shape = generated.element(i).unwrap();
+
+			assert_anchor_positions(result_shape, &expected);
+
+			assert_eq!(result_shape.segment_domain.ids().len(), expected.len(), "Segment count mismatch");
+			assert_eq!(result_shape.segment_domain.end_point().last(), Some(&0), "The result shape is not closed");
+		}
+	}
+
+	#[tokio::test]
+	async fn union() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Union).await;
+
+		let expected_anchors = vec![vec![
+			DVec2::new(-4., -4.),
+			DVec2::new(4., -4.),
+			DVec2::new(4., -2.),
+			DVec2::new(8., -2.),
+			DVec2::new(8., 2.),
+			DVec2::new(4., 2.),
+			DVec2::new(4., 4.),
+			DVec2::new(-4., 4.),
+		]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn subtract_front() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::SubtractFront).await;
+
+		let expected_anchors = vec![vec![
+			DVec2::new(-4., -4.),
+			DVec2::new(4., -4.),
+			DVec2::new(4., -2.),
+			DVec2::new(2., -2.),
+			DVec2::new(2., 2.),
+			DVec2::new(4., 2.),
+			DVec2::new(4., 4.),
+			DVec2::new(-4., 4.),
+		]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn subtract_back() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::SubtractBack).await;
+
+		let expected_anchors = vec![vec![DVec2::new(4., -2.), DVec2::new(8., -2.), DVec2::new(8., 2.), DVec2::new(4., 2.)]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn intersect() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Intersect).await;
+
+		let expected_anchors = vec![vec![DVec2::new(2., -2.), DVec2::new(4., -2.), DVec2::new(4., 2.), DVec2::new(2., 2.)]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn intersect_no_overlap() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_no_overlap_input_shapes();
+		let generated = boolean_operation(context, shapes, BooleanOperation::Intersect).await;
+
+		assert_eq!(generated.len(), 0);
+	}
+
+	#[tokio::test]
+	async fn exclude() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Exclude).await;
+
+		let expected_anchors = [
+			DVec2::new(-4., -4.),
+			DVec2::new(4., -4.),
+			DVec2::new(4., -2.),
+			DVec2::new(2., -2.),
+			DVec2::new(2., 2.),
+			DVec2::new(4., 2.),
+			DVec2::new(4., 4.),
+			DVec2::new(-4., 4.),
+			DVec2::new(8., -2.),
+			DVec2::new(8., 2.),
+		];
+
+		assert_eq!(generated.len(), 1);
+		let result_shape = generated.element(0).unwrap();
+
+		assert_anchor_positions(result_shape, &expected_anchors);
+
+		assert_eq!(result_shape.segment_domain.ids().len(), 12);
+		assert_eq!(result_shape.region_domain.ids().len(), 2);
+		assert_eq!(result_shape.region_domain.segment_range().len(), 2);
+	}
+
+	#[tokio::test]
+	async fn trim() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(true);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Trim).await;
+
+		let expected_anchors = vec![
+			vec![
+				DVec2::new(-4., -4.),
+				DVec2::new(-2., -4.),
+				DVec2::new(-2., 0.),
+				DVec2::new(2., 0.),
+				DVec2::new(2., 2.),
+				DVec2::new(4., 2.),
+				DVec2::new(4., 4.),
+				DVec2::new(-4., 4.),
+			],
+			vec![
+				DVec2::new(5., -2.),
+				DVec2::new(8., -2.),
+				DVec2::new(8., 2.),
+				DVec2::new(4., 2.),
+				DVec2::new(2., 2.),
+				DVec2::new(2., 0.),
+				DVec2::new(4., 0.),
+				DVec2::new(5., 0.),
+			],
+			vec![
+				DVec2::new(-2., -6.),
+				DVec2::new(5., -6.),
+				DVec2::new(5., -2.),
+				DVec2::new(5., 0.),
+				DVec2::new(4., 0.),
+				DVec2::new(2., 0.),
+				DVec2::new(-2., 0.),
+				DVec2::new(-2., -4.),
+			],
+		];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn crop() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(true);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Crop).await;
+
+		let expected_anchors = vec![
+			vec![
+				DVec2::new(-2., -4.),
+				DVec2::new(4., -4.),
+				DVec2::new(4., -2.),
+				DVec2::new(2., -2.),
+				DVec2::new(2., 0.),
+				DVec2::new(-2., 0.),
+			],
+			vec![
+				DVec2::new(2., -2.),
+				DVec2::new(4., -2.),
+				DVec2::new(5., -2.),
+				DVec2::new(5., 0.),
+				DVec2::new(4., 0.),
+				DVec2::new(2., 0.),
+			],
+			vec![
+				DVec2::new(-2., -6.),
+				DVec2::new(5., -6.),
+				DVec2::new(5., -2.),
+				DVec2::new(4., -2.),
+				DVec2::new(4., -4.),
+				DVec2::new(-2., -4.),
+			],
+		];
+
+		assert_shapes_geometry(&generated, expected_anchors);
 	}
 }
