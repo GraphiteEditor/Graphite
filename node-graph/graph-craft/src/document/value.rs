@@ -323,7 +323,6 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						if name == std::any::type_name::<Color>() || name == std::any::type_name::<Item<Color>>() { return Some(TaggedValue::Color(Color::default())) }
 						if name == std::any::type_name::<Gradient>() || name == std::any::type_name::<Item<Gradient>>() { return Some(TaggedValue::Gradient(Gradient::default())) }
-						if name == std::any::type_name::<List<Graphic>>() { return Some(TaggedValue::FillChoice(FillChoice::default())) }
 						$( if name == std::any::type_name::<$ty>() || name == std::any::type_name::<Item<$ty>>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<Item<BrushTrace>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }

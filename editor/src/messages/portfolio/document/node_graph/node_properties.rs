@@ -1236,6 +1236,14 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
+		// A disconnected paint wire stores the empty-list type default, which the picker presents as no fill
+		TaggedValue::TypeDefault(descriptor) if descriptor.name.as_ref() == std::any::type_name::<List<Graphic>>() => widgets.push(
+			color_button
+				.value(FillChoiceUI::from(&FillChoice::None))
+				.on_update(update_value(|input: &ColorInput| TaggedValue::FillChoice(FillChoice::from(&input.value)), node_id, index))
+				.on_commit(commit_value)
+				.widget_instance(),
+		),
 		x => warn!("Color {x:?}"),
 	}
 
@@ -2517,6 +2525,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Some(ty) if ty == &list!(Graphic) => match get_document_node(node_id, context) {
 			Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
 				Some(TaggedValue::FillChoice(FillChoice::None)) => ResolvedFill::Solid(None),
+				Some(TaggedValue::TypeDefault(descriptor)) if descriptor.name.as_ref() == std::any::type_name::<List<Graphic>>() => ResolvedFill::Solid(None),
 				Some(TaggedValue::FillChoice(FillChoice::Solid(color))) => ResolvedFill::Solid(Some(*color)),
 				Some(TaggedValue::FillChoice(FillChoice::Gradient(_))) => {
 					match graph_modification_utils::read_fill_node_gradient(document_node, || {
@@ -2578,7 +2587,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(
+					move |_| TaggedValue::FillChoice(FillChoice::Gradient(stops.reversed())),
+					node_id,
+					FillInput::<List<Graphic>>::INDEX,
+				))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2625,7 +2638,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::<List<Graphic>>::INDEX,
-				value: TaggedValue::Gradient(gradient.clone()),
+				value: TaggedValue::FillChoice(FillChoice::Gradient(gradient.clone())),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
