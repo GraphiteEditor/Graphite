@@ -25,13 +25,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 cef = { workspace = true }
+bytemuck = { workspace = true, optional = true }
 ipc-channel = "0.22"
 
 # Linux-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 ash = { version = "0.38", optional = true }
-bytemuck = { workspace = true, optional = true }
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
