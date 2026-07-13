@@ -107,6 +107,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Graphic>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Vector>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Raster<CPU>>]),
+		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Color>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Gradient>]),
@@ -408,13 +409,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		DAffine2,
 		Graphic,
 		Raster<CPU>,
-		Raster<GPU>,
 		Vector,
 		String,
 		Color,
 		Gradient,
 		Artboard,
 	));
+	#[cfg(feature = "gpu")]
+	node_types.extend(bundle_adapter_nodes!(Raster<GPU>));
 	// The compiler wraps a ranked connector's broadcast sibling in a Memoize plus context nullification pair, and the editor's test
 	// instrumentation monitors any wire, so all three must pass through every ranked element type the hand lists above omit.
 	// The identifiers are passed explicitly because `stringify!` mangles whitespace when the path tokens come through this nested macro layer.
@@ -561,6 +563,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		transform_list_node!(element: String),
 		transform_list_node!(element: Vector),
 		transform_list_node!(element: Raster<CPU>),
+		#[cfg(feature = "gpu")]
 		transform_list_node!(element: Raster<GPU>),
 		transform_list_node!(element: Color),
 		transform_list_node!(element: Gradient),
