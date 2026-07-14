@@ -167,7 +167,7 @@ impl FrameSurface {
 			timeout: None,
 		});
 
-		if blank_check.is_blank() {
+		if blank_check.check_is_blank() {
 			tracing::debug!("Skipping fully transparent accelerated frame");
 			return None;
 		}
@@ -250,7 +250,7 @@ mod blank_check {
 	}
 
 	impl MappedBlankCheck {
-		pub(super) fn is_blank(self) -> bool {
+		pub(super) fn check_is_blank(self) -> bool {
 			match self.receiver.try_recv() {
 				Ok(Ok(())) => {
 					let slice = self.buffer.slice(..u64::from(self.width) * 4);
