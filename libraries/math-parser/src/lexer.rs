@@ -1,14 +1,9 @@
 use crate::ast::Literal;
 use chumsky::input::{Input, ValueInput};
-use chumsky::prelude::*;
 use chumsky::span::SimpleSpan;
-use chumsky::text::{ident, int};
-use core::f64;
 use num_complex::Complex64;
 use std::fmt;
-use std::iter::Peekable;
 use std::ops::Range;
-use std::str::Chars;
 
 pub type Span = SimpleSpan;
 
@@ -40,6 +35,9 @@ pub enum Token<'src> {
 	EqEq,
 
 	If,
+
+	/// An unrecognized character; the parser never matches this, forcing a parse error rather than silently truncating the input.
+	Error,
 }
 
 impl<'src> fmt::Display for Token<'src> {
@@ -71,6 +69,8 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::EqEq => f.write_str("=="),
 
 			Token::If => f.write_str("if"),
+
+			Token::Error => f.write_str("<error>"),
 		}
 	}
 }
@@ -101,7 +101,7 @@ impl Constant {
 		}
 	}
 
-	pub fn from_str(name: &str) -> Option<Constant> {
+	pub fn from_name(name: &str) -> Option<Constant> {
 		use Constant::*;
 		Some(match name {
 			"pi" | "π" => Pi,
@@ -162,10 +162,6 @@ impl<'a> Lexer<'a> {
 		&self.input[start..self.pos]
 	}
 
-	fn lex_ident(&mut self) -> &'a str {
-		self.consume_while(|c| c.is_alphanumeric() || c == '_')
-	}
-
 	fn lex_uint(&mut self) -> Option<(u64, usize)> {
 		let mut v = 0u64;
 		let mut digits = 0;
@@ -212,6 +208,12 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
+		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication.
+		if got_digit && self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) {
+			self.pos = start_pos;
+			return None;
+		}
+
 		got_digit.then_some(num)
 	}
 
@@ -231,7 +233,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					AndAnd
 				} else {
-					return None;
+					Error
 				}
 			}
 			'|' => {
@@ -239,7 +241,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					OrOr
 				} else {
-					return None;
+					Error
 				}
 			}
 
@@ -287,13 +289,21 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					return None;
+					Error
 				}
 			}
 
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
-				Float(self.lex_number()?)
+				match self.lex_number() {
+					Some(number) => Float(number),
+					// `lex_number` resets `pos` on failure, so advance past one character to guarantee forward progress.
+					None => {
+						self.pos = start;
+						self.bump();
+						Error
+					}
+				}
 			}
 
 			_ => {
@@ -302,12 +312,12 @@ impl<'a> Lexer<'a> {
 
 				if ident == "if" {
 					If
-				} else if let Some(lit) = Constant::from_str(ident) {
+				} else if let Some(lit) = Constant::from_name(ident) {
 					Const(lit)
 				} else if ch.is_alphanumeric() {
 					Ident(ident)
 				} else {
-					return None;
+					Error
 				}
 			}
 		};

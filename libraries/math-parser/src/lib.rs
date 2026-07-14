@@ -1,21 +1,17 @@
-#![allow(unused)]
-
 pub mod ast;
 mod constants;
 pub mod context;
-pub mod diagnostic;
 pub mod executer;
 pub mod lexer;
 pub mod parser;
 pub mod value;
 
-use ast::Unit;
-use context::{EvalContext, ValueMap};
-use diagnostic::CompileError;
+use context::EvalContext;
 use executer::EvalError;
+use parser::ParseError;
 use value::Value;
 
-pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, CompileError> {
+pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError> {
 	let expr = ast::Node::try_parse_from_str(expression);
 	let context = EvalContext::default();
 	expr.map(|node| node.eval(&context))
@@ -24,32 +20,38 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, CompileErr
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use ast::Unit;
-	use codespan_reporting::term::{
-		self,
-		termcolor::{ColorChoice, StandardStream},
-	};
 	use value::Number;
 
 	const EPSILON: f64 = 1e-10_f64;
 
+	#[test]
+	fn malformed_juxtaposed_numbers_fail_to_parse() {
+		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication).
+		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn unrecognized_characters_fail_to_parse() {
+		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix.
+		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
 	fn run_end_to_end_test(input: &str, expected_value: Value) {
 		let expr = match ast::Node::try_parse_from_str(input) {
 			Ok(expr) => expr,
-			Err(err) => {
-				err.print();
-				panic!("failed to parse `{input}`");
-			}
+			Err(err) => panic!("failed to parse `{input}`: {err}"),
 		};
-		dbg!(&expr);
 		let context = EvalContext::default();
 
 		let actual_value = match expr.eval(&context) {
 			Ok(v) => v,
-			Err(err) => panic!("failed to evaluate {input} becuase of error {err}"),
+			Err(err) => panic!("failed to evaluate `{input}` because of error {err}"),
 		};
 
-		// compare
 		match (actual_value, expected_value) {
 			(Value::Number(Number::Complex(a)), Value::Number(Number::Complex(e))) => {
 				// real part
@@ -136,6 +138,17 @@ mod tests {
 		exponent_single: "2^3" => 8.,
 		exponent_mixed_operations: "2^3 + 4^2" => 24.,
 		exponent_nested: "2^(3+1)" => 16.,
+		exponent_right_associative: "2^2^3" => 256.,
+		exponent_unary_operand: "2^-1" => 0.5,
+
+		// Implicit multiplication binds like `*`/`/`: tighter than `+`, looser than `^`, left to right
+		implicit_multiplication_constant: "2pi" => 2. * std::f64::consts::PI,
+		implicit_multiplication_before_addition: "2pi + 1" => 2. * std::f64::consts::PI + 1.,
+		implicit_multiplication_shares_division: "1/2pi" => std::f64::consts::PI / 2.,
+		implicit_multiplication_left_to_right: "6/2pi" => 3. * std::f64::consts::PI,
+		implicit_multiplication_power_operand: "2pi^2" => 2. * std::f64::consts::PI.powi(2),
+		implicit_multiplication_function: "2sqrt(4)" => 4.,
+		implicit_multiplication_excludes_unary_minus: "2 -3" => -1.,
 
 		// Factorial (postfix !)
 		factorial_simple: "5!" => 120.,

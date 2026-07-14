@@ -793,16 +793,6 @@ dependencies = [
 
 [[package]]
 name = "codespan-reporting"
-version = "0.12.0"
-source = "git+https://github.com/urisinger/codespan-style-writer.git#7ff3cb9013bf8320c151388cd76dfe254b325f0c"
-dependencies = [
- "serde",
- "termcolor",
- "unicode-width",
-]
-
-[[package]]
-name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
@@ -3390,9 +3380,7 @@ name = "math-parser"
 version = "0.0.0"
 dependencies = [
  "chumsky",
- "codespan-reporting 0.12.0",
  "criterion",
- "lazy_static",
  "num-complex",
  "thiserror 2.0.18",
 ]
@@ -3503,7 +3491,7 @@ dependencies = [
  "bitflags 2.11.0",
  "cfg-if",
  "cfg_aliases",
- "codespan-reporting 0.13.1",
+ "codespan-reporting",
  "half",
  "hashbrown 0.16.0",
  "hexf-parse",

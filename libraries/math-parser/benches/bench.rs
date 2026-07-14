@@ -17,13 +17,10 @@ macro_rules! generate_benchmarks {
 
 		fn evaluation_bench(c: &mut Criterion) {
 			$(
-			let expr = match ast::Node::try_parse_from_str($input) {
-				Ok(expr) => expr,
-				Err(err) => {
-					err.print();
-					panic!(concat!("failed to parse `", $input, "`"));
-				}
-			};
+				let expr = match ast::Node::try_parse_from_str($input) {
+					Ok(expr) => expr,
+					Err(err) => panic!("failed to parse `{}`: {err}", $input),
+				};
 				let context = EvalContext::default();
 
 				c.bench_function(concat!("eval ", $input), |b| {

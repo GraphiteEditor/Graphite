@@ -1,5 +1,5 @@
 use crate::ast::{Literal, Node};
-use crate::constants::DEFAULT_FUNCTIONS;
+use crate::constants::builtin_function;
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
 use num_complex::Complex;
@@ -32,11 +32,22 @@ impl Node {
 			},
 			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
 			Node::FnCall { name, expr } => {
-				let values = expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
+				// Arguments land in a stack buffer when they fit (builtins take at most 5), avoiding a heap allocation per call
+				let mut stack_values = [Value::from_f64(0.); 5];
+				let heap_values: Vec<Value>;
+				let values: &[Value] = if expr.len() <= stack_values.len() {
+					for (slot, argument) in stack_values.iter_mut().zip(expr) {
+						*slot = argument.eval(context)?;
+					}
+					&stack_values[..expr.len()]
+				} else {
+					heap_values = expr.iter().map(|argument| argument.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
+					&heap_values
+				};
 
-				if let Some(function) = DEFAULT_FUNCTIONS.get(&name.as_str()) {
-					function(&values).ok_or(EvalError::TypeError)
-				} else if let Some(val) = context.run_function(name, &values) {
+				if let Some(function) = builtin_function(name) {
+					function(values).ok_or(EvalError::TypeError)
+				} else if let Some(val) = context.run_function(name, values) {
 					Ok(val)
 				} else {
 					context.get_value(name).ok_or_else(|| EvalError::MissingFunction(name.to_string()))
@@ -57,7 +68,7 @@ impl Node {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
-	use crate::context::{EvalContext, ValueMap};
+	use crate::context::EvalContext;
 	use crate::value::Value;
 
 	macro_rules! eval_tests {
@@ -73,38 +84,38 @@ mod tests {
 	}
 
 	eval_tests! {
-		test_addition: Value::from_f64(7.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
+		test_addition: Value::from_f64(7.) => Node::BinOp {
+			lhs: Box::new(Node::Lit(Literal::Float(3.))),
 			op: BinaryOp::Add,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
-		test_subtraction: Value::from_f64(1.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(5.0))),
+		test_subtraction: Value::from_f64(1.) => Node::BinOp {
+			lhs: Box::new(Node::Lit(Literal::Float(5.))),
 			op: BinaryOp::Sub,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
-		test_multiplication: Value::from_f64(12.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
+		test_multiplication: Value::from_f64(12.) => Node::BinOp {
+			lhs: Box::new(Node::Lit(Literal::Float(3.))),
 			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.))),
 		},
 		test_division: Value::from_f64(2.5) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(5.0))),
+			lhs: Box::new(Node::Lit(Literal::Float(5.))),
 			op: BinaryOp::Div,
-			rhs: Box::new(Node::Lit(Literal::Float(2.0))),
+			rhs: Box::new(Node::Lit(Literal::Float(2.))),
 		},
-		test_negation: Value::from_f64(-3.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(3.0))),
+		test_negation: Value::from_f64(-3.) => Node::UnaryOp {
+			expr: Box::new(Node::Lit(Literal::Float(3.))),
 			op: UnaryOp::Neg,
 		},
-		test_sqrt: Value::from_f64(2.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(4.0))),
+		test_sqrt: Value::from_f64(2.) => Node::UnaryOp {
+			expr: Box::new(Node::Lit(Literal::Float(4.))),
 			op: UnaryOp::Sqrt,
 		},
-		 test_power: Value::from_f64(8.0) => Node::BinOp {
-			 lhs: Box::new(Node::Lit(Literal::Float(2.0))),
+		 test_power: Value::from_f64(8.) => Node::BinOp {
+			 lhs: Box::new(Node::Lit(Literal::Float(2.))),
 			 op: BinaryOp::Pow,
-			 rhs: Box::new(Node::Lit(Literal::Float(3.0))),
+			 rhs: Box::new(Node::Lit(Literal::Float(3.))),
 		 },
 	}
 }

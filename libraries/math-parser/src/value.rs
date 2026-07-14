@@ -1,6 +1,4 @@
 use crate::ast::{BinaryOp, UnaryOp};
-use num_complex::ComplexFloat;
-use std::f64::consts::PI;
 
 pub type Complex = num_complex::Complex<f64>;
 
@@ -123,7 +121,7 @@ impl Number {
 			}
 
 			(Number::Real(lhs), Number::Complex(rhs)) => {
-				let lhs_complex = Complex::new(lhs, 0.0);
+				let lhs_complex = Complex::new(lhs, 0.);
 				let result = match op {
 					BinaryOp::Add => lhs_complex + rhs,
 					BinaryOp::Sub => lhs_complex - rhs,
@@ -136,7 +134,7 @@ impl Number {
 			}
 
 			(Number::Complex(lhs), Number::Real(rhs)) => {
-				let rhs_complex = Complex::new(rhs, 0.0);
+				let rhs_complex = Complex::new(rhs, 0.);
 				let result = match op {
 					BinaryOp::Add => lhs + rhs_complex,
 					BinaryOp::Sub => lhs - rhs_complex,

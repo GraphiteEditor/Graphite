@@ -55,8 +55,8 @@ fn math<T: num_traits::float::Float>(
 
 	let node = match ast::Node::try_parse_from_str(expression) {
 		Ok(expr) => expr,
-		Err(_) => {
-			warn!("Invalid expression: `{expression}`");
+		Err(e) => {
+			warn!("Invalid expression: `{expression}`\n{e}");
 			return Item::from_parts(T::from(0.).unwrap(), attributes);
 		}
 	};
