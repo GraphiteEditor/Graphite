@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use crate::{AttributesWrite, CrdtError, Delta, Rev, TimeStamp};
+use crate::{AttributesWrite, CrdtError, Delta, RegistryDelta, Rev, TimeStamp};
 
 #[derive(Clone, Debug, Default)]
 pub struct History {
@@ -177,4 +177,37 @@ impl History {
 		}
 		Ok(())
 	}
+}
+
+/// Recompute every delta's content-addressed `Rev` after delta payloads were rewritten, walking in
+/// topological order and remapping parent links (including `Merge` extra parents) along the way.
+/// Returns the old → new mapping for remapping cursors (`head`, redo stack, broadcast tip).
+pub fn rehash_deltas(deltas: &mut [Delta]) -> HashMap<Rev, Rev> {
+	fn remap_merge_parents(kind: &mut RegistryDelta, mapping: &HashMap<Rev, Rev>) {
+		if let RegistryDelta::Merge { extra_parents } = kind {
+			for parent in extra_parents.iter_mut() {
+				if let Some(new) = mapping.get(parent) {
+					*parent = *new;
+				}
+			}
+		}
+	}
+
+	let mut mapping: HashMap<Rev, Rev> = HashMap::new();
+
+	for delta in deltas.iter_mut() {
+		if let Some(parent) = delta.parent.as_mut()
+			&& let Some(new) = mapping.get(parent)
+		{
+			*parent = *new;
+		}
+		remap_merge_parents(&mut delta.kind, &mapping);
+		remap_merge_parents(&mut delta.reverse, &mapping);
+
+		let new_id = delta.recomputed_id();
+		mapping.insert(delta.id, new_id);
+		delta.id = new_id;
+	}
+
+	mapping
 }

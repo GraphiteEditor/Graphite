@@ -11,6 +11,8 @@ members = [
 	"document/format",
 	"document/graph-storage",
 	"document/container",
+	"document/migrations/core",
+	"document/migrations/runner",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -96,6 +98,8 @@ graph-craft = { path = "node-graph/graph-craft" }
 document-format = { path = "document/format" }
 document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
+migration-core = { path = "document/migrations/core" }
+migration-runner = { path = "document/migrations/runner" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
