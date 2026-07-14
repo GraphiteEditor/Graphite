@@ -16,7 +16,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2, FloatExt};
+use glam::{DAffine2, DMat2, DVec2, FloatExt, Vec4};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
@@ -26,7 +26,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, ParamCurve, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, CubicBez, Join, ParamCurve, PathSeg, Shape, StrokeOpts};
 use num_traits::{Float, Zero};
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -1164,25 +1164,130 @@ impl Render for List<Vector> {
 				.is_some_and(|list| matches!(list.element(0), Some(Graphic::Gradient(gradient)) if gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0) == GradientType::Mesh));
 			if is_mesh_fill {
 				let mesh_transform = element_transform * applied_stroke_transform;
+				let mesh_corner_count_column: usize = 3;
+				let mesh_corner_count_row: usize = 3;
+				let patch_count_column = mesh_corner_count_column - 1;
+				let patch_count_row = mesh_corner_count_row - 1;
+				let subpatch_count_per_patch = 4;
+				let subpatch_count_per_axis = patch_count_row * subpatch_count_per_patch;
+				let subpatch_stride_uv = 1. / subpatch_count_per_axis as f64;
 
-				// Split the mesh into 8 x 8 subgrids
-				let grid_num = 2;
-				let grid_stride_uv = 1. / grid_num as f64;
+				let top_left_color = Color::BLACK;
+				let top_middle_color = Color::WHITE;
+				let top_right_color = Color::BLACK;
 
-				let segments: Vec<_> = vector.segment_iter().map(|(_, path_seg, _, _)| path_seg).collect();
-				let points = vector.point_domain.positions();
+				let middle_left_color = Color::WHITE;
+				let center_color = Color::BLACK;
+				let middle_right_color = Color::WHITE;
 
-				let top_seg = segments[0];
-				let right_seg = segments[1];
-				let bottom_seg = segments[2];
-				let left_seg = segments[3];
+				let bottom_left_color = Color::BLACK;
+				let bottom_middle_color = Color::WHITE;
+				let bottom_right_color = Color::BLACK;
 
-				let top_left_color = Color::RED;
-				let top_right_color = Color::BLUE;
-				let bottom_left_color = Color::GREEN;
-				let bottom_right_color = Color::YELLOW;
+				let mesh_corner_colors = vec![
+					bottom_left_color,
+					bottom_middle_color,
+					bottom_right_color,
+					middle_left_color,
+					center_color,
+					middle_right_color,
+					top_left_color,
+					top_middle_color,
+					top_right_color,
+				];
 
-				let bilerp_points = |u: f64, v: f64| points[3] * (1. - u) * (1. - v) + points[2] * u * (1. - v) + points[0] * (1. - u) * v + points[1] * u * v;
+				let mesh_corner_pos = vec![
+					DVec2::new(0., 0.),
+					DVec2::new(550., 50.),
+					DVec2::new(1100., 0.),
+					DVec2::new(-50., 450.),
+					DVec2::new(575., 550.),
+					DVec2::new(1150., 425.),
+					DVec2::new(0., 950.),
+					DVec2::new(525., 900.),
+					DVec2::new(1100., 1000.),
+				];
+
+				let horizontal_segments = [
+					PathSeg::Cubic(CubicBez::new((0., 0.), (183.335, 16.665), (366.665, 50.), (550., 50.))),
+					PathSeg::Cubic(CubicBez::new((550., 50.), (733.335, 50.), (916.665, 16.665), (1100., 0.))),
+					PathSeg::Cubic(CubicBez::new((-50., 450.), (158.335, 483.335), (375., 554.165), (575., 550.))),
+					PathSeg::Cubic(CubicBez::new((575., 550.), (775., 545.835), (958.335, 466.665), (1150., 425.))),
+					PathSeg::Cubic(CubicBez::new((0., 950.), (175., 933.335), (341.665, 891.665), (525., 900.))),
+					PathSeg::Cubic(CubicBez::new((525., 900.), (708.335, 908.335), (908.335, 966.665), (1100., 1000.))),
+				];
+
+				let vertical_segments = [
+					PathSeg::Cubic(CubicBez::new((0., 0.), (-16.665, 150.), (-50., 291.665), (-50., 450.))),
+					PathSeg::Cubic(CubicBez::new((550., 50.), (558.335, 216.665), (579.165, 408.335), (575., 550.))),
+					PathSeg::Cubic(CubicBez::new((1100., 0.), (1116.665, 141.665), (1150., 258.335), (1150., 425.))),
+					PathSeg::Cubic(CubicBez::new((-50., 450.), (-50., 608.335), (-16.665, 783.335), (0., 950.))),
+					PathSeg::Cubic(CubicBez::new((575., 550.), (570.835, 691.665), (541.665, 783.335), (525., 900.))),
+					PathSeg::Cubic(CubicBez::new((1150., 425.), (1150., 591.665), (1116.665, 808.335), (1100., 1000.))),
+				];
+
+				let sample_index = |row: isize, column: isize| -> usize {
+					let clamped_column = column.clamp(0, mesh_corner_count_column as isize - 1) as usize;
+					let clamped_row = row.clamp(0, mesh_corner_count_row as isize - 1) as usize;
+					clamped_row * mesh_corner_count_column + clamped_column
+				};
+
+				#[derive(Clone, Copy)]
+				struct MeshCornerDerivatives {
+					u: Vec4,
+					v: Vec4,
+				}
+
+				let gamma_colors: Vec<Vec4> = mesh_corner_colors.iter().map(|color| Vec4::from_array(color.to_gamma_srgb_channels())).collect();
+				let calculate_derivative = |prev_index: usize, curr_index: usize, next_index: usize| {
+					let prev_color = gamma_colors[prev_index];
+					let curr_color = gamma_colors[curr_index];
+					let next_color = gamma_colors[next_index];
+
+					let prev_distance = mesh_corner_pos[curr_index].distance(mesh_corner_pos[prev_index]) as f32;
+					let next_distance = mesh_corner_pos[next_index].distance(mesh_corner_pos[curr_index]) as f32;
+
+					if prev_index == curr_index {
+						(next_color - curr_color) / next_distance
+					} else if next_index == curr_index {
+						(curr_color - prev_color) / prev_distance
+					} else {
+						let backward_diff = (curr_color - prev_color) / prev_distance;
+						let forward_diff = (next_color - curr_color) / next_distance;
+						let central_diff = (backward_diff + forward_diff) / 2.;
+
+						// Prevent overshooting by using a zero slope at local minimum/maximum
+						// TODO: consider clamping slope by a constant value
+						Vec4::from_array(std::array::from_fn(
+							|channel| {
+								if backward_diff[channel] * forward_diff[channel] <= 0. { 0. } else { central_diff[channel] }
+							},
+						))
+					}
+				};
+
+				let mut mesh_corner_derivatives = Vec::with_capacity(mesh_corner_count_row * mesh_corner_count_column);
+				for row in 0..mesh_corner_count_row as isize {
+					for col in 0..mesh_corner_count_column as isize {
+						let curr_index = sample_index(row, col);
+						let u = calculate_derivative(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
+						let v = calculate_derivative(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
+						mesh_corner_derivatives.push(MeshCornerDerivatives { u, v });
+					}
+				}
+
+				let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
+					let t_power_2 = t * t;
+					let t_power_3 = t_power_2 * t;
+
+					let h1 = 2. * t_power_3 - 3. * t_power_2 + 1.;
+					let h2 = -2. * t_power_3 + 3. * t_power_2;
+					let h3 = t_power_3 - 2. * t_power_2 + t;
+					let h4 = t_power_3 - t_power_2;
+
+					ma * h3 + a * h1 + b * h2 + mb * h4
+				};
+
 				let float_srgba_to_hex = |color: [f32; 4]| -> String {
 					let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
 					SRGBA8 {
@@ -1194,138 +1299,195 @@ impl Render for List<Vector> {
 					.to_rgba_hex()
 				};
 
-				type Row = Vec<(DVec2, [f32; 4])>;
-				type Grid = Vec<Row>;
+				type SubpatchVertex = (DVec2, [f32; 4]);
+				type SubpatchVertexRow = Vec<SubpatchVertex>;
+				type SubpatchVertexRows = Vec<SubpatchVertexRow>;
 
-				// Create the position and color info of the grid that is splitted from the original mesh
-				let mut grid_info: Grid = vec![];
+				// Patch loop
+				for patch_v_index in 0..patch_count_row {
+					for patch_u_index in 0..patch_count_column {
+						let horizontal_segment_index = patch_v_index * patch_count_column + patch_u_index;
+						let vertical_segment_index = patch_v_index * (patch_count_column + 1) + patch_u_index;
 
-				for i in 0..=grid_num {
-					let u = i as f64 * grid_stride_uv;
-					let mut grid_info_row: Row = vec![];
+						let tl_index = patch_v_index * mesh_corner_count_column + patch_u_index;
+						let tr_index = tl_index + 1;
+						let bl_index = (patch_v_index + 1) * mesh_corner_count_column + patch_u_index;
+						let br_index = bl_index + 1;
 
-					for j in 0..=grid_num {
-						let v = j as f64 * grid_stride_uv;
-						let c1_u = point_to_dvec2(bottom_seg.eval(1. - u));
-						let c2_u = point_to_dvec2(top_seg.eval(u));
-						let d1_v = point_to_dvec2(left_seg.eval(v));
-						let d2_v = point_to_dvec2(right_seg.eval(1. - v));
-						let lc = (1. - v) * c1_u + v * c2_u;
-						let ld = (1. - u) * d1_v + u * d2_v;
-						let pos = mesh_transform.transform_point2(lc + ld - bilerp_points(u, v));
+						let patch_top_seg = horizontal_segments[horizontal_segment_index];
+						let patch_bottom_seg = horizontal_segments[horizontal_segment_index + patch_count_column];
+						let patch_left_seg = vertical_segments[vertical_segment_index];
+						let patch_right_seg = vertical_segments[vertical_segment_index + 1];
 
-						// We need to calculate the color for each grid points by sRGB since SVG uses sRGB for color interpolation.
-						// `color-interpolation="linearRGB"` is part of the SVG2 spec but not yet implemented in major browsers as of Jul. 2026.
-						// See also: https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/color-interpolation
-						let bottom_left_gamma = bottom_left_color.to_gamma_srgb_channels();
-						let bottom_right_gamma = bottom_right_color.to_gamma_srgb_channels();
-						let top_left_gamma = top_left_color.to_gamma_srgb_channels();
-						let top_right_gamma = top_right_color.to_gamma_srgb_channels();
-						let color_gamma: [f32; 4] = std::array::from_fn(|i| {
-							bottom_left_gamma[i]
-								.lerp(bottom_right_gamma[i], u as f32)
-								.lerp(top_left_gamma[i].lerp(top_right_gamma[i], u as f32), v as f32)
-						});
+						let tl_pos = mesh_corner_pos[tl_index];
+						let tr_pos = mesh_corner_pos[tr_index];
+						let bl_pos = mesh_corner_pos[bl_index];
+						let br_pos = mesh_corner_pos[br_index];
 
-						grid_info_row.push((pos, color_gamma));
-					}
-					grid_info.push(grid_info_row);
-				}
+						let tl_color = mesh_corner_colors[tl_index];
+						let tr_color = mesh_corner_colors[tr_index];
+						let bl_color = mesh_corner_colors[bl_index];
+						let br_color = mesh_corner_colors[br_index];
 
-				// Create poloygons using the vertex position data
-				let mut idx = generate_uuid();
+						let tl_deriv = mesh_corner_derivatives[tl_index];
+						let tr_deriv = mesh_corner_derivatives[tr_index];
+						let bl_deriv = mesh_corner_derivatives[bl_index];
+						let br_deriv = mesh_corner_derivatives[br_index];
 
-				for i in 0..grid_num {
-					for j in 0..grid_num {
-						let (bl, bl_color) = grid_info[i][j];
-						let (tl, tl_color) = grid_info[i][j + 1];
-						let (br, br_color) = grid_info[i + 1][j];
-						let (tr, tr_color) = grid_info[i + 1][j + 1];
-						let DVec2 { x: bl_x, y: bl_y } = bl;
-						let DVec2 { x: tl_x, y: tl_y } = tl;
-						let DVec2 { x: br_x, y: br_y } = br;
-						let DVec2 { x: tr_x, y: tr_y } = tr;
-						let patch_transform = format_transform_matrix(DAffine2::from_cols(tr - tl, bl - tl, tl));
+						// Store rows in increasing v order (bottom to top), with u increasing from left to right within each row.
+						let mut subpatch_vertex_rows: SubpatchVertexRows = vec![];
 
-						// linear gradient for the bottom line
-						write!(
+						// Subpatch loop
+						for subpatch_vertex_v_index in 0..=subpatch_count_per_axis {
+							let v = subpatch_vertex_v_index as f64 * subpatch_stride_uv;
+							let mut subpatch_vertex_row: SubpatchVertexRow = vec![];
+							for subpatch_vertex_u_index in 0..=subpatch_count_per_axis {
+								let u = subpatch_vertex_u_index as f64 * subpatch_stride_uv;
+								let top_u = point_to_dvec2(patch_top_seg.eval(u));
+								let bottom_u = point_to_dvec2(patch_bottom_seg.eval(u));
+								let left_v = point_to_dvec2(patch_left_seg.eval(v));
+								let right_v = point_to_dvec2(patch_right_seg.eval(v));
+								let s_c = (1. - v) * top_u + v * bottom_u;
+								let s_d = (1. - u) * left_v + u * right_v;
+								let s_b = mesh_corner_pos[tl_index] * (1. - u) * (1. - v)
+									+ mesh_corner_pos[tr_index] * u * (1. - v)
+									+ mesh_corner_pos[bl_index] * (1. - u) * v
+									+ mesh_corner_pos[br_index] * u * v;
+								let position = mesh_transform.transform_point2(s_c + s_d - s_b);
+
+								// We need to calculate the color for each subpatch vertex in sRGB since SVG uses sRGB for color interpolation.
+								// `color-interpolation="linearRGB"` is part of the SVG2 spec but not yet implemented in major browsers as of Jul. 2026.
+								// See also: https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/color-interpolation
+								let bottom_left_gamma = bl_color.to_gamma_srgb_channels();
+								let bottom_right_gamma = br_color.to_gamma_srgb_channels();
+								let top_left_gamma = tl_color.to_gamma_srgb_channels();
+								let top_right_gamma = tr_color.to_gamma_srgb_channels();
+
+								let top_length = tl_pos.distance(tr_pos) as f32;
+								let bottom_length = bl_pos.distance(br_pos) as f32;
+								let left_length = tl_pos.distance(bl_pos) as f32;
+								let right_length = tr_pos.distance(br_pos) as f32;
+
+								// Calculate the colors for each subpatch corners by bicubic hermite interpolation.
+								// The cross derivatives are explicitly set to zero for the interpolation of the slopes.
+								// https://www.w3.org/TR/2015/WD-SVG2-20150915/pservers.html#MeshPatchPainting
+								let color_gamma: [f32; 4] = std::array::from_fn(|channel| {
+									let top_color_interpolated = hermite(
+										top_left_gamma[channel],
+										tl_deriv.u[channel] * top_length,
+										top_right_gamma[channel],
+										tr_deriv.u[channel] * top_length,
+										u as f32,
+									);
+									let bottom_color_interpolated = hermite(
+										bottom_left_gamma[channel],
+										bl_deriv.u[channel] * bottom_length,
+										bottom_right_gamma[channel],
+										br_deriv.u[channel] * bottom_length,
+										u as f32,
+									);
+									let top_slope_interpolated = hermite(tl_deriv.v[channel] * left_length, 0., tr_deriv.v[channel] * right_length, 0., u as f32);
+									let bottom_slope_interpolated = hermite(bl_deriv.v[channel] * left_length, 0., br_deriv.v[channel] * right_length, 0., u as f32);
+									hermite(top_color_interpolated, top_slope_interpolated, bottom_color_interpolated, bottom_slope_interpolated, v as f32)
+								});
+
+								// let color_gamma: [f32; 4] = std::array::from_fn(|channel| {
+								// 	top_left_gamma[channel]
+								// 		.lerp(top_right_gamma[channel], u as f32)
+								// 		.lerp(bottom_left_gamma[channel].lerp(bottom_right_gamma[channel], u as f32), v as f32)
+								// });
+
+								subpatch_vertex_row.push((position, color_gamma));
+							}
+							subpatch_vertex_rows.push(subpatch_vertex_row);
+						}
+
+						// Create polygons using the vertex position data
+						let mut idx = generate_uuid();
+
+						for subpatch_v_index in 0..subpatch_count_per_axis {
+							for subpatch_u_index in 0..subpatch_count_per_axis {
+								let (bl, bl_color) = subpatch_vertex_rows[subpatch_v_index][subpatch_u_index];
+								let (br, br_color) = subpatch_vertex_rows[subpatch_v_index][subpatch_u_index + 1];
+								let (tl, tl_color) = subpatch_vertex_rows[subpatch_v_index + 1][subpatch_u_index];
+								let (tr, tr_color) = subpatch_vertex_rows[subpatch_v_index + 1][subpatch_u_index + 1];
+								let subpatch_transform = format_transform_matrix(DAffine2::from_cols(tr - tl, bl - tl, tl));
+
+								// linear gradient for the bottom line
+								write!(
 							&mut render.svg_defs,
-							r##"<linearGradient id="gb{idx}" x1="0" y1="1" x2="1" y2="1" gradientTransform="{patch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							r##"<linearGradient id="gb{idx}" x1="0" y1="1" x2="1" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
 							float_srgba_to_hex(bl_color),
 							float_srgba_to_hex(br_color),
 						)
 						.unwrap();
 
-						// linear gradient for the top line
-						write!(
+								// linear gradient for the top line
+								write!(
 							&mut render.svg_defs,
-							r##"<linearGradient id="gt{idx}" x1="0" y1="0" x2="1" y2="0" gradientTransform="{patch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							r##"<linearGradient id="gt{idx}" x1="0" y1="0" x2="1" y2="0" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
 							float_srgba_to_hex(tl_color),
 							float_srgba_to_hex(tr_color),
 						)
 						.unwrap();
 
-						// top mask gradient
-						write!(
+								// top mask gradient
+								write!(
 							&mut render.svg_defs,
-							r##"<linearGradient id="gm{idx}" x1="0.5" y1="0" x2="0.5" y2="1" gradientTransform="{patch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
+							r##"<linearGradient id="gm{idx}" x1="0.5" y1="0" x2="0.5" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
 						)
 						.unwrap();
 
-						// inflate a patch to hide gaps caused by anti-aliasing
-						let bottom_normal = (br - bl).perp().normalize();
-						let top_normal = (tl - tr).perp().normalize();
-						let left_normal = (bl - tl).perp().normalize();
-						let right_normal = (tr - br).perp().normalize();
-						let pad = 1.;
-						let bl = bl + (bottom_normal + left_normal) * pad;
-						let tl = tl + (top_normal + left_normal) * pad;
-						let br = br + (bottom_normal + right_normal) * pad;
-						let tr = tr + (top_normal + right_normal) * pad;
-						let DVec2 { x: bl_x, y: bl_y } = bl;
-						let DVec2 { x: tl_x, y: tl_y } = tl;
-						let DVec2 { x: br_x, y: br_y } = br;
-						let DVec2 { x: tr_x, y: tr_y } = tr;
+								// Inflate a subpatch to hide gaps caused by anti-aliasing.
+								let bottom_normal = (br - bl).perp().normalize();
+								let top_normal = (tl - tr).perp().normalize();
+								let left_normal = (bl - tl).perp().normalize();
+								let right_normal = (tr - br).perp().normalize();
+								let pad = 1.;
+								let bl = bl + (bottom_normal + left_normal) * pad;
+								let tl = tl + (top_normal + left_normal) * pad;
+								let br = br + (bottom_normal + right_normal) * pad;
+								let tr = tr + (top_normal + right_normal) * pad;
+								let DVec2 { x: bl_x, y: bl_y } = bl;
+								let DVec2 { x: tl_x, y: tl_y } = tl;
+								let DVec2 { x: br_x, y: br_y } = br;
+								let DVec2 { x: tr_x, y: tr_y } = tr;
 
-						// mask
-						let min_x = bl_x.min(tl_x.min(br_x.min(tr_x)));
-						let max_x = bl_x.max(tl_x.max(br_x.max(tr_x)));
-						let min_y = bl_y.min(tl_y.min(br_y.min(tr_y)));
-						let max_y = bl_y.max(tl_y.max(br_y.max(tr_y)));
-						let mask_width = max_x - min_x;
-						let mask_height = max_y - min_y;
-						write!(
-							&mut render.svg_defs,
-							r##"<mask id="m{idx}" x="{min_x}" y="{min_y}" width="{mask_width}" height="{mask_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+								// mask
+								let min_x = bl_x.min(tl_x.min(br_x.min(tr_x)));
+								let max_x = bl_x.max(tl_x.max(br_x.max(tr_x)));
+								let min_y = bl_y.min(tl_y.min(br_y.min(tr_y)));
+								let max_y = bl_y.max(tl_y.max(br_y.max(tr_y)));
+								let mask_width = max_x - min_x;
+								let mask_height = max_y - min_y;
+								write!(
+									&mut render.svg_defs,
+									r##"<mask id="m{idx}" x="{min_x}" y="{min_y}" width="{mask_width}" height="{mask_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
 							<rect
 							x="{min_x}"
 							y="{min_y}"
 							width="{mask_width}"
 							height="{mask_height}"
 							fill="url(#gm{idx})" /></mask>"##,
-						)
-						.unwrap();
+								)
+								.unwrap();
 
-						render.leaf_tag("polygon", |attributes| {
-							attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
-							attributes.push("fill", format!("url(#gb{idx})"));
-						});
+								render.leaf_tag("polygon", |attributes| {
+									attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
+									attributes.push("fill", format!("url(#gb{idx})"));
+								});
 
-						render.leaf_tag("polygon", |attributes| {
-							attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
-							attributes.push("fill", format!("url(#gt{idx})"));
-							attributes.push("mask", format!("url(#m{idx})"));
-						});
+								render.leaf_tag("polygon", |attributes| {
+									attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
+									attributes.push("fill", format!("url(#gt{idx})"));
+									attributes.push("mask", format!("url(#m{idx})"));
+								});
 
-						idx += 1;
+								idx += 1;
+							}
+						}
 					}
 				}
-
-				// Create a linear gradients, bottom-left -> bottom-right
-
-				// Create a linear gradient mask from top to bottom
-
-				// Create a linear gradient, top->left -> top->right with applying the mask
 				return;
 			}
 
