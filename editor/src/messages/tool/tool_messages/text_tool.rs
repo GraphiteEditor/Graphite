@@ -852,7 +852,7 @@ impl Fsm for TextToolFsmState {
 							let rects = graphene_std::text::selection_rectangles(&tool_data.new_text, &font_resource, editing_text.typesetting, start, end);
 							for [top_left, bottom_right] in rects {
 								let sel_quad = Quad::from_box([top_left, bottom_right]);
-								overlay_context.quad(layer_to_viewport * sel_quad, None, Some("#41414140"));
+								overlay_context.quad(layer_to_viewport * sel_quad, Some("#00000000"), Some("#161616D0"));
 							}
 						}
 					}
