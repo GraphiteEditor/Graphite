@@ -1,4 +1,4 @@
-// TODO: Consider inlining this file into internal as it is no longer use outside
+// TODO: Consider inlining this file into internal
 
 use cef::{Frame, ImplBinaryValue, ImplFrame, ImplListValue, ImplProcessMessage, ImplV8Context, ProcessId, V8Context, sys::cef_process_id_t};
 
