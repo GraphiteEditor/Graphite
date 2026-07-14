@@ -104,7 +104,7 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 		if (isEditingText) {
 			if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
 				e.preventDefault();
-				if (!e.repeat) editor.onTextInput(e.key);
+				editor.onTextInput(e.key);
 				return;
 			}
 		}
@@ -171,6 +171,8 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+	} else if (!inContextMenu) {
+		editor.onCanvasUnfocused();
 	}
 }
 

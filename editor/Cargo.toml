@@ -54,6 +54,7 @@ color = { workspace = true }
 zip = { workspace = true }
 reqwest = { workspace = true }
 url = { workspace = true }
+unicode-segmentation = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

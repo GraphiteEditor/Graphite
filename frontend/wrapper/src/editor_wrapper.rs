@@ -668,6 +668,13 @@ impl EditorWrapper {
 		Ok(())
 	}
 
+	/// Canvas lost focus
+	#[wasm_bindgen(js_name = onCanvasUnfocused)]
+	pub fn on_canvas_unfocused(&self) {
+		let message = BroadcastMessage::TriggerEvent(EventMessage::CanvasUnfocused);
+		self.dispatch(message);
+	}
+
 	/// Dialog got dismissed
 	#[wasm_bindgen(js_name = onDialogDismiss)]
 	pub fn on_dialog_dismiss(&self) {

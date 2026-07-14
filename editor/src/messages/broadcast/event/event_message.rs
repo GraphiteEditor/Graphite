@@ -9,4 +9,5 @@ pub enum EventMessage {
 	ToolAbort,
 	SelectionChanged,
 	WorkingColorChanged,
+	CanvasUnfocused,
 }

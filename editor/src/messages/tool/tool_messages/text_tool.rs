@@ -26,6 +26,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, cursor_rect, lines_clipping};
 use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Default, ExtractField)]
 pub struct TextTool {
@@ -469,6 +470,8 @@ impl ToolTransition for TextTool {
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| TextToolMessage::Overlays { context }.into()),
+			canvas_unfocused: Some(TextToolMessage::CommitText.into()),
+			..Default::default()
 		}
 	}
 }
@@ -601,6 +604,8 @@ impl TextToolData {
 			delete_children: true,
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+
+		responses.add(DocumentMessage::EndTransaction);
 
 		TextToolFsmState::Ready
 	}
@@ -944,8 +949,7 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Editing;
 				}
 
-				let next_state = self.transition(ToolMessage::Text(TextToolMessage::CommitText), tool_data, transition_data, tool_options, responses);
-				next_state.transition(ToolMessage::Text(TextToolMessage::DragStart), tool_data, transition_data, tool_options, responses)
+				self.transition(ToolMessage::Text(TextToolMessage::CommitText), tool_data, transition_data, tool_options, responses)
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
 				tool_data.resize.start(document, input, viewport);
@@ -1344,9 +1348,9 @@ impl Fsm for TextToolFsmState {
 				if !tool_data.delete_selection() {
 					let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
 					if offset > 0 {
-						// Find the start of the previous UTF-8 character.
-						let prev = tool_data.new_text[..offset].char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
-						tool_data.new_text.remove(prev);
+						// Find the start of the previous grapheme cluster.
+						let prev = tool_data.new_text[..offset].grapheme_indices(true).next_back().map(|(i, _)| i).unwrap_or(0);
+						tool_data.new_text.replace_range(prev..offset, "");
 						tool_data.cursor_byte_offset = prev;
 					}
 				}
@@ -1370,7 +1374,8 @@ impl Fsm for TextToolFsmState {
 				if !tool_data.delete_selection() {
 					let offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
 					if offset < tool_data.new_text.len() {
-						tool_data.new_text.remove(offset);
+						let next_char = tool_data.new_text[offset..].graphemes(true).next().map(|g| g.len()).unwrap_or(0);
+						tool_data.new_text.replace_range(offset..offset + next_char, "");
 					}
 				}
 
@@ -1398,7 +1403,7 @@ impl Fsm for TextToolFsmState {
 					let word_end = trimmed.rfind(|c: char| c.is_whitespace()).map(|i| i + trimmed[i..].chars().next().unwrap().len_utf8()).unwrap_or(0);
 					tool_data.cursor_byte_offset = word_end;
 				} else if offset > 0 {
-					let prev = tool_data.new_text[..offset].char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
+					let prev = tool_data.new_text[..offset].grapheme_indices(true).next_back().map(|(i, _)| i).unwrap_or(0);
 					tool_data.cursor_byte_offset = prev;
 				}
 				tool_data.last_edit_type = TextEditType::None;
@@ -1415,13 +1420,11 @@ impl Fsm for TextToolFsmState {
 				let offset = old_offset;
 				if word {
 					let suffix = &tool_data.new_text[offset..];
-					let word_end_rel = suffix
-						.find(|c: char| c.is_whitespace())
-						.map(|i| i + suffix[i..].find(|c: char| !c.is_whitespace()).unwrap_or(suffix.len() - i))
-						.unwrap_or(suffix.len());
+					let trimmed = suffix.trim_start();
+					let word_end_rel = trimmed.find(|c: char| c.is_whitespace()).map(|i| i + (suffix.len() - trimmed.len())).unwrap_or(suffix.len());
 					tool_data.cursor_byte_offset = offset + word_end_rel;
 				} else if offset < tool_data.new_text.len() {
-					let next_char = tool_data.new_text[offset..].chars().next().map(|c| c.len_utf8()).unwrap_or(0);
+					let next_char = tool_data.new_text[offset..].graphemes(true).next().map(|c| c.len()).unwrap_or(0);
 					tool_data.cursor_byte_offset = offset + next_char;
 				}
 				tool_data.last_edit_type = TextEditType::None;
@@ -1705,6 +1708,8 @@ impl Fsm for TextToolFsmState {
 					log::warn!("Text node not found for layer {:?}, edits were not committed", tool_data.layer);
 				}
 
+				responses.add(DocumentMessage::EndTransaction);
+
 				TextToolFsmState::Ready
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {
@@ -1726,6 +1731,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+				responses.add(DocumentMessage::EndTransaction);
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TimerTick { tick }) => {
