@@ -37,6 +37,21 @@ impl Node {
 		self.network
 	}
 
+	// Mutable access for edits on a registry clone that is diffed back into deltas;
+	// live-session edits go through the delta paths instead.
+	pub fn implementation_mut(&mut self) -> &mut Implementation {
+		&mut self.implementation
+	}
+	pub fn inputs_mut(&mut self) -> &mut Vec<InputSlot> {
+		&mut self.inputs
+	}
+	pub fn attributes_mut(&mut self) -> &mut Attributes {
+		&mut self.attributes
+	}
+	pub fn set_network(&mut self, network: NetworkId) {
+		self.network = network;
+	}
+
 	/// True if both nodes agree on every value-bearing field, ignoring slot/attribute timestamps.
 	pub fn value_equal(&self, other: &Self) -> bool {
 		if self.implementation != other.implementation || self.network != other.network {

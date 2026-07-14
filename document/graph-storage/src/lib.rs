@@ -23,7 +23,7 @@ pub mod to_runtime;
 pub use attributes::*;
 pub use crdt::*;
 pub use document::*;
-pub use history::History;
+pub use history::{History, rehash_deltas};
 pub use ids::*;
 pub use model::*;
 pub use prior::{NetworkField, NodeField, Prior};
