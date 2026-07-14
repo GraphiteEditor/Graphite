@@ -297,6 +297,8 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
+				// FIXME:
+				Graphic::MeshGradient(mesh_gradient) => Vec::new(),
 				Graphic::Text(text) => {
 					// Shape the glyphs into vectors (each item's own transform is applied), then compose the parent's transform like the other arms
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);

@@ -16,7 +16,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2, FloatExt, Vec4};
+use glam::{DAffine2, DMat2, DVec2, Vec4};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
@@ -27,7 +27,7 @@ use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, CubicBez, Join, ParamCurve, PathSeg, Shape, StrokeOpts};
-use num_traits::{Float, Zero};
+use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as SkrifaFontRef;
@@ -35,9 +35,9 @@ use skrifa::{GlyphId, MetadataProvider};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
-use std::ops::{Add, Deref, Mul, Sub};
+use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::{GradientSpreadMethod, MeshGradient};
 use vector_types::vector::misc::point_to_dvec2;
 use vello::*;
 
@@ -552,6 +552,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(list) => list.render_svg(render, render_params),
 			Graphic::Gradient(list) => list.render_svg(render, render_params),
+			Graphic::MeshGradient(list) => list.render_svg(render, render_params),
 			Graphic::Text(list) => list.render_svg(render, render_params),
 		}
 	}
@@ -565,6 +566,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::MeshGradient(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
@@ -620,6 +622,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
+				Graphic::MeshGradient(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
 				Graphic::Text(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
@@ -639,6 +649,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::MeshGradient(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id),
 		}
 	}
@@ -652,6 +663,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::MeshGradient(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Text(list) => list.add_upstream_click_targets(click_targets),
 		}
 	}
@@ -665,6 +677,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::MeshGradient(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Text(list) => list.add_upstream_outline_targets(outlines),
 		}
 	}
@@ -678,6 +691,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.contains_artboard(),
 			Graphic::Color(list) => list.contains_artboard(),
 			Graphic::Gradient(list) => list.contains_artboard(),
+			Graphic::MeshGradient(list) => list.contains_artboard(),
 			Graphic::Text(list) => list.contains_artboard(),
 		}
 	}
@@ -691,6 +705,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
+			Graphic::MeshGradient(_) => (),
 			Graphic::Text(_) => (),
 		}
 	}
@@ -1159,338 +1174,6 @@ impl Render for List<Vector> {
 				}
 			}
 
-			let is_mesh_fill = fill_graphic_list
-				.as_ref()
-				.is_some_and(|list| matches!(list.element(0), Some(Graphic::Gradient(gradient)) if gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0) == GradientType::Mesh));
-			if is_mesh_fill {
-				let mesh_transform = element_transform * applied_stroke_transform;
-				let mesh_corner_count_column: usize = 3;
-				let mesh_corner_count_row: usize = 3;
-				let patch_count_column = mesh_corner_count_column - 1;
-				let patch_count_row = mesh_corner_count_row - 1;
-				let subpatch_count_per_patch = 4;
-				let subpatch_count_per_axis = patch_count_row * subpatch_count_per_patch;
-				let subpatch_stride_uv = 1. / subpatch_count_per_axis as f64;
-
-				let top_left_color = Color::BLACK;
-				let top_middle_color = Color::WHITE;
-				let top_right_color = Color::BLACK;
-
-				let middle_left_color = Color::WHITE;
-				let center_color = Color::BLACK;
-				let middle_right_color = Color::WHITE;
-
-				let bottom_left_color = Color::BLACK;
-				let bottom_middle_color = Color::WHITE;
-				let bottom_right_color = Color::BLACK;
-
-				let mesh_corner_colors = vec![
-					bottom_left_color,
-					bottom_middle_color,
-					bottom_right_color,
-					middle_left_color,
-					center_color,
-					middle_right_color,
-					top_left_color,
-					top_middle_color,
-					top_right_color,
-				];
-
-				let mesh_corner_pos = vec![
-					DVec2::new(0., 0.),
-					DVec2::new(550., 50.),
-					DVec2::new(1100., 0.),
-					DVec2::new(-50., 450.),
-					DVec2::new(575., 550.),
-					DVec2::new(1150., 425.),
-					DVec2::new(0., 950.),
-					DVec2::new(525., 900.),
-					DVec2::new(1100., 1000.),
-				];
-
-				let horizontal_segments = [
-					PathSeg::Cubic(CubicBez::new((0., 0.), (183.335, 16.665), (366.665, 50.), (550., 50.))),
-					PathSeg::Cubic(CubicBez::new((550., 50.), (733.335, 50.), (916.665, 16.665), (1100., 0.))),
-					PathSeg::Cubic(CubicBez::new((-50., 450.), (158.335, 483.335), (375., 554.165), (575., 550.))),
-					PathSeg::Cubic(CubicBez::new((575., 550.), (775., 545.835), (958.335, 466.665), (1150., 425.))),
-					PathSeg::Cubic(CubicBez::new((0., 950.), (175., 933.335), (341.665, 891.665), (525., 900.))),
-					PathSeg::Cubic(CubicBez::new((525., 900.), (708.335, 908.335), (908.335, 966.665), (1100., 1000.))),
-				];
-
-				let vertical_segments = [
-					PathSeg::Cubic(CubicBez::new((0., 0.), (-16.665, 150.), (-50., 291.665), (-50., 450.))),
-					PathSeg::Cubic(CubicBez::new((550., 50.), (558.335, 216.665), (579.165, 408.335), (575., 550.))),
-					PathSeg::Cubic(CubicBez::new((1100., 0.), (1116.665, 141.665), (1150., 258.335), (1150., 425.))),
-					PathSeg::Cubic(CubicBez::new((-50., 450.), (-50., 608.335), (-16.665, 783.335), (0., 950.))),
-					PathSeg::Cubic(CubicBez::new((575., 550.), (570.835, 691.665), (541.665, 783.335), (525., 900.))),
-					PathSeg::Cubic(CubicBez::new((1150., 425.), (1150., 591.665), (1116.665, 808.335), (1100., 1000.))),
-				];
-
-				let sample_index = |row: isize, column: isize| -> usize {
-					let clamped_column = column.clamp(0, mesh_corner_count_column as isize - 1) as usize;
-					let clamped_row = row.clamp(0, mesh_corner_count_row as isize - 1) as usize;
-					clamped_row * mesh_corner_count_column + clamped_column
-				};
-
-				#[derive(Clone, Copy)]
-				struct MeshCornerDerivatives {
-					u: Vec4,
-					v: Vec4,
-				}
-
-				let gamma_colors: Vec<Vec4> = mesh_corner_colors.iter().map(|color| Vec4::from_array(color.to_gamma_srgb_channels())).collect();
-				let calculate_derivative = |prev_index: usize, curr_index: usize, next_index: usize| {
-					let prev_color = gamma_colors[prev_index];
-					let curr_color = gamma_colors[curr_index];
-					let next_color = gamma_colors[next_index];
-
-					let prev_distance = mesh_corner_pos[curr_index].distance(mesh_corner_pos[prev_index]) as f32;
-					let next_distance = mesh_corner_pos[next_index].distance(mesh_corner_pos[curr_index]) as f32;
-
-					if prev_index == curr_index {
-						(next_color - curr_color) / next_distance
-					} else if next_index == curr_index {
-						(curr_color - prev_color) / prev_distance
-					} else {
-						let backward_diff = (curr_color - prev_color) / prev_distance;
-						let forward_diff = (next_color - curr_color) / next_distance;
-						let central_diff = (backward_diff + forward_diff) / 2.;
-
-						// Prevent overshooting by using a zero slope at local minimum/maximum
-						// TODO: consider clamping slope by a constant value
-						Vec4::from_array(std::array::from_fn(
-							|channel| {
-								if backward_diff[channel] * forward_diff[channel] <= 0. { 0. } else { central_diff[channel] }
-							},
-						))
-					}
-				};
-
-				let mut mesh_corner_derivatives = Vec::with_capacity(mesh_corner_count_row * mesh_corner_count_column);
-				for row in 0..mesh_corner_count_row as isize {
-					for col in 0..mesh_corner_count_column as isize {
-						let curr_index = sample_index(row, col);
-						let u = calculate_derivative(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
-						let v = calculate_derivative(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
-						mesh_corner_derivatives.push(MeshCornerDerivatives { u, v });
-					}
-				}
-
-				let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
-					let t_power_2 = t * t;
-					let t_power_3 = t_power_2 * t;
-
-					let h1 = 2. * t_power_3 - 3. * t_power_2 + 1.;
-					let h2 = -2. * t_power_3 + 3. * t_power_2;
-					let h3 = t_power_3 - 2. * t_power_2 + t;
-					let h4 = t_power_3 - t_power_2;
-
-					ma * h3 + a * h1 + b * h2 + mb * h4
-				};
-
-				let float_srgba_to_hex = |color: [f32; 4]| -> String {
-					let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
-					SRGBA8 {
-						red: float_to_u8(color[0]),
-						green: float_to_u8(color[1]),
-						blue: float_to_u8(color[2]),
-						alpha: float_to_u8(color[3]),
-					}
-					.to_rgba_hex()
-				};
-
-				type SubpatchVertex = (DVec2, [f32; 4]);
-				type SubpatchVertexRow = Vec<SubpatchVertex>;
-				type SubpatchVertexRows = Vec<SubpatchVertexRow>;
-
-				// Patch loop
-				for patch_v_index in 0..patch_count_row {
-					for patch_u_index in 0..patch_count_column {
-						let horizontal_segment_index = patch_v_index * patch_count_column + patch_u_index;
-						let vertical_segment_index = patch_v_index * (patch_count_column + 1) + patch_u_index;
-
-						let tl_index = patch_v_index * mesh_corner_count_column + patch_u_index;
-						let tr_index = tl_index + 1;
-						let bl_index = (patch_v_index + 1) * mesh_corner_count_column + patch_u_index;
-						let br_index = bl_index + 1;
-
-						let patch_top_seg = horizontal_segments[horizontal_segment_index];
-						let patch_bottom_seg = horizontal_segments[horizontal_segment_index + patch_count_column];
-						let patch_left_seg = vertical_segments[vertical_segment_index];
-						let patch_right_seg = vertical_segments[vertical_segment_index + 1];
-
-						let tl_pos = mesh_corner_pos[tl_index];
-						let tr_pos = mesh_corner_pos[tr_index];
-						let bl_pos = mesh_corner_pos[bl_index];
-						let br_pos = mesh_corner_pos[br_index];
-
-						let tl_color = mesh_corner_colors[tl_index];
-						let tr_color = mesh_corner_colors[tr_index];
-						let bl_color = mesh_corner_colors[bl_index];
-						let br_color = mesh_corner_colors[br_index];
-
-						let tl_deriv = mesh_corner_derivatives[tl_index];
-						let tr_deriv = mesh_corner_derivatives[tr_index];
-						let bl_deriv = mesh_corner_derivatives[bl_index];
-						let br_deriv = mesh_corner_derivatives[br_index];
-
-						// Store rows in increasing v order (bottom to top), with u increasing from left to right within each row.
-						let mut subpatch_vertex_rows: SubpatchVertexRows = vec![];
-
-						// Subpatch loop
-						for subpatch_vertex_v_index in 0..=subpatch_count_per_axis {
-							let v = subpatch_vertex_v_index as f64 * subpatch_stride_uv;
-							let mut subpatch_vertex_row: SubpatchVertexRow = vec![];
-							for subpatch_vertex_u_index in 0..=subpatch_count_per_axis {
-								let u = subpatch_vertex_u_index as f64 * subpatch_stride_uv;
-								let top_u = point_to_dvec2(patch_top_seg.eval(u));
-								let bottom_u = point_to_dvec2(patch_bottom_seg.eval(u));
-								let left_v = point_to_dvec2(patch_left_seg.eval(v));
-								let right_v = point_to_dvec2(patch_right_seg.eval(v));
-								let s_c = (1. - v) * top_u + v * bottom_u;
-								let s_d = (1. - u) * left_v + u * right_v;
-								let s_b = mesh_corner_pos[tl_index] * (1. - u) * (1. - v)
-									+ mesh_corner_pos[tr_index] * u * (1. - v)
-									+ mesh_corner_pos[bl_index] * (1. - u) * v
-									+ mesh_corner_pos[br_index] * u * v;
-								let position = mesh_transform.transform_point2(s_c + s_d - s_b);
-
-								// We need to calculate the color for each subpatch vertex in sRGB since SVG uses sRGB for color interpolation.
-								// `color-interpolation="linearRGB"` is part of the SVG2 spec but not yet implemented in major browsers as of Jul. 2026.
-								// See also: https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/color-interpolation
-								let bottom_left_gamma = bl_color.to_gamma_srgb_channels();
-								let bottom_right_gamma = br_color.to_gamma_srgb_channels();
-								let top_left_gamma = tl_color.to_gamma_srgb_channels();
-								let top_right_gamma = tr_color.to_gamma_srgb_channels();
-
-								let top_length = tl_pos.distance(tr_pos) as f32;
-								let bottom_length = bl_pos.distance(br_pos) as f32;
-								let left_length = tl_pos.distance(bl_pos) as f32;
-								let right_length = tr_pos.distance(br_pos) as f32;
-
-								// Calculate the colors for each subpatch corners by bicubic hermite interpolation.
-								// The cross derivatives are explicitly set to zero for the interpolation of the slopes.
-								// https://www.w3.org/TR/2015/WD-SVG2-20150915/pservers.html#MeshPatchPainting
-								let color_gamma: [f32; 4] = std::array::from_fn(|channel| {
-									let top_color_interpolated = hermite(
-										top_left_gamma[channel],
-										tl_deriv.u[channel] * top_length,
-										top_right_gamma[channel],
-										tr_deriv.u[channel] * top_length,
-										u as f32,
-									);
-									let bottom_color_interpolated = hermite(
-										bottom_left_gamma[channel],
-										bl_deriv.u[channel] * bottom_length,
-										bottom_right_gamma[channel],
-										br_deriv.u[channel] * bottom_length,
-										u as f32,
-									);
-									let top_slope_interpolated = hermite(tl_deriv.v[channel] * left_length, 0., tr_deriv.v[channel] * right_length, 0., u as f32);
-									let bottom_slope_interpolated = hermite(bl_deriv.v[channel] * left_length, 0., br_deriv.v[channel] * right_length, 0., u as f32);
-									hermite(top_color_interpolated, top_slope_interpolated, bottom_color_interpolated, bottom_slope_interpolated, v as f32)
-								});
-
-								// let color_gamma: [f32; 4] = std::array::from_fn(|channel| {
-								// 	top_left_gamma[channel]
-								// 		.lerp(top_right_gamma[channel], u as f32)
-								// 		.lerp(bottom_left_gamma[channel].lerp(bottom_right_gamma[channel], u as f32), v as f32)
-								// });
-
-								subpatch_vertex_row.push((position, color_gamma));
-							}
-							subpatch_vertex_rows.push(subpatch_vertex_row);
-						}
-
-						// Create polygons using the vertex position data
-						let mut idx = generate_uuid();
-
-						for subpatch_v_index in 0..subpatch_count_per_axis {
-							for subpatch_u_index in 0..subpatch_count_per_axis {
-								let (bl, bl_color) = subpatch_vertex_rows[subpatch_v_index][subpatch_u_index];
-								let (br, br_color) = subpatch_vertex_rows[subpatch_v_index][subpatch_u_index + 1];
-								let (tl, tl_color) = subpatch_vertex_rows[subpatch_v_index + 1][subpatch_u_index];
-								let (tr, tr_color) = subpatch_vertex_rows[subpatch_v_index + 1][subpatch_u_index + 1];
-								let subpatch_transform = format_transform_matrix(DAffine2::from_cols(tr - tl, bl - tl, tl));
-
-								// linear gradient for the bottom line
-								write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="gb{idx}" x1="0" y1="1" x2="1" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-							float_srgba_to_hex(bl_color),
-							float_srgba_to_hex(br_color),
-						)
-						.unwrap();
-
-								// linear gradient for the top line
-								write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="gt{idx}" x1="0" y1="0" x2="1" y2="0" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-							float_srgba_to_hex(tl_color),
-							float_srgba_to_hex(tr_color),
-						)
-						.unwrap();
-
-								// top mask gradient
-								write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="gm{idx}" x1="0.5" y1="0" x2="0.5" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
-						)
-						.unwrap();
-
-								// Inflate a subpatch to hide gaps caused by anti-aliasing.
-								let bottom_normal = (br - bl).perp().normalize();
-								let top_normal = (tl - tr).perp().normalize();
-								let left_normal = (bl - tl).perp().normalize();
-								let right_normal = (tr - br).perp().normalize();
-								let pad = 1.;
-								let bl = bl + (bottom_normal + left_normal) * pad;
-								let tl = tl + (top_normal + left_normal) * pad;
-								let br = br + (bottom_normal + right_normal) * pad;
-								let tr = tr + (top_normal + right_normal) * pad;
-								let DVec2 { x: bl_x, y: bl_y } = bl;
-								let DVec2 { x: tl_x, y: tl_y } = tl;
-								let DVec2 { x: br_x, y: br_y } = br;
-								let DVec2 { x: tr_x, y: tr_y } = tr;
-
-								// mask
-								let min_x = bl_x.min(tl_x.min(br_x.min(tr_x)));
-								let max_x = bl_x.max(tl_x.max(br_x.max(tr_x)));
-								let min_y = bl_y.min(tl_y.min(br_y.min(tr_y)));
-								let max_y = bl_y.max(tl_y.max(br_y.max(tr_y)));
-								let mask_width = max_x - min_x;
-								let mask_height = max_y - min_y;
-								write!(
-									&mut render.svg_defs,
-									r##"<mask id="m{idx}" x="{min_x}" y="{min_y}" width="{mask_width}" height="{mask_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
-							<rect
-							x="{min_x}"
-							y="{min_y}"
-							width="{mask_width}"
-							height="{mask_height}"
-							fill="url(#gm{idx})" /></mask>"##,
-								)
-								.unwrap();
-
-								render.leaf_tag("polygon", |attributes| {
-									attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
-									attributes.push("fill", format!("url(#gb{idx})"));
-								});
-
-								render.leaf_tag("polygon", |attributes| {
-									attributes.push("points", format!("{bl_x},{bl_y} {br_x},{br_y} {tr_x},{tr_y} {tl_x},{tl_y}"));
-									attributes.push("fill", format!("url(#gt{idx})"));
-									attributes.push("mask", format!("url(#m{idx})"));
-								});
-
-								idx += 1;
-							}
-						}
-					}
-				}
-				return;
-			}
-
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
 				let matrix = format_transform_matrix(element_transform);
@@ -1712,6 +1395,9 @@ impl Render for List<Vector> {
 							paint.render_to_vello(scene, multiplied_transform, context, render_params);
 							scene.pop_layer();
 						}
+						Graphic::MeshGradient(_) => {
+							// FIXME: implement vello rendering
+						}
 					};
 				}
 			};
@@ -1789,6 +1475,9 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+						}
+						Graphic::MeshGradient(_) => {
+							// FIXME: implement vello rendering
 						}
 						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
@@ -2565,6 +2254,125 @@ impl Render for List<Gradient> {
 				scene.pop_layer();
 			}
 		}
+	}
+}
+
+impl Render for List<MeshGradient> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			let Some(mesh_gradient) = self.element(index) else { continue };
+			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			// FIXME: use below attrs
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+
+			// TODO: add adaptive subpatch size
+			let subdivisions_per_patch_per_axis = 4;
+
+			let float_gamma_color_to_hex = |color: [f32; 4]| -> String {
+				let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
+				SRGBA8 {
+					red: float_to_u8(color[0]),
+					green: float_to_u8(color[1]),
+					blue: float_to_u8(color[2]),
+					alpha: float_to_u8(color[3]),
+				}
+				.to_rgba_hex()
+			};
+
+			let Some(subpatches) = mesh_gradient
+				.evaluator()
+				.and_then(|evaluator| evaluator.subdivide_patches(subdivisions_per_patch_per_axis, mesh_transform))
+			else {
+				continue;
+			};
+
+			let mut unique_id = generate_uuid();
+			subpatches.iter().for_each(|subpatch| {
+				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
+				let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
+
+				// linear gradient for the bottom line
+					write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							float_gamma_color_to_hex(bottom_left.gamma_color),
+							float_gamma_color_to_hex(bottom_right.gamma_color),
+						)
+						.unwrap();
+
+					// linear gradient for the top line
+					write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							float_gamma_color_to_hex(top_left.gamma_color),
+							float_gamma_color_to_hex(top_right.gamma_color),
+						)
+						.unwrap();
+
+					// top mask gradient
+					write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="gm{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
+						)
+						.unwrap();
+
+					// Inflate the subpatch to hide gaps caused by anti-aliasing
+					let inflation_amount = 1.;
+
+					let top_normal = (top_left.position - top_right.position).perp().normalize();
+					let bottom_normal = (bottom_right.position - bottom_left.position).perp().normalize();
+					let left_normal = (bottom_left.position - top_left.position).perp().normalize();
+					let right_normal = (top_right.position - bottom_right.position).perp().normalize();
+
+					let inflated_top_left_pos = top_left.position + (top_normal + left_normal) * inflation_amount;
+					let inflated_top_right_pos = top_right.position + (top_normal + right_normal) * inflation_amount;
+					let inflated_bottom_left_pos = bottom_left.position + (bottom_normal + left_normal) * inflation_amount;
+					let inflated_bottom_right_pos = bottom_right.position + (bottom_normal + right_normal) * inflation_amount;
+
+					let DVec2 { x: top_left_x, y: top_left_y } = inflated_top_left_pos;
+					let DVec2 { x: top_right_x, y: top_right_y } = inflated_top_right_pos;
+					let DVec2 { x: bottom_left_x, y: bottom_left_y } = inflated_bottom_left_pos;
+					let DVec2 { x: bottom_right_x, y: bottom_right_y } = inflated_bottom_right_pos;
+
+					// mask
+					let min_x = bottom_left_x.min(top_left_x.min(bottom_right_x.min(top_right_x)));
+					let max_x = bottom_left_x.max(top_left_x.max(bottom_right_x.max(top_right_x)));
+					let min_y = bottom_left_y.min(top_left_y.min(bottom_right_y.min(top_right_y)));
+					let max_y = bottom_left_y.max(top_left_y.max(bottom_right_y.max(top_right_y)));
+					let mask_width = max_x - min_x;
+					let mask_height = max_y - min_y;
+					write!(
+						&mut render.svg_defs,
+						r##"<mask id="m{unique_id}" x="{min_x}" y="{min_y}" width="{mask_width}" height="{mask_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+							<rect
+							x="{min_x}"
+							y="{min_y}"
+							width="{mask_width}"
+							height="{mask_height}"
+							fill="url(#gm{unique_id})" /></mask>"##,
+					)
+					.unwrap();
+
+					render.leaf_tag("polygon", |attributes| {
+						attributes.push("points", format!("{bottom_left_x},{bottom_left_y} {bottom_right_x},{bottom_right_y} {top_right_x},{top_right_y} {top_left_x},{top_left_y}"));
+						attributes.push("fill", format!("url(#gb{unique_id})"));
+					});
+
+					render.leaf_tag("polygon", |attributes| {
+						attributes.push("points", format!("{bottom_left_x},{bottom_left_y} {bottom_right_x},{bottom_right_y} {top_right_x},{top_right_y} {top_left_x},{top_left_y}"));
+						attributes.push("fill", format!("url(#gt{unique_id})"));
+						attributes.push("mask", format!("url(#m{unique_id})"));
+					});
+
+					unique_id += 1;
+			});
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		// FIXME:
 	}
 }
 
