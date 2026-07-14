@@ -846,8 +846,9 @@ impl Fsm for TextToolFsmState {
 					}
 
 					if let Some(selection_start) = tool_data.selection_start_byte_offset {
-						let start = selection_start.min(tool_data.cursor_byte_offset);
-						let end = selection_start.max(tool_data.cursor_byte_offset);
+						let text_len = tool_data.new_text.len();
+						let start = selection_start.min(tool_data.cursor_byte_offset).min(text_len);
+						let end = selection_start.max(tool_data.cursor_byte_offset).min(text_len);
 						if start != end {
 							let rects = graphene_std::text::selection_rectangles(&tool_data.new_text, &font_resource, editing_text.typesetting, start, end);
 							for [top_left, bottom_right] in rects {
@@ -930,10 +931,9 @@ impl Fsm for TextToolFsmState {
 					&& clicked_text_layer_path == tool_data.layer
 				{
 					let click_offset = tool_data.find_closest_byte_offset(document, input.mouse.position, fonts, responses).unwrap_or(tool_data.new_text.len());
-					if tool_data.selection_type == TextSelectionType::Character {
-						tool_data.cursor_byte_offset = click_offset;
-						tool_data.selection_start_byte_offset = Some(click_offset);
-					}
+					tool_data.selection_type = TextSelectionType::Character;
+					tool_data.cursor_byte_offset = click_offset;
+					tool_data.selection_start_byte_offset = Some(click_offset);
 					tool_data.dragging_to_select = true;
 					tool_data.last_edit_type = TextEditType::None;
 					tool_data.schedule_cursor_draw(responses);
