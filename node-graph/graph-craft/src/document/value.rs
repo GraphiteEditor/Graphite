@@ -726,7 +726,7 @@ pub struct RenderOutput {
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	#[serde(skip)]
-	Texture(graphene_application_io::ImageTexture),
+	Texture(graphene_application_io::Texture),
 	#[serde(skip)]
 	Buffer {
 		data: Vec<u8>,

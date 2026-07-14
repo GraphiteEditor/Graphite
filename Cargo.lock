@@ -2040,11 +2040,11 @@ dependencies = [
  "glam",
  "graphene-resource",
  "log",
+ "raster-types",
  "serde",
  "text-nodes",
  "vector-types",
  "web-sys",
- "wgpu",
 ]
 
 [[package]]

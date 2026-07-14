@@ -50,6 +50,7 @@ struct RasterGpuToRasterCpuConverter {
 	height: u32,
 	unpadded_bytes_per_row: u32,
 	padded_bytes_per_row: u32,
+	_source: raster_types::Texture,
 }
 impl RasterGpuToRasterCpuConverter {
 	fn new(device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
@@ -97,6 +98,8 @@ impl RasterGpuToRasterCpuConverter {
 			height,
 			unpadded_bytes_per_row,
 			padded_bytes_per_row,
+			// Keep source texture alive
+			_source: data_gpu.texture.clone(),
 		}
 	}
 

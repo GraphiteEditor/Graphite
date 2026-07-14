@@ -6,7 +6,7 @@ use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, E
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
-use graphene_application_io::ImageTexture;
+use graphene_application_io::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -25,7 +25,7 @@ pub struct TileCoord {
 
 #[derive(Debug, Clone)]
 pub struct CachedRegion {
-	pub texture: ImageTexture,
+	pub texture: Texture,
 	pub texture_size: UVec2,
 	pub tiles: Vec<TileCoord>,
 	pub metadata: rendering::RenderMetadata,
