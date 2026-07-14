@@ -543,9 +543,8 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 /// Returns `None` if the expression fails to parse, fails to evaluate, or yields a non-real number (such as `sqrt(-1)`).
 fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInput) -> Option<f64> {
 	let value = math_parser::evaluate(expression)
-		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
+		.inspect_err(|_| error!("Math parser error on \"{expression}\""))
 		.ok()?
-		.0
 		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err}"))
 		.ok()?;
 
