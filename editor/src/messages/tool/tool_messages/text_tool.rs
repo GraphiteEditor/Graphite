@@ -68,7 +68,6 @@ pub enum TextToolMessage {
 	Abort,
 	WorkingColorChanged,
 	Overlays { context: OverlayContext },
-	TimerTick { tick: u64 },
 
 	// Tool-specific messages
 	DragStart,
@@ -436,7 +435,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				CommitText,
 				Undo,
 				Redo,
-				TimerTick,
 				DoubleClick,
 				TripleClick,
 				SelectAll,
@@ -549,8 +547,6 @@ struct TextToolData {
 	layer_dragging: Option<ResizingLayer>,
 	cursor_byte_offset: usize,
 	selection_start_byte_offset: Option<usize>,
-	cursor_visible: bool,
-	blink_tick: u64,
 	dragging_to_select: bool,
 	history: Vec<TextToolHistoryState>,
 	history_index: usize,
@@ -616,10 +612,7 @@ impl TextToolData {
 		responses.add(FrontendMessage::UpdateTextEditingState { is_editing: editable });
 	}
 
-	fn reset_cursor_blink(&mut self, responses: &mut VecDeque<Message>) {
-		self.cursor_visible = true;
-		self.blink_tick += 1;
-		spawn_blink_timer(self.blink_tick, responses);
+	fn schedule_cursor_draw(&self, responses: &mut VecDeque<Message>) {
 		responses.add(OverlaysMessage::Draw);
 		responses.add(TextToolMessage::AutoPanCursor);
 	}
@@ -684,7 +677,7 @@ impl TextToolData {
 		} else {
 			self.cursor_byte_offset = self.new_text.len();
 		}
-		self.reset_cursor_blink(responses);
+		self.schedule_cursor_draw(responses);
 		Some(())
 	}
 
@@ -745,7 +738,7 @@ impl TextToolData {
 		self.editing_text = Some(editing_text);
 		self.cursor_byte_offset = 0;
 		self.selection_start_byte_offset = None;
-		self.reset_cursor_blink(responses);
+		self.schedule_cursor_draw(responses);
 
 		self.history.clear();
 		self.history_index = 0;
@@ -864,14 +857,12 @@ impl Fsm for TextToolFsmState {
 						}
 					}
 
-					if tool_data.cursor_visible {
-						let cursor_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
-						let [top_left, bottom_right] = graphene_std::text::cursor_rect(&tool_data.new_text, &font_resource, editing_text.typesetting, cursor_offset, 0.0);
+					let cursor_offset = tool_data.cursor_byte_offset.min(tool_data.new_text.len());
+					let [top_left, bottom_right] = graphene_std::text::cursor_rect(&tool_data.new_text, &font_resource, editing_text.typesetting, cursor_offset, 0.0);
 
-						let cursor_start = layer_to_viewport.transform_point2(DVec2::new(top_left.x, top_left.y));
-						let cursor_end = layer_to_viewport.transform_point2(DVec2::new(top_left.x, bottom_right.y));
-						overlay_context.line(cursor_start, cursor_end, Some("#000000"), Some(1.5));
-					}
+					let cursor_start = layer_to_viewport.transform_point2(DVec2::new(top_left.x, top_left.y));
+					let cursor_end = layer_to_viewport.transform_point2(DVec2::new(top_left.x, bottom_right.y));
+					overlay_context.line(cursor_start, cursor_end, Some("#000000"), Some(1.));
 				}
 
 				TextToolFsmState::Editing
@@ -945,7 +936,7 @@ impl Fsm for TextToolFsmState {
 					}
 					tool_data.dragging_to_select = true;
 					tool_data.last_edit_type = TextEditType::None;
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 					return TextToolFsmState::Editing;
 				}
 
@@ -1068,7 +1059,7 @@ impl Fsm for TextToolFsmState {
 					}
 					tool_data.dragging_to_select = false;
 					tool_data.selection_type = TextSelectionType::Character;
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 				}
 				TextToolFsmState::Editing
 			}
@@ -1210,7 +1201,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.selection_type = TextSelectionType::Word;
 					tool_data.word_selection_origin = Some((word_start, word_end));
 					tool_data.last_edit_type = TextEditType::None;
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 				}
 				TextToolFsmState::Editing
 			}
@@ -1224,7 +1215,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.selection_type = TextSelectionType::Paragraph;
 					tool_data.word_selection_origin = Some((line_start, line_end));
 					tool_data.last_edit_type = TextEditType::None;
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 				}
 				TextToolFsmState::Editing
 			}
@@ -1336,7 +1327,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::BackspaceChar) => {
@@ -1362,7 +1353,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::DeleteChar) => {
@@ -1386,7 +1377,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::MoveCursorLeft { word, select }) => {
@@ -1407,7 +1398,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.cursor_byte_offset = prev;
 				}
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::MoveCursorRight { word, select }) => {
@@ -1428,7 +1419,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.cursor_byte_offset = offset + next_char;
 				}
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, msg @ (TextToolMessage::MoveCursorUp { .. } | TextToolMessage::MoveCursorDown { .. })) => {
@@ -1458,7 +1449,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.cursor_byte_offset = new_offset;
 				}
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::MoveCursorHome { select }) => {
@@ -1471,7 +1462,7 @@ impl Fsm for TextToolFsmState {
 				let line_start = tool_data.new_text[..old_offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
 				tool_data.cursor_byte_offset = line_start;
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::MoveCursorEnd { select }) => {
@@ -1484,7 +1475,7 @@ impl Fsm for TextToolFsmState {
 				let line_end = tool_data.new_text[old_offset..].find('\n').map(|i| old_offset + i).unwrap_or(tool_data.new_text.len());
 				tool_data.cursor_byte_offset = line_end;
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::MoveCursorTop { select }) => {
@@ -1495,7 +1486,7 @@ impl Fsm for TextToolFsmState {
 				}
 				tool_data.cursor_byte_offset = 0;
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::MoveCursorBottom { select }) => {
@@ -1506,14 +1497,14 @@ impl Fsm for TextToolFsmState {
 				}
 				tool_data.cursor_byte_offset = tool_data.new_text.len();
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::SelectAll) => {
 				tool_data.selection_start_byte_offset = Some(0);
 				tool_data.cursor_byte_offset = tool_data.new_text.len();
 				tool_data.last_edit_type = TextEditType::None;
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Copy) => {
@@ -1542,7 +1533,7 @@ impl Fsm for TextToolFsmState {
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 				}
 				TextToolFsmState::Editing
 			}
@@ -1564,7 +1555,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::DeletePreviousWord) => {
@@ -1596,7 +1587,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::DeleteLine) => {
@@ -1626,7 +1617,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::InsertNewline) => {
@@ -1647,7 +1638,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				tool_data.reset_cursor_blink(responses);
+				tool_data.schedule_cursor_draw(responses);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Undo) => {
@@ -1666,7 +1657,7 @@ impl Fsm for TextToolFsmState {
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 				}
 				tool_data.last_edit_type = TextEditType::None;
 				TextToolFsmState::Editing
@@ -1686,7 +1677,7 @@ impl Fsm for TextToolFsmState {
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-					tool_data.reset_cursor_blink(responses);
+					tool_data.schedule_cursor_draw(responses);
 				}
 				tool_data.last_edit_type = TextEditType::None;
 				TextToolFsmState::Editing
@@ -1733,15 +1724,6 @@ impl Fsm for TextToolFsmState {
 				}
 				responses.add(DocumentMessage::EndTransaction);
 				TextToolFsmState::Ready
-			}
-			(TextToolFsmState::Editing, TextToolMessage::TimerTick { tick }) => {
-				if tick == tool_data.blink_tick {
-					tool_data.cursor_visible = !tool_data.cursor_visible;
-					tool_data.blink_tick += 1;
-					spawn_blink_timer(tool_data.blink_tick, responses);
-					responses.add(OverlaysMessage::Draw);
-				}
-				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::AutoPanCursor) => {
 				if let Some(editing_text) = tool_data.editing_text.as_ref() {
@@ -1848,24 +1830,4 @@ impl Fsm for TextToolFsmState {
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}
-}
-
-fn spawn_blink_timer(tick: u64, responses: &mut VecDeque<Message>) {
-	responses.add(async move {
-		#[cfg(target_family = "wasm")]
-		{
-			let mut cb = |resolve: js_sys::Function, _reject| {
-				if let Some(window) = web_sys::window() {
-					let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 500);
-				}
-			};
-			let promise = js_sys::Promise::new(&mut cb);
-			wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
-		}
-		#[cfg(not(target_family = "wasm"))]
-		{
-			tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-		}
-		Message::Tool(ToolMessage::Text(TextToolMessage::TimerTick { tick }))
-	});
 }
