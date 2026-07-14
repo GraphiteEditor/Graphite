@@ -92,6 +92,27 @@ impl Session {
 		Ok(conversion.network_ids)
 	}
 
+	/// Diff the working registry against `target` and stage the difference as hot ops, so bulk
+	/// registry mutations commit through the ordinary hot-op path without hand-built deltas.
+	pub fn stage_registry_replace(&mut self, target: &Registry) -> Result<Vec<HotOp>, CrdtError> {
+		let ops = crate::delta::compute_deltas(&self.document.working_registry, target);
+		self.stage_ops(ops)
+	}
+
+	/// Retire every pending hot op as one gesture. Convenience over [`Session::retire`] for callers
+	/// that don't track hot-op timestamps themselves.
+	pub fn retire_all(&mut self) -> Result<Vec<Rev>, CrdtError> {
+		match self.document.hot_log.iter().map(|hot_op| hot_op.timestamp).max() {
+			Some(up_to) => self.retire(up_to),
+			None => Ok(Vec::new()),
+		}
+	}
+
+	/// Mint a fresh peer-scoped `NodeId`. Forwards to [`Document::next_node_id`].
+	pub fn next_node_id(&mut self) -> NodeId {
+		self.document.next_node_id()
+	}
+
 	/// Register a content-addressed resource as a single `DataSource::Embedded` source resolved to
 	/// `hash`, staged as one `AddResource` hot op. The caller owns `id` allocation, persists the
 	/// returned hot frame, retires, and persists the bytes into its byte store separately.

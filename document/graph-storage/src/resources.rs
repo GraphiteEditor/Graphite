@@ -45,7 +45,7 @@ impl<'de> Deserialize<'de> for ResourceEntry {
 		}
 
 		let Raw { mut sources, hash, hash_timestamp } = Raw::deserialize(deserializer)?;
-		sources.sort_by(|(a, _), (b, _)| a.cmp(b));
+		sources.sort_by_key(|(key, _)| *key);
 		sources.dedup_by(|(later_key, later_value), (kept_key, kept_value)| {
 			// `dedup_by` keeps the first of each run; sorting is stable, so resolve duplicates by LWW.
 			if later_key != kept_key {

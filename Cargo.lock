@@ -3330,6 +3330,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "migration-core"
+version = "0.0.0"
+dependencies = [
+ "graph-storage",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "migration-runner"
+version = "0.0.0"
+dependencies = [
+ "graph-storage",
+ "log",
+ "migration-core",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
