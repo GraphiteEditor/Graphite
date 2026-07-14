@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -14,8 +14,8 @@ use winit::event::{ButtonSource, ElementState, MouseButton, StartCause, WindowEv
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
-use crate::cef;
-use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
+use graphite_desktop_ui::{UiCommand, UiInstance};
+
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist;
@@ -40,10 +40,8 @@ pub(crate) struct App {
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
-	cef_context: Box<dyn cef::CefContext>,
-	cef_schedule: Option<Instant>,
-	cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
-	cef_init_successful: bool,
+	ui: UiInstance,
+	ui_frame_received: bool,
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
@@ -59,10 +57,8 @@ impl App {
 		Window::init();
 	}
 
-	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
-		cef_context: Box<dyn cef::CefContext>,
-		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
+		ui: UiInstance,
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
@@ -117,10 +113,8 @@ impl App {
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper,
-			cef_context,
-			cef_schedule: Some(Instant::now()),
-			cef_view_info_sender,
-			cef_init_successful: false,
+			ui,
+			ui_frame_received: false,
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
@@ -177,16 +171,16 @@ impl App {
 		}
 
 		if is_new_size {
-			let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size {
+			self.ui.send(UiCommand::Resized {
 				width: size.width,
 				height: size.height,
 			});
 		}
 		if is_new_scale {
-			let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(scale));
+			self.ui.send(UiCommand::ScaleChanged(scale));
 		}
 
-		self.cef_context.notify_view_info_changed();
+		self.ui.send(UiCommand::Refresh);
 
 		if let Some(render_state) = &mut self.render_state {
 			render_state.resize(size.width, size.height);
@@ -430,7 +424,7 @@ impl App {
 
 	fn send_or_queue_web_message(&mut self, message: Vec<u8>) {
 		if self.web_communication_initialized {
-			self.cef_context.send_web_message(message);
+			self.ui.send(UiCommand::Message(message));
 		} else {
 			self.web_communication_startup_buffer.push(message);
 		}
@@ -441,7 +435,7 @@ impl App {
 			AppEvent::WebCommunicationInitialized => {
 				self.web_communication_initialized = true;
 				for message in self.web_communication_startup_buffer.drain(..) {
-					self.cef_context.send_web_message(message);
+					self.ui.send(UiCommand::Message(message));
 				}
 			}
 			AppEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
@@ -465,15 +459,8 @@ impl App {
 				if let Some(window) = &self.window {
 					window.request_redraw();
 				}
-				if !self.cef_init_successful {
-					self.cef_init_successful = true;
-				}
-			}
-			AppEvent::ScheduleBrowserWork(instant) => {
-				if instant <= Instant::now() {
-					self.cef_context.work();
-				} else {
-					self.cef_schedule = Some(instant);
+				if !self.ui_frame_received {
+					self.ui_frame_received = true;
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
@@ -484,6 +471,10 @@ impl App {
 			AppEvent::Exit => {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
+			}
+			AppEvent::UiCrashed => {
+				tracing::error!("UI process crashed, exiting.");
+				self.exit(Some(ExitReason::Shutdown));
 			}
 			AppEvent::OpenFiles(paths) => {
 				// Accumulate launch documents until OpenLaunchDocuments message is received
@@ -556,15 +547,15 @@ impl ApplicationHandler for App {
 			if let Some(window) = &self.window {
 				window.end_pointer_lock();
 			}
-			self.cef_context.handle_window_event(&WindowEvent::PointerMoved {
+			self.ui.send(UiCommand::Input(WindowEvent::PointerMoved {
 				device_id: None,
 				position: pointer_lock_position,
 				primary: true,
 				source: winit::event::PointerSource::Mouse,
-			});
+			}));
 		}
 
-		self.cef_context.handle_window_event(&event);
+		self.ui.send(UiCommand::Input(event.clone()));
 
 		match event {
 			WindowEvent::CloseRequested => {
@@ -586,7 +577,7 @@ impl ApplicationHandler for App {
 					match render_state.render(window) {
 						Ok(_) => {}
 						Err(RenderError::OutdatedUITextureError) => {
-							self.cef_context.notify_view_info_changed();
+							self.ui.send(UiCommand::Refresh);
 						}
 						Err(RenderError::SurfaceLost) => {
 							tracing::warn!("lost surface");
@@ -596,7 +587,7 @@ impl ApplicationHandler for App {
 					let _ = self.start_render_sender.try_send(());
 				}
 
-				if !self.cef_init_successful
+				if !self.ui_frame_received
 					&& !self.preferences.disable_ui_acceleration
 					&& self.web_communication_initialized
 					&& let Some(startup_time) = self.startup_time
@@ -670,9 +661,6 @@ impl ApplicationHandler for App {
 
 			_ => {}
 		}
-
-		// Notify cef of possible input events
-		self.cef_context.work();
 	}
 
 	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
@@ -693,20 +681,7 @@ impl ApplicationHandler for App {
 	}
 
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
-		// Set a timeout in case we miss any cef schedule requests
-		let mut wait_until = Instant::now() + Duration::from_millis(10);
-		if let Some(schedule) = self.cef_schedule
-			&& schedule < Instant::now()
-		{
-			self.cef_schedule = None;
-			// Poll cef message loop multiple times to avoid message loop starvation
-			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
-				self.cef_context.work();
-			}
-		} else if let Some(cef_schedule) = self.cef_schedule {
-			wait_until = wait_until.min(cef_schedule);
-		}
-		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
+		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(10)));
 	}
 }
 

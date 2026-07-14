@@ -15,14 +15,14 @@ path = "src/main.rs"
 [features]
 default = ["recommended", "embedded_resources"]
 recommended = ["gpu", "accelerated_paint"]
-embedded_resources = ["dep:graphite-desktop-embedded-resources"]
+embedded_resources = ["graphite-desktop-ui/embedded_resources"]
 gpu = ["graphite-desktop-wrapper/gpu"]
-accelerated_paint = ["cef/accelerated_osr"]
+accelerated_paint = ["graphite-desktop-ui/accelerated_paint"]
 
 [dependencies]
 # Local dependencies
 graphite-desktop-wrapper = { path = "wrapper" }
-graphite-desktop-embedded-resources = { path = "embedded-resources", optional = true }
+graphite-desktop-ui = { path = "ui" }
 
 wgpu = { workspace = true }
 winit = { workspace = true, features = [
@@ -32,8 +32,6 @@ winit = { workspace = true, features = [
 thiserror = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
-cef = { workspace = true }
-cef-dll-sys = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
