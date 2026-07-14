@@ -44,6 +44,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let nearest = floor(sample_pos - 0.5) + 0.5;
 	let t = sample_pos - nearest;
 
+	// Catmull-Rom spline interpolation based sampeling
+	// See https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1
+
 	let weight_before = t * (-0.5 + t * (1.0 - 0.5 * t));
 	let weight_nearest = 1.0 + t * t * (-2.5 + 1.5 * t);
 	let weight_next = t * (0.5 + t * (2.0 - 1.5 * t));

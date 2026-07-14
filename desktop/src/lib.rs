@@ -31,7 +31,7 @@ pub fn start() -> ExitCode {
 		UiSetupResult::Ready(context) => context,
 		UiSetupResult::Helper(code) => return code,
 		UiSetupResult::Failed => {
-			eprintln!("Failed to set up the UI runtime");
+			tracing::error!("Failed to set up the UI runtime");
 			return ExitCode::FAILURE;
 		}
 	};
@@ -45,7 +45,8 @@ pub fn start() -> ExitCode {
 		.truncate(true)
 		.open(dirs::app_data_dir().join(APP_LOCK_FILE_NAME))
 	else {
-		panic!("Failed to open lock file.")
+		tracing::error!("Failed to open lock file.");
+		return ExitCode::FAILURE;
 	};
 	let mut lock = fd_lock::RwLock::new(lock_file);
 	let lock = match lock.try_write() {
@@ -123,8 +124,8 @@ pub fn start() -> ExitCode {
 						Some(message) => scheduler.schedule(AppEvent::DesktopWrapperMessage(message)),
 						None => tracing::error!("Failed to deserialize web message"),
 					},
-					UiEvent::InitFailed(error) => {
-						tracing::error!("UI initialization failed: {error}");
+					UiEvent::Failure(error) => {
+						tracing::error!("UI failure: {error}");
 						scheduler.schedule(AppEvent::UiCrashed);
 					}
 					UiEvent::Crashed => scheduler.schedule(AppEvent::UiCrashed),

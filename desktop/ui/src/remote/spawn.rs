@@ -367,7 +367,7 @@ fn handle_message(
 		EventMessage::InitFailed(e) => {
 			tracing::error!("CEF initialization failed in the host process: {e}");
 			died_reported.store(true, Ordering::SeqCst);
-			events.terminate(UiEvent::InitFailed(e.to_string()));
+			events.terminate(UiEvent::Failure(e.to_string()));
 		}
 		EventMessage::WebCommunicationInitialized => events.send(UiEvent::Ready),
 		EventMessage::WebMessage(message) => events.send(UiEvent::Message(message)),

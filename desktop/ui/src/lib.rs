@@ -233,7 +233,7 @@ pub enum UiEvent {
 	Frame(wgpu::Texture),
 	Cursor(Cursor),
 	Message(Vec<u8>),
-	InitFailed(String),
+	Failure(String),
 	Crashed,
 }
 

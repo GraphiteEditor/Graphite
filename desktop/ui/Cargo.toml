@@ -6,7 +6,6 @@ authors.workspace = true
 license.workspace = true
 edition.workspace = true
 
-
 [features]
 default = []
 embedded_resources = ["dep:graphite-desktop-embedded-resources"]
