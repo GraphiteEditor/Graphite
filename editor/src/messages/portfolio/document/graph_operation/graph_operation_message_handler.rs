@@ -964,7 +964,7 @@ mod tests {
 		let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
 			<defs>
 				<clipPath id="circle" transform="translate(3 4)">
-					<circle cx="60" cy="60" r="50" />
+					<circle cx="60" cy="60" r="50" fill="none" stroke="red" stroke-width="20" />
 				</clipPath>
 			</defs>
 			<g transform="translate(10 20) scale(2)" clip-path="url(#circle)">
@@ -993,6 +993,15 @@ mod tests {
 
 		let fill_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::opacity::FillInput>(&editor.runtime).collect();
 		assert_eq!(fill_values, vec![0.], "the mask base should be invisible during normal rendering");
+
+		let paint_fills: Vec<_> = instrumented.grab_all_input::<graphene_std::vector::fill::FillInput<List<Color>>>(&editor.runtime).collect();
+		assert!(
+			paint_fills.iter().filter_map(|fill| fill.element(0)).any(|color| *color == Color::BLACK),
+			"usvg should replace fill=\"none\" with an opaque black geometry fill inside a clip path; got {paint_fills:?}"
+		);
+
+		let stroke_weights: Vec<_> = instrumented.grab_all_input::<graphene_std::vector::stroke::WeightInput>(&editor.runtime).collect();
+		assert!(stroke_weights.is_empty(), "usvg should discard strokes inside a clip path; got {stroke_weights:?}");
 
 		let translations: Vec<_> = instrumented.grab_all_input::<graphene_std::transform_nodes::transform::TranslationInput>(&editor.runtime).collect();
 		assert!(
