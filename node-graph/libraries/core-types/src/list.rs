@@ -174,6 +174,9 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String;
 
+	/// Hashes this value into the given hasher (object-safe wrapper around `CacheHash`).
+	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher);
+
 	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
 	/// Returns `false` if the underlying types differ.
 	fn eq_dyn(&self, other: &dyn AnyAttributeValue) -> bool;
@@ -206,6 +209,11 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String {
 		format!("{:?}", self)
+	}
+
+	/// Hashes this value into the given hasher (object-safe wrapper around `CacheHash`).
+	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
+		self.cache_hash(&mut DynHasher(state));
 	}
 
 	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
@@ -1295,7 +1303,7 @@ impl<T: CacheHash> CacheHash for Item<T> {
 		// Hash every attribute (key + value) so attribute changes invalidate downstream caches, mirroring `List`
 		for (key, attribute) in &self.attributes.0 {
 			std::hash::Hash::hash(key.as_str(), state);
-			attribute.display_string().cache_hash(state);
+			attribute.cache_hash_dyn(state);
 		}
 	}
 }
