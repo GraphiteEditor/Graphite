@@ -55,13 +55,14 @@ fn item_wire_variant_resolves_and_executes() {
 fn item_wire_promotes_to_list_connector() {
 	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(f64)).into()), vec![NodeId(0)]);
 
-	let mut sum_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
-	sum_node.identifier = ProtoNodeIdentifier::new("math_nodes::SumNode");
+	// Box Corners takes a `List<f64>` primary, so feeding it an `Item<f64>` wire exercises the singleton raise
+	let mut box_corners_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	box_corners_node.identifier = graphene_std::vector::generator_nodes::box_corners::IDENTIFIER;
 
 	let network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(1),
-		nodes: vec![(NodeId(0), value_node), (NodeId(1), sum_node)],
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), box_corners_node)],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item wire should resolve a List connector via promotion");
@@ -69,7 +70,7 @@ fn item_wire_promotes_to_list_connector() {
 	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapter should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<graphene_std::vector::misc::BoxCorners>> = futures::executor::block_on(tree.eval(NodeId(1), context));
 	assert!(result.is_some(), "The promoted wire should execute end-to-end");
 }
 
