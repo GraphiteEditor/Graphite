@@ -2,7 +2,7 @@ mod document_node_derive;
 
 use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo};
-use super::utility_types::{FrontendNodeType, FrontendTypeConstraintForInput};
+use super::utility_types::{FrontendNodeType, InputTypeConstraint};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
@@ -2017,7 +2017,7 @@ pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&
 	DOCUMENT_NODE_TYPES.get(identifier)
 }
 
-impl FrontendTypeConstraintForInput {
+impl InputTypeConstraint {
 	#[must_use]
 	fn type_name(ty: &Type) -> String {
 		ty.nested_type().to_string()
@@ -2071,10 +2071,10 @@ impl FrontendTypeConstraintForInput {
 			// TODO: This does not consider the constrains by nodes not directly connected to the import
 			DocumentNodeImplementation::Network(nested_network) => {
 				// Find all inputs connected to the relevant import
-				fn valid_types_from_node(child_node: &DocumentNode, name: &str, input_index: usize) -> impl Iterator<Item = FrontendTypeConstraintForInput> {
+				fn valid_types_from_node(child_node: &DocumentNode, name: &str, input_index: usize) -> impl Iterator<Item = InputTypeConstraint> {
 					let all_inputs = child_node.inputs.iter().enumerate();
 					let input_for_import = all_inputs.filter(move |(_, child_input)| matches!(child_input, NodeInput::Import { import_index, .. }  if *import_index == input_index));
-					input_for_import.map(move |(index, _)| FrontendTypeConstraintForInput::compute_constraint_for_input(child_node, name, index))
+					input_for_import.map(move |(index, _)| InputTypeConstraint::compute_constraint_for_input(child_node, name, index))
 				}
 				let all_type_constraints = nested_network.nodes.values().flat_map(|node| valid_types_from_node(node, name, input_index));
 				// The type fed to the network must satisfy all protonodes it is connected to
@@ -2142,7 +2142,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			}
 			FrontendNodeType {
 				identifier: identifier.serialized(),
-				input_types: FrontendTypeConstraintForInput::constraints_for_all_inputs(&definition.node_template.document_node, &name),
+				input_types: InputTypeConstraint::constraints_for_all_inputs(&definition.node_template.document_node, &name),
 				name,
 				category: definition.category.to_string(),
 			}
@@ -2273,47 +2273,48 @@ mod test {
 }
 
 #[cfg(test)]
-mod test_frontend_type_constraints {
+mod test_type_constraints {
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
-	use crate::messages::portfolio::document::node_graph::utility_types::FrontendTypeConstraintForInput;
+	use crate::messages::portfolio::document::node_graph::utility_types::InputTypeConstraint;
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::NodeNetwork;
 	use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
-	use graphene_std::{concrete, generic};
+	use graphene_std::{Type, concrete, generic};
+
+	fn all_satisifed(constraint: &InputTypeConstraint, values: impl IntoIterator<Item = Type>) {
+		for ty in values {
+			assert!(constraint.satisfies(&ty), "{ty}not satisfied by {:#?}", constraint);
+		}
+	}
 
 	#[test]
 	fn passthrough() {
 		let node_type = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).expect("passthrough node");
-		let constraint = FrontendTypeConstraintForInput::constraints_for_all_inputs(&node_type.node_template.document_node, "name");
-		assert_eq!(constraint, vec![FrontendTypeConstraintForInput::All]);
+		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template.document_node, "name");
+		assert_eq!(constraint, vec![InputTypeConstraint::All]);
 	}
 
 	#[test]
 	fn tangent_inverse() {
 		let node_type = resolve_proto_node_type(graphene_std::math_nodes::tangent_inverse::IDENTIFIER).expect("tangent inverse node");
-		let constraint = FrontendTypeConstraintForInput::constraints_for_all_inputs(&node_type.node_template.document_node, "name");
-		assert_eq!(
-			constraint,
-			vec![
-				FrontendTypeConstraintForInput::new(&[concrete!(glam::DVec2), concrete!(f32), concrete!(f64)]),
-				FrontendTypeConstraintForInput::new(&[concrete!(bool)])
-			]
-		);
+		let constraint = InputTypeConstraint::constraints_for_all_inputs(&node_type.node_template.document_node, "name");
+		assert_eq!(constraint[1], InputTypeConstraint::new(&[concrete!(bool), concrete!(graphene_std::list::List<bool>)]));
+		all_satisifed(&constraint[0], [concrete!(glam::DVec2), concrete!(f32), concrete!(f64)]);
 	}
 
 	#[test]
 	fn fill() {
-		let node_type = resolve_proto_node_type(graphene_std::graphic_nodes::index_elements::IDENTIFIER).expect("Index Elements node");
-		let constraint = FrontendTypeConstraintForInput::compute_constraint_for_input(&node_type.node_template.document_node, "name", 0);
-		assert!(constraint.satisfies(&concrete!(graphene_std::list::List<String>)));
-		assert!(constraint.satisfies(&concrete!(graphene_std::list::List<f64>)));
+		let node_type = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER).expect("fill node");
+		let constraint = InputTypeConstraint::compute_constraint_for_input(&node_type.node_template.document_node, "name", 0);
+		assert!(constraint.satisfies(&concrete!(graphene_std::list::List<graphene_std::Vector>)));
+		assert!(constraint.satisfies(&concrete!(graphene_std::list::List<graphene_std::Graphic>)));
 		assert!(!constraint.satisfies(&concrete!(f64)));
 	}
 
 	#[test]
 	fn network() {
 		let atan_definition = resolve_proto_node_type(graphene_std::math_nodes::tangent_inverse::IDENTIFIER).expect("tangent inverse node");
-		let min_definition = resolve_proto_node_type(graphene_std::math_nodes::min::IDENTIFIER).expect("tangent inverse node");
+		let min_definition = resolve_proto_node_type(graphene_std::math_nodes::min::IDENTIFIER).expect("min node");
 		let atan_node = atan_definition.node_template_input_override([Some(NodeInput::import(generic!(X), 0))]).document_node;
 		let min_node = min_definition.node_template_input_override([Some(NodeInput::import(generic!(X), 0))]).document_node;
 		let inner_network = NodeNetwork {
@@ -2327,7 +2328,9 @@ mod test_frontend_type_constraints {
 			implementation: DocumentNodeImplementation::Network(inner_network),
 			..Default::default()
 		};
-		let constraint = FrontendTypeConstraintForInput::compute_constraint_for_input(&node, "name", 0);
-		assert_eq!(constraint, FrontendTypeConstraintForInput::new(&[concrete!(f32), concrete!(f64)]),);
+		let constraint = InputTypeConstraint::compute_constraint_for_input(&node, "name", 0);
+		all_satisifed(&constraint, [concrete!(f32), concrete!(f64)]);
+		assert!(!constraint.satisfies(&concrete!(String)));
+		assert!(!constraint.satisfies(&concrete!(glam::DVec2)));
 	}
 }

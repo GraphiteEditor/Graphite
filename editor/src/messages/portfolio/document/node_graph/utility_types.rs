@@ -104,8 +104,7 @@ pub struct FrontendNode {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-/// Each input may accept many types
-pub enum FrontendTypeConstraintForInput {
+pub enum InputTypeConstraint {
 	Limited(std::collections::BTreeSet<String>),
 	All,
 }
@@ -117,7 +116,7 @@ pub struct FrontendNodeType {
 	pub name: String,
 	pub category: String,
 	#[serde(rename = "inputTypes")]
-	pub input_types: Vec<FrontendTypeConstraintForInput>,
+	pub input_types: Vec<InputTypeConstraint>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
