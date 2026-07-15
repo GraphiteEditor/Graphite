@@ -12,10 +12,8 @@
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceUIColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
-	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -29,11 +27,6 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
-
-	// Interactive text editing
-	let textInput: undefined | HTMLDivElement = undefined;
-	let showTextInput: boolean;
-	let textInputMatrix: [number, number, number, number, number, number];
 
 	// Scrollbars
 	let scrollbarPos = { x: 0.5, y: 0.5 };
@@ -86,7 +79,6 @@
 	let removeUpdatePixelRatio: (() => void) | undefined;
 	let viewportResizeObserver: ResizeObserver | undefined;
 	let cleanupViewportResizeObserver: (() => void) | undefined;
-	let addedFontFaces: FontFace[] = [];
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
@@ -348,83 +340,6 @@
 		canvasCursor = cursorString;
 	}
 
-	function preventTextEditingScroll(e: Event) {
-		if (!(e.target instanceof HTMLElement)) return;
-		e.target.scrollTop = 0;
-		e.target.scrollLeft = 0;
-	}
-
-	// Text entry
-	export function triggerTextCommit() {
-		if (!textInput) return;
-		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.onChangeText(textCleaned, false);
-	}
-
-	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
-		showTextInput = true;
-
-		await tick();
-
-		if (!textInput) return;
-
-		// eslint-disable-next-line svelte/no-dom-manipulating
-		if (data.text === "") textInput.textContent = "";
-		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${data.text}\n`;
-
-		// Make it so `maxHeight` is a multiple of `lineHeight`
-		const lineHeight = data.lineHeightRatio * data.fontSize;
-		let height = data.maxHeight === undefined ? "auto" : `${Math.floor(data.maxHeight / lineHeight) * lineHeight}px`;
-
-		textInput.contentEditable = "true";
-		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = data.maxWidth ? `${data.maxWidth}px` : "max-content";
-		textInput.style.height = height;
-		textInput.style.lineHeight = `${data.lineHeightRatio}`;
-		textInput.style.fontSize = `${data.fontSize}px`;
-		textInput.style.color = data.color;
-		textInput.style.textAlign = data.align;
-		textInput.style.textAlignLast = data.alignLast;
-
-		textInput.oninput = () => {
-			if (!textInput) return;
-			editor.updateBounds(textInputCleanup(textInput.innerText));
-		};
-
-		textInputMatrix = data.transform;
-
-		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
-			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
-			const face = new FontFace("text-font", fontView);
-			window.document.fonts.add(face);
-			addedFontFaces.push(face);
-			textInput.style.fontFamily = "text-font";
-		}
-
-		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
-
-		const range = window.document.createRange();
-		range.selectNodeContents(textInput);
-
-		const selection = window.getSelection();
-		if (selection) {
-			selection.removeAllRanges();
-			selection.addRange(range);
-		}
-
-		textInput.focus();
-		textInput.click();
-
-		// Sends the text input element used for interactively editing with the text tool in a custom event
-		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
-	}
-
-	export function displayRemoveEditableTextbox() {
-		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
-		showTextInput = false;
-	}
-
 	function updateViewportInfo() {
 		if (!viewport) return;
 		// Resize the canvas
@@ -523,34 +438,8 @@
 		});
 
 		// Text entry
-		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
-			await tick();
-
-			triggerTextCommit();
-		});
-		subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
-			await tick();
-
-			displayEditableTextbox(data);
-		});
-		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
-			await tick();
-
-			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
-				const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
-				const face = new FontFace("text-font", fontView);
-				window.document.fonts.add(face);
-				addedFontFaces.push(face);
-				textInput.style.fontFamily = "text-font";
-			}
-		});
-		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
-			textInputMatrix = data.transform;
-		});
-		subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
-			await tick();
-
-			displayRemoveEditableTextbox();
+		subscriptions.subscribeFrontendMessage("UpdateTextEditingState", async (data) => {
+			window.dispatchEvent(new CustomEvent("updateTextEditingState", { detail: data.isEditing }));
 		});
 
 		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
@@ -568,7 +457,6 @@
 		cleanupViewportResizeObserver?.();
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
-		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
 
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
 		subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
@@ -576,11 +464,7 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
 		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
-		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
-		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
-		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
-		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
-		subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
+		subscriptions.unsubscribeFrontendMessage("UpdateTextEditingState");
 	});
 </script>
 
@@ -702,11 +586,6 @@
 								{@html artworkSvg}
 							</svg>
 						{/if}
-						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
-							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
-							{/if}
-						</div>
 						{#if !$appWindow.viewportHolePunch}
 							<canvas
 								class="overlays"

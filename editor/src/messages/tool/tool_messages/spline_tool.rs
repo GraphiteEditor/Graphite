@@ -234,6 +234,7 @@ impl ToolTransition for SplineTool {
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			selection_changed: Some(SplineToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
+			..Default::default()
 		}
 	}
 }

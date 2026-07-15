@@ -4,7 +4,7 @@ import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
+import { makeKeyboardModifiersBitfield, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -15,9 +15,24 @@ const BUTTON_BACK = 3;
 const BUTTON_FORWARD = 4;
 
 let viewportPointerInteractionOngoing = false;
-let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
 let canvasFocused = true;
 let inPointerLock = false;
+let isEditingText = false;
+
+function handleUpdateTextEditingState(e: Event) {
+	if (e instanceof CustomEvent) {
+		isEditingText = Boolean(e.detail);
+	}
+}
+
+export function initInput() {
+	window.addEventListener("updateTextEditingState", handleUpdateTextEditingState);
+}
+
+export function destroyInput() {
+	window.removeEventListener("updateTextEditingState", handleUpdateTextEditingState);
+}
+
 let lastShakeTime = 0;
 const shakeSamples: { x: number; y: number; time: number }[] = [];
 
@@ -84,8 +99,17 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 	if (e.repeat && NO_KEY_REPEAT_MODIFIER_KEYS.includes(key)) return;
 
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
-		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
+
+		if (isEditingText) {
+			if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+				e.preventDefault();
+				editor.onTextInput(e.key);
+				return;
+			}
+		}
+
+		e.preventDefault();
 		editor.onKeyDown(key, modifiers, e.repeat);
 		return;
 	}
@@ -133,7 +157,6 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 	const isTargetingCanvas = !inFloatingMenu && e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 	const inDialog = e.target instanceof Element && e.target.closest("[data-dialog] [data-floating-menu-content]");
 	const inContextMenu = e.target instanceof Element && e.target.closest("[data-context-menu]");
-	const inTextInput = e.target === textToolInteractiveInputElement;
 
 	if (get(dialogStore).visible && !inDialog) {
 		editor.onDialogDismiss();
@@ -141,18 +164,15 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 		e.stopPropagation();
 	}
 
-	if (!inTextInput && !inContextMenu) {
-		if (textToolInteractiveInputElement) {
-			const isLeftOrRightClick = e.button === BUTTON_RIGHT || e.button === BUTTON_LEFT;
-			editor.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
-		} else {
-			viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
-		}
+	if (!inContextMenu) {
+		viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 	}
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+	} else if (!inContextMenu) {
+		editor.onCanvasUnfocused();
 	}
 }
 
@@ -167,8 +187,6 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
 
-	if (textToolInteractiveInputElement) return;
-
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 }
@@ -176,16 +194,13 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 // Mouse events
 
 export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
-	if (textToolInteractiveInputElement || inPointerLock) return;
+	if (inPointerLock) return;
 
 	// Allow only events within the viewport or node graph boundaries
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 	if (!(isTargetingCanvas instanceof Element)) return;
 
-	// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
-	if (e.detail % 2 == 1) return;
-
-	// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
+	// We check `e.button` because we want to know specifically which button was clicked for the event
 	let buttons = 1;
 	if (e.button === BUTTON_LEFT) buttons = 1; // Left
 	if (e.button === BUTTON_RIGHT) buttons = 2; // Right
@@ -194,7 +209,12 @@ export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
 	if (e.button === BUTTON_FORWARD) buttons = 16; // Forward
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
+
+	if (e.detail === 2) {
+		editor.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
+	} else if (e.detail === 3) {
+		editor.onTripleClick(e.clientX, e.clientY, buttons, modifiers);
+	}
 }
 
 export function onMouseDown(e: MouseEvent) {
@@ -203,7 +223,7 @@ export function onMouseDown(e: MouseEvent) {
 }
 
 export function onContextMenu(e: MouseEvent) {
-	if (!targetIsTextField(e.target || undefined) && e.target !== textToolInteractiveInputElement) {
+	if (!targetIsTextField(e.target || undefined)) {
 		e.preventDefault();
 	}
 }
@@ -235,12 +255,6 @@ export function onWheelScroll(e: WheelEvent, editor: EditorWrapper) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 	}
-}
-
-// Receives a custom event dispatched when the user begins interactively editing with the text tool.
-// We keep a copy of the text input element to check against when it's active for text entry.
-export function onModifyInputField(e: CustomEvent) {
-	textToolInteractiveInputElement = e.detail;
 }
 
 // Window events

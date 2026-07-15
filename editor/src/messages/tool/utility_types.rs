@@ -158,6 +158,7 @@ pub struct EventToMessageMap {
 	pub selection_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
+	pub canvas_unfocused: Option<ToolMessage>,
 	pub overlay_provider: Option<OverlayProvider>,
 }
 
@@ -179,6 +180,7 @@ pub trait ToolTransition {
 		subscribe_message(event_to_tool_map.tool_abort, EventMessage::ToolAbort);
 		subscribe_message(event_to_tool_map.selection_changed, EventMessage::SelectionChanged);
 		subscribe_message(event_to_tool_map.working_color_changed, EventMessage::WorkingColorChanged);
+		subscribe_message(event_to_tool_map.canvas_unfocused, EventMessage::CanvasUnfocused);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
 			responses.add(OverlaysMessage::AddProvider { provider: overlay_provider });
 		}
@@ -199,6 +201,7 @@ pub trait ToolTransition {
 		unsubscribe_message(event_to_tool_map.tool_abort, EventMessage::ToolAbort);
 		unsubscribe_message(event_to_tool_map.selection_changed, EventMessage::SelectionChanged);
 		unsubscribe_message(event_to_tool_map.working_color_changed, EventMessage::WorkingColorChanged);
+		unsubscribe_message(event_to_tool_map.canvas_unfocused, EventMessage::CanvasUnfocused);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
 			responses.add(OverlaysMessage::RemoveProvider { provider: overlay_provider });
 		}

@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum InputPreprocessorMessage {
 	DoubleClick { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
+	TripleClick { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	KeyDown { key: Key, key_repeat: bool, modifier_keys: ModifierKeys },
 	KeyUp { key: Key, key_repeat: bool, modifier_keys: ModifierKeys },
 	PointerDown { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },

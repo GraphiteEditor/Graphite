@@ -2360,6 +2360,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tsify",
+ "unicode-segmentation",
  "url",
  "usvg",
  "vello",

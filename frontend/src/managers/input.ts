@@ -14,15 +14,16 @@ import {
 	onMouseDown,
 	onPotentialDoubleClick,
 	onWheelScroll,
-	onModifyInputField,
 	onFocusOut,
 	onContextMenu,
 	onPaste,
 	onPointerLockChange,
+	initInput,
+	destroyInput,
 } from "/src/utility-functions/input";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield" | "pointerlockchange" | "pointerlockerror";
+type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
@@ -39,10 +40,15 @@ const listeners: Listener[] = [
 	{ target: window, eventName: "pointermove", action: (e: PointerEvent) => editorWrapper && documentStore && onPointerMove(e, editorWrapper, documentStore) },
 	{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => editorWrapper && dialogStore && onPointerDown(e, editorWrapper, dialogStore) },
 	{ target: window, eventName: "pointerup", action: (e: PointerEvent) => editorWrapper && onPointerUp(e, editorWrapper) },
-	{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
-	{ target: window, eventName: "mouseup", action: (e: MouseEvent) => editorWrapper && onPotentialDoubleClick(e, editorWrapper) },
+	{
+		target: window,
+		eventName: "mousedown",
+		action: (e: MouseEvent) => {
+			onMouseDown(e);
+			if (editorWrapper) onPotentialDoubleClick(e, editorWrapper);
+		},
+	},
 	{ target: window, eventName: "wheel", action: (e: WheelEvent) => editorWrapper && onWheelScroll(e, editorWrapper), options: { passive: false } },
-	{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 	{ target: window, eventName: "focusout", action: () => onFocusOut() },
 	{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 	{ target: window.document, eventName: "fullscreenchange", action: () => fullscreenModeChanged() },
@@ -59,6 +65,7 @@ let documentStore: DocumentStore | undefined = undefined;
 
 export function createInputManager(subscriptions: SubscriptionsRouter, editor: EditorWrapper, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
 	destroyInputManager();
+	initInput();
 
 	subscriptionsRouter = subscriptions;
 	editorWrapper = editor;
@@ -86,6 +93,8 @@ export function createInputManager(subscriptions: SubscriptionsRouter, editor: E
 
 // Return the destructor
 export function destroyInputManager() {
+	destroyInput();
+
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
