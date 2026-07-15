@@ -1600,8 +1600,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 5;
 	}
 
-	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the
-	// value-model 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _transform).
+	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the value-model
+	// 8-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _has_transform, _transform).
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1623,7 +1623,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					.network_interface
 					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
-				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
+				// Gradient metadata (4, 5, 6, 7): applies only to a literal gradient, solids/none keep the template defaults
 				if let graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
 						&InputConnector::node(*node_id, 4),
@@ -1636,18 +1636,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 						network_path,
 					);
 
-					let transform = if gradient.absolute {
-						Some(gradient.transform * gradient.to_transform())
+					if gradient.absolute {
+						let transform = gradient.transform * gradient.to_transform();
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 					} else {
-						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint target's bounds
+						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint
+						// target's bounds, so the template's unbaked `_has_transform = false` stands until the bake lands
 						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
-						None
-					};
-					document.network_interface.set_input(
-						&InputConnector::node(*node_id, 6),
-						NodeInput::value(TaggedValue::LegacyOptionalDAffine2(transform), false),
-						network_path,
-					);
+					}
 				}
 			}
 			// Wired/exposed fill keeps the connection.
@@ -1682,21 +1683,21 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					network_path,
 				);
 
-				let transform = if g.absolute {
-					Some(g.transform * g.to_transform())
+				if g.absolute {
+					let transform = g.transform * g.to_transform();
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 				} else {
 					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
-					None
-				};
-				document.network_interface.set_input(
-					&InputConnector::node(*node_id, 6),
-					NodeInput::value(TaggedValue::LegacyOptionalDAffine2(transform), false),
-					network_path,
-				);
+				}
 			}
 		}
 
-		inputs_count = 7;
+		inputs_count = 8;
 	}
 
 	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix
