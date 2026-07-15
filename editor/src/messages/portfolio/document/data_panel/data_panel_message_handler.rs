@@ -6,15 +6,25 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
+use graphene_std::animation::RealTimeMode;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
+use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
 use graphene_std::memo::IORecord;
+use graphene_std::raster::{
+	CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
+};
 use graphene_std::raster_types::{CPU, GPU, Raster};
-use graphene_std::vector::Vector;
-use graphene_std::vector::misc::BoxCorners;
-use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
+use graphene_std::text::TextAlign;
+use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::transform::{ReferencePoint, ScaleType};
+use graphene_std::vector::misc::{
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+};
+use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -192,11 +202,47 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Gradient>,
 		List<String>,
 		List<f64>,
+		List<i32>,
+		List<i64>,
 		List<bool>,
+		List<DVec2>,
 		List<DAffine2>,
 		List<BlendMode>,
 		List<GradientType>,
 		List<GradientSpreadMethod>,
+		List<DashPattern>,
+		List<BoxCorners>,
+		List<StrokeJoin>,
+		List<StrokeAlign>,
+		List<StrokeCap>,
+		List<PaintOrder>,
+		List<MergeByDistanceAlgorithm>,
+		List<ExtrudeJoiningAlgorithm>,
+		List<PointSpacingType>,
+		List<StringCapitalization>,
+		List<LuminanceCalculation>,
+		List<RedGreenBlue>,
+		List<RedGreenBlueAlpha>,
+		List<RelativeAbsolute>,
+		List<SelectiveColorChoice>,
+		List<XY>,
+		List<ScaleType>,
+		List<ReferencePoint>,
+		List<CentroidType>,
+		List<BooleanOperation>,
+		List<NoiseType>,
+		List<FractalType>,
+		List<CellularDistanceFunction>,
+		List<CellularReturnType>,
+		List<DomainWarpType>,
+		List<RealTimeMode>,
+		List<GridType>,
+		List<ArcType>,
+		List<SpiralType>,
+		List<TextAlign>,
+		List<QRCodeErrorCorrectionLevel>,
+		List<InterpolationDistribution>,
+		List<RowsOrColumns>,
 		Item<Artboard>,
 		Item<Graphic>,
 		Item<Vector>,
@@ -206,8 +252,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<Gradient>,
 		Item<String>,
 		Item<f64>,
-		Item<u8>,
+		Item<f32>,
 		Item<u32>,
+		Item<u64>,
+		Item<i32>,
+		Item<i64>,
 		Item<bool>,
 		Item<DVec2>,
 		Item<DAffine2>,
@@ -216,18 +265,37 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<GradientSpreadMethod>,
 		Item<DashPattern>,
 		Item<BoxCorners>,
-		Gradient,
-		f64,
-		u32,
-		u64,
-		bool,
-		String,
-		Option<f64>,
-		DVec2,
-		DAffine2,
-		BlendMode,
-		GradientType,
-		GradientSpreadMethod,
+		Item<StrokeJoin>,
+		Item<StrokeAlign>,
+		Item<StrokeCap>,
+		Item<PaintOrder>,
+		Item<MergeByDistanceAlgorithm>,
+		Item<ExtrudeJoiningAlgorithm>,
+		Item<PointSpacingType>,
+		Item<StringCapitalization>,
+		Item<LuminanceCalculation>,
+		Item<RedGreenBlue>,
+		Item<RedGreenBlueAlpha>,
+		Item<RelativeAbsolute>,
+		Item<SelectiveColorChoice>,
+		Item<XY>,
+		Item<ScaleType>,
+		Item<ReferencePoint>,
+		Item<CentroidType>,
+		Item<BooleanOperation>,
+		Item<NoiseType>,
+		Item<FractalType>,
+		Item<CellularDistanceFunction>,
+		Item<CellularReturnType>,
+		Item<DomainWarpType>,
+		Item<RealTimeMode>,
+		Item<GridType>,
+		Item<ArcType>,
+		Item<SpiralType>,
+		Item<TextAlign>,
+		Item<QRCodeErrorCorrectionLevel>,
+		Item<InterpolationDistribution>,
+		Item<RowsOrColumns>,
 	])
 }
 
@@ -697,6 +765,21 @@ impl TableItemLayout for u8 {
 	}
 }
 
+impl TableItemLayout for f32 {
+	fn type_name() -> &'static str {
+		"Number (f32)"
+	}
+	fn identifier(&self) -> String {
+		format!("{self}")
+	}
+	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![
+			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
+		])]
+	}
+}
+
 impl TableItemLayout for u32 {
 	fn type_name() -> &'static str {
 		"Number (u32)"
@@ -705,6 +788,37 @@ impl TableItemLayout for u32 {
 		format!("{self}")
 	}
 	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![
+			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
+		])]
+	}
+}
+
+impl TableItemLayout for i32 {
+	fn type_name() -> &'static str {
+		"Number (i32)"
+	}
+	fn identifier(&self) -> String {
+		format!("{self}")
+	}
+	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![
+			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
+		])]
+	}
+}
+
+impl TableItemLayout for i64 {
+	fn type_name() -> &'static str {
+		"Number (i64)"
+	}
+	fn identifier(&self) -> String {
+		format!("{self}")
+	}
+	// Values fall back to the default drill-in button (labeled via `identifier`); the value page shows the rich `NumberInput`.
+	// TODO: Make this robust for large i64 values that don't fit in f64 (beyond roughly 2^53), as with u64.
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![
 			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
@@ -838,45 +952,73 @@ impl TableItemLayout for Affine2 {
 	}
 }
 
-impl TableItemLayout for BlendMode {
-	fn type_name() -> &'static str {
-		"BlendMode"
-	}
-	fn identifier(&self) -> String {
-		self.to_string()
-	}
-	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(self.to_string()).narrow(true).widget_instance()
-	}
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
-	}
-}
-
-impl TableItemLayout for GradientType {
-	fn type_name() -> &'static str {
-		"GradientType"
-	}
-	fn identifier(&self) -> String {
-		self.to_string()
-	}
-	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(self.to_string()).narrow(true).widget_instance()
-	}
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+// Choice enums all display as their variant's label, shown inline as a plain text widget
+macro_rules! impl_table_item_layout_for_choice_enum {
+	($($ty:ty),* $(,)?) => {
+		$(
+			impl TableItemLayout for $ty {
+				fn type_name() -> &'static str {
+					stringify!($ty)
+				}
+				fn identifier(&self) -> String {
+					self.to_string()
+				}
+				fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+					TextLabel::new(self.to_string()).narrow(true).widget_instance()
+				}
+				fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+					vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+				}
+			}
+		)*
 	}
 }
+impl_table_item_layout_for_choice_enum!(
+	BlendMode,
+	GradientType,
+	GradientSpreadMethod,
+	StrokeJoin,
+	StrokeAlign,
+	StrokeCap,
+	PaintOrder,
+	MergeByDistanceAlgorithm,
+	ExtrudeJoiningAlgorithm,
+	PointSpacingType,
+	StringCapitalization,
+	LuminanceCalculation,
+	RedGreenBlue,
+	RedGreenBlueAlpha,
+	RelativeAbsolute,
+	SelectiveColorChoice,
+	XY,
+	ScaleType,
+	CentroidType,
+	BooleanOperation,
+	NoiseType,
+	FractalType,
+	CellularDistanceFunction,
+	CellularReturnType,
+	DomainWarpType,
+	RealTimeMode,
+	GridType,
+	ArcType,
+	SpiralType,
+	TextAlign,
+	QRCodeErrorCorrectionLevel,
+	InterpolationDistribution,
+	RowsOrColumns,
+);
 
-impl TableItemLayout for GradientSpreadMethod {
+// ReferencePoint is not a choice enum with display labels, so its variant name serves as the label
+impl TableItemLayout for ReferencePoint {
 	fn type_name() -> &'static str {
-		"GradientSpreadMethod"
+		"ReferencePoint"
 	}
 	fn identifier(&self) -> String {
-		self.to_string()
+		format!("{self:?}")
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+		TextLabel::new(self.identifier()).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
