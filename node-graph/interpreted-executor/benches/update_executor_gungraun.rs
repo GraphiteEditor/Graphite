@@ -15,9 +15,12 @@ fn setup_update_executor(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 
 #[library_benchmark]
 #[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_update_executor)]
-pub fn update_executor(setup: (DynamicExecutor, ProtoNetwork)) {
+pub fn update_executor(setup: (DynamicExecutor, ProtoNetwork)) -> DynamicExecutor {
 	let (mut executor, network) = setup;
 	let _ = black_box(futures::executor::block_on(executor.update(black_box(network))));
+
+	// Return the executor so its teardown happens outside the measured section
+	executor
 }
 
 library_benchmark_group!(name = update_group; benchmarks = update_executor);

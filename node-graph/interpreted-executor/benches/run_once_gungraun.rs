@@ -13,9 +13,12 @@ fn setup_run_once(name: &str) -> DynamicExecutor {
 
 #[library_benchmark]
 #[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_once)]
-pub fn run_once(executor: DynamicExecutor) {
+pub fn run_once(executor: DynamicExecutor) -> DynamicExecutor {
 	let context = application_io::RenderConfig::default();
 	black_box(futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), black_box(context))).unwrap());
+
+	// Return the executor so its teardown happens outside the measured section
+	executor
 }
 
 library_benchmark_group!(name = run_once_group; benchmarks = run_once);
