@@ -34,7 +34,7 @@ async fn render_background<'a: 'n>(
 
 	let data = match foreground_data {
 		RenderOutputType::Texture(foreground_texture) => {
-			let doc_to_screen = (glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * render_params.footprint.transform).as_affine2();
+			let doc_to_screen = render_params.footprint.transform.as_affine2();
 			let blended = pipeline
 				.run::<CompositeBackground>(&CompositeBackgroundArgs {
 					foreground: foreground_texture.as_ref(),
@@ -44,13 +44,15 @@ async fn render_background<'a: 'n>(
 				})
 				.await;
 
-			RenderOutputType::Texture(blended.into())
+			RenderOutputType::Texture(blended)
 		}
 		RenderOutputType::Svg {
 			svg: foreground_svg,
 			image_data: foreground_images,
 		} => {
 			let mut render = SvgRender::new();
+
+			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * render_params.footprint.transform;
 
 			if render_params.viewport_zoom > 0. {
 				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
@@ -79,6 +81,7 @@ async fn render_background<'a: 'n>(
 					if render_params.scale > 0. {
 						let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
 						let logical_footprint = Footprint {
+							transform: logical_transform,
 							resolution: logical_resolution.round().as_uvec2().max(glam::UVec2::ONE),
 							..render_params.footprint
 						};
@@ -101,7 +104,7 @@ async fn render_background<'a: 'n>(
 			}
 
 			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
-			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+			render.wrap_with_transform(logical_transform, Some(logical_resolution));
 
 			let background = SvgRenderOutput::from(render);
 			assert!(background.svg_defs.is_empty());

@@ -37,7 +37,6 @@ pub struct CachedRegion {
 pub struct CacheKey {
 	pub max_region_area: u32,
 	pub render_mode_hash: u64,
-	pub device_scale: u64,
 	pub zoom: u64,
 	pub rotation: u64,
 	pub for_export: bool,
@@ -55,7 +54,6 @@ impl CacheKey {
 	fn new(
 		max_region_area: u32,
 		render_mode_hash: u64,
-		device_scale: f64,
 		zoom: f64,
 		rotation: f64,
 		for_export: bool,
@@ -81,7 +79,6 @@ impl CacheKey {
 		Self {
 			max_region_area,
 			render_mode_hash,
-			device_scale: device_scale.to_bits(),
 			zoom: zoom.to_bits(),
 			rotation: quantized_rotation.to_bits(),
 			for_export,
@@ -345,12 +342,10 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let device_scale = render_params.scale;
 	let zoom = footprint.scale_magnitudes().x;
 	let rotation = footprint.decompose_rotation();
 
-	let viewport_origin_offset = footprint.transform.translation;
-	let device_origin_offset = viewport_origin_offset * device_scale;
+	let device_origin_offset = footprint.transform.translation;
 	let viewport_bounds_device = AxisAlignedBbox {
 		start: -device_origin_offset,
 		end: footprint.resolution.as_dvec2() - device_origin_offset,
@@ -361,7 +356,6 @@ pub async fn render_output_cache<'a: 'n>(
 	let cache_key = CacheKey::new(
 		max_region_area,
 		render_params.render_mode as u64,
-		device_scale,
 		zoom,
 		rotation,
 		render_params.for_export,
@@ -381,16 +375,7 @@ pub async fn render_output_cache<'a: 'n>(
 		if missing_region.tiles.is_empty() {
 			continue;
 		}
-		let region = render_missing_region(
-			missing_region,
-			|ctx| data.eval(ctx),
-			ctx.clone(),
-			render_params,
-			&footprint.transform,
-			&viewport_origin_offset,
-			device_scale,
-		)
-		.await;
+		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &device_origin_offset).await;
 		new_regions.push(region);
 	}
 
@@ -406,10 +391,11 @@ pub async fn render_output_cache<'a: 'n>(
 
 	let executor = executor.expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution).await;
-	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
+
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, executor);
 
 	RenderOutput {
-		data: RenderOutputType::Texture(output_texture.into()),
+		data: RenderOutputType::Texture(output_texture),
 		metadata: combined_metadata,
 	}
 }
@@ -421,7 +407,6 @@ async fn render_missing_region<F, Fut>(
 	render_params: &RenderParams,
 	viewport_transform: &DAffine2,
 	viewport_origin_offset: &DVec2,
-	device_scale: f64,
 ) -> CachedRegion
 where
 	F: Fn(Context<'static>) -> Fut,
@@ -433,7 +418,7 @@ where
 	let tile_count = (max_tile - min_tile) + IVec2::ONE;
 	let region_pixel_size = (tile_count * TILE_SIZE as i32).as_uvec2();
 
-	let tile_global_offset = min_tile.as_dvec2() * (TILE_SIZE as f64 / device_scale) + *viewport_origin_offset;
+	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
 	let region_transform = DAffine2::from_translation(-tile_global_offset) * *viewport_transform;
 	let region_footprint = Footprint {
 		transform: region_transform,

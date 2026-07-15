@@ -93,10 +93,11 @@ async fn render<'a: 'n>(
 
 	let data = match (render_params.render_output_type, ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
-			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
+			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
+			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
 
 			let mut render = SvgRender::from(data.as_ref());
-			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+			render.wrap_with_transform(logical_transform, Some(logical_resolution));
 
 			let output = SvgRenderOutput::from(render);
 			assert!(output.svg_defs.is_empty());
@@ -108,12 +109,8 @@ async fn render<'a: 'n>(
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
 			let (scene, context) = data.as_ref();
-			let scale = render_params.scale;
-			let physical_resolution = render_params.footprint.resolution;
 
-			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
-			let footprint_transform = scale_transform * render_params.footprint.transform;
-			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
+			let footprint_transform_vello = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
 
 			let mut transformed_scene = vello::Scene::new();
 			transformed_scene.append(scene, Some(footprint_transform_vello));
@@ -126,7 +123,7 @@ async fn render<'a: 'n>(
 			// the result is `-INFINITY`, which the old equality check missed; Vello then rasterized a unit rect with non-finite
 			// vertices, dropping the gradient and tanking performance. `!is_finite()` also covers NaN as a guard against future
 			// code paths where `matrix[0]` could land on `0 * INFINITY`.
-			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
+			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64);
 			for transform in transformed_scene.encoding_mut().transforms.iter_mut() {
 				if !transform.matrix[0].is_finite() {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
@@ -135,10 +132,10 @@ async fn render<'a: 'n>(
 
 			let texture = executor
 				.expect("GPU executor not available")
-				.render_vello_scene(&transformed_scene, physical_resolution, context, None)
+				.render_vello_scene(&transformed_scene, footprint.resolution, context, None)
 				.await
 				.expect("Failed to render Vello scene");
-			RenderOutputType::Texture(texture.into())
+			RenderOutputType::Texture(texture)
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
@@ -152,11 +149,15 @@ async fn create_context<'a: 'n>(
 	render_config: RenderConfig,
 	data: impl Node<Context<'static>, Output = RenderOutput>,
 ) -> RenderOutput {
-	let footprint = render_config.viewport;
-
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
+	};
+
+	let logical_viewport = render_config.viewport;
+	let footprint = Footprint {
+		transform: glam::DAffine2::from_scale(glam::DVec2::splat(render_config.scale)) * logical_viewport.transform,
+		..logical_viewport
 	};
 
 	let render_params = RenderParams {
@@ -164,7 +165,7 @@ async fn create_context<'a: 'n>(
 		for_export: render_config.for_export,
 		render_output_type,
 		scale: render_config.scale,
-		viewport_zoom: footprint.scale_magnitudes().x,
+		viewport_zoom: logical_viewport.scale_magnitudes().x,
 		..Default::default()
 	};
 
@@ -176,5 +177,8 @@ async fn create_context<'a: 'n>(
 		.with_vararg(Box::new(render_params))
 		.into_context();
 
-	data.eval(ctx).await
+	let mut result = data.eval(ctx).await;
+
+	result.metadata.apply_transform(glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_config.scale)));
+	result
 }
