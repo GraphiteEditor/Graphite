@@ -669,7 +669,7 @@ impl NodeGraphExecutor {
 							graphene_std::raster::Image {
 								width: image.width,
 								height: image.height,
-								data: image.data.iter().map(|&c| SRGBA8::from(c)).collect(),
+								data: image.data.iter().map(|&c| SRGBA8::from(c.to_unassociated_alpha())).collect(),
 								base64_string: image.base64_string,
 							},
 						)
