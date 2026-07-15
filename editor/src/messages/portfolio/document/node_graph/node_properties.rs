@@ -34,7 +34,7 @@ use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{
-	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, GradientUnits, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -2445,6 +2445,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient: GradientStops,
 			gradient_type: GradientType,
 			spread_method: GradientSpreadMethod,
+			gradient_units: GradientUnits,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
@@ -2488,6 +2489,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					gradient: gradient.stops,
 					gradient_type: gradient.gradient_type,
 					spread_method: gradient.spread_method,
+					gradient_units: gradient.gradient_units,
 					transform: gradient.transform,
 					transform_is_value: gradient.transform_is_value,
 				}
@@ -2624,6 +2626,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	if let ResolvedFill::Gradient {
 		gradient_type,
 		spread_method,
+		gradient_units,
 		transform,
 		transform_is_value,
 		..
@@ -2649,6 +2652,31 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		]);
 
 		widgets.push(LayoutGroup::row(row));
+
+		// Units radio: blank assist
+		let mut units_row = vec![TextLabel::new("").widget_instance()];
+		add_blank_assist(&mut units_row);
+
+		let units_entries = [GradientUnits::UserSpaceOnUse, GradientUnits::ObjectBoundingBox]
+			.iter()
+			.map(|&units| {
+				let label = match units {
+					GradientUnits::UserSpaceOnUse => "User Space",
+					GradientUnits::ObjectBoundingBox => "Bounding Box",
+				};
+				RadioEntryData::new(format!("{:?}", units))
+					.label(label)
+					.on_update(update_value(move |_| TaggedValue::GradientUnits(units), node_id, GradientUnitsInput::INDEX))
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		units_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			RadioInput::new(units_entries).selected_index(Some(gradient_units as u32)).widget_instance(),
+		]);
+
+		widgets.push(LayoutGroup::row(units_row));
 
 		// "Reverse Direction" button (assist) plus the Pad/Reflect/Repeat radio. Icon orientation is resolved in viewport
 		// space so canvas tilt and layer transforms behave the same as in the Gradient tool's control bar.

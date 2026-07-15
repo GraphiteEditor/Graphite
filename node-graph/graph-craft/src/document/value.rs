@@ -446,6 +446,7 @@ tagged_value! {
 	PaintOrder(vector::style::PaintOrder),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
+	GradientUnits(vector::style::GradientUnits),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),

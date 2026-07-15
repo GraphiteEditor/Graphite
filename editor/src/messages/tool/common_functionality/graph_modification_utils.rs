@@ -15,7 +15,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, GradientUnits, PointId, SegmentId, VectorModificationType};
 use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
 
@@ -629,6 +629,7 @@ pub struct FillNodeGradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
 	pub spread_method: GradientSpreadMethod,
+	pub gradient_units: GradientUnits,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
@@ -649,6 +650,10 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 		_ => GradientSpreadMethod::default(),
 	};
+	let gradient_units = match fill_node.inputs.get(fill::GradientUnitsInput::INDEX).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::GradientUnits(value)) => value,
+		_ => GradientUnits::default(),
+	};
 	let transform_input = fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value());
 	let transform = match transform_input {
 		Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(bounding_box())),
@@ -659,6 +664,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		stops: stops.clone(),
 		gradient_type,
 		spread_method,
+		gradient_units,
 		transform,
 		transform_is_value: transform_input.is_some(),
 	})
@@ -799,6 +805,10 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
 					_ => GradientSpreadMethod::default(),
 				};
+				let gradient_units = match read(graphene_std::vector::fill::GradientUnitsInput::INDEX) {
+					Some(TaggedValue::GradientUnits(value)) => *value,
+					_ => GradientUnits::default(),
+				};
 				let transform = match read(graphene_std::vector::fill::TransformInput::INDEX) {
 					Some(TaggedValue::OptionalDAffine2(value)) => {
 						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
@@ -811,6 +821,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					gradient: stops.clone(),
 					gradient_type,
 					spread_method,
+					gradient_units,
 					transform,
 				});
 			}

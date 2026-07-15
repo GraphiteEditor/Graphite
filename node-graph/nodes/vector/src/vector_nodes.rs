@@ -8,8 +8,8 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
+	ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -33,7 +33,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::{GradientSpreadMethod, GradientType};
+use vector_types::{GradientSpreadMethod, GradientType, GradientUnits};
 
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
@@ -175,6 +175,7 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	_backup_gradient: List<GradientStops>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
+	_gradient_units: GradientUnits,
 	_transform: Option<DAffine2>,
 ) -> V {
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
@@ -187,6 +188,12 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
 				*value = _spread_method;
+			}
+		}
+
+		if gradient.iter_attribute_values::<GradientUnits>(ATTR_GRADIENT_UNITS).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientUnits>(ATTR_GRADIENT_UNITS) {
+				*value = _gradient_units;
 			}
 		}
 
