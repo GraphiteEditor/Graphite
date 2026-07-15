@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use graph_storage::{NetworkId, PeerId, Rev};
+use document_graph_storage::{NetworkId, PeerId, Rev};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

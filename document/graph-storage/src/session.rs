@@ -65,7 +65,7 @@ impl Session {
 	/// op as its own `Delta` on the local chain. One `clock.tick()` per op (strictly causal within
 	/// a commit). Returns the new `Rev`s in commit order (empty if nothing changed) plus the
 	/// proto-node declaration bytes the conversion extracted, keyed by content hash, for the caller
-	/// to persist into its byte store (`graph-storage` itself is byte-unaware).
+	/// to persist into its byte store (`document-graph-storage` itself is byte-unaware).
 	///
 	/// Stages the diff as hot ops rather than retired deltas: each op is applied to the registry and
 	/// pushed onto the hot log. The caller persists the returned hot frames and then calls `retire`

@@ -1,4 +1,4 @@
-//! Bridge between `NodeNetworkInterface` and `graph-storage`'s `NodeMetadataSource` trait.
+//! Bridge between `NodeNetworkInterface` and `document-graph-storage`'s `NodeMetadataSource` trait.
 //! Conversion round-trip tests live in `storage_metadata_tests`.
 //!
 //! The trait impl lives on the [`StorageMetadataView`] wrapper (not on `NodeNetworkInterface`
@@ -7,10 +7,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use document_graph_storage::attr::session;
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position};
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
-use graph_storage::attr::session;
-use graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position};
 use graphene_std::vector::style::RenderMode;
 
 use super::memo_network::MemoNetwork;
@@ -41,7 +41,7 @@ pub struct DocumentSettings<'a> {
 	pub collapsed: &'a CollapsedLayers,
 }
 
-/// Adapts a `&NodeNetworkInterface` to `graph-storage`'s `NodeMetadataSource` (node/network metadata
+/// Adapts a `&NodeNetworkInterface` to `document-graph-storage`'s `NodeMetadataSource` (node/network metadata
 /// only; document-level view settings live in `session.json`, not the registry).
 pub struct StorageMetadataView<'a> {
 	interface: &'a NodeNetworkInterface,
@@ -183,18 +183,18 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 
 /// Build the runtime-`network_path` -> stable-`NetworkId` map from the `NetworkMetadataEntry`s that
 /// `to_runtime_with_full_metadata` emits, so the open path can apply per-network view settings.
-pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<Vec<NodeId>, graph_storage::NetworkId> {
+pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<Vec<NodeId>, document_graph_storage::NetworkId> {
 	network_entries.iter().map(|entry| (entry.network_path.clone(), entry.network_id)).collect()
 }
 
 /// Collect the per-network, per-peer view state (node-graph nav + previewing) from `interface` into a
-/// `session.json` map keyed by the stable storage [`NetworkId`](graph_storage::NetworkId), which
+/// `session.json` map keyed by the stable storage [`NetworkId`](document_graph_storage::NetworkId), which
 /// `network_ids` resolves from each runtime `network_path`. Networks at their default nav with no preview
 /// produce no entry.
 pub fn collect_network_view_settings(
 	interface: &NodeNetworkInterface,
-	network_ids: &HashMap<Vec<NodeId>, graph_storage::NetworkId>,
-) -> BTreeMap<graph_storage::NetworkId, BTreeMap<String, serde_json::Value>> {
+	network_ids: &HashMap<Vec<NodeId>, document_graph_storage::NetworkId>,
+) -> BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, serde_json::Value>> {
 	let mut out = BTreeMap::new();
 
 	for (network_path, &network_id) in network_ids {
@@ -240,12 +240,12 @@ pub fn collect_network_view_settings(
 
 /// Apply persisted per-network view state (node-graph nav + previewing) from `session.json` onto
 /// `interface`. Inverse of [`collect_network_view_settings`]: `network_ids` resolves each runtime
-/// `network_path` to its [`NetworkId`](graph_storage::NetworkId), and the matching inner map is decoded
+/// `network_path` to its [`NetworkId`](document_graph_storage::NetworkId), and the matching inner map is decoded
 /// back onto the network's navigation/previewing metadata.
 pub fn apply_network_view_settings(
 	interface: &mut NodeNetworkInterface,
-	network_ids: &HashMap<Vec<NodeId>, graph_storage::NetworkId>,
-	network_view_settings: &BTreeMap<graph_storage::NetworkId, BTreeMap<String, serde_json::Value>>,
+	network_ids: &HashMap<Vec<NodeId>, document_graph_storage::NetworkId>,
+	network_view_settings: &BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, serde_json::Value>>,
 ) {
 	for (network_path, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
