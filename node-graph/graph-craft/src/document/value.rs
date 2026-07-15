@@ -465,6 +465,7 @@ impl TaggedValue {
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
+			TaggedValue::MaskMode(x) => "MaskMode::".to_string() + &x.to_string(),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
@@ -808,5 +809,17 @@ mod typedefault_dispatch {
 			}};
 		}
 		for_each_type_default!(check);
+	}
+}
+
+#[cfg(test)]
+mod primitive_serialization {
+	use super::*;
+	use core_types::MaskMode;
+
+	#[test]
+	fn serializes_mask_mode_construction_arguments() {
+		assert_eq!(TaggedValue::MaskMode(MaskMode::Alpha).to_primitive_string(), "MaskMode::Alpha");
+		assert_eq!(TaggedValue::MaskMode(MaskMode::Luminance).to_primitive_string(), "MaskMode::Luminance");
 	}
 }
