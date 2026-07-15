@@ -61,8 +61,11 @@ fn text(
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
+	/// Draws a line below each line of text at the font's underline position.
 	underline: bool,
+	/// Draws a line above each line of text at the font's ascent position.
 	overline: bool,
+	/// Draws a line through the middle of each line of text at the font's strikethrough position.
 	strikethrough: bool,
 ) -> List<String> {
 	let mut list = List::new_from_element(text);

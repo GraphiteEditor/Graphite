@@ -447,7 +447,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					.faces()
 					.next()
 					.and_then(|face| face.families.first().map(|(name, _)| name.clone()))
-					.unwrap_or_else(|| "Source Sans Pro".to_string());
+					.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
 				fontdb.set_sans_serif_family(&fallback_family);
 				fontdb.set_serif_family(&fallback_family);
 				fontdb.set_monospace_family(&fallback_family);

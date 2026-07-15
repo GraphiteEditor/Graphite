@@ -163,7 +163,7 @@ impl PathBuilder {
 		}
 	}
 
-	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, underline: bool, overline: bool, strikethrough: bool, per_glyph_items: bool) {
+	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, underline: bool, overline: bool, strikethrough: bool, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
 		if !underline && !overline && !strikethrough {
 			return;
 		}
@@ -171,8 +171,21 @@ impl PathBuilder {
 		let run = glyph_run.run();
 		let baseline = glyph_run.baseline() as f64;
 		let metrics = run.metrics();
-		let start = glyph_run.offset() as f64;
-		let end = start + glyph_run.advance() as f64;
+
+		// Apply the same alignment shift and justification stretch that render_glyph_run applies to
+		// glyph placement, so decoration lines stay aligned under non-left-aligned text.
+		let start = (glyph_run.offset() + x_offset) as f64;
+		let extra_advance: f32 = if space_extra != 0. {
+			glyph_run
+				.glyphs()
+				.filter(|g| g.advance > 0.)
+				.count()
+				.saturating_sub(1) as f32
+				* space_extra
+		} else {
+			0.
+		};
+		let end = start + (glyph_run.advance() + extra_advance) as f64;
 
 		let decorations = [
 			(underline, baseline - metrics.underline_offset as f64, metrics.underline_size as f64),

@@ -1808,16 +1808,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Insert text decoration parameters: underline, overline, and strikethrough.
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 13 {
+	// Currently text node has 15 inputs (0–14): the three decoration booleans are appended at 12/13/14.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 12 {
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
+		// Copy all original inputs (including `align` at index 11) into the new node unchanged.
 		#[allow(clippy::needless_range_loop)]
 		for i in 0..=11 {
 			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i].clone(), network_path);
 		}
 
+		// Append the three new decoration inputs at their correct indices (12, 13, 14) with defaults.
 		document.network_interface.set_input(
 			&InputConnector::node(*node_id, 12),
 			NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().underline), false),
@@ -1833,7 +1836,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().strikethrough), false),
 			network_path,
 		);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 15), old_inputs[12].clone(), network_path);
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
