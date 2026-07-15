@@ -757,8 +757,15 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 				let descriptor: TypeDescriptor = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(Type::Concrete(descriptor).normalize_rank())));
 			}
-			// The `Color` tag used to carry `Option<Color>`, where a `null` payload was the red-slash "no paint" choice
-			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable" if content.is_null() => {
+			// The `Color` tag used to carry `Option<Color>`, where a `null` payload (or an empty legacy color table) was the red-slash "no paint" choice
+			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable"
+				if content.is_null()
+					|| content
+						.as_object()
+						.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
+						.and_then(|e| e.as_array())
+						.is_some_and(|colors| colors.is_empty()) =>
+			{
 				return Ok(MemoHash::new(TaggedValue::no_paint()));
 			}
 			// The removed `FillChoice` variant decomposes into the plain paint values
@@ -966,5 +973,16 @@ mod paint_default_parsing {
 			black,
 			"an `Item<Graphic>` paint wire should resolve its color default"
 		);
+	}
+
+	/// Table-era documents stored the red-slash "no paint" fill as an empty color table, which must keep
+	/// deserializing to [`TaggedValue::no_paint`] rather than collapsing to a transparent color.
+	#[test]
+	fn empty_legacy_color_table_deserializes_to_no_paint() {
+		for payload in [r#"{"ColorTable": {"instances": []}}"#, r#"{"ColorTable": {"element": []}}"#, r#"{"Color": null}"#] {
+			let mut deserializer = serde_json::Deserializer::from_str(payload);
+			let value = deserialize_tagged_value_with_legacy_migration(&mut deserializer).expect("The legacy payload should deserialize");
+			assert!(value.is_no_paint(), "The legacy payload `{payload}` should migrate to the no-paint choice");
+		}
 	}
 }

@@ -448,6 +448,12 @@ impl NodeRuntime {
 					let bounds = graphene_std::renderer::graphic_list_bounding_box(&singleton, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
 				}
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Artboard>>>() {
+				if update_thumbnails {
+					let singleton = List::new_from_item(io.output.clone());
+					let bounds = artboard_clip_bounds(&singleton);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
+				}
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Vector>>>() {
 				self.vector_modify.insert(parent_network_node_id, io.output.element().clone());
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<String>>>() {

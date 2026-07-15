@@ -167,12 +167,12 @@ export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: st
 		return (1 - Math.min(distance / proximityRange, 1)) * (1 - sRgba8ToHSV(color).s);
 	};
 
-	const gradientStops = fillChoiceUIGradientStops(value);
-	if (gradientStops) {
-		if (gradientStops.color.length === 0) return 0;
+	const gradient = fillChoiceUIGradient(value);
+	if (gradient) {
+		if (gradient.color.length === 0) return 0;
 
-		const first = contrast(gradientStops.color[0]);
-		const last = contrast(gradientStops.color[gradientStops.color.length - 1]);
+		const first = contrast(gradient.color[0]);
+		const last = contrast(gradient.color[gradient.color.length - 1]);
 
 		return Math.min(first, last);
 	}
@@ -182,7 +182,7 @@ export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: st
 
 // GRADIENT UTILITY FUNCTIONS
 
-export function isGradientStopsUI(value: unknown): value is GradientUI {
+export function isGradientUI(value: unknown): value is GradientUI {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
 }
 
@@ -193,7 +193,7 @@ export function fillChoiceUIColor(value: FillChoiceUI): SRGBA8 | undefined {
 	return undefined;
 }
 
-export function fillChoiceUIGradientStops(value: FillChoiceUI): GradientUI | undefined {
+export function fillChoiceUIGradient(value: FillChoiceUI): GradientUI | undefined {
 	if (typeof value === "object" && "Gradient" in value) return value.Gradient;
 	return undefined;
 }
@@ -201,6 +201,6 @@ export function fillChoiceUIGradientStops(value: FillChoiceUI): GradientUI | und
 export function parseFillChoiceUI(value: unknown): FillChoiceUI {
 	if (value === "None" || value === undefined || value === null) return "None";
 	if (typeof value === "object" && value !== null && "Solid" in value && isSRgba8(value.Solid)) return { Solid: value.Solid };
-	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientStopsUI(value.Gradient)) return { Gradient: value.Gradient };
+	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientUI(value.Gradient)) return { Gradient: value.Gradient };
 	return "None";
 }

@@ -12,10 +12,11 @@ async fn dehaze(_: impl Ctx, image_frame: Item<Raster<CPU>>, strength: Item<Perc
 	let strength = *strength.element();
 
 	let (image, attributes) = image_frame.into_parts();
+	let (width, height) = (image.width, image.height);
 
 	// Prepare the image data for processing
-	let image_data = bytemuck::cast_vec(image.data.clone());
-	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
+	let image_data = bytemuck::cast_vec(image.into_data().data);
+	let image_buffer = image::Rgba32FImage::from_raw(width, height, image_data).expect("Failed to convert internal image format into image-rs data type.");
 	let dynamic_image: DynamicImage = image_buffer.into();
 
 	// Run the dehaze algorithm
@@ -25,8 +26,8 @@ async fn dehaze(_: impl Ctx, image_frame: Item<Raster<CPU>>, strength: Item<Perc
 	let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
 	let color_vec = bytemuck::cast_vec(buffer);
 	let dehazed_image = Image {
-		width: image.width,
-		height: image.height,
+		width,
+		height,
 		data: color_vec,
 		base64_string: None,
 	};

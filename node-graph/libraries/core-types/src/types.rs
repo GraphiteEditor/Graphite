@@ -118,7 +118,7 @@ macro_rules! fn_type {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
 	};
 	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner)))
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner, $inner)))
 	};
 	($in_type:ty, Item<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner)))
@@ -148,7 +148,7 @@ macro_rules! fn_type_fut {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
 	};
 	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner, $inner)))))
 	};
 	($in_type:ty, Item<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))

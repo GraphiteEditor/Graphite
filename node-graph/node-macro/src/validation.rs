@@ -60,7 +60,11 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 			);
 		}
 
-		if outer_wrapper_is(ty, "Item") && implementations.iter().any(|ty| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List")) {
+		if outer_wrapper_is(ty, "Item")
+			&& implementations
+				.iter()
+				.any(|ty| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"))
+		{
 			emit_error!(pat_ident.span(), "The #[implementations(...)] of the ranked parameter `{}` must be bare element types", pat_ident.ident);
 		}
 	}
@@ -92,7 +96,10 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		return;
 	}
 
-	if implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "Item")) {
+	if implementations
+		.iter()
+		.any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "ListDyn"))
+	{
 		emit_error!(
 			primary.pat_ident.span(),
 			"The #[implementations(...)] of `{}` must be bare element types; the macro derives the Item and List wire forms",

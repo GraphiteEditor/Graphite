@@ -178,11 +178,11 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 				let default_value = default_value.trim_end_matches('.').trim_end_matches(".0"); // Display whole-number floats as integers
 
 				let render_color = |color| format!(r#"<span style="padding-right: 100px; border: 2px solid var(--color-fog); background: {color}"></span>"#);
+				// Compare against the typed default's debug form so the swatch tracks the `Gradient` representation
+				let black_to_white_gradient = value::TaggedValue::Gradient(Default::default()).to_debug_string();
 				let default_value = match default_value {
 					"Color::BLACK" => render_color("black"),
-					"Gradient([(0.0, Color { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 }), (1.0, Color { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 })])" => {
-						render_color("linear-gradient(to right, black, white)")
-					}
+					gradient if gradient == black_to_white_gradient => render_color("linear-gradient(to right, black, white)"),
 					_ => format!("`{default_value}{}`", field.unit.unwrap_or_default()),
 				};
 

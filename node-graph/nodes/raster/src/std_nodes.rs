@@ -46,13 +46,14 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	}
 
 	let (image, mut attributes) = image_frame.into_parts();
+	let (width, height) = (image.width, image.height);
 
 	// Resize the image using the image crate
-	let data = bytemuck::cast_vec(image.data.clone());
-	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
+	let data = bytemuck::cast_vec(image.into_data().data);
+	let image_size = DAffine2::from_scale(DVec2::new(width as f64, height as f64));
 	let size_px = image_size.transform_vector2(size).as_uvec2();
 
-	let image_buffer = ::image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
+	let image_buffer = ::image::Rgba32FImage::from_raw(width, height, data).expect("Failed to convert internal image format into image-rs data type.");
 
 	let dynamic_image: ::image::DynamicImage = image_buffer.into();
 	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
@@ -65,7 +66,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	let mut new_height = size_px.y;
 
 	// Only downscale the image for now
-	let resized = if new_width < image.width || new_height < image.height {
+	let resized = if new_width < width || new_height < height {
 		new_width = viewport_resolution_x as u32;
 		new_height = viewport_resolution_y as u32;
 		// TODO: choose filter based on quality requirements

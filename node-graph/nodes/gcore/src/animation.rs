@@ -1,4 +1,4 @@
-use core_types::list::Item;
+use core_types::list::{Item, List};
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -83,6 +83,16 @@ async fn quantize_real_time<T>(
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
 		Context -> Item<Artboard>,
+		Context -> List<String>,
+		Context -> List<f64>,
+		Context -> List<DVec2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Artboard>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
@@ -121,6 +131,16 @@ async fn quantize_animation_time<T>(
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
 		Context -> Item<Artboard>,
+		Context -> List<String>,
+		Context -> List<f64>,
+		Context -> List<DVec2>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> List<Artboard>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]

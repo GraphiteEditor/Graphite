@@ -505,16 +505,16 @@ fn expander_flattens_under_the_frame() {
 
 #[test]
 fn whole_list_switches_as_one_bundle() {
-	// One bool selecting between two whole `List<Graphic>` stacks: each branch bundles into a rank-0 cell, and the result unbundles back to the flat stack
+	// One bool selecting between two whole `List<f64>` stacks: each branch bundles into a rank-0 cell, and the result unbundles back to the flat stack
 	let condition_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(0)]);
-	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(1)]);
-	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(list!(graphene_std::Graphic)).into()), vec![NodeId(2)]);
+	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![1., 2., 3.]).into()), vec![NodeId(1)]);
+	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![4., 5.]).into()), vec![NodeId(2)]);
 
 	let mut switch_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	switch_node.identifier = ProtoNodeIdentifier::new("math_nodes::SwitchNode");
 
 	let mut unbundle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(3)]), vec![NodeId(4)]);
-	unbundle_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::UnbundleNode<Graphic>");
+	unbundle_node.identifier = ProtoNodeIdentifier::new("graphene_core::ops::UnbundleNode<f64>");
 
 	let network = ProtoNetwork {
 		inputs: vec![],
@@ -530,7 +530,7 @@ fn whole_list_switches_as_one_bundle() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context
 		.update(&network)
-		.expect("A List<Graphic> branch should resolve the Item<Bundle<Graphic>> row via the bundle wrap");
+		.expect("A List<f64> branch should resolve the Item<Bundle<f64>> row via the bundle wrap");
 
 	let promotions = typing_context.promotions(NodeId(3)).expect("The condition wrap and both branch bundles should be recorded");
 	let branch_bundles = promotions
@@ -541,8 +541,10 @@ fn whole_list_switches_as_one_bundle() {
 
 	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
-	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(4), context));
-	assert!(result.is_some(), "The whole stack should round-trip through the bundle switch back to a flat List<Graphic>");
+	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
+	let list = result.expect("The whole stack should round-trip through the bundle switch back to a flat List<f64>");
+	let values: Vec<f64> = list.iter_element_values().copied().collect();
+	assert_eq!(values, [1., 2., 3.], "The taken branch's whole list should come through unchanged");
 }
 
 #[test]

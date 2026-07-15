@@ -174,6 +174,10 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String;
 
+	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
+	/// Returns `false` if the underlying types differ.
+	fn eq_dyn(&self, other: &dyn AnyAttributeValue) -> bool;
+
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
 	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
 }
@@ -202,6 +206,12 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String {
 		format!("{:?}", self)
+	}
+
+	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
+	/// Returns `false` if the underlying types differ.
+	fn eq_dyn(&self, other: &dyn AnyAttributeValue) -> bool {
+		other.as_any().downcast_ref::<Self>().is_some_and(|other| self == other)
 	}
 
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
@@ -551,6 +561,17 @@ impl Debug for ItemAttributeValues {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let keys: Vec<&str> = self.0.iter().map(|(k, _)| k.as_str()).collect();
 		f.debug_struct("Attributes").field("keys", &keys).finish()
+	}
+}
+
+impl PartialEq for ItemAttributeValues {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.len() == other.0.len()
+			&& self
+				.0
+				.iter()
+				.zip(&other.0)
+				.all(|((self_key, self_value), (other_key, other_value))| self_key == other_key && self_value.eq_dyn(other_value.as_ref()))
 	}
 }
 
@@ -1281,7 +1302,8 @@ impl<T: CacheHash> CacheHash for Item<T> {
 
 impl<T: PartialEq> PartialEq for Item<T> {
 	fn eq(&self, other: &Self) -> bool {
-		self.element == other.element
+		// Attributes participate in equality for the same `cache_hash` contract reason as `List`
+		self.element == other.element && self.attributes == other.attributes
 	}
 }
 

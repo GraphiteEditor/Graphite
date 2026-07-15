@@ -5,7 +5,7 @@ use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
 
-/// Produces a styled `String[]` carrying all typographic attributes.
+/// Produces a styled text string carrying all typographic attributes.
 ///
 /// Use the **Text to Vector** node to convert this into vector geometry if desired.
 #[node_macro::node(category("Text"))]
