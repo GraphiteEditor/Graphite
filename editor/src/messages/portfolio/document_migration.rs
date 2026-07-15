@@ -1573,7 +1573,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the
-	// value-model shape. This first performs the established 7-input migration; the fill-rule migration below then appends its eighth input.
+	// current value-model shape, including the default nonzero fill rule.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1664,10 +1664,14 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			}
 		}
 
-		inputs_count = 7;
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::FillRule(FillRule::NonZero), false), network_path);
+
+		inputs_count = 8;
 	}
 
-	// Fill rules were previously implicit and always nonzero. Append the new input while preserving every existing paint and gradient input.
+	// Upgrade Fill nodes that already use the 7-input value model. Fill rules were previously implicit and always nonzero.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 7 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
