@@ -8,8 +8,8 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_GRADIENT_UNITS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
+	ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;

@@ -467,14 +467,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
-				import_usvg_node(
-					&mut modify_inputs,
-					&usvg::Node::Group(Box::new(tree.root().clone())),
-					id,
-					parent,
-					insert_index,
-					&imported_gradient_info,
-				);
+				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), id, parent, insert_index, &imported_gradient_info);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
@@ -530,11 +523,7 @@ fn extract_svg_gradient_info(svg: &str) -> ImportedGradientInfo {
 		}
 	}
 
-	fn resolve_units<'a>(
-		node: usvg::roxmltree::Node<'a, 'a>,
-		gradient_nodes: &HashMap<&'a str, usvg::roxmltree::Node<'a, 'a>>,
-		seen: &mut Vec<&'a str>,
-	) -> Option<GradientUnits> {
+	fn resolve_units<'a>(node: usvg::roxmltree::Node<'a, 'a>, gradient_nodes: &HashMap<&'a str, usvg::roxmltree::Node<'a, 'a>>, seen: &mut Vec<&'a str>) -> Option<GradientUnits> {
 		match node.attribute("gradientUnits") {
 			Some("userSpaceOnUse") => return Some(GradientUnits::UserSpaceOnUse),
 			Some("objectBoundingBox") => return Some(GradientUnits::ObjectBoundingBox),
@@ -602,14 +591,7 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 /// interact with any existing layers in the parent stack. All descendant layers use a lightweight
 /// O(n) import path that skips collision detection and instead calculates positions directly from
 /// the known tree structure.
-fn import_usvg_node(
-	modify_inputs: &mut ModifyInputsContext,
-	node: &usvg::Node,
-	id: NodeId,
-	parent: LayerNodeIdentifier,
-	insert_index: usize,
-	imported_gradient_info: &ImportedGradientInfo,
-) {
+fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize, imported_gradient_info: &ImportedGradientInfo) {
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
