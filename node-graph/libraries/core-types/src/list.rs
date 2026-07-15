@@ -1284,7 +1284,7 @@ impl<T> FromIterator<Item<T>> for List<T> {
 /// An owned item containing an element of type `T` and a set of type-erased scalar attributes.
 ///
 /// Used to build individual items before pushing them into a [`List`], or when consuming items out of a list via [`IntoIterator`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Item<T> {
 	element: T,
 	attributes: ItemAttributeValues,
@@ -1305,13 +1305,6 @@ impl<T: CacheHash> CacheHash for Item<T> {
 			std::hash::Hash::hash(key.as_str(), state);
 			attribute.cache_hash_dyn(state);
 		}
-	}
-}
-
-impl<T: PartialEq> PartialEq for Item<T> {
-	fn eq(&self, other: &Self) -> bool {
-		// Attributes participate in equality for the same `cache_hash` contract reason as `List`
-		self.element == other.element && self.attributes == other.attributes
 	}
 }
 
