@@ -37,7 +37,6 @@ pub struct CachedRegion {
 pub struct CacheKey {
 	pub max_region_area: u32,
 	pub render_mode_hash: u64,
-	pub device_scale: u64,
 	pub zoom: u64,
 	pub rotation: u64,
 	pub for_export: bool,
@@ -55,7 +54,6 @@ impl CacheKey {
 	fn new(
 		max_region_area: u32,
 		render_mode_hash: u64,
-		device_scale: f64,
 		zoom: f64,
 		rotation: f64,
 		for_export: bool,
@@ -81,7 +79,6 @@ impl CacheKey {
 		Self {
 			max_region_area,
 			render_mode_hash,
-			device_scale: device_scale.to_bits(),
 			zoom: zoom.to_bits(),
 			rotation: quantized_rotation.to_bits(),
 			for_export,
@@ -345,7 +342,7 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let zoom = footprint.scale_magnitudes().x / render_params.scale;
+	let zoom = footprint.scale_magnitudes().x;
 	let rotation = footprint.decompose_rotation();
 
 	let device_origin_offset = footprint.transform.translation;
@@ -359,7 +356,6 @@ pub async fn render_output_cache<'a: 'n>(
 	let cache_key = CacheKey::new(
 		max_region_area,
 		render_params.render_mode as u64,
-		render_params.scale,
 		zoom,
 		rotation,
 		render_params.for_export,
