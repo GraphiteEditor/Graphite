@@ -8,8 +8,8 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, ATTR_FOCAL_CENTER, ATTR_FOCAL_RADIUS, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_FOCAL_CENTER, ATTR_FOCAL_RADIUS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -176,10 +176,8 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
-	#[default(DVec2::ZERO)]
-	_focal_center: DVec2,
-	#[default(0.)]
-	_focal_radius: f64,
+	#[default(DVec2::ZERO)] _focal_center: DVec2,
+	#[default(0.)] _focal_radius: f64,
 ) -> V {
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {

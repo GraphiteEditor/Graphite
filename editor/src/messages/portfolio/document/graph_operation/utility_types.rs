@@ -464,7 +464,15 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: GradientStops, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2, focal_center: Option<DVec2>, focal_radius: Option<f64>) {
+	pub fn fill_gradient_set(
+		&mut self,
+		gradient: GradientStops,
+		gradient_type: GradientType,
+		spread_method: GradientSpreadMethod,
+		transform: DAffine2,
+		focal_center: Option<DVec2>,
+		focal_radius: Option<f64>,
+	) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};

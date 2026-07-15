@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
@@ -16,6 +15,7 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
+use std::str::FromStr;
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -551,11 +551,7 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> 
 				let opacity = child.attribute("stop-opacity").and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.);
 				let color = child.attribute("stop-color").and_then(|c| parse_stop_color(c, opacity)).unwrap_or(Color::BLACK);
 
-				stops.push(GradientStop {
-					position: offset,
-					midpoint,
-					color,
-				});
+				stops.push(GradientStop { position: offset, midpoint, color });
 			}
 		}
 
@@ -607,9 +603,9 @@ fn parse_stop_color(value: &str, opacity: f32) -> Option<Color> {
 	if value.to_ascii_lowercase() == "transparent" {
 		return Some(Color::from_rgbaf32_unchecked(0., 0., 0., 0.));
 	}
-	svgtypes::Color::from_str(value).ok().map(|c| {
-		Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., (c.alpha as f32 / 255.) * opacity)
-	})
+	svgtypes::Color::from_str(value)
+		.ok()
+		.map(|c| Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., (c.alpha as f32 / 255.) * opacity))
 }
 
 /// Import a usvg node as the root of an SVG import operation.
