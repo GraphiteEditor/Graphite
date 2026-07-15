@@ -128,7 +128,7 @@ pub struct ExportSlot {
 
 /// Content of a proto-node declaration. Stored as a content-addressed resource (serialized bytes
 /// keyed by `ResourceHash`, held by the `Gdd` byte store) and referenced from
-/// `Implementation::ProtoNode(ResourceId)`. `document-graph` itself only holds the reference.
+/// `Implementation::ProtoNode(ResourceId)`. `document-graph-storage` itself only holds the reference.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProtoNode {
 	pub identifier: String,

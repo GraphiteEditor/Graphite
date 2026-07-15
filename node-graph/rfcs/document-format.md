@@ -211,7 +211,7 @@ The editor operates on its existing runtime types. Storage is a serialization la
                           │ to_runtime       │ from_runtime
                           │                  ▼
                 ┌─────────────────────────────────────────┐
-                │ Storage layer  (document-graph crate)   │
+                │ Storage layer (document-graph-storage)  │
                 │  Registry, RegistryDelta, Document      │
                 └─────────────────────────────────────────┘
                                    │
@@ -228,7 +228,7 @@ The editor operates on its existing runtime types. Storage is a serialization la
                 └─────────────────────────────────────────┘
 ```
 
-The runtime is the source of truth during editing. Conversion runs on save, on load, and across the sync boundary when broadcasting or receiving ops. The editor-facing handle is `Session` (`document_graph::Session`), and `Document` is internal. `Session::stage_from_runtime(&NodeNetwork, &dyn NodeMetadataSource)` is the entry point: it diffs the stored registry against a fresh conversion, ticks the clock once per emitted op, and applies each as a hot op on the hot log. The `Gdd` handle then persists the hot frames and retires them into durable history.
+The runtime is the source of truth during editing. Conversion runs on save, on load, and across the sync boundary when broadcasting or receiving ops. The editor-facing handle is `Session` (`document_graph_storage::Session`), and `Document` is internal. `Session::stage_from_runtime(&NodeNetwork, &dyn NodeMetadataSource)` is the entry point: it diffs the stored registry against a fresh conversion, ticks the clock once per emitted op, and applies each as a hot op on the hot log. The `Gdd` handle then persists the hot frames and retires them into durable history.
 
 Staging and retirement are split so that one undo gesture maps to one retired gesture. The editor's undo unit is one legacy transaction boundary, but a single user action (for example, a tool drag) re-commits the runtime many times within one such boundary. So the editor *stages* on every commit (keeping the working registry and autosave current) and *retires the pending hot ops as one gesture* only at the undo-step boundary and before any undo/redo. (`commit_from_runtime`, which stages and retires atomically, remains for one-shot callers.) Solo editing thus flows through the same hot-op-then-retire path that collaboration uses, exercising it before any transport lands.
 
@@ -236,30 +236,30 @@ Staging and retirement are split so that one undo gesture maps to one retired ge
 
 A `.gdd` document is a collection of named byte payloads. A `Container` backend (loose folder, in-memory, OPFS in the browser) provides the path-keyed read/write surface. An `Archive` codec (zip, xz-compressed tarball) optionally encodes a container into a single byte stream for compact distribution. The same logical document can be saved as a loose folder for VCS-friendly checkouts or as an archive for shipping, without any change above the container layer.
 
-The two concerns live in downstream crates. `document-container` defines the `Container` and `AsyncContainer` traits, the backends, byte ownership (mmap regions, owned buffers, external file mmaps via `mmap-io`), and the `Archive` trait. `document-format` defines the typed `Gdd` handle, the layout (logical-payload-name to in-container path), the data codec (JSON or binary), the manifest, and the save/load orchestration. `document-graph` itself stays disk-unaware.
+The two concerns live in downstream crates. `document-container` defines the `Container` and `AsyncContainer` traits, the backends, byte ownership (mmap regions, owned buffers, external file mmaps via `mmap-io`), and the `Archive` trait. `document-format` defines the typed `Gdd` handle, the layout (logical-payload-name to in-container path), the data codec (JSON or binary), the manifest, and the save/load orchestration. `document-graph-storage` itself stays disk-unaware.
 
 ```
             ┌─────────────────────────────────┐
             │              editor             │
             └─────────────────────────────────┘
-                       │              │
-                       ▼              ▼
-            ┌────────────────┐  ┌──────────────────────────────┐
-            │ document-graph │  │ document-format              │
-            │ (disk-unaware) │◀─│  Gdd handle, Layout, codec,  │
-            └────────────────┘  │  ExportOptions               │
-                                └──────────────────────────────┘
-                                                │
-                                                ▼
-                                ┌──────────────────────────────┐
-                                │ document-container           │
-                                │  Container backends + Archive│
-                                │  codecs (folder, memory,     │
-                                │  OPFS / zip, xz)             │
-                                └──────────────────────────────┘
+                    │                  │
+                    ▼                  ▼
+┌────────────────────────┐  ┌──────────────────────────────┐
+│ document-graph-storage │  │ document-format              │
+│ (disk-unaware)         │◀─│  Gdd handle, Layout, codec,  │
+└────────────────────────┘  │  ExportOptions               │
+                            └──────────────────────────────┘
+                                            │
+                                            ▼
+                            ┌──────────────────────────────┐
+                            │ document-container           │
+                            │  Container backends + Archive│
+                            │  codecs (folder, memory,     │
+                            │  OPFS / zip, xz)             │
+                            └──────────────────────────────┘
 ```
 
-Arrows mean "depends on". The editor uses `Session` from `document-graph` at runtime and `Gdd` from `document-format` on save/load. `document-format` serializes `document-graph`'s types and delegates byte I/O to `document-container`. `document-graph` and `document-container` are independent leaves.
+Arrows mean "depends on". The editor uses `Session` from `document-graph-storage` at runtime and `Gdd` from `document-format` on save/load. `document-format` serializes `document-graph-storage`'s types and delegates byte I/O to `document-container`. `document-graph-storage` and `document-container` are independent leaves.
 
 A document contains:
 
@@ -290,7 +290,7 @@ The `Gdd` handle owns the loaded bytes and exposes them as zero-copy slices. On 
 
 ## Resources
 
-Everything content-addressable is a resource: raster images, fonts, embedded WASM, **and proto-node declarations**. The storage `Registry` holds `resources: ResourceStore` (references only). The bytes live in a content-addressed byte store keyed by `ResourceHash`, owned by the caller (the app-global cache in the editor, the `Gdd` container for standalone/export) rather than by `document-graph`.
+Everything content-addressable is a resource: raster images, fonts, embedded WASM, **and proto-node declarations**. The storage `Registry` holds `resources: ResourceStore` (references only). The bytes live in a content-addressed byte store keyed by `ResourceHash`, owned by the caller (the app-global cache in the editor, the `Gdd` container for standalone/export) rather than by `document-graph-storage`.
 
 ```rs
 pub type ResourceStore = HashMap<ResourceId, ResourceEntry>;
@@ -329,7 +329,7 @@ Migrations live in a dedicated crate so they are usable both from the editor and
 - Each nested `NodeNetwork`'s `NetworkId` is derived from the owning node's path (blake3 of `(peer, path)` with a `"network"` domain tag), not assigned by a traversal counter. This makes it stable across a `to_runtime` then `from_runtime` round trip. That stability is load-bearing, because node paths (and thus node-ID hashes) include `NetworkId`s, so an unstable network ID would cascade into unstable node IDs and break re-commit after open. Aliasing (multiple nodes referencing the same network) is structurally supported by the storage model, since `Implementation::Network(NetworkId)` is a reference, but the converter does not exploit it yet. Aliasing is fixed at the runtime layer first, and the converter then preserves sharing without an explicit dedup pass.
 - Non-structural `DocumentNode` fields (`call_argument`, `context_features`, `visible`, `skip_deduplication`, and so on) become entries in the node's `attributes`. UI metadata from `DocumentNodeMetadata` (positions, display names, locked, pinned, and so on) flows through the same bucket under `ui::*` keys.
 
-`to_runtime` is the inverse. It rebuilds local IDs from the stashed attribute, restores typed fields from attribute values, follows `Implementation::Network` references to recursively materialize nested networks, and resolves `Implementation::ProtoNode(ResourceId)` against a `Declarations` map (`ResourceId` to `ProtoNode`) the caller supplies from its byte store. Since `document-graph` is byte-unaware, `to_runtime` takes the resolved declarations as a parameter rather than reaching for bytes itself.
+`to_runtime` is the inverse. It rebuilds local IDs from the stashed attribute, restores typed fields from attribute values, follows `Implementation::Network` references to recursively materialize nested networks, and resolves `Implementation::ProtoNode(ResourceId)` against a `Declarations` map (`ResourceId` to `ProtoNode`) the caller supplies from its byte store. Since `document-graph-storage` is byte-unaware, `to_runtime` takes the resolved declarations as a parameter rather than reaching for bytes itself.
 
 ## Slots: inputs and exports
 

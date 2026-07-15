@@ -1298,7 +1298,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "document-container",
- "document-graph",
+ "document-graph-storage",
  "futures",
  "graph-craft",
  "graphene-resource",
@@ -1311,7 +1311,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "document-graph"
+name = "document-graph-storage"
 version = "0.0.0"
 dependencies = [
  "blake3",
@@ -2334,7 +2334,7 @@ dependencies = [
  "derivative",
  "document-container",
  "document-format",
- "document-graph",
+ "document-graph-storage",
  "dyn-any",
  "env_logger",
  "futures",

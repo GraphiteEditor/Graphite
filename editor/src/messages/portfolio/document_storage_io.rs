@@ -48,7 +48,12 @@ async fn build_per_document_container(path: Option<&std::path::Path>) -> Result<
 /// Open the existing working copy at `path`, or create a fresh one bound to `peer` (in-memory when
 /// `path` is `None`). Returns the working copy plus whether it was reopened (vs freshly created); only a
 /// reopen has independently-stored state worth comparing against the legacy load.
-pub(super) async fn build_or_open_working_copy(path: Option<&std::path::Path>, peer: document_graph::PeerId, document_uuid: u64, version: String) -> Result<(GddV1, bool), DocumentFormatError> {
+pub(super) async fn build_or_open_working_copy(
+	path: Option<&std::path::Path>,
+	peer: document_graph_storage::PeerId,
+	document_uuid: u64,
+	version: String,
+) -> Result<(GddV1, bool), DocumentFormatError> {
 	let (container, exists) = build_per_document_container(path).await?;
 
 	let gdd = if exists {

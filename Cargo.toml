@@ -8,9 +8,9 @@ members = [
 	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
-	"document/graph",
-	"document/container",
 	"document/format",
+	"document/graph-storage",
+	"document/container",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -92,8 +92,8 @@ repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-document-graph = { path = "document/graph", default-features = false }
 document-format = { path = "document/format" }
+document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }

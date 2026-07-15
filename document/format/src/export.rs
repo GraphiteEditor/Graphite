@@ -162,7 +162,7 @@ impl<L: Layout> Gdd<L> {
 		// below, so only the gap is loaded from the byte store here.
 		let mut export_session = self.session.clone();
 		let mut hashes_from_store: Vec<ResourceHash> = Vec::new();
-		let mut links_to_promote: Vec<document_graph::ResourceId> = Vec::new();
+		let mut links_to_promote: Vec<document_graph_storage::ResourceId> = Vec::new();
 		for (id, entry) in &export_session.registry().resources {
 			let Some(hash) = entry.hash else { continue };
 			let embed = entry.has_embedded_source() || options.embed_all_resources;
