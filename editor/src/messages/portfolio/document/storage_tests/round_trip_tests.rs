@@ -708,3 +708,60 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 }
+
+/// The document's single Fill node, as `(network_path, node_id)`.
+fn find_fill_node(document: &DocumentMessageHandler) -> (Vec<graph_craft::document::NodeId>, graph_craft::document::NodeId) {
+	node_paths(&document.network_interface)
+		.into_iter()
+		.find(|(network_path, node_id)| {
+			let Some(network) = document.network_interface.nested_network(network_path) else { return false };
+			network.nodes[node_id].implementation == graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER)
+		})
+		.expect("the document should contain a Fill node")
+}
+
+/// The stored paint value of the document's single Fill node.
+fn fill_paint_value(document: &DocumentMessageHandler) -> graph_craft::document::value::TaggedValue {
+	use graphene_std::NodeInputDecleration as _;
+
+	let (network_path, node_id) = find_fill_node(document);
+	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
+	let input = network.nodes[&node_id]
+		.inputs
+		.get(graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX)
+		.expect("Fill should have a paint input");
+	input.as_value().expect("the paint input should hold a value").clone()
+}
+
+#[tokio::test]
+async fn none_fill_survives_document_reopen() {
+	use graphene_std::NodeInputDecleration as _;
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+	// Pick the red-slash "none" paint, stored the same way as the Fill widget's None choice
+	let (_, fill_node_id) = find_fill_node(editor.active_document());
+	editor
+		.handle_message(NodeGraphMessage::SetInputValue {
+			node_id: fill_node_id,
+			input_index: graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX,
+			value: graph_craft::document::value::TaggedValue::no_paint(),
+		})
+		.await;
+	assert!(fill_paint_value(editor.active_document()).is_no_paint(), "the None pick should store as no_paint");
+
+	// Reopen through the editor's real open path, which runs the document migrations
+	let serialized = editor.active_document().serialize_document();
+	editor
+		.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: None,
+			document_path: None,
+			document_serialized_content: serialized,
+		})
+		.await;
+
+	let reopened_paint = fill_paint_value(editor.active_document());
+	assert!(reopened_paint.is_no_paint(), "a none fill should survive reopening, but the stored paint became {reopened_paint:?}");
+}
