@@ -702,7 +702,10 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
-		let clip = !clip_mode.unwrap_or(false);
+		self.clip_mode_set(!clip_mode.unwrap_or(false));
+	}
+
+	pub fn clip_mode_set(&mut self, clip: bool) {
 		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
 			return;
 		};
