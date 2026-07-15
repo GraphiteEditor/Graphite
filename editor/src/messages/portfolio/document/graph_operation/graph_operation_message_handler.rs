@@ -691,24 +691,51 @@ fn import_usvg_children_with_mask(
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
 ) -> Vec<u32> {
-	let mut child_extents = Vec::new();
-	let mask = mask.filter(|_| !children.is_empty());
+	let Some(mask) = mask.filter(|_| !children.is_empty()) else {
+		return import_usvg_children(modify_inputs, children, parent, graphite_gradient_stops, group_extents_map);
+	};
 
-	if let Some(mask) = mask {
-		let imported_mask = import_usvg_mask(modify_inputs, mask, parent, 0, referencing_transform, graphite_gradient_stops, group_extents_map);
-		child_extents.push(imported_mask.extent);
-	}
+	let imported_mask = import_usvg_mask(modify_inputs, mask, parent, 0, referencing_transform, graphite_gradient_stops, group_extents_map);
+	let imported_content = import_usvg_children_as_group(modify_inputs, children, parent, 0, graphite_gradient_stops, group_extents_map);
 
-	for child in children {
-		let imported_child = import_usvg_node_inner(modify_inputs, child, NodeId::new(), parent, 0, graphite_gradient_stops, group_extents_map);
-		if mask.is_some() {
-			modify_inputs.layer_node = Some(imported_child.layer);
-			modify_inputs.clip_mode_set(true);
-		}
-		child_extents.push(imported_child.extent);
-	}
+	modify_inputs.layer_node = Some(imported_content.layer);
+	modify_inputs.clip_mode_set(true);
 
-	child_extents
+	vec![imported_mask.extent, imported_content.extent]
+}
+
+/// Imports a sibling list directly into an existing Graphite group.
+fn import_usvg_children(
+	modify_inputs: &mut ModifyInputsContext,
+	children: &[usvg::Node],
+	parent: LayerNodeIdentifier,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+) -> Vec<u32> {
+	children
+		.iter()
+		.map(|child| import_usvg_node_inner(modify_inputs, child, NodeId::new(), parent, 0, graphite_gradient_stops, group_extents_map).extent)
+		.collect()
+}
+
+/// Imports a sibling list as one composited Graphite group so a parent mask can be applied exactly once.
+fn import_usvg_children_as_group(
+	modify_inputs: &mut ModifyInputsContext,
+	children: &[usvg::Node],
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+) -> ImportedNode {
+	let layer = modify_inputs.create_layer(NodeId::new());
+	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
+	modify_inputs.layer_node = Some(layer);
+
+	let child_extents = import_usvg_children(modify_inputs, children, layer, graphite_gradient_stops, group_extents_map);
+	let extent = imported_group_extent(&child_extents);
+	group_extents_map.insert(layer, child_extents);
+
+	ImportedNode { layer, extent }
 }
 
 /// Imports a resolved SVG alpha mask as one hidden Graphite mask-base layer.
@@ -980,11 +1007,12 @@ mod tests {
 		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
 			<defs>
 				<mask id="circle-mask" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="128" height="128">
-					<circle cx="64" cy="64" r="48" fill="white" />
+					<circle cx="64" cy="64" r="48" fill="white" fill-opacity="0.5" />
 				</mask>
 			</defs>
 			<g transform="translate(10 20)" mask="url(#circle-mask)">
-				<rect width="128" height="128" fill="#2563eb" />
+				<rect x="0" width="96" height="128" fill="#2563eb" fill-opacity="0.5" />
+				<rect x="32" width="96" height="128" fill="#dc2626" fill-opacity="0.5" />
 			</g>
 		</svg>"##;
 
@@ -1002,7 +1030,7 @@ mod tests {
 		let instrumented = editor.eval_graph().await.expect("alpha-masked SVG import should evaluate");
 
 		let clip_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::clipping_mask::ClipInput>(&editor.runtime).collect();
-		assert_eq!(clip_values, vec![true], "the visible group child should inherit the SVG mask alpha");
+		assert_eq!(clip_values, vec![true], "the composited visible group should receive the SVG mask exactly once");
 
 		let has_fill_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::opacity::HasFillInput>(&editor.runtime).collect();
 		assert_eq!(has_fill_values, vec![true], "the imported mask base should enable independent fill opacity");
@@ -1012,7 +1040,10 @@ mod tests {
 
 		let paint_fills: Vec<_> = instrumented.grab_all_input::<graphene_std::vector::fill::FillInput<List<Color>>>(&editor.runtime).collect();
 		assert!(
-			paint_fills.iter().filter_map(|fill| fill.element(0)).any(|color| *color == Color::WHITE),
+			paint_fills.iter().filter_map(|fill| fill.element(0)).any(|color| {
+				let [red, green, blue, alpha] = color.to_gamma_srgb_channels();
+				(red - 1.).abs() < 1e-6 && (green - 1.).abs() < 1e-6 && (blue - 1.).abs() < 1e-6 && (alpha - 0.5).abs() < 1e-6
+			}),
 			"alpha mask paint should pass through the ordinary SVG fill importer; got {paint_fills:?}"
 		);
 
@@ -1036,6 +1067,11 @@ mod tests {
 			.find(|svg| svg.contains("<mask") && svg.contains("mask=\"url(#mask-"))
 			.unwrap_or_else(|| panic!("the imported mask attributes should reach the existing SVG mask renderer; intermediate SVGs: {rendered_group_svgs:#?}"));
 		assert!(rendered_group_svg.contains("opacity=\"0\""), "the mask base should remain hidden in the normal render pass");
+		assert_eq!(
+			rendered_group_svg.matches("mask=\"url(#mask-").count(),
+			1,
+			"the mask should wrap the composited visible group once, not each semi-transparent child independently"
+		);
 	}
 
 	#[tokio::test]
