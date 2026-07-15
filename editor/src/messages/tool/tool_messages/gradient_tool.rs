@@ -9,14 +9,16 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, gradient_fill_chain_needs_transform_node,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{
+	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType, build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box,
+};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -408,7 +410,12 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 		}
 
 		// Then, try to construct a gradient out of a chain, which is directly connected to a Fill node or a layer
-		let appearance = read_gradient_chain_state(layer, network_interface);
+		let mut appearance = read_gradient_chain_state(layer, network_interface);
+
+		// Match the Fill node's fallback transform until the chain materializes its own Transform node.
+		if gradient_fill_chain_needs_transform_node(layer, network_interface) {
+			appearance.transform = initial_gradient_transform_for_bounding_box(network_interface.document_metadata().nonzero_bounding_box(layer));
+		}
 		Some((stops, appearance, GradientSource::Chain))
 	} else {
 		None
@@ -836,6 +843,39 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	});
 }
 
+/// Send only the chain write operations for fields that changed from the caller-provided snapshot.
+fn dispatch_changed_gradient_chain_writes(
+	layer: LayerNodeIdentifier,
+	old_gradient: &GradientStops,
+	old_appearance: GradientAppearance,
+	gradient: &GradientStops,
+	appearance: GradientAppearance,
+	responses: &mut VecDeque<Message>,
+) {
+	if old_gradient != gradient {
+		responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: gradient.clone() });
+	}
+
+	if old_appearance.transform != appearance.transform {
+		responses.add(GraphOperationMessage::GradientTransformSet {
+			layer,
+			transform: appearance.transform,
+		});
+	}
+	if old_appearance.gradient_type != appearance.gradient_type {
+		responses.add(GraphOperationMessage::GradientTypeSet {
+			layer,
+			gradient_type: appearance.gradient_type,
+		});
+	}
+	if old_appearance.spread_method != appearance.spread_method {
+		responses.add(GraphOperationMessage::GradientSpreadMethodSet {
+			layer,
+			spread_method: appearance.spread_method,
+		});
+	}
+}
+
 impl GradientTool {
 	/// Get the gradient type of the selected gradient (if it exists)
 	pub fn selected_gradient(&self) -> Option<GradientType> {
@@ -1119,6 +1159,7 @@ impl Fsm for GradientToolFsmState {
 					tool_data.color_picker_editing_color_stop = None;
 				}
 				tool_data.selected_gradient = None;
+
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
 					selected: GradientSelectedTarget::None,
@@ -1323,13 +1364,19 @@ impl Fsm for GradientToolFsmState {
 
 				let mut drag_hint: Option<GradientDragHintState> = None;
 				let mut transaction_started = false;
+				let mut pending_transform_materialization = None;
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
+					let is_gradient_chain = source == GradientSource::Chain;
+					let transform_to_materialize = if is_gradient_chain && gradient_fill_chain_needs_transform_node(layer, &document.network_interface) {
+						Some(initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
+					} else {
+						None
+					};
 					let gradient_space_transform = gradient_space_transform(layer, document);
 					let unit_to_viewport = gradient_space_transform * appearance.transform;
-					let is_gradient_chain = source == GradientSource::Chain;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
 					// Check for dragging a midpoint diamond
@@ -1361,6 +1408,7 @@ impl Fsm for GradientToolFsmState {
 									initial_gradient: gradient.clone(),
 									is_gradient_chain,
 								});
+								pending_transform_materialization = transform_to_materialize.map(|transform| (layer, transform));
 
 								break;
 							}
@@ -1404,6 +1452,7 @@ impl Fsm for GradientToolFsmState {
 								initial_gradient_transform: appearance.transform,
 								is_gradient_chain,
 							});
+							pending_transform_materialization = transform_to_materialize.map(|transform| (layer, transform));
 						}
 					}
 
@@ -1421,7 +1470,8 @@ impl Fsm for GradientToolFsmState {
 									initial_gradient: gradient.clone(),
 									initial_gradient_transform: appearance.transform,
 									is_gradient_chain,
-								})
+								});
+								pending_transform_materialization = transform_to_materialize.map(|transform| (layer, transform));
 							}
 						}
 					}
@@ -1490,7 +1540,7 @@ impl Fsm for GradientToolFsmState {
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 						}
 
-						let (gradient, appearance, source) = match resolve_gradient(layer, &document.network_interface) {
+						let (gradient, mut appearance, source) = match resolve_gradient(layer, &document.network_interface) {
 							// Use the already existing gradient if it exists
 							Some(gradient) => gradient,
 							// Generate a new gradient running primary → secondary so the default working colors
@@ -1516,6 +1566,16 @@ impl Fsm for GradientToolFsmState {
 								GradientSource::Direct,
 							),
 						};
+
+						// Insert a Transform node if a chain-backed gradient does not have one yet. This prevents the rendered gradient and Gradient tool state from getting out of sync.
+						if matches!(source, GradientSource::Chain) && gradient_fill_chain_needs_transform_node(layer, &document.network_interface) {
+							let transform = initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer));
+
+							pending_transform_materialization = Some((layer, transform));
+
+							// GraphOperation is queued, so it won't affect this PointerDown immediately. Patch the local tool state too.
+							appearance.transform = transform;
+						}
 						let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
 						selected_gradient.dragging = GradientDragTarget::New;
 
@@ -1532,8 +1592,13 @@ impl Fsm for GradientToolFsmState {
 					}
 				};
 
-				if matches!(gradient_state, GradientToolFsmState::Drawing { .. }) && !transaction_started {
-					responses.add(DocumentMessage::StartTransaction);
+				if matches!(gradient_state, GradientToolFsmState::Drawing { .. }) {
+					if !transaction_started {
+						responses.add(DocumentMessage::StartTransaction);
+					}
+					if let Some((layer, transform)) = pending_transform_materialization {
+						responses.add(GraphOperationMessage::GradientTransformSet { layer, transform });
+					}
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -1854,11 +1919,14 @@ fn apply_gradient_update(
 				responses.add(DocumentMessage::StartTransaction);
 				transaction_started = true;
 			}
+
+			let old_gradient = gradient.clone();
+			let old_appearance = appearance.clone();
 			update((&mut gradient, &mut appearance));
 
 			// Only check for the gradient list once we know we'll write back, since this is a graph traversal per layer
 			if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
-				dispatch_gradient_chain_writes(layer, &gradient, appearance, responses);
+				dispatch_changed_gradient_chain_writes(layer, &old_gradient, old_appearance, &gradient, appearance, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,

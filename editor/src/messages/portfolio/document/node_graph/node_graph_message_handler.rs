@@ -25,6 +25,7 @@ use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
+use graphene_std::list::List;
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
@@ -248,6 +249,52 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
+
+				// Post wire creation process
+				let InputConnector::Node { node_id, input_index } = input_connector else { return };
+				// Fill node: When a Gradient Value chain is connected to a Fill node's paint input, reset the hidden gradient metadata.
+				// This prevents the rendered gradient and Gradient tool state from getting out of sync.
+				if network_interface.reference(&node_id, selection_network_path).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
+					&& input_index == graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX
+				{
+					// Only inspect primary outputs to avoid treating another output of a multi-output custom node as a gradient chain.
+					let OutputConnector::Node { node_id: walk_from, output_index: 0 } = output_connector else {
+						return;
+					};
+
+					let is_gradient_value_connected = network_interface
+						.upstream_flow_back_from_nodes(vec![walk_from], selection_network_path, FlowType::PrimaryFlow)
+						.take_while(|node_id| !network_interface.is_layer(node_id, selection_network_path))
+						.any(|node_id| {
+							network_interface.reference(&node_id, selection_network_path).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))
+						});
+
+					if is_gradient_value_connected {
+						network_interface.set_input(
+							&InputConnector::node(node_id, graphene_std::vector::fill::BackupGradientInput::INDEX),
+							NodeInput::value(TaggedValue::Gradient(Default::default()), false),
+							selection_network_path,
+						);
+						network_interface.set_input(
+							&InputConnector::node(node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
+							NodeInput::value(TaggedValue::GradientType(Default::default()), false),
+							selection_network_path,
+						);
+						network_interface.set_input(
+							&InputConnector::node(node_id, graphene_std::vector::fill::SpreadMethodInput::INDEX),
+							NodeInput::value(TaggedValue::GradientSpreadMethod(Default::default()), false),
+							selection_network_path,
+						);
+						network_interface.set_input(
+							&InputConnector::node(node_id, graphene_std::vector::fill::TransformInput::INDEX),
+							NodeInput::value(TaggedValue::OptionalDAffine2(None), false),
+							selection_network_path,
+						);
+
+						responses.add(PropertiesPanelMessage::Refresh);
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
 			}
 			NodeGraphMessage::Copy => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
