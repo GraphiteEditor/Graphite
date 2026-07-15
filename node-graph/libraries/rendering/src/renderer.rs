@@ -372,6 +372,7 @@ fn emit_svg_fill_path(
 		attributes.push_val(fill_attribute);
 		if fill_rule == FillRule::EvenOdd {
 			attributes.push("fill-rule", "evenodd");
+			attributes.push("clip-rule", "evenodd");
 		}
 	});
 }
