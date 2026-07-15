@@ -15,7 +15,7 @@ use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
 	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
-	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_TEXT_ALIGN, ATTR_TRANSFORM, MaskMode,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -52,16 +52,34 @@ enum MaskType {
 impl MaskType {
 	fn to_attribute(self) -> String {
 		match self {
-			Self::Mask => "mask".to_string(),
 			Self::Clip => "clip-path".to_string(),
+			Self::Mask => "mask".to_string(),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+enum ClippingMaskType {
+	ClipPath,
+	AlphaMask,
+	LuminanceMask,
+}
+
+impl ClippingMaskType {
+	fn to_attribute(self) -> String {
+		match self {
+			Self::ClipPath => "clip-path".to_string(),
+			Self::AlphaMask | Self::LuminanceMask => "mask".to_string(),
 		}
 	}
 
 	fn write_to_defs(self, svg_defs: &mut String, uuid: u64, svg_string: String) {
 		let id = format!("mask-{uuid}");
 		match self {
-			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{svg_string}</clipPath>"##).unwrap(),
-			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{svg_string}</mask>"##).unwrap(),
+			Self::ClipPath => write!(svg_defs, r##"<clipPath id="{id}">{svg_string}</clipPath>"##).unwrap(),
+			Self::AlphaMask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{svg_string}</mask>"##).unwrap(),
+			Self::LuminanceMask => write!(svg_defs, r##"<mask id="{id}" mask-type="luminance">{svg_string}</mask>"##).unwrap(),
 		}
 	}
 }
@@ -860,7 +878,11 @@ impl Render for List<Graphic> {
 
 					if next_clips && mask_state.is_none() {
 						let uuid = generate_uuid();
-						let mask_type = if element.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+						let mask_type = match element.mask_mode() {
+							MaskMode::Luminance => ClippingMaskType::LuminanceMask,
+							MaskMode::Alpha if element.can_reduce_to_clip_path() => ClippingMaskType::ClipPath,
+							MaskMode::Alpha => ClippingMaskType::AlphaMask,
+						};
 						mask_state = Some((uuid, mask_type));
 						let mut svg = SvgRender::new();
 						element.render_svg(&mut svg, &render_params.for_clipper());
@@ -922,10 +944,10 @@ impl Render for List<Graphic> {
 
 			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
 			if next_clips && mask_element_and_transform.is_none() {
-				mask_element_and_transform = Some((element, transform));
+				mask_element_and_transform = Some((element, transform, element.mask_mode()));
 
 				element.render_to_vello(scene, transform, context, render_params);
-			} else if let Some((mask_element, transform_mask)) = mask_element_and_transform {
+			} else if let Some((mask_element, transform_mask, mask_mode)) = mask_element_and_transform {
 				if !next_clips {
 					mask_element_and_transform = None;
 				}
@@ -937,21 +959,28 @@ impl Render for List<Graphic> {
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-					mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
-					scene.push_layer(
-						peniko::Fill::NonZero,
-						peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
-						1.,
-						kurbo::Affine::IDENTITY,
-						&rect,
-					);
-				}
-
-				element.render_to_vello(scene, transform, context, render_params);
-
-				if matches!(bounds, RenderBoundingBox::Rectangle(_)) {
+					match mask_mode {
+						MaskMode::Alpha => {
+							mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
+							scene.push_layer(
+								peniko::Fill::NonZero,
+								peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+								1.,
+								kurbo::Affine::IDENTITY,
+								&rect,
+							);
+							element.render_to_vello(scene, transform, context, render_params);
+						}
+						MaskMode::Luminance => {
+							element.render_to_vello(scene, transform, context, render_params);
+							scene.push_luminance_mask_layer(peniko::Fill::NonZero, 1., kurbo::Affine::IDENTITY, &rect);
+							mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
+						}
+					}
 					scene.pop_layer();
 					scene.pop_layer();
+				} else {
+					element.render_to_vello(scene, transform, context, render_params);
 				}
 			} else {
 				element.render_to_vello(scene, transform, context, render_params);
@@ -2649,5 +2678,78 @@ impl SvgRenderAttrs<'_> {
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
+	}
+}
+
+#[cfg(test)]
+mod clipping_mask_tests {
+	use super::*;
+
+	fn rectangle_graphic(color: Color) -> Graphic {
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::splat(100.));
+		let mut item = Item::new_from_element(Vector::from_subpath(subpath));
+		set_paint_attribute(item.attributes_mut(), ATTR_FILL, List::new_from_element(color));
+		Graphic::Vector(List::new_from_item(item))
+	}
+
+	fn clipping_stack(mask_mode: MaskMode, mask_alpha: f32) -> List<Graphic> {
+		let mask_color = Color::from_rgbaf32(1., 1., 1., mask_alpha).unwrap();
+		let mut mask = rectangle_graphic(mask_color);
+		match &mut mask {
+			Graphic::Vector(list) => list.set_attribute(core_types::ATTR_MASK_MODE, 0, mask_mode),
+			_ => unreachable!(),
+		}
+
+		let mut clipped = rectangle_graphic(Color::BLUE);
+		match &mut clipped {
+			Graphic::Vector(list) => list.set_attribute(ATTR_CLIPPING_MASK, 0, true),
+			_ => unreachable!(),
+		}
+
+		let mut stack = List::new();
+		stack.push(Item::new_from_element(mask));
+		stack.push(Item::new_from_element(clipped));
+		stack
+	}
+
+	#[test]
+	fn svg_luminance_mask_is_not_reduced_to_a_clip_path() {
+		let mut render = SvgRender::new();
+		clipping_stack(MaskMode::Luminance, 1.).render_svg(&mut render, &RenderParams::default());
+
+		assert!(render.svg_defs.contains("mask-type=\"luminance\""));
+		assert!(!render.svg_defs.contains("<clipPath"));
+		assert!(render.svg.to_svg_string().contains(" mask=\"url(#mask-"));
+	}
+
+	#[test]
+	fn svg_alpha_mask_retains_alpha_semantics() {
+		let mut render = SvgRender::new();
+		clipping_stack(MaskMode::Alpha, 0.5).render_svg(&mut render, &RenderParams::default());
+
+		assert!(render.svg_defs.contains("mask-type=\"alpha\""));
+		assert!(!render.svg_defs.contains("mask-type=\"luminance\""));
+	}
+
+	#[test]
+	fn svg_opaque_alpha_mask_retains_clip_path_optimization() {
+		let mut render = SvgRender::new();
+		clipping_stack(MaskMode::Alpha, 1.).render_svg(&mut render, &RenderParams::default());
+
+		assert!(render.svg_defs.contains("<clipPath"));
+		assert!(!render.svg_defs.contains("mask-type="));
+	}
+
+	#[test]
+	fn vello_uses_native_luminance_mask_layer_only_for_luminance_mode() {
+		fn draw_data(mode: MaskMode) -> Vec<u32> {
+			let mut scene = Scene::new();
+			clipping_stack(mode, 0.5).render_to_vello(&mut scene, DAffine2::IDENTITY, &mut RenderContext::default(), &RenderParams::default());
+			scene.encoding().draw_data.clone()
+		}
+
+		let marker = vello_encoding::DrawBeginClip::LUMINANCE_MASK_BLEND_MODE;
+		assert!(draw_data(MaskMode::Luminance).contains(&marker));
+		assert!(!draw_data(MaskMode::Alpha).contains(&marker));
 	}
 }

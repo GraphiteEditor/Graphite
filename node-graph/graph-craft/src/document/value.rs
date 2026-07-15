@@ -416,6 +416,7 @@ tagged_value! {
 	#[serde(alias = "Fill")]
 	LegacyFill(graphic_types::migrations::legacy::Fill),
 	BlendMode(core_types::blending::BlendMode),
+	MaskMode(core_types::MaskMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),

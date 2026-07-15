@@ -1,6 +1,6 @@
 use core_types::list::List;
 use core_types::registry::types::Percentage;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_MASK_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx, MaskMode};
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, Raster};
@@ -180,6 +180,18 @@ impl SetClip for List<String> {
 	}
 }
 
+trait SetMaskMode {
+	fn set_mask_mode(&mut self, mode: MaskMode);
+}
+
+impl<T> SetMaskMode for List<T> {
+	fn set_mask_mode(&mut self, mode: MaskMode) {
+		for value in self.iter_attribute_values_mut_or_default::<MaskMode>(ATTR_MASK_MODE) {
+			*value = mode;
+		}
+	}
+}
+
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
 #[node_macro::node(category("Blending"))]
 fn blend_mode<T: SetBlendMode>(
@@ -266,4 +278,39 @@ fn clipping_mask<T: SetClip>(
 	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	content.set_clip(clip);
 	content
+}
+
+/// Sets whether the input graphics act as an alpha or luminance mask when content above is clipped to them.
+#[node_macro::node(category("Blending"))]
+fn mask_mode<T: SetMaskMode>(
+	_: impl Ctx,
+	/// The layer stack used as the source of a clipping mask.
+	#[implementations(
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+	)]
+	mut content: T,
+	/// How the mask source's rendered color and alpha determine clipped-content visibility.
+	mode: MaskMode,
+) -> T {
+	content.set_mask_mode(mode);
+	content
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn mask_mode_is_applied_to_every_list_item() {
+		let mut content = List::new_from_element(Vector::default());
+		content.push(core_types::list::Item::new_from_element(Vector::default()));
+		content.set_mask_mode(MaskMode::Luminance);
+
+		assert!(content.iter_attribute_values_or_default::<MaskMode>(ATTR_MASK_MODE).all(|mode| mode == MaskMode::Luminance));
+	}
 }

@@ -1,10 +1,24 @@
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
-use dyn_any::{StaticType, StaticTypeSized};
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DAffine2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
+
+/// Controls how a clipping mask's rendered color and alpha determine the visibility of clipped content.
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum MaskMode {
+	/// Use only the mask's alpha channel. This preserves the behavior of existing Graphite clipping masks.
+	#[default]
+	Alpha,
+	/// Multiply the mask's alpha by the luminance of its unpremultiplied color, matching SVG luminance masks.
+	Luminance,
+}
 
 // =================================================
 // Standard attribute keys used across the data flow
@@ -22,6 +36,8 @@ pub const ATTR_OPACITY: &str = "opacity";
 pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 /// `bool` for whether an item inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
+/// Item's `MaskMode`, controlling how this mask source affects content clipped to it.
+pub const ATTR_MASK_MODE: &str = "mask_mode";
 /// `List<NodeId>` path from the root network to the layer node owning this item.
 /// Used by editor tools to route clicks/selection back to the originating layer.
 pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";

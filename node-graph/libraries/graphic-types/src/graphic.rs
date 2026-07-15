@@ -4,7 +4,7 @@ use core_types::list::{ATTR_FILL, ATTR_STROKE, ItemAttributeValues, List};
 use core_types::ops::{FromAnchorPosition, ListConvert};
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_MASK_MODE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, MaskMode};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
@@ -433,6 +433,24 @@ impl Graphic {
 		}
 	}
 
+	/// Returns how this graphic should be interpreted when it is used as a clipping-mask source.
+	/// Existing graphics do not carry this attribute and therefore retain alpha-mask behavior.
+	pub fn mask_mode(&self) -> MaskMode {
+		fn first_mode<T>(list: &List<T>) -> MaskMode {
+			list.iter_attribute_values_or_default::<MaskMode>(ATTR_MASK_MODE).next().unwrap_or_default()
+		}
+
+		match self {
+			Graphic::Vector(list) => first_mode(list),
+			Graphic::Graphic(list) => first_mode(list),
+			Graphic::RasterCPU(list) => first_mode(list),
+			Graphic::RasterGPU(list) => first_mode(list),
+			Graphic::Color(list) => first_mode(list),
+			Graphic::Gradient(list) => first_mode(list),
+			Graphic::Text(list) => first_mode(list),
+		}
+	}
+
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
 			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
@@ -673,6 +691,17 @@ mod tests {
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+	}
+
+	#[test]
+	fn mask_mode_defaults_to_alpha_and_reads_explicit_luminance() {
+		let mut graphics = List::new_from_element(vector_graphic());
+		let graphic = Graphic::Graphic(graphics.clone());
+		assert_eq!(graphic.mask_mode(), MaskMode::Alpha);
+
+		graphics.set_attribute(ATTR_MASK_MODE, 0, MaskMode::Luminance);
+		let graphic = Graphic::Graphic(graphics);
+		assert_eq!(graphic.mask_mode(), MaskMode::Luminance);
 	}
 }
 
