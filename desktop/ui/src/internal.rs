@@ -8,6 +8,8 @@ mod render_process_v8_handler;
 
 mod context_menu_handler;
 mod display_handler;
+#[cfg(target_os = "macos")]
+mod keyboard_handler;
 mod life_span_handler;
 mod load_handler;
 mod request_handler;
