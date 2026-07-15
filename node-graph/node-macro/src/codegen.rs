@@ -204,7 +204,16 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
 					_ => quote!(Some(#core_types::list!(#implementation_ty))),
 				},
-				Some(implementation_ty) => quote!(Some(concrete!(#implementation_ty))),
+				// A ranked implementation row emits structurally, keeping the element's TypeId which name-parsing in `normalize_rank` cannot recover
+				Some(implementation_ty) => {
+					if let Some(element) = peel_list(implementation_ty) {
+						quote!(Some(#core_types::list!(#element)))
+					} else if let Some(element) = peel_item(implementation_ty) {
+						quote!(Some(#core_types::item!(#element, #element)))
+					} else {
+						quote!(Some(concrete!(#implementation_ty)))
+					}
+				}
 				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
 				// without one it keeps the structural `Type::Item` wire type with the element's alias on its descriptor (so the rank-0 Properties widget still dispatches, e.g. `Progression`), and `node_inputs` peels to `T` if no `Item` type default exists
 				None => match &field.ty {

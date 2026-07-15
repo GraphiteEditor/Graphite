@@ -398,4 +398,23 @@ mod tests {
 			collapsed.nested_type()
 		);
 	}
+
+	#[test]
+	fn fill_paint_color_default_parses_against_its_list_wire() {
+		let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let metadata_registry = core_types::registry::NODE_METADATA.lock().unwrap();
+
+		let identifier = graphene_std::vector::fill::IDENTIFIER;
+		let implementations = node_registry.get(&identifier).expect("Fill should be registered");
+		let first_node_io = implementations.first().map(|(_, node_io)| node_io).expect("Fill should have at least one implementation");
+		let metadata = metadata_registry.get(&identifier).expect("Fill should have registered metadata");
+
+		let inputs = node_inputs(&metadata.fields, first_node_io);
+		let paint = inputs[1].as_value().expect("The paint input should hold a value");
+		assert_eq!(
+			*paint,
+			TaggedValue::Color(Color::BLACK),
+			"The paint input's `Color::BLACK` default should parse against its `List<Graphic>` wire type"
+		);
+	}
 }
