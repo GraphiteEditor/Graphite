@@ -666,10 +666,9 @@ impl TaggedValue {
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
-					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
+					// The Fill/Stroke paint wires carry `Graphic` or `Gradient` elements, so a paint default parses through the element recursion as a color or gradient literal
+					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
@@ -944,5 +943,28 @@ mod typedefault_dispatch {
 		for_each_item_type_default!(check_item);
 		for_each_list_type_default!(check_list);
 		for_each_bare_type_default!(check_bare);
+	}
+}
+
+#[cfg(test)]
+mod paint_default_parsing {
+	use super::*;
+	use core_types::{item, list};
+
+	/// A Fill/Stroke paint wire carries `Graphic` elements, so its `Color::BLACK` default must parse through the
+	/// element recursion into a `Color` for a fresh Fill node's paint to resolve.
+	#[test]
+	fn paint_wire_parses_color_default_through_its_element() {
+		let black = Some(TaggedValue::Color(Color::BLACK));
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &list!(Graphic)),
+			black,
+			"a `List<Graphic>` paint wire should resolve its color default"
+		);
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &item!(Graphic)),
+			black,
+			"an `Item<Graphic>` paint wire should resolve its color default"
+		);
 	}
 }
