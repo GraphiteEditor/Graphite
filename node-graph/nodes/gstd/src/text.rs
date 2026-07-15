@@ -1,6 +1,8 @@
 use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
 use core_types::list::List;
-use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
+use core_types::{
+	ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OVERLINE, ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_UNDERLINE, Ctx,
+};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -59,6 +61,12 @@ fn text(
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
+	/// Draws a line below each line of text at the font's underline position.
+	underline: bool,
+	/// Draws a line above each line of text at the font's ascent position.
+	overline: bool,
+	/// Draws a line through the middle of each line of text at the font's strikethrough position.
+	strikethrough: bool,
 ) -> List<String> {
 	let mut list = List::new_from_element(text);
 
@@ -85,6 +93,15 @@ fn text(
 	}
 	if align != TextAlign::default() {
 		list.set_attribute(ATTR_TEXT_ALIGN, 0, align);
+	}
+	if underline {
+		list.set_attribute(ATTR_UNDERLINE, 0, underline);
+	}
+	if overline {
+		list.set_attribute(ATTR_OVERLINE, 0, overline);
+	}
+	if strikethrough {
+		list.set_attribute(ATTR_STRIKETHROUGH, 0, strikethrough);
 	}
 
 	list

@@ -266,6 +266,9 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
+				Some(NodeInput::value(TaggedValue::Bool(typesetting.underline), false)),
+				Some(NodeInput::value(TaggedValue::Bool(typesetting.overline), false)),
+				Some(NodeInput::value(TaggedValue::Bool(typesetting.strikethrough), false)),
 			]);
 		let text_to_vector = resolve_proto_node_type(graphene_std::text::text_to_vector::IDENTIFIER)
 			.expect("Text to Vector node does not exist")
