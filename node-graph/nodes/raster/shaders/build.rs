@@ -3,6 +3,18 @@ use cargo_gpu_install::spirv_builder::SpirvMetadata;
 use std::path::PathBuf;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+	// SAFETY: Build scripts are single-threaded.
+	unsafe {
+		std::env::remove_var("TARGET");
+		std::env::remove_var("CARGO_BUILD_TARGET");
+		std::env::remove_var("RUSTFLAGS");
+		std::env::remove_var("CARGO_ENCODED_RUSTFLAGS");
+		for (key, _) in std::env::vars_os() {
+			if key.to_string_lossy().starts_with("CARGO_CFG_TARGET_") {
+				std::env::remove_var(key);
+			}
+		}
+	}
 	env_logger::builder().filter_level(log::LevelFilter::Debug).init();
 
 	// Skip building the shaders if they are provided externally

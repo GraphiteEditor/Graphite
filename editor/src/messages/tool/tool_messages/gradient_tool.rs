@@ -402,6 +402,8 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 					gradient_type: gradient.gradient_type,
 					spread_method: gradient.spread_method,
 					transform: gradient.transform,
+					focal_center: gradient.focal_center,
+					focal_radius: gradient.focal_radius,
 				},
 				GradientSource::Direct,
 			));
@@ -420,6 +422,8 @@ struct GradientAppearance {
 	transform: DAffine2,
 	gradient_type: GradientType,
 	spread_method: GradientSpreadMethod,
+	focal_center: DVec2,
+	focal_radius: f64,
 }
 
 /// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
@@ -468,6 +472,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		transform: composed_transform,
 		gradient_type: gradient_type.unwrap_or_default(),
 		spread_method: spread_method.unwrap_or_default(),
+		..Default::default()
 	}
 }
 
@@ -1512,6 +1517,7 @@ impl Fsm for GradientToolFsmState {
 									transform: DAffine2::IDENTITY,
 									gradient_type: tool_options.gradient_type,
 									spread_method: tool_options.spread_method,
+									..Default::default()
 								},
 								GradientSource::Direct,
 							),

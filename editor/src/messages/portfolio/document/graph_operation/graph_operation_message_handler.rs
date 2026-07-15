@@ -15,6 +15,7 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
+use std::str::FromStr;
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -47,7 +48,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform, None, None);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -512,7 +513,6 @@ const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
 fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> {
 	let mut result = HashMap::new();
 
-	// Quick check: if the SVG doesn't reference `graphite:midpoint` at all, skip parsing
 	if !svg.contains("graphite:midpoint") {
 		return result;
 	}
@@ -521,6 +521,8 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> 
 		Ok(doc) => doc,
 		Err(_) => return result,
 	};
+
+	let mut raw_stops: HashMap<String, Vec<GradientStop>> = HashMap::new();
 
 	for node in doc.descendants() {
 		match node.tag_name().name() {
@@ -533,7 +535,7 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> 
 			None => continue,
 		};
 
-		let mut real_stops = Vec::new();
+		let mut stops = Vec::new();
 		let mut has_any_midpoint = false;
 
 		for child in node.children() {
@@ -542,35 +544,68 @@ fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> 
 			}
 
 			let midpoint = child.attribute((GRAPHITE_NAMESPACE, "midpoint")).and_then(|v| v.parse::<f64>().ok());
-
 			if let Some(midpoint) = midpoint {
 				has_any_midpoint = true;
 
-				let offset = child.attribute("offset").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.);
+				let offset = parse_stop_offset(child.attribute("offset").unwrap_or("0"));
 				let opacity = child.attribute("stop-opacity").and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.);
-				let color = child.attribute("stop-color").and_then(|hex| parse_hex_stop_color(hex, opacity)).unwrap_or(Color::BLACK);
+				let color = child.attribute("stop-color").and_then(|c| parse_stop_color(c, opacity)).unwrap_or(Color::BLACK);
 
-				real_stops.push(GradientStop { position: offset, midpoint, color });
+				stops.push(GradientStop { position: offset, midpoint, color });
 			}
 		}
 
-		if has_any_midpoint && !real_stops.is_empty() {
-			result.insert(gradient_id, GradientStops::new(real_stops));
+		if has_any_midpoint && !stops.is_empty() {
+			raw_stops.insert(gradient_id, stops);
 		}
+	}
+
+	for node in doc.descendants() {
+		match node.tag_name().name() {
+			"linearGradient" | "radialGradient" => {}
+			_ => continue,
+		}
+
+		let gradient_id = match node.attribute("id") {
+			Some(id) => id.to_string(),
+			None => continue,
+		};
+
+		if raw_stops.contains_key(&gradient_id) {
+			continue;
+		}
+
+		let href = node.attribute("href").or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")));
+		if let Some(referenced_id) = href.and_then(|h| h.strip_prefix('#')) {
+			if let Some(inherited) = raw_stops.get(referenced_id) {
+				raw_stops.insert(gradient_id, inherited.clone());
+			}
+		}
+	}
+
+	for (id, stops) in raw_stops {
+		result.insert(id, GradientStops::new(stops));
 	}
 
 	result
 }
 
-fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
-	let hex = hex.strip_prefix('#')?;
-	if hex.len() != 6 {
-		return None;
+fn parse_stop_offset(s: &str) -> f64 {
+	if let Some(pct) = s.strip_suffix('%') {
+		pct.trim().parse::<f64>().unwrap_or(0.) / 100.
+	} else {
+		s.trim().parse::<f64>().unwrap_or(0.)
 	}
-	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
-	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
-	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
-	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+}
+
+fn parse_stop_color(value: &str, opacity: f32) -> Option<Color> {
+	let value = value.trim();
+	if value.to_ascii_lowercase() == "transparent" {
+		return Some(Color::from_rgbaf32_unchecked(0., 0., 0., 0.));
+	}
+	svgtypes::Color::from_str(value)
+		.ok()
+		.map(|c| Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., (c.alpha as f32 / 255.) * opacity))
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -831,17 +866,23 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				}
 			};
 			let spread_method = convert_spread_method(linear.spread_method());
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform, Some(DVec2::ZERO), Some(0.));
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
+
 			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
-			let edge = center + DVec2::X * radial.r().get() as f64;
+			let radius = radial.r().get() as f64;
+			let focal = DVec2::new(radial.fx() as f64, radial.fy() as f64);
+			let focal_radius_raw = radial.fr().get() as f64;
+
+			let focal_center = (focal - center) / radius;
+			let focal_radius = focal_radius_raw / radius;
+
+			let edge = center + DVec2::X * radius;
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
-
-			let gradient_type = GradientType::Radial;
 
 			let gradient = match graphite_gradient_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
@@ -856,7 +897,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			};
 			let spread_method = convert_spread_method(radial.spread_method());
 
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+			modify_inputs.fill_gradient_set(gradient, GradientType::Radial, spread_method, transform, Some(focal_center), Some(focal_radius));
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

@@ -632,6 +632,8 @@ pub struct FillNodeGradient {
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
+	pub focal_center: DVec2,
+	pub focal_radius: f64,
 }
 
 /// Decode a Fill node's gradient metadata inputs, resolving an unset transform to the default over `bounding_box`. Returns `None` when the fill input isn't a gradient value.
@@ -654,6 +656,14 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(bounding_box())),
 		_ => DAffine2::IDENTITY,
 	};
+	let focal_center = match fill_node.inputs.get(fill::FocalCenterInput::INDEX).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::DVec2(value)) => value,
+		_ => DVec2::ZERO,
+	};
+	let focal_radius = match fill_node.inputs.get(fill::FocalRadiusInput::INDEX).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::F64(value)) => value,
+		_ => 0.,
+	};
 
 	Some(FillNodeGradient {
 		stops: stops.clone(),
@@ -661,6 +671,8 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		spread_method,
 		transform,
 		transform_is_value: transform_input.is_some(),
+		focal_center,
+		focal_radius,
 	})
 }
 /// Returns the stroke color from a layer's upstream Stroke node.

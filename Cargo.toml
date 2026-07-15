@@ -170,6 +170,7 @@ vello = "0.9"
 vello_encoding = "0.9"
 resvg = "0.47"
 usvg = "0.47"
+svgtypes = "0.16"
 parley = { version = "0.9", default-features = false, features = ["std"] }
 skrifa = "0.42"
 polycool = "0.4"
