@@ -85,8 +85,9 @@ fn gamma_correction<T: Adjust<Color>>(
 	#[gpu_image]
 	mut input: T,
 	#[default(2.2)]
-	#[range((0.01, 10.))]
-	#[hard_min(0.0001)]
+	#[range]
+	#[hard(0.0001..)]
+	#[soft(0.01..10)]
 	gamma: f32,
 	inverse: bool,
 ) -> T {
@@ -344,22 +345,28 @@ fn black_and_white<T: Adjust<Color>>(
 	mut image: T,
 	#[default(Color::BLACK)] tint: Color,
 	#[default(40.)]
-	#[range((-200., 300.))]
+	#[range]
+	#[soft(-200..300)]
 	reds: PercentageF32,
 	#[default(60.)]
-	#[range((-200., 300.))]
+	#[range]
+	#[soft(-200..300)]
 	yellows: PercentageF32,
 	#[default(40.)]
-	#[range((-200., 300.))]
+	#[range]
+	#[soft(-200..300)]
 	greens: PercentageF32,
 	#[default(60.)]
-	#[range((-200., 300.))]
+	#[range]
+	#[soft(-200..300)]
 	cyans: PercentageF32,
 	#[default(20.)]
-	#[range((-200., 300.))]
+	#[range]
+	#[soft(-200..300)]
 	blues: PercentageF32,
 	#[default(80.)]
-	#[range((-200., 300.))]
+	#[range]
+	#[soft(-200..300)]
 	magentas: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
@@ -997,12 +1004,11 @@ fn posterize<T: Adjust<Color>>(
 	#[gpu_image]
 	mut input: T,
 	#[default(4)]
-	#[hard_min(2)]
+	#[hard(2..)]
 	levels: u32,
 ) -> T {
+	let levels = levels as f32;
 	input.adjust(|color| {
-		// `hard_min(2)` constrains the widget but doesn't bind the data-flow input (a saved doc or upstream node could still feed 0 or 1, producing inf/NaN below).
-		let levels = (levels as f32).max(2.);
 		let number_of_areas = levels.recip();
 		let size_of_areas = (levels - 1.).recip();
 		color.map_gamma_rgb(|c| (c / number_of_areas).floor() * size_of_areas)
@@ -1029,8 +1035,9 @@ fn exposure<T: Adjust<Color>>(
 	exposure: f32,
 	offset: f32,
 	#[default(1.)]
-	#[range((0.01, 10.))]
-	#[hard_min(0.0001)]
+	#[range]
+	#[hard(0.0001..)]
+	#[soft(0.01..10)]
 	gamma_correction: f32,
 ) -> T {
 	input.adjust(|color| {

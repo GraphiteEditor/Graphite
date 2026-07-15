@@ -673,6 +673,21 @@ impl ItemAttributeValues {
 		}
 		self.0.push((to_key, value));
 	}
+
+	/// Clones the attribute with `key` from `source`, replacing any existing attribute with the same key.
+	pub fn insert_cloned_from(&mut self, source: &Self, key: &str) {
+		let Some((_, value)) = source.0.iter().find(|(existing_key, _)| existing_key == key) else {
+			return;
+		};
+
+		let value = value.clone();
+
+		if let Some((_, existing_value)) = self.0.iter_mut().find(|(existing_key, _)| existing_key == key) {
+			*existing_value = value;
+		} else {
+			self.0.push((key.to_string(), value));
+		}
+	}
 }
 
 // ==========

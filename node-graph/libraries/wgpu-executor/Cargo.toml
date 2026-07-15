@@ -18,6 +18,7 @@ node-macro = { workspace = true }
 glam = { workspace = true }
 anyhow = { workspace = true }
 wgpu = { workspace = true }
+wgpu-sync = { workspace = true }
 futures = { workspace = true }
 web-sys = { workspace = true }
 vello = { workspace = true }

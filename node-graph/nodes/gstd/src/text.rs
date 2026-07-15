@@ -22,13 +22,13 @@ fn text(
 	/// The font size used to draw the text.
 	#[unit(" px")]
 	#[default(24.)]
-	#[hard_min(1.)]
+	#[hard(1..)]
 	size: f64,
 	/// The line height ratio, relative to the font size. Each line is drawn lower than its previous line by the distance of *Size* × *Line Height*.
 	///
 	/// 0 means all lines overlap. 1 means all lines are spaced by just the font size. 1.2 is a common default for readable text. 2 means double-spaced text.
 	#[unit("x")]
-	#[hard_min(0.)]
+	#[hard(0..)]
 	#[step(0.1)]
 	#[default(1.2)]
 	line_height: f64,
@@ -38,15 +38,14 @@ fn text(
 	letter_spacing: f64,
 	/// The angle of faux italic slant applied to each glyph.
 	#[unit("°")]
-	#[hard_min(-85.)]
-	#[hard_max(85.)]
+	#[hard(-85..85)]
 	letter_tilt: f64,
 	/// Enables the maximum width constraint so lines can wrap.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_max_width: bool,
 	/// The maximum width that the text block can occupy before wrapping to a new line. Otherwise, lines do not wrap.
 	#[unit(" px")]
-	#[hard_min(1.)]
+	#[hard(1..)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	max_width: f64,
 	/// Whether the *Max Height* property is enabled so that lines beyond it are not drawn.
@@ -54,7 +53,7 @@ fn text(
 	has_max_height: bool,
 	/// The maximum height that the text block can occupy. Excess lines are not drawn.
 	#[unit(" px")]
-	#[hard_min(1.)]
+	#[hard(1..)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	max_height: f64,
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.

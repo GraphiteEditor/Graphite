@@ -1,13 +1,13 @@
 use dyn_any::DynAny;
 #[cfg(feature = "wgpu")]
-use graphene_application_io::ImageTexture;
+use graphene_application_io::Texture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use web_sys::js_sys::{Object, Reflect};
 use web_sys::wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, window};
 #[cfg(feature = "wgpu")]
-use wgpu_executor::WgpuExecutor;
+use wgpu_executor::{WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 const CANVASES_OBJECT_KEY: &str = "imageCanvases";
 
@@ -23,7 +23,7 @@ pub trait Canvas {
 
 #[cfg(feature = "wgpu")]
 pub trait CanvasSurface: Canvas {
-	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor);
+	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor);
 }
 
 #[derive(Clone, DynAny)]
@@ -52,13 +52,13 @@ impl Canvas for CanvasHandle {
 }
 
 #[cfg(feature = "wgpu")]
-pub struct CanvasSurfaceHandle(CanvasHandle, Option<Arc<wgpu::Surface<'static>>>);
+pub struct CanvasSurfaceHandle(CanvasHandle, Option<Arc<WgpuSurface>>);
 #[cfg(feature = "wgpu")]
 impl CanvasSurfaceHandle {
 	pub fn new() -> Self {
 		Self(CanvasHandle::new(), None)
 	}
-	fn surface(&mut self, executor: &WgpuExecutor) -> &wgpu::Surface<'_> {
+	fn surface(&mut self, executor: &WgpuExecutor) -> &WgpuSurface {
 		if self.1.is_none() {
 			let canvas = self.0.get().canvas.clone();
 			let surface = executor
@@ -85,10 +85,10 @@ impl Canvas for CanvasSurfaceHandle {
 }
 #[cfg(feature = "wgpu")]
 impl CanvasSurface for CanvasSurfaceHandle {
-	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) {
+	fn present(&mut self, texture: &Texture, executor: &WgpuExecutor) {
 		let context = executor.context();
 
-		let source_texture: &wgpu::Texture = image_texture.as_ref();
+		let source_texture: &wgpu::Texture = texture.as_ref();
 
 		let surface = self.surface(executor);
 
@@ -115,9 +115,9 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			},
 		);
 
-		let surface_texture = match surface.get_current_texture() {
-			wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-			other => panic!("Failed to get surface texture: {other:?}"),
+		let surface_texture = match surface.get_current_texture(&context.queue) {
+			WgpuCurrentSurfaceTexture::Success(t) | WgpuCurrentSurfaceTexture::Suboptimal(t) => t,
+			_ => panic!("Failed to get surface texture"),
 		};
 
 		encoder.copy_texture_to_texture(
@@ -136,7 +136,7 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			source_texture.size(),
 		);
 
-		context.queue.submit([encoder.finish()]);
+		surface_texture.queue.submit([encoder.finish()]);
 		surface_texture.present();
 	}
 }

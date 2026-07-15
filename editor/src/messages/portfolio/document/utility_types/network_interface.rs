@@ -1,6 +1,7 @@
 mod deserialization;
 mod memo_network;
 mod resolved_types;
+pub mod storage_metadata;
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
@@ -350,6 +351,12 @@ impl NodeNetworkInterface {
 			return 0;
 		};
 		node.inputs.len()
+	}
+
+	/// Whether the node has an exposed input at index 0 to accept the horizontal flow from upstream.
+	/// A node without one (e.g. a generator) can only be the most-upstream node in a chain.
+	pub fn has_primary_input(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.input_from_connector(&InputConnector::node(*node_id, 0), network_path).is_some_and(|input| input.is_exposed())
 	}
 
 	pub fn number_of_outputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
@@ -1052,6 +1059,35 @@ impl NodeNetworkInterface {
 			return false;
 		};
 		node_metadata.persistent_metadata.pinned
+	}
+
+	/// The given network's pinned nodes in display order: pinning appends, dragging rearranges, and any not yet recorded go last.
+	pub fn ordered_pinned_nodes(&self, network_path: &[NodeId]) -> Vec<NodeId> {
+		let Some(network) = self.nested_network(network_path) else { return Vec::new() };
+
+		let order = self
+			.network_metadata(network_path)
+			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
+			.unwrap_or_default();
+
+		// Follow the saved order, keeping only nodes that still exist and are still pinned
+		let mut pinned_nodes = order
+			.iter()
+			.copied()
+			.filter(|node_id| network.nodes.contains_key(node_id) && self.is_pinned(node_id, network_path))
+			.collect::<Vec<_>>();
+
+		// Append any pinned nodes missing from the saved order at the end
+		let mut unordered = network
+			.nodes
+			.keys()
+			.copied()
+			.filter(|node_id| self.is_pinned(node_id, network_path) && !order.contains(node_id))
+			.collect::<Vec<_>>();
+		unordered.sort();
+		pinned_nodes.extend(unordered);
+
+		pinned_nodes
 	}
 
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -3417,22 +3453,67 @@ impl NodeNetworkInterface {
 
 // Public mutable methods
 impl NodeNetworkInterface {
-	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+	/// Walk every network at every nesting level, invoking `visit` with each network's path and a mutable
+	/// reference to its metadata. Only nodes that contain a nested network are recursed into.
+	fn for_each_network_metadata_mut(&mut self, mut visit: impl FnMut(&[NodeId], &mut NodeNetworkMetadata)) {
 		let mut stack = vec![vec![]];
 		while let Some(path) = stack.pop() {
 			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
 				continue;
 			};
-			if let Some(other_network_metadata) = other_interface.network_metadata(&path) {
+
+			visit(&path, self_network_metadata);
+
+			// Only nodes that contain a nested network have metadata to recurse into, so skip leaf nodes.
+			stack.extend(
+				self_network_metadata
+					.persistent_metadata
+					.node_metadata
+					.iter()
+					.filter(|(_, node_metadata)| node_metadata.persistent_metadata.network_metadata.is_some())
+					.map(|(node_id, _)| {
+						let mut current_path: Vec<NodeId> = path.clone();
+						current_path.push(*node_id);
+						current_path
+					}),
+			);
+		}
+	}
+
+	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
 				self_network_metadata.persistent_metadata.navigation_metadata = other_network_metadata.persistent_metadata.navigation_metadata.clone();
 			}
+		});
+	}
 
-			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
-				let mut current_path: Vec<NodeId> = path.clone();
-				current_path.push(*node_id);
-				current_path
-			}));
-		}
+	/// Copy all transient view and selection state from `other_interface` onto `self` at every nesting level:
+	/// navigation metadata (pan/zoom), selection undo/redo history, and the document-to-viewport camera. Lets
+	/// an interface rebuilt from storage keep the user's current view rather than reset it. `resolved_types`
+	/// is a separate runtime cache the caller handles.
+	pub fn copy_all_transient_view_state(&mut self, other_interface: &NodeNetworkInterface) {
+		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
+				let self_persistent = &mut self_network_metadata.persistent_metadata;
+				let other_persistent = &other_network_metadata.persistent_metadata;
+				self_persistent.navigation_metadata = other_persistent.navigation_metadata.clone();
+
+				// The live preview root may name a node that the rebuilt-from-storage network no longer contains
+				// (e.g. after a storage undo), so only carry it over when the root still exists; otherwise drop it.
+				self_persistent.previewing = match other_persistent.previewing {
+					Previewing::Yes {
+						root_node_to_restore: Some(root_node),
+					} if !self_persistent.node_metadata.contains_key(&root_node.node_id) => Previewing::No,
+					previewing => previewing,
+				};
+
+				self_persistent.selection_undo_history = other_persistent.selection_undo_history.clone();
+				self_persistent.selection_redo_history = other_persistent.selection_redo_history.clone();
+			}
+		});
+
+		self.document_metadata.document_to_viewport = other_interface.document_metadata.document_to_viewport;
 	}
 
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
@@ -4542,6 +4623,15 @@ impl NodeNetworkInterface {
 				self.set_chain_position(&previous_chain_node, network_path);
 			}
 		}
+
+		// Prune this network's pinned display order down to the nodes that still exist, dropping any that were actually removed
+		let surviving_nodes = self.nested_network(network_path).map(|network| network.nodes.keys().copied().collect::<HashSet<_>>());
+		if let Some(surviving_nodes) = surviving_nodes
+			&& let Some(network_metadata) = self.network_metadata_mut(network_path)
+		{
+			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| surviving_nodes.contains(node_id));
+		}
+
 		self.unload_all_nodes_bounding_box(network_path);
 		// Instead of unloaded all node click targets, just unload the nodes upstream from the deleted nodes. unload_upstream_node_click_targets will not work since the nodes have been deleted.
 		self.unload_all_nodes_click_targets(network_path);
@@ -4724,6 +4814,43 @@ impl NodeNetworkInterface {
 		};
 
 		node_metadata.persistent_metadata.pinned = pinned;
+
+		// Track the node in this network's pinned display order: append when newly pinned, prune when unpinned
+		if let Some(network_metadata) = self.network_metadata_mut(network_path) {
+			let order = &mut network_metadata.persistent_metadata.pinned_node_order;
+			if pinned {
+				if !order.contains(node_id) {
+					order.push(*node_id);
+				}
+			} else {
+				order.retain(|id| id != node_id);
+			}
+		}
+
+		self.transaction_modified();
+	}
+
+	/// Reorders a pinned node within its network's Properties panel display order so it ends up at `insert_index` among the
+	/// pinned nodes (0 being the topmost). Rebuilds the order from the list as currently shown, which also drops stale entries.
+	pub fn reorder_pinned_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
+		let shown = self.ordered_pinned_nodes(network_path);
+
+		let Some(from) = shown.iter().position(|id| *id == node_id) else { return };
+		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(shown.len().saturating_sub(1));
+		if to == from {
+			return;
+		}
+
+		let mut new_order = shown;
+		let moved = new_order.remove(from);
+		new_order.insert(to, moved);
+
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get network_metadata in reorder_pinned_node");
+			return;
+		};
+		network_metadata.persistent_metadata.pinned_node_order = new_order;
+
 		self.transaction_modified();
 	}
 
@@ -6002,6 +6129,68 @@ impl NodeNetworkInterface {
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}
+
+	/// Reorders a node within its layer's horizontal chain so it ends up at `insert_index` among the chain's nodes,
+	/// where index 0 is the node closest to the layer. The connection feeding the top (most-upstream end) of the chain
+	/// is preserved, as are each node's other (non-primary) inputs.
+	pub fn reorder_chain_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
+		let Some(layer) = self.downstream_layer_for_chain_node(&node_id, network_path) else {
+			log::error!("Could not find downstream layer for chain node {node_id} in reorder_chain_node");
+			return;
+		};
+
+		// The nodes in the layer's chain, ordered from closest-to-layer outward, stopping at the next layer
+		let chain = self
+			.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
+			.skip(1)
+			.take_while(|upstream_id| !self.is_layer(upstream_id, network_path))
+			.collect::<Vec<_>>();
+
+		// A source node (no primary input) stays pinned at the most-upstream end; only the nodes below it reorder
+		let pinned_source = chain.last().copied().filter(|last| !self.has_primary_input(last, network_path));
+		let reorderable = &chain[..chain.len() - pinned_source.is_some() as usize];
+
+		let Some(from) = reorderable.iter().position(|id| *id == node_id) else {
+			log::error!("Node {node_id} is not a reorderable node in its layer's chain in reorder_chain_node");
+			return;
+		};
+
+		// The drop gap is measured against the reorderable nodes that still include the dragged node, so shift it down by one if the node is being removed from before the gap
+		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(reorderable.len() - 1);
+		if to == from {
+			return;
+		}
+
+		let mut new_order = reorderable.to_vec();
+		new_order.remove(from);
+		new_order.insert(to, node_id);
+
+		// The most-upstream reorderable node connects up to the pinned source, or else whatever fed the top of the chain
+		let tail_input = if let Some(source) = pinned_source {
+			NodeInput::node(source, 0)
+		} else {
+			let Some(input) = self.input_from_connector(&InputConnector::node(*chain.last().unwrap(), 0), network_path).cloned() else {
+				log::error!("Could not get the upstream input of the chain in reorder_chain_node");
+				return;
+			};
+			input
+		};
+
+		// Disconnect first so the rewiring can't transiently form a cycle (the pinned source keeps its wiring)
+		for &chain_node in reorderable {
+			self.disconnect_input(&InputConnector::node(chain_node, 0), network_path);
+		}
+
+		// Rewire in the new order: layer's secondary input -> new_order[0] -> ... -> new_order[last] -> tail input
+		self.set_input(&InputConnector::node(layer, 1), NodeInput::node(new_order[0], 0), network_path);
+		for pair in new_order.windows(2) {
+			self.set_input(&InputConnector::node(pair[0], 0), NodeInput::node(pair[1], 0), network_path);
+		}
+		self.set_input(&InputConnector::node(*new_order.last().unwrap(), 0), tail_input, network_path);
+
+		// Re-establish chain positioning for the reordered nodes
+		self.force_set_upstream_to_chain(&new_order[0], network_path);
+	}
 }
 
 #[derive(PartialEq)]
@@ -6346,6 +6535,9 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
 	pub node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
+	/// The display order of pinned nodes in the Properties panel (shown when nothing is selected in this network), keyed by node ID.
+	#[serde(default)]
+	pub pinned_node_order: Vec<NodeId>,
 	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
 	pub previewing: Previewing,
@@ -6712,6 +6904,9 @@ impl NodePersistentMetadata {
 	pub fn new(position: NodePosition) -> Self {
 		Self { position }
 	}
+	pub fn position(&self) -> &NodePosition {
+		&self.position
+	}
 }
 
 /// A layer can either be position as Absolute or in a Stack
@@ -6832,16 +7027,21 @@ pub enum TransactionStatus {
 
 fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
 	for node in network.nodes.values() {
-		for input in &node.inputs {
-			if let NodeInput::Value { tagged_value, .. } = input
-				&& let TaggedValue::Resource(id) = &**tagged_value
-			{
-				out.insert(*id);
-			}
+		collect_node_resources(node, out);
+	}
+}
+
+/// Collects resource IDs referenced by a node and its nested networks.
+pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
+	for input in &node.inputs {
+		if let NodeInput::Value { tagged_value, .. } = input
+			&& let TaggedValue::Resource(id) = &**tagged_value
+		{
+			out.insert(*id);
 		}
-		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-			collect_network_resources(nested, out);
-		}
+	}
+	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+		collect_network_resources(nested, out);
 	}
 }
 
@@ -6857,18 +7057,19 @@ mod network_interface_tests {
 			.await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
 		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
-		let serialized_nodes = frontend_messages
+		let clipboard = frontend_messages
 			.into_iter()
 			.find_map(|msg| match msg {
 				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
 				_ => None,
 			})
-			.expect("copy message should be dispatched")
-			.strip_prefix("graphite/nodes: ")
-			.expect("should start with magic string")
-			.to_string();
-		println!("Serialized: {serialized_nodes}");
-		editor.handle_message(NodeGraphMessage::PasteNodes { serialized_nodes }).await;
+			.expect("copy message should be dispatched");
+		println!("Clipboard: {clipboard}");
+		editor
+			.handle_message(ClipboardMessage::ReadClipboard {
+				content: ClipboardContentRaw::Text(clipboard),
+			})
+			.await;
 		let nodes = &mut editor.active_document_mut().network_interface.network_mut(&[]).unwrap().nodes;
 		let orignal = nodes.remove(&rectangle).expect("original node should exist");
 		assert!(

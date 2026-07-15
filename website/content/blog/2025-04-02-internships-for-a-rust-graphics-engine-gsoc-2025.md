@@ -26,9 +26,7 @@ Do you love Rust and focus on computer graphics, compiler development, or algori
 
 Hear from our mentoring team about Graphite's tech stack and engineering vision by listening to last month's episode of the Developer Voices podcast:
 
-<div class="youtube-embed aspect-16x9">
- <img data-youtube-embed="ZUbcwUC5lxA" src="https://static.graphite.art/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025/developer-voices-podcast-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite: Image Editing as a Syntax Tree (with Keavon Chambers & Dennis Kobert)" />
-</div>
+{{ youtube_embed(id="ZUbcwUC5lxA", title="Graphite: Image Editing as a Syntax Tree (with Keavon Chambers & Dennis Kobert)") }}
 
 For GSoC 2025, our priority focus is mentoring projects revolving around advanced graphics techniques and compiler development, meeting our goal of extending Graphite into the domain of raster image manipulation. Demonstrated experience in these areas is highly advantageous.
 

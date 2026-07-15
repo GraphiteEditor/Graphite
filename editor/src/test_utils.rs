@@ -28,6 +28,10 @@ impl EditorTestUtils {
 
 		editor.handle_message(PortfolioMessage::Init);
 
+		// Enable the dual-write soak validation in tests so storage round-trip drift fails loud, matching
+		// the previous always-on-in-debug behavior now that it is gated by a preference.
+		editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
+
 		Self { editor, runtime }
 	}
 
@@ -245,7 +249,7 @@ impl EditorTestUtils {
 	}
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
-		self.handle_message(PortfolioMessage::PasteImage {
+		self.handle_message(PortfolioMessage::InsertImage {
 			name: None,
 			image,
 			mouse,
@@ -346,10 +350,10 @@ pub mod test_prelude {
 	pub use super::FrontendMessageTestUtils;
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
+	pub use crate::messages::clipboard::utility_types::ClipboardContentRaw;
 	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
 	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};

@@ -5,7 +5,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::descriptor;
@@ -15,6 +14,7 @@ use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::graphic_types;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -1122,9 +1122,6 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 
-	// Legacy `Fill::Gradient`s are converted to absolute by the deferred migration pre-pass that measures each fill's geometry
-	document.pending_gradient_migration = !graph_modification_utils::legacy_gradient_fill_nodes(&document.network_interface).is_empty();
-
 	let network = document.network_interface.document_network().clone();
 
 	// Apply string and node replacements to each node
@@ -1573,6 +1570,101 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::F64(100.), false), network_path);
 
 		inputs_count = 5;
+	}
+
+	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the
+	// value-model 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _spread_method, _transform).
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Content: no change
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+
+		// Fill: a literal Fill value is decomposed, and a wired input (`List<GradientStops> / List<Color>`) is kept as-is
+		match old_inputs[1].as_value() {
+			Some(TaggedValue::LegacyFill(old_fill)) => {
+				let exposed = old_inputs[1].is_exposed();
+				let fill_value = match old_fill {
+					graphic_types::migrations::legacy::Fill::None => TaggedValue::Color(None),
+					graphic_types::migrations::legacy::Fill::Solid(color) => TaggedValue::Color(Some(*color)),
+					graphic_types::migrations::legacy::Fill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
+				};
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
+
+				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
+				if let graphic_types::migrations::legacy::Fill::Gradient(gradient) = old_fill {
+					document.network_interface.set_input(
+						&InputConnector::node(*node_id, 4),
+						NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
+						network_path,
+					);
+					document.network_interface.set_input(
+						&InputConnector::node(*node_id, 5),
+						NodeInput::value(TaggedValue::GradientSpreadMethod(gradient.spread_method), false),
+						network_path,
+					);
+
+					let transform = if gradient.absolute {
+						Some(gradient.transform * gradient.to_transform())
+					} else {
+						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint target's bounds
+						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
+						None
+					};
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+				}
+			}
+			// Wired/exposed fill keeps the connection.
+			// The generic paint connector accepts the existing `List<Color>`/`List<GradientStops>` paint sources directly.
+			_ => {
+				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			}
+		}
+
+		// Color backup: no change
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+
+		// Gradient backup: extract stops
+		if let Some(TaggedValue::LegacyGradient(g)) = old_inputs[3].as_value() {
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(g.stops.clone()), false), network_path);
+
+			// A solid/no-fill node leaves the gradient metadata inputs unused, so seed them from the backup gradient for a later Solid -> Gradient toggle to restore
+			if matches!(
+				old_inputs[1].as_value(),
+				Some(TaggedValue::LegacyFill(
+					graphic_types::migrations::legacy::Fill::None | graphic_types::migrations::legacy::Fill::Solid(_)
+				))
+			) {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::GradientType(g.gradient_type), false), network_path);
+				document.network_interface.set_input(
+					&InputConnector::node(*node_id, 5),
+					NodeInput::value(TaggedValue::GradientSpreadMethod(g.spread_method), false),
+					network_path,
+				);
+
+				let transform = if g.absolute {
+					Some(g.transform * g.to_transform())
+				} else {
+					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
+					None
+				};
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+			}
+		}
+
+		inputs_count = 7;
 	}
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)

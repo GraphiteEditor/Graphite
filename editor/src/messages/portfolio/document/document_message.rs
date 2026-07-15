@@ -103,6 +103,10 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	ReorderPropertiesSection {
+		node_id: NodeId,
+		insert_index: usize,
+	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
 	},
@@ -112,7 +116,7 @@ pub enum DocumentMessage {
 		resize: Key,
 		resize_opposite: Key,
 	},
-	PasteImage {
+	InsertImage {
 		name: Option<String>,
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
@@ -121,7 +125,7 @@ pub enum DocumentMessage {
 		/// can wrap it without a content Transform node. When false, place at the cursor or viewport center.
 		place_at_origin: bool,
 	},
-	PasteSvg {
+	InsertSvg {
 		name: Option<String>,
 		svg: String,
 		mouse: Option<(f64, f64)>,
@@ -211,6 +215,9 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
+	},
+	ToggleNodePropertiesSectionExpanded {
+		node_id: NodeId,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,

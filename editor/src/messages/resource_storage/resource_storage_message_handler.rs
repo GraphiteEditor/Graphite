@@ -13,6 +13,20 @@ impl LoadResource for ResourcesHandle {
 	}
 }
 
+impl ResourceStorage for ResourcesHandle {
+	fn store(&self, data: &[u8]) -> ResourceHash {
+		self.inner.store(data)
+	}
+
+	fn contains(&self, hash: &ResourceHash) -> bool {
+		self.inner.contains(hash)
+	}
+
+	fn garbage_collect(&self, used: &[ResourceHash]) {
+		self.inner.garbage_collect(used)
+	}
+}
+
 #[derive(ExtractField)]
 pub struct ResourceStorageMessageHandler {
 	storage: Option<Arc<dyn ResourceStorage>>,
@@ -27,6 +41,12 @@ impl ResourceStorageMessageHandler {
 		Box::new(ResourcesHandle {
 			inner: self.storage.clone().expect("Resource storage not initialized"),
 		})
+	}
+
+	pub fn resources_mut(&self) -> ResourcesHandle {
+		ResourcesHandle {
+			inner: self.storage.clone().expect("Resource storage not initialized"),
+		}
 	}
 }
 

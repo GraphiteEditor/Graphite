@@ -120,9 +120,7 @@ The next month in April, Oliver and I went to our second conference of the year:
 
 I also took to the main stage to present a lightning talk introducing Graphite to the community:
 
-<div class="youtube-embed aspect-16x9">
- <img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/bcon-la-talk-video-cover.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" data-youtube-embed="x3P5eYv11EU" data-youtube-timestamp="1603" alt="BCON LA 2024 - Lightning Talks" />
-</div>
+{{ youtube_embed(id="x3P5eYv11EU", timestamp=1603, title="BCON LA 2024 - Lightning Talks") }}
 
 ### Graphite booth at Open Sauce
 

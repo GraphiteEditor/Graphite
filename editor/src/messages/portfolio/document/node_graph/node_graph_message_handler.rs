@@ -1,7 +1,7 @@
 use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use crate::consts::GRID_SIZE;
-use crate::messages::clipboard::utility_types::ClipboardContent;
+use crate::messages::clipboard::utility_types::ClipboardItem;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -12,9 +12,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
-};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
@@ -41,6 +39,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
+	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
@@ -112,6 +111,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			breadcrumb_network_path,
 			document_id,
 			collapsed,
+			properties_panel_collapsed_sections,
 			ipp,
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
@@ -188,8 +188,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					on: EventMessage::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
+
 				network_interface.load_structure();
+
+				// Prune the Layers panel collapsed state for any layer tree paths whose nodes no longer exist, so it doesn't accumulate across loads
 				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
+
+				// Prune the Properties panel node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
+				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
+				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();
@@ -248,12 +255,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
 				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
 
-				let Ok(data) = serde_json::to_string(&copied_nodes) else {
-					log::error!("Failed to serialize nodes for clipboard");
-					return;
-				};
-				responses.add(ClipboardMessage::Write {
-					content: ClipboardContent::Nodes(data),
+				responses.add(ClipboardMessage::WriteItems {
+					items: vec![ClipboardItem::Nodes(copied_nodes)],
 				});
 			}
 			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
@@ -759,29 +762,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
 				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
+			NodeGraphMessage::ReorderChainNode { node_id, insert_index } => {
+				network_interface.reorder_chain_node(node_id, insert_index, selection_network_path);
+			}
+			NodeGraphMessage::ReorderPinnedNode { node_id, insert_index } => {
+				network_interface.reorder_pinned_node(node_id, insert_index, selection_network_path);
+			}
 			NodeGraphMessage::SetChainPosition { node_id } => {
 				network_interface.set_chain_position(&node_id, selection_network_path);
 			}
-			NodeGraphMessage::PasteNodes { serialized_nodes } => {
-				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
-					Ok(d) => d,
-					Err(e) => {
-						warn!("Invalid node data {e:?}");
-						return;
-					}
-				};
-				if data.is_empty() {
+			NodeGraphMessage::InsertNodes { nodes } => {
+				if nodes.is_empty() {
 					return;
 				}
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+				let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+
 				let nodes: Vec<_> = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::AddNodes {
-					nodes: data,
-					new_ids: new_ids.clone(),
-				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes })
 			}
 			NodeGraphMessage::PointerDown {
@@ -1764,11 +1765,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				use graphene_std::vector::generator_nodes::*;
 
-				let is_fill = matches!(value, TaggedValue::Fill(_));
 				let reference = network_interface.reference(&node_id, selection_network_path);
 				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
 				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
 				let is_fill_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER));
+				let is_fill_input = is_fill_node && input_index == graphene_std::vector::fill::FillInput::<graphene_std::list::List<Graphic>>::INDEX;
 				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
 					[regular_polygon::IDENTIFIER, star::IDENTIFIER, arc::IDENTIFIER, spiral::IDENTIFIER, grid::IDENTIFIER, arrow::IDENTIFIER]
 						.into_iter()
@@ -1781,7 +1782,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if is_fill {
+				if is_fill_input {
 					responses.add(OverlaysMessage::Draw);
 				}
 				if is_stroke_node || is_fill_node || is_shape_generator_node || is_text_node {
@@ -2539,25 +2540,18 @@ impl NodeGraphMessageHandler {
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 				])];
 
-				let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
-					warn!("No network in collate_properties");
-					return Vec::new();
-				};
-				// And if no nodes are selected, show properties for all pinned nodes
-				let pinned_node_properties = network
-					.nodes
-					.keys()
-					.cloned()
-					.collect::<Vec<_>>()
-					.iter()
-					.filter_map(|node_id| {
-						if context.network_interface.is_pinned(node_id, context.selection_network_path) {
-							Some(node_properties::generate_node_properties(*node_id, context))
-						} else {
-							None
-						}
-					})
+				// And if no nodes are selected, show properties for all pinned nodes (in the user's saved order, each draggable to reorder)
+				let mut pinned_node_properties = context
+					.network_interface
+					.ordered_pinned_nodes(context.selection_network_path)
+					.into_iter()
+					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
+				for pinned_section in pinned_node_properties.iter_mut() {
+					if let LayoutGroup::Section(section) = pinned_section {
+						section.draggable = true;
+					}
+				}
 
 				properties.extend(pinned_node_properties);
 				properties
@@ -2619,7 +2613,7 @@ impl NodeGraphMessageHandler {
 				])];
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				let node_properties = context
+				let mut node_properties = context
 					.network_interface
 					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
 					.enumerate()
@@ -2635,6 +2629,14 @@ impl NodeGraphMessageHandler {
 					.into_iter()
 					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
+
+				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
+				// A node without a primary input (e.g. a generator) is left non-draggable.
+				for chain_node_section in node_properties.iter_mut().skip(1) {
+					if let LayoutGroup::Section(section) = chain_node_section {
+						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
+					}
+				}
 
 				layer_properties.extend(node_properties);
 				layer_properties
