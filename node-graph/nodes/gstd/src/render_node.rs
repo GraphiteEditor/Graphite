@@ -94,7 +94,7 @@ async fn render<'a: 'n>(
 	let data = match (render_params.render_output_type, ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
-			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
+			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
 
 			let mut render = SvgRender::from(data.as_ref());
 			render.wrap_with_transform(logical_transform, Some(logical_resolution));
@@ -109,10 +109,8 @@ async fn render<'a: 'n>(
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
 			let (scene, context) = data.as_ref();
-			let physical_resolution = render_params.footprint.resolution;
 
-			let footprint_transform = render_params.footprint.transform;
-			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
+			let footprint_transform_vello = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
 
 			let mut transformed_scene = vello::Scene::new();
 			transformed_scene.append(scene, Some(footprint_transform_vello));
@@ -125,7 +123,7 @@ async fn render<'a: 'n>(
 			// the result is `-INFINITY`, which the old equality check missed; Vello then rasterized a unit rect with non-finite
 			// vertices, dropping the gradient and tanking performance. `!is_finite()` also covers NaN as a guard against future
 			// code paths where `matrix[0]` could land on `0 * INFINITY`.
-			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
+			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64);
 			for transform in transformed_scene.encoding_mut().transforms.iter_mut() {
 				if !transform.matrix[0].is_finite() {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
@@ -134,10 +132,10 @@ async fn render<'a: 'n>(
 
 			let texture = executor
 				.expect("GPU executor not available")
-				.render_vello_scene(&transformed_scene, physical_resolution, context, None)
+				.render_vello_scene(&transformed_scene, footprint.resolution, context, None)
 				.await
 				.expect("Failed to render Vello scene");
-			RenderOutputType::Texture(texture.into())
+			RenderOutputType::Texture(texture)
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};

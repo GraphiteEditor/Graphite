@@ -213,8 +213,6 @@ pub enum RenderOutputType {
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
-	/// Ratio of physical pixels to logical pixels. `scale := physical_pixels / logical_pixels`
-	/// Ignored when rendering to SVG.
 	#[cache_hash(skip)]
 	pub scale: f64,
 	pub render_output_type: RenderOutputType,

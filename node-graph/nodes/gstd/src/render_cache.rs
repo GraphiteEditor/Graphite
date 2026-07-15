@@ -395,7 +395,7 @@ pub async fn render_output_cache<'a: 'n>(
 	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, executor);
 
 	RenderOutput {
-		data: RenderOutputType::Texture(output_texture.into()),
+		data: RenderOutputType::Texture(output_texture),
 		metadata: combined_metadata,
 	}
 }

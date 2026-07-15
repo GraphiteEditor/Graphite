@@ -44,7 +44,7 @@ async fn render_background<'a: 'n>(
 				})
 				.await;
 
-			RenderOutputType::Texture(blended.into())
+			RenderOutputType::Texture(blended)
 		}
 		RenderOutputType::Svg {
 			svg: foreground_svg,
