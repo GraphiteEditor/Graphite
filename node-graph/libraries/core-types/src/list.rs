@@ -60,6 +60,8 @@ pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
+/// Vector graphics object's fill rule (`FillRule`, implicit default `NonZero`).
+pub const ATTR_FILL_RULE: &str = "fill_rule";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).

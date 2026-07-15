@@ -7,7 +7,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_FILL_RULE, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -26,7 +26,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{FillRule, PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
@@ -352,6 +352,7 @@ fn emit_svg_fill_path(
 	render: &mut SvgRender,
 	d: String,
 	fill_graphic_list: Option<&List<Graphic>>,
+	fill_rule: FillRule,
 	item_transform: DAffine2,
 	element_transform: DAffine2,
 	applied_stroke_transform: DAffine2,
@@ -369,7 +370,18 @@ fn emit_svg_fill_path(
 			.map(|list| list.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
+		if fill_rule == FillRule::EvenOdd {
+			attributes.push("fill-rule", "evenodd");
+		}
 	});
+}
+
+fn effective_fill_rule(vector: &Vector, requested: FillRule) -> FillRule {
+	if requested == FillRule::EvenOdd || (vector.is_branching() && !vector.use_face_fill()) {
+		FillRule::EvenOdd
+	} else {
+		FillRule::NonZero
+	}
 }
 
 /// Whether the affine transform inverts to a finite matrix (a zero, subnormal, or NaN determinant does not).
@@ -1063,6 +1075,8 @@ impl Render for List<Vector> {
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let requested_fill_rule: FillRule = self.attribute_cloned_or_default(ATTR_FILL_RULE, index);
+			let fill_rule = effective_fill_rule(vector, requested_fill_rule);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -1113,6 +1127,7 @@ impl Render for List<Vector> {
 					render,
 					path.clone(),
 					fill_graphic_list.as_deref(),
+					fill_rule,
 					item_transform,
 					element_transform,
 					applied_stroke_transform,
@@ -1129,7 +1144,9 @@ impl Render for List<Vector> {
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
-				let mut mask_item = Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform);
+				let mut mask_item = Item::new_from_element(cloned_vector)
+					.with_attribute(ATTR_TRANSFORM, item_transform)
+					.with_attribute(ATTR_FILL_RULE, fill_rule);
 				set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 				let vector_item = List::new_from_item(mask_item);
 
@@ -1145,6 +1162,7 @@ impl Render for List<Vector> {
 						render,
 						face_d,
 						fill_graphic_list.as_deref(),
+						FillRule::NonZero,
 						item_transform,
 						element_transform,
 						applied_stroke_transform,
@@ -1240,7 +1258,7 @@ impl Render for List<Vector> {
 				attributes.push_val(stroke_shape_attribute);
 				attributes.push_val(stroke_attribute);
 
-				if vector.is_branching() && !use_face_fill {
+				if fill_rule == FillRule::EvenOdd {
 					attributes.push("fill-rule", "evenodd");
 				}
 
@@ -1260,6 +1278,7 @@ impl Render for List<Vector> {
 					render,
 					path.clone(),
 					fill_graphic_list.as_deref(),
+					fill_rule,
 					item_transform,
 					element_transform,
 					applied_stroke_transform,
@@ -1279,6 +1298,8 @@ impl Render for List<Vector> {
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let requested_fill_rule: FillRule = self.attribute_cloned_or_default(ATTR_FILL_RULE, index);
+			let fill_rule = effective_fill_rule(element, requested_fill_rule);
 			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.stroke.as_ref().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform_is_invertible(*transform));
@@ -1390,10 +1411,12 @@ impl Render for List<Vector> {
 						}
 						do_fill_path(scene, context, &kurbo_path, peniko::Fill::NonZero);
 					}
-				} else if element.is_branching() {
-					do_fill_path(scene, context, &path, peniko::Fill::EvenOdd);
 				} else {
-					do_fill_path(scene, context, &path, peniko::Fill::NonZero);
+					let fill_rule = match fill_rule {
+						FillRule::NonZero => peniko::Fill::NonZero,
+						FillRule::EvenOdd => peniko::Fill::EvenOdd,
+					};
+					do_fill_path(scene, context, &path, fill_rule);
 				}
 			};
 
@@ -1476,7 +1499,9 @@ impl Render for List<Vector> {
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
-						let mut mask_item = Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform);
+						let mut mask_item = Item::new_from_element(cloned_element)
+							.with_attribute(ATTR_TRANSFORM, item_transform)
+							.with_attribute(ATTR_FILL_RULE, fill_rule);
 						set_paint_attribute(mask_item.attributes_mut(), ATTR_FILL, List::new_from_element(Color::BLACK));
 						let vector_list = List::new_from_item(mask_item);
 
@@ -2631,6 +2656,34 @@ impl RenderSvgSegmentList for Vec<SvgSegment> {
 			});
 		}
 		result
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn render_compound_rectangles(fill_rule: FillRule) -> String {
+		let vector = Vector::from_subpaths(
+			[Subpath::new_rectangle(DVec2::ZERO, DVec2::splat(100.)), Subpath::new_rectangle(DVec2::splat(25.), DVec2::splat(75.))],
+			false,
+		);
+		let fill = List::new_from_element(Graphic::Color(List::new_from_element(Color::BLACK)));
+		let item = Item::new_from_element(vector).with_attribute(ATTR_FILL, fill).with_attribute(ATTR_FILL_RULE, fill_rule);
+		let vectors = List::new_from_item(item);
+
+		let mut render = SvgRender::new();
+		vectors.render_svg(&mut render, &RenderParams::default());
+		render.svg.to_svg_string()
+	}
+
+	#[test]
+	fn svg_renderer_emits_explicit_even_odd_fill_rule() {
+		let even_odd = render_compound_rectangles(FillRule::EvenOdd);
+		assert!(even_odd.contains(r#"fill-rule="evenodd""#), "rendered SVG: {even_odd}");
+
+		let nonzero = render_compound_rectangles(FillRule::NonZero);
+		assert!(!nonzero.contains(r#"fill-rule="evenodd""#), "rendered SVG: {nonzero}");
 	}
 }
 

@@ -106,6 +106,20 @@ impl FillChoice {
 	}
 }
 
+/// Determines how overlapping subpaths contribute to a vector's filled area.
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum FillRule {
+	/// A point is filled when the signed winding count around it is nonzero.
+	#[default]
+	NonZero,
+	/// A point is filled when a ray from it crosses the path an odd number of times.
+	EvenOdd,
+}
+
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

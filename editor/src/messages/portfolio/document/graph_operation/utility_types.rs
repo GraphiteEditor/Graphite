@@ -15,7 +15,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{FillRule, GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
@@ -462,6 +462,14 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(color), false), true);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
+	}
+
+	pub fn fill_rule_set(&mut self, fill_rule: FillRule) {
+		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+			return;
+		};
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillRuleInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::FillRule(fill_rule), false), false);
 	}
 
 	pub fn fill_gradient_set(&mut self, gradient: GradientStops, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {

@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{FillRule, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -807,6 +807,13 @@ fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMet
 	}
 }
 
+fn convert_fill_rule(fill_rule: usvg::FillRule) -> FillRule {
+	match fill_rule {
+		usvg::FillRule::NonZero => FillRule::NonZero,
+		usvg::FillRule::EvenOdd => FillRule::EvenOdd,
+	}
+}
+
 fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	match &fill.paint() {
 		usvg::Paint::Color(color) => modify_inputs.fill_color_set(Some(usvg_color(*color, fill.opacity().get()))),
@@ -860,4 +867,16 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};
+	modify_inputs.fill_rule_set(convert_fill_rule(fill.rule()));
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn converts_usvg_fill_rules() {
+		assert_eq!(convert_fill_rule(usvg::FillRule::NonZero), FillRule::NonZero);
+		assert_eq!(convert_fill_rule(usvg::FillRule::EvenOdd), FillRule::EvenOdd);
+	}
 }

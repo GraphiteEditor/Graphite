@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
+use core_types::list::{ATTR_FILL, ATTR_FILL_RULE, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -31,7 +31,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{FillRule, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{GradientSpreadMethod, GradientType};
 
@@ -176,6 +176,8 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
+	/// The rule used to determine which areas of overlapping subpaths are filled.
+	fill_rule: FillRule,
 ) -> V {
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<GradientStops>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
@@ -225,6 +227,9 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 		// Broadcast the same paint to every item, scanning the attribute column once instead of per index
 		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(ATTR_FILL) {
 			*slot = fill.clone();
+		}
+		for slot in vector_list.iter_attribute_values_mut_or_default::<FillRule>(ATTR_FILL_RULE) {
+			*slot = fill_rule;
 		}
 	});
 	content
@@ -3288,6 +3293,25 @@ mod test {
 		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
 		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
+	}
+
+	#[tokio::test]
+	async fn fill_sets_fill_rule_attribute() {
+		let content = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+		let result = super::fill(
+			(),
+			content,
+			List::new_from_element(Color::BLACK),
+			List::new_from_element(Color::BLACK),
+			List::default(),
+			GradientType::Linear,
+			GradientSpreadMethod::Pad,
+			None,
+			FillRule::EvenOdd,
+		)
+		.await;
+
+		assert_eq!(result.attribute_cloned_or_default::<FillRule>(ATTR_FILL_RULE, 0), FillRule::EvenOdd);
 	}
 
 	#[tokio::test]
