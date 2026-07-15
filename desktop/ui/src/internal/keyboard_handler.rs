@@ -1,12 +1,14 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_keyboard_handler_t, cef_base_ref_counted_t, cef_event_flags_t, cef_key_event_type_t};
-use cef::{Browser, ImplBrowser, ImplBrowserHost, ImplFrame, ImplKeyboardHandler, KeyEvent, WrapKeyboardHandler};
+use cef::{Browser, Frame, ImplBrowser, ImplBrowserHost, ImplFrame, ImplKeyboardHandler, KeyEvent, WrapKeyboardHandler};
 
 const SHIFT: u32 = cef_event_flags_t::EVENTFLAG_SHIFT_DOWN.0;
 const CONTROL: u32 = cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0;
 const ALT: u32 = cef_event_flags_t::EVENTFLAG_ALT_DOWN.0;
 const COMMAND: u32 = cef_event_flags_t::EVENTFLAG_COMMAND_DOWN.0;
 const MODIFIER_MASK: u32 = SHIFT | CONTROL | ALT | COMMAND;
+const COMMAND_SHIFT: u32 = COMMAND | SHIFT;
+const SHIFT_ALT: u32 = SHIFT | ALT;
 
 const VK_END: i32 = 0x23;
 const VK_HOME: i32 = 0x24;
@@ -39,30 +41,30 @@ impl ImplKeyboardHandler for KeyboardHandlerImpl {
 			return 0;
 		}
 
-		let modifiers = event.modifiers & MODIFIER_MASK;
-		let shift = modifiers & SHIFT != 0;
+		let shortcut = (event.modifiers & MODIFIER_MASK, event.windows_key_code);
 
-		if modifiers & COMMAND != 0 && modifiers & (CONTROL | ALT) == 0 {
+		let edit_operation: Option<fn(&Frame)> = match shortcut {
+			(COMMAND, VK_A) => Some(Frame::select_all),
+			(COMMAND, VK_C) => Some(Frame::copy),
+			(COMMAND, VK_V) => Some(Frame::paste),
+			(COMMAND_SHIFT, VK_V) => Some(Frame::paste_and_match_style),
+			(COMMAND, VK_X) => Some(Frame::cut),
+			(COMMAND, VK_Z) => Some(Frame::undo),
+			(COMMAND_SHIFT, VK_Z) => Some(Frame::redo),
+			_ => None,
+		};
+		if let Some(edit_operation) = edit_operation {
 			let Some(frame) = browser.focused_frame() else { return 0 };
-			match (event.windows_key_code, shift) {
-				(VK_A, false) => frame.select_all(),
-				(VK_C, false) => frame.copy(),
-				(VK_V, false) => frame.paste(),
-				(VK_V, true) => frame.paste_and_match_style(),
-				(VK_X, false) => frame.cut(),
-				(VK_Z, false) => frame.undo(),
-				(VK_Z, true) => frame.redo(),
-				_ => return 0,
-			}
+			edit_operation(&frame);
 			return 1;
 		}
 
-		if modifiers == SHIFT | ALT {
-			let (windows_key_code, native_key_code, character) = match event.windows_key_code {
-				VK_UP => (VK_HOME, KVK_HOME, NS_HOME_FUNCTION_KEY),
-				VK_DOWN => (VK_END, KVK_END, NS_END_FUNCTION_KEY),
-				_ => return 0,
-			};
+		let remap = match shortcut {
+			(SHIFT_ALT, VK_UP) => Some((VK_HOME, KVK_HOME, NS_HOME_FUNCTION_KEY)),
+			(SHIFT_ALT, VK_DOWN) => Some((VK_END, KVK_END, NS_END_FUNCTION_KEY)),
+			_ => None,
+		};
+		if let Some((windows_key_code, native_key_code, character)) = remap {
 			let Some(host) = browser.host() else { return 0 };
 			host.send_key_event(Some(&KeyEvent {
 				type_: cef_key_event_type_t::KEYEVENT_RAWKEYDOWN.into(),
