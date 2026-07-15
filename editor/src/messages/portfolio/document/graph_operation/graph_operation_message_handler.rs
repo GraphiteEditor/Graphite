@@ -573,6 +573,20 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ImportedNode {
+	layer: LayerNodeIdentifier,
+	extent: u32,
+}
+
+fn imported_group_extent(child_extents: &[u32]) -> u32 {
+	if child_extents.is_empty() {
+		0
+	} else {
+		(2 * STACK_VERTICAL_GAP as u32) * child_extents.len() as u32 - STACK_VERTICAL_GAP as u32 + child_extents.iter().sum::<u32>()
+	}
+}
+
 /// Import a usvg node as the root of an SVG import operation.
 ///
 /// The root layer uses the full `move_layer_to_stack` (with push/collision logic) to correctly
@@ -597,18 +611,13 @@ fn import_usvg_node(
 
 	match node {
 		usvg::Node::Group(group) => {
-			// Collect child extents for O(n) position calculation
-			let mut child_extents_svg_order: Vec<u32> = Vec::new();
 			let mut group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>> = HashMap::new();
 
 			// Enable import mode: skips expensive is_acyclic checks and per-node cache invalidation
 			// during wiring since we're building a known tree structure where cycles are impossible
 			modify_inputs.import = true;
 
-			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
-				child_extents_svg_order.push(extent);
-			}
+			let child_extents_svg_order = import_usvg_group_children(modify_inputs, group, layer, graphite_gradient_stops, &mut group_extents_map);
 
 			modify_inputs.import = false;
 			modify_inputs.layer_node = Some(layer);
@@ -638,8 +647,94 @@ fn import_usvg_node(
 	}
 }
 
+/// Imports a group's children in SVG paint order, adding a hidden mask base when the group has a clip path.
+fn import_usvg_group_children(
+	modify_inputs: &mut ModifyInputsContext,
+	group: &usvg::Group,
+	parent: LayerNodeIdentifier,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+) -> Vec<u32> {
+	import_usvg_children_with_clip_path(
+		modify_inputs,
+		group.children(),
+		group.clip_path(),
+		parent,
+		usvg_transform(group.abs_transform()),
+		graphite_gradient_stops,
+		group_extents_map,
+	)
+}
+
+/// Imports one sibling list and represents its optional clip path with Graphite's existing clipping-mask nodes.
+fn import_usvg_children_with_clip_path(
+	modify_inputs: &mut ModifyInputsContext,
+	children: &[usvg::Node],
+	clip_path: Option<&usvg::ClipPath>,
+	parent: LayerNodeIdentifier,
+	referencing_transform: DAffine2,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+) -> Vec<u32> {
+	let mut child_extents = Vec::new();
+	let clip_path = clip_path.filter(|_| !children.is_empty());
+
+	if let Some(clip_path) = clip_path {
+		let imported_clip = import_usvg_clip_path(modify_inputs, clip_path, parent, 0, referencing_transform, graphite_gradient_stops, group_extents_map);
+		child_extents.push(imported_clip.extent);
+	}
+
+	for child in children {
+		let imported_child = import_usvg_node_inner(modify_inputs, child, NodeId::new(), parent, 0, graphite_gradient_stops, group_extents_map);
+		if clip_path.is_some() {
+			modify_inputs.layer_node = Some(imported_child.layer);
+			modify_inputs.clip_mode_set(true);
+		}
+		child_extents.push(imported_child.extent);
+	}
+
+	child_extents
+}
+
+/// Imports a resolved usvg clip path as one hidden Graphite mask-base layer.
+fn import_usvg_clip_path(
+	modify_inputs: &mut ModifyInputsContext,
+	clip_path: &usvg::ClipPath,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	referencing_transform: DAffine2,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+) -> ImportedNode {
+	let layer = modify_inputs.create_layer(NodeId::new());
+	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
+	modify_inputs.layer_node = Some(layer);
+
+	let child_extents = import_usvg_children_with_clip_path(
+		modify_inputs,
+		clip_path.root().children(),
+		clip_path.clip_path(),
+		layer,
+		DAffine2::IDENTITY,
+		graphite_gradient_stops,
+		group_extents_map,
+	);
+
+	let extent = imported_group_extent(&child_extents);
+	group_extents_map.insert(layer, child_extents);
+
+	modify_inputs.layer_node = Some(layer);
+	let transform = referencing_transform * usvg_transform(clip_path.transform());
+	modify_inputs.transform_set(transform, TransformIn::Local, false);
+	// Fill opacity hides the clip geometry during normal rendering but is intentionally ignored
+	// by the renderer's mask pass, leaving the geometry fully opaque as a stencil.
+	modify_inputs.opacity_fill_set(0.);
+
+	ImportedNode { layer, extent }
+}
+
 /// Recursively import a usvg node as a descendant of the root import layer.
-/// Uses lightweight wiring (no push/collision) and returns the subtree extent for position calculation.
+/// Uses lightweight wiring (no push/collision) and returns the layer plus its subtree extent for position calculation.
 ///
 /// The subtree extent represents the additional vertical grid units that this node's descendants
 /// occupy below the node's position. This is used to calculate correct y_offsets between siblings.
@@ -651,26 +746,17 @@ fn import_usvg_node_inner(
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
-) -> u32 {
+) -> ImportedNode {
 	let layer = modify_inputs.create_layer(id);
 	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
 
-	match node {
+	let extent = match node {
 		usvg::Node::Group(group) => {
-			let mut child_extents: Vec<u32> = Vec::new();
-			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
-				child_extents.push(extent);
-			}
+			let child_extents = import_usvg_group_children(modify_inputs, group, layer, graphite_gradient_stops, group_extents_map);
 			modify_inputs.layer_node = Some(layer);
 
-			let n = child_extents.len();
-			let total_extent = if n == 0 {
-				0
-			} else {
-				(2 * STACK_VERTICAL_GAP as u32) * n as u32 - STACK_VERTICAL_GAP as u32 + child_extents.iter().sum::<u32>()
-			};
+			let total_extent = imported_group_extent(&child_extents);
 			group_extents_map.insert(layer, child_extents);
 			total_extent
 		}
@@ -688,7 +774,9 @@ fn import_usvg_node_inner(
 			modify_inputs.fill_color_set(Some(Color::BLACK));
 			0
 		}
-	}
+	};
+
+	ImportedNode { layer, extent }
 }
 
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
@@ -860,4 +948,70 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+	use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+
+	#[tokio::test]
+	async fn svg_group_clip_path_imports_as_hidden_clipping_mask() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+			<defs>
+				<clipPath id="circle" transform="translate(3 4)">
+					<circle cx="60" cy="60" r="50" />
+				</clipPath>
+			</defs>
+			<g transform="translate(10 20) scale(2)" clip-path="url(#circle)">
+				<rect width="120" height="120" fill="blue" />
+			</g>
+		</svg>"#;
+
+		editor
+			.handle_message(GraphOperationMessage::NewSvg {
+				id: NodeId::new(),
+				svg: svg.to_string(),
+				transform: DAffine2::IDENTITY,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+				center: false,
+			})
+			.await;
+
+		let instrumented = editor.eval_graph().await.expect("clipped SVG import should evaluate");
+
+		let clip_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::clipping_mask::ClipInput>(&editor.runtime).collect();
+		assert_eq!(clip_values, vec![true], "the visible group child should inherit the mask base alpha");
+
+		let has_fill_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::opacity::HasFillInput>(&editor.runtime).collect();
+		assert_eq!(has_fill_values, vec![true], "the mask base should enable its independent fill opacity");
+
+		let fill_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::opacity::FillInput>(&editor.runtime).collect();
+		assert_eq!(fill_values, vec![0.], "the mask base should be invisible during normal rendering");
+
+		let translations: Vec<_> = instrumented.grab_all_input::<graphene_std::transform_nodes::transform::TranslationInput>(&editor.runtime).collect();
+		assert!(
+			translations.iter().any(|translation| translation.abs_diff_eq(DVec2::new(16., 28.), 1e-10)),
+			"the clip transform should be composed after the referencing group's absolute transform; got {translations:?}"
+		);
+
+		let rendered_group_svgs: Vec<_> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>>(&editor.runtime)
+			.map(|graphics| {
+				let mut render = SvgRender::new();
+				graphics.render_svg(&mut render, &RenderParams::default());
+				format!("{}{}", render.svg_defs, render.svg.to_svg_string())
+			})
+			.collect();
+		let rendered_group_svg = rendered_group_svgs
+			.iter()
+			.find(|svg| svg.contains("<mask") && svg.contains("mask=\"url(#mask-"))
+			.unwrap_or_else(|| panic!("the imported clipping attributes should reach the existing SVG mask renderer; intermediate SVGs: {rendered_group_svgs:#?}"));
+		assert!(rendered_group_svg.contains("opacity=\"0\""), "the mask base should remain hidden in the normal render pass");
+	}
 }
