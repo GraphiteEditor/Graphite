@@ -14,7 +14,7 @@ use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{Artboard, Color};
+use graphene_std::{Artboard, Color, MaskMode};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -647,7 +647,7 @@ fn import_usvg_node(
 	}
 }
 
-/// Imports a group's children in SVG paint order, adding a hidden mask base for a resolved alpha mask.
+/// Imports a group's children in SVG paint order, adding a hidden mask base for a resolved SVG mask.
 fn import_usvg_group_children(
 	modify_inputs: &mut ModifyInputsContext,
 	group: &usvg::Group,
@@ -655,21 +655,10 @@ fn import_usvg_group_children(
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
 ) -> Vec<u32> {
-	let mask = group.mask().filter(|mask| {
-		let supported = usvg_mask_chain_is_alpha(mask);
-		if !supported {
-			warn!(
-				"Skip unsupported luminance SVG mask '{}'; luminance masks cannot be represented as Graphite alpha clipping masks",
-				mask.id()
-			);
-		}
-		supported
-	});
-
 	import_usvg_children_with_mask(
 		modify_inputs,
 		group.children(),
-		mask,
+		group.mask(),
 		parent,
 		usvg_transform(group.abs_transform()),
 		graphite_gradient_stops,
@@ -677,11 +666,7 @@ fn import_usvg_group_children(
 	)
 }
 
-fn usvg_mask_chain_is_alpha(mask: &usvg::Mask) -> bool {
-	mask.kind() == usvg::MaskType::Alpha && mask.mask().is_none_or(usvg_mask_chain_is_alpha)
-}
-
-/// Imports one sibling list and represents its optional alpha mask with Graphite's existing clipping-mask nodes.
+/// Imports one sibling list and represents its optional SVG mask with Graphite's existing clipping-mask nodes.
 fn import_usvg_children_with_mask(
 	modify_inputs: &mut ModifyInputsContext,
 	children: &[usvg::Node],
@@ -738,7 +723,7 @@ fn import_usvg_children_as_group(
 	ImportedNode { layer, extent }
 }
 
-/// Imports a resolved SVG alpha mask as one hidden Graphite mask-base layer.
+/// Imports a resolved SVG mask as one hidden Graphite mask-base layer.
 fn import_usvg_mask(
 	modify_inputs: &mut ModifyInputsContext,
 	mask: &usvg::Mask,
@@ -748,8 +733,6 @@ fn import_usvg_mask(
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
 ) -> ImportedNode {
-	debug_assert!(usvg_mask_chain_is_alpha(mask));
-
 	let layer = modify_inputs.create_layer(NodeId::new());
 	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
@@ -769,8 +752,13 @@ fn import_usvg_mask(
 
 	modify_inputs.layer_node = Some(layer);
 	modify_inputs.transform_set(referencing_transform, TransformIn::Local, false);
+	let mask_mode = match mask.kind() {
+		usvg::MaskType::Alpha => MaskMode::Alpha,
+		usvg::MaskType::Luminance => MaskMode::Luminance,
+	};
+	modify_inputs.mask_mode_set(mask_mode);
 	// Independent fill opacity hides the mask artwork during normal rendering but is
-	// intentionally ignored by the renderer's mask pass, preserving its source alpha.
+	// intentionally ignored by the renderer's mask pass, preserving its source paint and alpha.
 	modify_inputs.opacity_fill_set(0.);
 
 	ImportedNode { layer, extent }
@@ -1031,6 +1019,8 @@ mod tests {
 
 		let clip_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::clipping_mask::ClipInput>(&editor.runtime).collect();
 		assert_eq!(clip_values, vec![true], "the composited visible group should receive the SVG mask exactly once");
+		let mask_mode_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::mask_mode::ModeInput>(&editor.runtime).collect();
+		assert!(mask_mode_values.is_empty(), "alpha masks should retain the default behavior without an additional Mask Mode node");
 
 		let has_fill_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::opacity::HasFillInput>(&editor.runtime).collect();
 		assert_eq!(has_fill_values, vec![true], "the imported mask base should enable independent fill opacity");
@@ -1074,24 +1064,26 @@ mod tests {
 		);
 	}
 
-	#[tokio::test]
-	async fn svg_luminance_mask_is_not_misinterpreted_as_alpha() {
+	async fn assert_luminance_mask_import(mask_type_attribute: &str) {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
-		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+		let svg = format!(
+			r##"<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
 			<defs>
-				<mask id="luminance-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="128" height="128">
-					<circle cx="64" cy="64" r="48" fill="white" />
+				<mask id="luminance-mask"{mask_type_attribute} maskUnits="userSpaceOnUse" x="0" y="0" width="128" height="128">
+					<rect width="128" height="128" fill="white" />
+					<circle cx="64" cy="64" r="32" fill="black" />
 				</mask>
 			</defs>
 			<rect width="128" height="128" fill="#2563eb" mask="url(#luminance-mask)" />
-		</svg>"##;
+		</svg>"##
+		);
 
 		editor
 			.handle_message(GraphOperationMessage::NewSvg {
 				id: NodeId::new(),
-				svg: svg.to_string(),
+				svg,
 				transform: DAffine2::IDENTITY,
 				parent: LayerNodeIdentifier::ROOT_PARENT,
 				insert_index: 0,
@@ -1099,11 +1091,37 @@ mod tests {
 			})
 			.await;
 
-		let instrumented = editor.eval_graph().await.expect("unsupported luminance-mask SVG import should still evaluate");
+		let instrumented = editor.eval_graph().await.expect("luminance-masked SVG import should evaluate");
 		let clip_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::clipping_mask::ClipInput>(&editor.runtime).collect();
-		assert!(clip_values.is_empty(), "a luminance mask must not be silently imported with alpha-mask semantics");
+		assert_eq!(clip_values, vec![true], "the composited visible group should receive the luminance mask exactly once");
+
+		let mask_mode_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::mask_mode::ModeInput>(&editor.runtime).collect();
+		assert_eq!(mask_mode_values, vec![MaskMode::Luminance], "the imported hidden mask source should preserve usvg's resolved mask kind");
 
 		let fill_values: Vec<_> = instrumented.grab_all_input::<graphene_std::blending_nodes::opacity::FillInput>(&editor.runtime).collect();
-		assert!(fill_values.is_empty(), "rejecting a luminance mask must not leave an orphaned hidden mask base");
+		assert_eq!(fill_values, vec![0.], "the luminance mask artwork should be hidden during ordinary rendering");
+
+		let rendered_group_svgs: Vec<_> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>>(&editor.runtime)
+			.map(|graphics| {
+				let mut render = SvgRender::new();
+				graphics.render_svg(&mut render, &RenderParams::default());
+				format!("{}{}", render.svg_defs, render.svg.to_svg_string())
+			})
+			.collect();
+		assert!(
+			rendered_group_svgs.iter().any(|svg| svg.contains("mask-type=\"luminance\"") && svg.contains("mask=\"url(#mask-")),
+			"the imported mode should reach the SVG renderer; intermediate SVGs: {rendered_group_svgs:#?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn svg_explicit_luminance_mask_preserves_its_mode() {
+		assert_luminance_mask_import(r#" mask-type="luminance""#).await;
+	}
+
+	#[tokio::test]
+	async fn svg_mask_defaults_to_luminance() {
+		assert_luminance_mask_import("").await;
 	}
 }

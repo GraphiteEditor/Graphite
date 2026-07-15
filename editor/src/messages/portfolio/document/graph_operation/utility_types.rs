@@ -17,7 +17,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
-use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
+use graphene_std::{Artboard, Color, Graphic, MaskMode, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -711,6 +711,14 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
+	}
+
+	pub fn mask_mode_set(&mut self, mode: MaskMode) {
+		let Some(mask_mode_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::mask_mode::IDENTIFIER, mode != MaskMode::default()) else {
+			return;
+		};
+		let input_connector = InputConnector::node(mask_mode_node_id, graphene_std::blending_nodes::mask_mode::ModeInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::MaskMode(mode), false), false);
 	}
 
 	pub fn stroke_set(&mut self, color: Option<Color>, stroke: Stroke) {
