@@ -1,6 +1,6 @@
 use core_types::Context;
 use core_types::context::{CloneVarArgs, ExtractAll};
-use core_types::list::{Bundle, Item};
+use core_types::list::{Bundle, Item, List};
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
@@ -719,6 +719,45 @@ fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops:
 	}
 
 	a << shift
+}
+
+/// Adds together all the numbers in the input list, producing their total.
+#[node_macro::node(category("Math: Numeric"))]
+fn sum(_: impl Ctx, values: List<f64>) -> Item<f64> {
+	Item::new_from_element(values.iter_element_values().sum())
+}
+
+/// Averages all the numbers in the input list. An empty list gives 0.
+#[node_macro::node(category("Math: Numeric"))]
+fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
+	let count = values.len();
+	let average = if count == 0 { 0. } else { values.iter_element_values().sum::<f64>() / count as f64 };
+
+	Item::new_from_element(average)
+}
+
+/// Gives the smallest number in the input list. An empty list gives 0.
+#[node_macro::node(category("Math: Numeric"))]
+fn minimum(_: impl Ctx, values: List<f64>) -> Item<f64> {
+	Item::new_from_element(values.iter_element_values().copied().reduce(f64::min).unwrap_or_default())
+}
+
+/// Gives the largest number in the input list. An empty list gives 0.
+#[node_macro::node(category("Math: Numeric"))]
+fn maximum(_: impl Ctx, values: List<f64>) -> Item<f64> {
+	Item::new_from_element(values.iter_element_values().copied().reduce(f64::max).unwrap_or_default())
+}
+
+/// Outputs true if at least one value in the input list is true. An empty list gives false.
+#[node_macro::node(category("Math: Logic"))]
+fn any(_: impl Ctx, values: List<bool>) -> Item<bool> {
+	Item::new_from_element(values.iter_element_values().any(|&value| value))
+}
+
+/// Outputs true only if every value in the input list is true. An empty list gives true.
+#[node_macro::node(category("Math: Logic"))]
+fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
+	Item::new_from_element(values.iter_element_values().all(|&value| value))
 }
 
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
