@@ -4,6 +4,7 @@ use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::application_io::resource::Resource;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
+use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::extract_xy::XY;
@@ -17,11 +18,14 @@ use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::render_node::RenderIntermediate;
+use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
-use graphene_std::vector::misc::{BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns};
+use graphene_std::vector::misc::{
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+};
 use graphene_std::vector::style::{DashPattern, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::vector::{Vector, VectorModification};
+use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::async_node;
 use std::collections::HashMap;
@@ -314,6 +318,58 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			entries
 		}};
 	}
+	// The single list of value/enum element types that ride ranked wires as framable node parameters.
+	// Each needs both a rank promotion adapter and a cache chain (memoize/monitor/context),
+	// so both registrations below are driven from here by callback, which is what keeps a value type from ending up monitorable but not promotable, or vice versa.
+	macro_rules! ranked_value_types {
+		($register:ident) => {
+			$register!(
+				i32,
+				i64,
+				BlendMode,
+				StrokeJoin,
+				StrokeAlign,
+				StrokeCap,
+				PaintOrder,
+				GradientType,
+				GradientSpreadMethod,
+				DashPattern,
+				BoxCorners,
+				MergeByDistanceAlgorithm,
+				ExtrudeJoiningAlgorithm,
+				PointSpacingType,
+				StringCapitalization,
+				LuminanceCalculation,
+				RedGreenBlue,
+				RedGreenBlueAlpha,
+				RelativeAbsolute,
+				SelectiveColorChoice,
+				BrushTrace,
+				XY,
+				ScaleType,
+				ReferencePoint,
+				CentroidType,
+				BooleanOperation,
+				NoiseType,
+				FractalType,
+				CellularDistanceFunction,
+				CellularReturnType,
+				DomainWarpType,
+				RealTimeMode,
+				GridType,
+				ArcType,
+				SpiralType,
+				TextAlign,
+				QRCodeErrorCorrectionLevel,
+				Font,
+				InterpolationDistribution,
+				RowsOrColumns,
+				Resource,
+			)
+		};
+	}
+	// Primary element types (graphical data and scalars) get promotion adapters here; their monitor/memoize rows are the
+	// explicit ones near the top of the registry, so they are deliberately absent from the shared value-type list above
 	node_types.extend(rank_adapter_nodes!(
 		Vector,
 		Raster<CPU>,
@@ -324,44 +380,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		f64,
 		f32,
 		u64,
+		u32,
 		DVec2,
 		DAffine2,
 		bool,
-		u32,
-		i32,
-		i64,
-		BlendMode,
-		MergeByDistanceAlgorithm,
-		ExtrudeJoiningAlgorithm,
-		StrokeJoin,
-		StrokeAlign,
-		StrokeCap,
-		PaintOrder,
-		PointSpacingType,
-		StringCapitalization,
-		GradientType,
-		GradientSpreadMethod,
-		LuminanceCalculation,
-		RedGreenBlue,
-		RedGreenBlueAlpha,
-		RelativeAbsolute,
-		SelectiveColorChoice,
-		DashPattern,
-		BoxCorners,
 		NodeIdPath,
-		BrushTrace,
-		Box<VectorModification>,
-		XY,
-		ScaleType,
 		Footprint,
-		ReferencePoint,
-		CentroidType,
-		BooleanOperation,
-		InterpolationDistribution,
-		RowsOrColumns,
 		Artboard,
-		Resource,
 	));
+	node_types.extend(ranked_value_types!(rank_adapter_nodes));
+	// The nested-generic `Box<VectorModification>` registers directly rather than through the shared callback, since the
+	// extra macro layer mangles the `stringify!` whitespace in its adapter identifier; its cache chain is likewise direct below
+	node_types.extend(rank_adapter_nodes!(Box<VectorModification>));
 	#[cfg(feature = "gpu")]
 	node_types.extend(rank_adapter_nodes!(Raster<GPU>));
 	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `List Length`): any `List` wire erases its element type
@@ -421,9 +451,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	));
 	#[cfg(feature = "gpu")]
 	node_types.extend(bundle_adapter_nodes!(Raster<GPU>));
-	// The compiler wraps a ranked connector's broadcast sibling in a Memoize plus context nullification pair, and the editor's test
-	// instrumentation monitors any wire, so all three must pass through every ranked element type the hand lists above omit.
-	// The identifiers are passed explicitly because `stringify!` mangles whitespace when the path tokens come through this nested macro layer.
+	// The memoize + monitor + context-nullification triple for each value type in the shared list above: the compiler wraps
+	// a ranked connector's broadcast sibling in a Memoize + context-nullification pair, and test instrumentation monitors any wire.
+	// Node identifiers are passed explicitly since `stringify!` would mangle the path's whitespace through this nested macro.
 	macro_rules! cache_chain_nodes {
 		(each: $value:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
@@ -442,50 +472,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			entries
 		}};
 	}
-	node_types.extend(cache_chain_nodes!(
-		i32,
-		i64,
-		BlendMode,
-		StrokeJoin,
-		StrokeAlign,
-		StrokeCap,
-		PaintOrder,
-		GradientType,
-		GradientSpreadMethod,
-		DashPattern,
-		BoxCorners,
-		MergeByDistanceAlgorithm,
-		ExtrudeJoiningAlgorithm,
-		PointSpacingType,
-		StringCapitalization,
-		LuminanceCalculation,
-		RedGreenBlue,
-		RedGreenBlueAlpha,
-		RelativeAbsolute,
-		SelectiveColorChoice,
-		BrushTrace,
-		XY,
-		ScaleType,
-		ReferencePoint,
-		CentroidType,
-		BooleanOperation,
-		NoiseType,
-		FractalType,
-		CellularDistanceFunction,
-		CellularReturnType,
-		DomainWarpType,
-		graphene_std::animation::RealTimeMode,
-		graphene_std::vector::misc::GridType,
-		graphene_std::vector::misc::ArcType,
-		graphene_std::vector::misc::SpiralType,
-		graphene_std::text::TextAlign,
-		graphene_std::vector::QRCodeErrorCorrectionLevel,
-		Box<VectorModification>,
-		graphene_std::text::Font,
-		InterpolationDistribution,
-		RowsOrColumns,
-		Resource,
-	));
+	node_types.extend(ranked_value_types!(cache_chain_nodes));
+	// The direct counterpart to `Box<VectorModification>`'s promotion adapter above (see that note)
+	node_types.extend(cache_chain_nodes!(Box<VectorModification>));
 	// A position wire may feed a ranked vector connector, each position becoming a single-anchor vector
 	node_types.extend(input_adapter_row!(from_element: DVec2, element: Vector));
 	// A string wire may feed the ranked `Item<DashPattern>` dash connector by parsing each element into a dash pattern
