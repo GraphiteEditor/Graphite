@@ -15,6 +15,7 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
 use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
+use crate::messages::tool::common_functionality::shapes::function_plot::FunctionPlot;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::LineToolData;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
@@ -30,6 +31,7 @@ use crate::messages::tool::utility_types::DocumentToolData;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
+use graphene_std::vector::function_plot;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
 use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, NodeInputDecleration};
@@ -212,6 +214,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
+		MenuListEntry::new("FunctionPlot").label("Function Plot").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::FunctionPlot),
+			}
+			.into()
+		}),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_instance()
 }
@@ -347,6 +355,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 		(spiral::IDENTIFIER, ShapeType::Spiral),
 		(grid::IDENTIFIER, ShapeType::Grid),
 		(arrow::IDENTIFIER, ShapeType::Arrow),
+		(function_plot::IDENTIFIER, ShapeType::FunctionPlot),
 	]
 	.into_iter()
 	.find_map(|(id, shape)| layer_view.upstream_node_id_from_name(&proto(id)).map(|_| shape)) else {
@@ -430,7 +439,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 				changed = true;
 			}
 		}
-		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle => {}
+		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle | ShapeType::FunctionPlot => {}
 	}
 
 	changed
@@ -1116,7 +1125,15 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon
+					| ShapeType::Star
+					| ShapeType::Circle
+					| ShapeType::Arc
+					| ShapeType::Spiral
+					| ShapeType::Grid
+					| ShapeType::Rectangle
+					| ShapeType::Ellipse
+					| ShapeType::FunctionPlot => {
 						tool_data.data.start(document, input, viewport);
 					}
 					ShapeType::Arrow | ShapeType::Line => {
@@ -1139,6 +1156,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Arrow => Arrow::create_node(tool_options.arrow_shaft_width, tool_options.arrow_head_width, tool_options.arrow_head_length),
+					ShapeType::FunctionPlot => FunctionPlot::create_node(),
 					ShapeType::Line => Line::create_node(),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
@@ -1150,7 +1168,15 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon
+					| ShapeType::Star
+					| ShapeType::Circle
+					| ShapeType::Arc
+					| ShapeType::Spiral
+					| ShapeType::Grid
+					| ShapeType::Rectangle
+					| ShapeType::Ellipse
+					| ShapeType::FunctionPlot => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -1212,6 +1238,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::FunctionPlot => FunctionPlot::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
@@ -1464,6 +1491,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 				])],
+				ShapeType::FunctionPlot => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Boundary"),
+					HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 				ShapeType::Line => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
 					HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
@@ -1488,7 +1520,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 			let tool_hint_group = match shape {
 				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Spiral => HintGroup(vec![]),
+				ShapeType::Spiral | ShapeType::FunctionPlot => HintGroup(vec![]),
 				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Arrow => HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
