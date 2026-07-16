@@ -102,6 +102,14 @@ pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
 	hasher.finish()
 }
 
+/// The lane-normalized cache key and arena generation of one evaluation, so a
+/// node can keep per-evaluation scratch across its lanes.
+pub fn eval_key<'e, C: CacheHash + crate::context::InjectIndex + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena> + Copy>(ctx: &C) -> (u64, u64) {
+	let mut keyed = *ctx;
+	keyed.set_index(0);
+	(cache_key(&keyed), ctx.arena().generation())
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ConstructionError {
 	Arity { expected: usize, got: usize },

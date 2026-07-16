@@ -2,17 +2,17 @@ use crate::record::Inherited;
 use core_types::arena::Arena;
 use core_types::attribute::{Attr, EditorLayerPath, Name0, Named, Opacity, OpacityFill, Transform as TransformAttr, WireValue};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
-use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
+use core_types::extent::{LevelIn, ListIn, ValueIn};
+use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt};
 use core_types::list::List;
 use core_types::node::Lane;
-use core_types::registry::types::{Angle, SignedInteger};
+use core_types::registry::types::Angle;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, walk_vector_rows};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
-use graphic_types::{ATTR_FILL, ATTR_STROKE, Artboard, Vector};
+use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
 use vector_types::{Gradient, GradientStop, ReferencePoint};
@@ -23,90 +23,6 @@ fn arena_exhausted() -> Interrupt {
 		trace: Vec::new(),
 	}
 	.into()
-}
-
-/// Resolves a signed index over `total` lanes: negatives count from the end,
-/// out of range resolves to nothing.
-fn resolve_index(index: f64, total: u64) -> Option<u64> {
-	let index = index as i64;
-	match index < 0 {
-		true => total.checked_sub(index.unsigned_abs()),
-		false => ((index as u64) < total).then_some(index as u64),
-	}
-}
-
-/// Returns the list with the item at the specified index removed.
-/// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"), name("Remove at Index"), extent(omit_element_extent))]
-pub fn remove_at_index<T>(
-	ctx: impl Ctx + ModifyIndex + Copy,
-	/// The list of data.
-	list: impl Node<Context<'_>, Output = T>,
-	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: SignedInteger,
-) -> Result<T, Interrupt> {
-	let total = match list.extent(ctx, Level::Total) {
-		GPoll::Final(Extent::Exactly(count)) => count as u64,
-		GPoll::Pending => return Err(Interrupt::Pending),
-		_ => return Err(GraphError::new("omit over a non-exact extent").into()),
-	};
-	let lane = ctx.index();
-	let source = match resolve_index(index, total) {
-		Some(omitted) if lane >= omitted => lane + 1,
-		_ => lane,
-	};
-	let mut shifted = *ctx;
-	shifted.set_index(source);
-	list.eval(&shifted)
-}
-
-fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
-	match level.top() {
-		true => index.get().zip(list.at(level)).map(|(index, extent)| match extent {
-			Extent::Exactly(count) if resolve_index(index, count as u64).is_some() => Extent::Exactly(count - 1),
-			extent => extent,
-		}),
-		false => list.at(level),
-	}
-}
-
-/// Returns the bare element (without the item's attributes) at the specified index in a `List`.
-/// Use this when downstream nodes want just the inner value rather than a `List` containing a single item.
-/// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("General"), name("Item at Index"))]
-pub fn item_at_index<T: Clone + Default + Send + Sync + CacheHash + 'static>(
-	_: impl Ctx,
-	/// The `List` of data to extract from.
-	#[implementations(String, f64, NodeId, Color, Gradient, Vector, Raster<CPU>, Graphic, Artboard)]
-	list: IList<T>,
-	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: SignedInteger,
-) -> T {
-	resolve_index(index, list.len() as u64).map(|resolved| list.element_ref(resolved as usize).clone()).unwrap_or_default()
-}
-
-/// One subgraph invocation per content row, the row riding as a vararg, with
-/// the subgraph's lanes concatenated into one flat level. The level reports a
-/// lower bound; consumers drain to the past-end signal.
-#[node_macro::node(category("General"))]
-pub fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
-	mapped: impl Node<Context<'_>, Output = IList<T>>,
-) -> Result<IList<T>, Interrupt> {
-	let mut remaining = ctx.index();
-	for row in 0..content.len() {
-		let item = crate::record::vararg_row(content, row);
-		let scoped = ctx.push_vararg(&item);
-		let lanes = mapped.inner_extent_at(&scoped.ctx(), row as u64)?;
-		if remaining >= lanes {
-			remaining -= lanes;
-			continue;
-		}
-		let mut frame = core_types::context::IndexLink { index: 0, outer: None };
-		return mapped.eval(&scoped.ctx().push_level(&mut frame, row as u64, remaining));
-	}
-	Err(GraphError::past_end().into())
 }
 
 /// The reflection transform the mirror applies, or nothing when the content
@@ -261,7 +177,6 @@ fn mirror_vector_extent(
 	}
 }
 
-pub use _map_mod::map_entries;
 pub use _mirror_vector_mod::mirror_vector_entries;
 
 /// `node_path` with its trailing entry dropped: the containing network's path, which is also a unique
@@ -342,57 +257,6 @@ attribute_reads! {
 	read_gradient_type_attribute: GradientTypeValue => GradientTypeValue;
 	/// Reads a named gradient-spread attribute, such as `spread_method`.
 	read_spread_method_attribute: GradientSpreadMethod => GradientSpreadMethod;
-}
-
-/// Joins two levels of the same type, the base's lanes followed by the new's.
-#[node_macro::node(category("General"), extent(extend_extent))]
-pub fn extend<T>(
-	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	/// The input whose lanes appear at the start of the extended level.
-	base: impl Node<Context<'_>, Output = T>,
-	/// The input whose lanes appear at the end of the extended level.
-	#[expose]
-	new: impl Node<Context<'_>, Output = T>,
-) -> Result<T, Interrupt> {
-	let split = match base.extent(ctx, Level::Total) {
-		GPoll::Final(Extent::Exactly(count)) => count as u64,
-		// A scalar side joins the concat as a single lane, per `Extent::sum`.
-		GPoll::Final(Extent::Free) => 1,
-		GPoll::Pending => return Err(Interrupt::Pending),
-		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
-	};
-	let lane = ctx.index();
-	match lane < split {
-		true => base.eval(ctx),
-		false => {
-			let mut shifted = *ctx;
-			shifted.set_index(lane - split);
-			new.eval(&shifted)
-		}
-	}
-}
-
-/// The top level sums both sides; inner levels must agree (rectangular), a
-/// free side or a side with no top-level lanes defers to the other.
-fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
-	match level.top() {
-		true => Extent::sum(base.at(level), new.at(level)),
-		false => base.at(level).zip(new.at(level)).and_then(|extents| match extents {
-			(Extent::Free, other) | (other, Extent::Free) => GPoll::Final(other),
-			(base_inner, new_inner) if base_inner == new_inner => GPoll::Final(base_inner),
-			(base_inner, new_inner) => {
-				let top = LevelIn {
-					level: level.depth - 1,
-					depth: level.depth,
-				};
-				match (base.at(top), new.at(top)) {
-					(GPoll::Final(Extent::Exactly(0)), _) => GPoll::Final(new_inner),
-					(_, GPoll::Final(Extent::Exactly(0))) => GPoll::Final(base_inner),
-					_ => GPoll::error("extend inner extents differ"),
-				}
-			}
-		}),
-	}
 }
 
 /// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.

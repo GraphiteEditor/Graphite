@@ -6,7 +6,7 @@
 //! wiring is by hand until the compiler pass constructs layouts.
 
 use core_types::Ctx;
-use core_types::attribute::{Attr, EditorLayerPath, Opacity, OwnedAttr, RemoveAttr, Transform};
+use core_types::attribute::{Attr, Opacity, OwnedAttr, RemoveAttr, Transform};
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex, ModifyIndex};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
@@ -63,11 +63,6 @@ fn repeat_opacity(ctx: impl Ctx + ExtractIndex, element: f64, count: u32) -> ILi
 }
 
 #[node_macro::node(category("Test"))]
-fn sum(_: impl Ctx, items: IList<f64>) -> f64 {
-	items.into_iter().sum()
-}
-
-#[node_macro::node(category("Test"))]
 fn sum_nested(_: impl Ctx, items: IList<IList<f64>>) -> f64 {
 	items.into_iter().sum()
 }
@@ -77,39 +72,6 @@ fn repeat_opacity_extent(element: ExtentIn<'_>, count: ValueIn<'_, u32>, level: 
 	match level.pushed() {
 		true => count.get().map(|count| Extent::Exactly(count as usize)),
 		false => element.at(level),
-	}
-}
-
-/// Generic structure creator: evaluates the lazy content once per copy with the
-/// copy's index pushed in, producing a rank level of `count` copies.
-#[node_macro::node(category("Test"), extent(repeat_extent))]
-fn repeat<T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex,
-	content: impl Node<Context<'_>, Output = T>,
-	#[default(1)]
-	#[hard(1..)]
-	count: u32,
-	reverse: bool,
-) -> Result<IList<T>, Interrupt> {
-	let inner = content.inner_extent(ctx)?;
-	let (copy, rest) = ctx.split_innermost(inner);
-	if copy >= count as u64 {
-		return Err(GraphError::past_end().into());
-	}
-	let copy = match reverse {
-		true => count as u64 - 1 - copy,
-		false => copy,
-	};
-	let mut frame = IndexLink { index: 0, outer: None };
-	content.eval(&ctx.push_level(&mut frame, copy, rest))
-}
-
-/// The pushed level's extent is the copy count; inner levels forward to the
-/// content, whose extent is taken uniform across copies (queried at copy 0).
-fn repeat_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, _reverse: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
-	match level.pushed() {
-		true => count.get().map(|count| Extent::Exactly(count as usize)),
-		false => content.at(level),
 	}
 }
 
@@ -136,51 +98,6 @@ fn repeat_faded_extent(content: ExtentIn<'_>, count: ValueIn<'_, u32>, level: Le
 	}
 }
 
-/// Rank-model Extend: the output's top level is `base`'s lanes followed by
-/// `new`'s, each side evaluated within its own index range.
-#[node_macro::node(category("Test"), extent(extend_extent))]
-fn extend<T>(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, base: impl Node<Context<'_>, Output = T>, new: impl Node<Context<'_>, Output = T>) -> Result<T, Interrupt> {
-	let split = match base.extent(ctx, Level::Total) {
-		GPoll::Final(Extent::Exactly(count)) => count as u64,
-		// A scalar side joins the concat as a single lane, per `Extent::sum`.
-		GPoll::Final(Extent::Free) => 1,
-		GPoll::Pending => return Err(Interrupt::Pending),
-		_ => return Err(GraphError::new("extend over a non-exact base extent").into()),
-	};
-	let lane = ctx.index();
-	match lane < split {
-		true => base.eval(ctx),
-		false => {
-			let mut shifted = *ctx;
-			shifted.set_index(lane - split);
-			new.eval(&shifted)
-		}
-	}
-}
-
-/// The top level sums both sides; inner levels must agree (rectangular), a
-/// free side defers to the other.
-fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent> {
-	match level.top() {
-		true => Extent::sum(base.at(level), new.at(level)),
-		false => base.at(level).zip(new.at(level)).and_then(|extents| match extents {
-			(Extent::Free, other) | (other, Extent::Free) => GPoll::Final(other),
-			(base, new) if base == new => GPoll::Final(base),
-			_ => GPoll::error("extend inner extents differ"),
-		}),
-	}
-}
-
-/// The layer-path stamp: writes the owning layer's document node path on each lane.
-#[node_macro::node(category("Test"))]
-fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, path: Vec<NodeId>) -> Result<(T, Attr<'e, EditorLayerPath>), Interrupt> {
-	let (parked, _) = ctx.arena().alloc(path).ok_or(GraphError {
-		kind: ErrorKind::ArenaExhausted,
-		trace: Vec::new(),
-	})?;
-	Ok((element, Attr(parked.as_slice())))
-}
-
 /// Resolves a signed index over `total` lanes: negatives count from the end,
 /// out of range resolves to nothing.
 fn resolve_index(index: f64, total: u64) -> Option<u64> {
@@ -188,36 +105,6 @@ fn resolve_index(index: f64, total: u64) -> Option<u64> {
 	match index < 0 {
 		true => total.checked_sub(index.unsigned_abs()),
 		false => ((index as u64) < total).then_some(index as u64),
-	}
-}
-
-/// Rank-model Omit Element: the top level shrinks by one; lanes at or past
-/// the omitted index read one lane further. An out-of-range index passes the
-/// level through unchanged.
-#[node_macro::node(category("Test"), extent(omit_element_extent))]
-fn omit_element<T>(ctx: impl Ctx + ModifyIndex + Copy, content: impl Node<Context<'_>, Output = T>, index: f64) -> Result<T, Interrupt> {
-	let total = match content.extent(ctx, Level::Total) {
-		GPoll::Final(Extent::Exactly(count)) => count as u64,
-		GPoll::Pending => return Err(Interrupt::Pending),
-		_ => return Err(GraphError::new("omit over a non-exact extent").into()),
-	};
-	let lane = ctx.index();
-	let source = match resolve_index(index, total) {
-		Some(omitted) if lane >= omitted => lane + 1,
-		_ => lane,
-	};
-	let mut shifted = *ctx;
-	shifted.set_index(source);
-	content.eval(&shifted)
-}
-
-fn omit_element_extent(content: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
-	match level.top() {
-		true => index.get().zip(content.at(level)).map(|(index, extent)| match extent {
-			Extent::Exactly(count) if resolve_index(index, count as u64).is_some() => Extent::Exactly(count - 1),
-			extent => extent,
-		}),
-		false => content.at(level),
 	}
 }
 
@@ -246,13 +133,6 @@ fn index_elements_extent(content: ExtentIn<'_>, index: ValueIn<'_, f64>, level: 
 		}),
 		false => content.at(level),
 	}
-}
-
-/// Rank-model Extract Element: the bare element at the index, or the element
-/// type's default when the index is out of range.
-#[node_macro::node(category("Test"))]
-fn extract_element(_: impl Ctx + InjectIndex + Copy, list: IList<f64>, index: f64) -> f64 {
-	resolve_index(index, list.len() as u64).map(|resolved| list.get(resolved as usize)).unwrap_or_default()
 }
 
 /// Rank-model Mirror kernel: the level holds the content's lanes followed by
@@ -455,325 +335,19 @@ fn forward_record<T>(_: impl Ctx, element: T) -> T {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::list::{ExtendNode, ItemAtIndexNode, RemoveAtIndexNode};
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
-	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
+	use core_types::context::{ContextImpl, ExtractArena};
 	use core_types::gpoll::GPoll;
 	use core_types::node::Node;
+	use core_types::record::test_fixtures::*;
 	use core_types::record::{FrameClaim, Layout, LiftedSource, Rec, RecordSource, Served};
 	use core_types::value::ValueSource;
-
-	struct RecordSourceNode<E> {
-		layout: Layout,
-		element: E,
-		fields: Vec<(&'static str, f64)>,
-		partial: bool,
-	}
-
-	impl<C, E: Copy + Send + Sync + dyn_any::StaticTypeSized + 'static> Node<C> for RecordSourceNode<E> {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(self.element, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			for (name, field) in &self.fields {
-				write_field_at(&mut frame, &self.layout, name, 0, *field);
-			}
-			// SAFETY: the writes above complete the record of this layout.
-			let served = unsafe { frame.finish_served() };
-			match self.partial {
-				true => GPoll::Partial(served),
-				false => GPoll::Final(served),
-			}
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	struct LeveledSourceNode {
-		layout: Layout,
-		elements: Vec<f64>,
-		field: Option<(&'static str, f64)>,
-	}
-
-	impl<C: ExtractIndex> Node<C> for LeveledSourceNode {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let element = self.elements[input.innermost_index() as usize % self.elements.len()];
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(element, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			if let Some((name, value)) = self.field {
-				write_field_at(&mut frame, &self.layout, name, 0, value);
-			}
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
-		where
-			C: ExtractArena<ArenaRef = &'x Arena>,
-		{
-			GPoll::Final(Extent::Exactly(self.elements.len()))
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	struct LeveledTransformSource {
-		layout: Layout,
-		rows: Vec<(f64, DAffine2)>,
-	}
-
-	impl<C: ExtractIndex> Node<C> for LeveledTransformSource {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let (element, transform) = self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(element, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			write_attr_at::<Transform>(&mut frame, &self.layout, transform);
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
-		where
-			C: ExtractArena<ArenaRef = &'x Arena>,
-		{
-			GPoll::Final(Extent::Exactly(self.rows.len()))
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	/// Serves lanes carrying both a Transform no gather kernel declares and an
-	/// Opacity one does, so a carried column can be told apart from a written one.
-	struct LeveledCarriedSource {
-		layout: Layout,
-		rows: Vec<(f64, DAffine2, f64)>,
-	}
-
-	impl<C: ExtractIndex> Node<C> for LeveledCarriedSource {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let (element, transform, opacity) = self.rows[input.innermost_index() as usize % self.rows.len()];
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(element, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			write_attr_at::<Transform>(&mut frame, &self.layout, transform);
-			write_attr_at::<Opacity>(&mut frame, &self.layout, opacity);
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
-		where
-			C: ExtractArena<ArenaRef = &'x Arena>,
-		{
-			GPoll::Final(Extent::Exactly(self.rows.len()))
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	/// A leveled source that keeps its count to itself: the extent is a lower
-	/// bound and lanes past the data answer the past-end signal.
-	struct DrainSourceNode {
-		layout: Layout,
-		count: usize,
-	}
-
-	impl<C: ExtractIndex> Node<C> for DrainSourceNode {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			let lane = input.innermost_index();
-			if lane >= self.count as u64 {
-				return GPoll::past_end();
-			}
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(lane as f64, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn extent_at<'x>(&self, _input: &C, _level: u8, _frames: &core_types::record::Frames<'x>) -> GPoll<Extent>
-		where
-			C: ExtractArena<ArenaRef = &'x Arena>,
-		{
-			GPoll::Final(Extent::AtLeast(0))
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	struct IndexSourceNode {
-		layout: Layout,
-	}
-
-	impl<C: ExtractIndex + core_types::context::ExtractIndices> Node<C> for IndexSourceNode {
-		fn serve<'e, 'l>(&self, input: &C, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>>
-		where
-			C: ExtractArena<ArenaRef = &'e Arena>,
-		{
-			// Depth-0 content varying per copy: the enclosing (pushed) level's
-			// index sits one link above the content's own innermost lane.
-			let element = input.try_index().and_then(|mut indices| indices.nth(1)).unwrap_or(0) as f64;
-			let mut frame = slot;
-			let arena = ExtractArena::arena(input);
-			if frame.element(element, arena).is_none() {
-				return GPoll::arena_exhausted();
-			}
-			// SAFETY: the writes above complete the record of this layout.
-			GPoll::Final(unsafe { frame.finish_served() })
-		}
-
-		fn layout(&self) -> &Layout {
-			&self.layout
-		}
-	}
-
-	/// Writes a field at the layout's resolved offset, the wiring-proven pairing
-	/// a generated node performs.
-	fn write_field_at<T: Copy + 'static>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, name: &str, level: u8, value: T) {
-		let field = layout
-			.fields
-			.iter()
-			.find(|field| field.name == name && field.level == level)
-			.expect("the layout carries the written field");
-		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
-		// SAFETY: the offset is this layout's own, at the field's declared type.
-		unsafe { frame.attr_at(field.offset, value) };
-	}
-
-	/// [`write_field_at`] for a census marker at level 0.
-	fn write_attr_at<A: core_types::attribute::Attribute>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, value: A::Value<'static>)
-	where
-		A::Value<'static>: Copy + 'static,
-	{
-		write_field_at(frame, layout, A::NAME, 0, value);
-	}
-	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		EvalScope::new(Some(0.5), None, None, generations, arena)
-	}
-
-	fn f64_layout(names: &[&'static str]) -> Layout {
-		let writes: Vec<core_types::record::FieldWrite> = names
-			.iter()
-			.map(|name| core_types::record::FieldWrite {
-				name,
-				level: 0,
-				size: 8,
-				align: 8,
-				type_id: std::any::TypeId::of::<f64>(),
-				read_erased: <Opacity as AttributeMarker>::read_erased,
-				repark: None,
-				content_hash: None,
-				content_eq: None,
-			})
-			.collect();
-		Layout::default().with_writes(0, core_types::record::element_write::<f64>(), &writes)
-	}
-
-	fn leveled_f64_layout(names: &[&'static str]) -> Layout {
-		let writes: Vec<core_types::record::FieldWrite> = names
-			.iter()
-			.map(|name| core_types::record::FieldWrite {
-				name,
-				level: 0,
-				size: 8,
-				align: 8,
-				type_id: std::any::TypeId::of::<f64>(),
-				read_erased: <Opacity as AttributeMarker>::read_erased,
-				repark: None,
-				content_hash: None,
-				content_eq: None,
-			})
-			.collect();
-		Layout::default().with_writes(1, core_types::record::element_write::<f64>(), &writes)
-	}
-
-	fn frames_for(layouts: &[&Layout]) -> core_types::record::Frames<'static> {
-		core_types::record::test_frames(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12))
-	}
-
-	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: core_types::record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
-		// The fixtures wire constants into every eager input, which the compiler
-		// pass records as lane-invariant.
-		let resolved = core_types::record::RecordLayout {
-			named_writes: Vec::new(),
-			named_reads: Vec::new(),
-			named_read_defaults: Vec::new(),
-			lane_invariant: u32::MAX,
-			..meta.resolve(inputs)
-		};
-		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, resolved);
-		node
-	}
-
-	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
-		let bundle = core_types::record::RecordLayout {
-			named_writes: Vec::new(),
-			named_reads: Vec::new(),
-			named_read_defaults: Vec::new(),
-			frame_bytes: layout.frame_bytes(),
-			plan: Vec::new(),
-			layout: layout.clone(),
-			lane_invariant: u32::MAX,
-		};
-		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, bundle);
-		node
-	}
-
-	fn lifted_value<T: Clone + Send + Sync + core_types::StaticTypeSized + 'static>(value: T) -> (ValueSource<T>, Layout)
-	where
-		T::Static: Clone + Send + Sync,
-	{
-		let lift = ValueSource::new(value);
-		let layout = Node::<ContextImpl>::layout(&lift).clone();
-		(lift, layout)
-	}
-
-	fn bare_source(layout: &Layout, element: f64) -> RecordSourceNode<f64> {
-		RecordSourceNode {
-			layout: layout.clone(),
-			element,
-			fields: vec![],
-			partial: false,
-		}
-	}
+	use graphic_nodes::graphic::{StampLayerPathNode, stamp_layer_path_layout_meta};
+	use math_nodes::{SumNode, sum_layout_meta};
+	use repeat_nodes::repeat_nodes::RepeatNode;
 
 	#[test]
 	fn creator_pushes_a_rank_level() {
@@ -1405,7 +979,7 @@ mod tests {
 			};
 			let (index_edge, index_layout) = lifted_value(index);
 			install(
-				OmitElementNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
+				RemoveAtIndexNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
 				meta(),
 				&[Some(&layout)],
 			)
@@ -1495,7 +1069,10 @@ mod tests {
 				field: None,
 			};
 			let (index_edge, index_layout) = lifted_value(index);
-			let node = install_flip(ExtractElementNode::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout), &out);
+			let node = install_flip(
+				ItemAtIndexNode::<_, _, f64>::new(RecordSource::new(content, &layout, &layout), index_edge, &layout, &index_layout),
+				&out,
+			);
 			let GPoll::Final(served) = core_types::record::capture(&node, &ctx, &frames) else {
 				panic!("expected a final record");
 			};

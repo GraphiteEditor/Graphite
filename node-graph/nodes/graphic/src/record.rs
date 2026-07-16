@@ -223,15 +223,16 @@ fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent>
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::graphic::{ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, MapNode, WrapGraphicNode, flatten_color_layout_meta, flatten_graphic_layout_meta, wrap_graphic_layout_meta};
-	use core_types::SourceId;
+	use crate::graphic::{ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, WrapGraphicNode, flatten_color_layout_meta, flatten_graphic_layout_meta, wrap_graphic_layout_meta};
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
-	use core_types::context::{ContextImpl, EvalScope, ExtractArena};
+	use core_types::context::{ContextImpl, ExtractArena};
 	use core_types::list::{Item, List};
 	use core_types::node::Node;
+	use core_types::record::test_fixtures::*;
 	use core_types::record::{self, FrameClaim, Layout, RecordSource, Served};
 	use core_types::value::ValueSource;
+	use graphene_core::list::{MapNode, map_entries};
 
 	struct GraphicSource {
 		layout: Layout,
@@ -265,59 +266,6 @@ mod tests {
 			&self.layout
 		}
 	}
-
-	/// Writes a field at the layout's resolved offset, the wiring-proven pairing
-	/// a generated node performs.
-	fn write_field_at<T: Copy + 'static>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, name: &str, level: u8, value: T) {
-		let field = layout
-			.fields
-			.iter()
-			.find(|field| field.name == name && field.level == level)
-			.expect("the layout carries the written field");
-		assert_eq!(field.type_id, std::any::TypeId::of::<T>(), "the field was declared at this value type");
-		// SAFETY: the offset is this layout's own, at the field's declared type.
-		unsafe { frame.attr_at(field.offset, value) };
-	}
-
-	/// [`write_field_at`] for a census marker at level 0.
-	fn write_attr_at<A: core_types::attribute::Attribute>(frame: &mut FrameClaim<'_, '_>, layout: &Layout, value: A::Value<'static>)
-	where
-		A::Value<'static>: Copy + 'static,
-	{
-		write_field_at(frame, layout, A::NAME, 0, value);
-	}
-	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
-		EvalScope::new(Some(0.5), None, None, generations, arena)
-	}
-
-	fn install<N: Node<ContextImpl<'static>>>(mut node: N, meta: record::LayoutMeta, inputs: &[Option<&Layout>]) -> N {
-		// The fixtures wire constants into every eager input, which the compiler
-		// pass records as lane-invariant.
-		let resolved = record::RecordLayout {
-			named_writes: Vec::new(),
-			named_reads: Vec::new(),
-			named_read_defaults: Vec::new(),
-			lane_invariant: u32::MAX,
-			..meta.resolve(inputs)
-		};
-		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, resolved);
-		node
-	}
-
-	fn install_flip<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
-		let bundle = record::RecordLayout {
-			named_writes: Vec::new(),
-			named_reads: Vec::new(),
-			named_read_defaults: Vec::new(),
-			frame_bytes: layout.frame_bytes(),
-			plan: Vec::new(),
-			layout: layout.clone(),
-			lane_invariant: u32::MAX,
-		};
-		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, bundle);
-		node
-	}
-
 	fn graphic_layout() -> Layout {
 		Layout::default().with_writes(1, record::element_write_hashed::<Graphic>(), &[record::FieldWrite::of::<Transform>(0)])
 	}
@@ -568,7 +516,7 @@ mod tests {
 
 	#[test]
 	fn flat_map_registers_one_row_per_content_type() {
-		let entries = crate::graphic::map_entries();
+		let entries = map_entries();
 		assert_eq!(entries.len(), 6, "one registry row per content implementation");
 		let content_types: Vec<core_types::Type> = entries.iter().map(|entry| entry.io.inputs[0].clone()).collect();
 		assert_eq!(content_types[0], core_types::registry::record_source_type::<Graphic>());

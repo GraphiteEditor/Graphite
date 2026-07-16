@@ -17,3 +17,7 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 serde = { workspace = true }
 node-macro = { workspace = true }
+
+[dev-dependencies]
+# The map tests drive the generic Map over graphic rows
+graphene-core = { workspace = true }

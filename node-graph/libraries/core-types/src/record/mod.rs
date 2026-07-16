@@ -33,4 +33,4 @@ pub use promote::{Promotion, assert_promoted, register_element_promote, register
 pub use route::{RecordSource, SourcePlan};
 pub use run::{Group, GroupItem, RunBuilder, RunColumn, RunView, run_to_owned_list};
 pub use serve::{FrameClaim, MaterializedSpan, Served, SlotRun, serve_input};
-pub use testkit::{LiftedSource, ServedRecord, capture, test_frames};
+pub use testkit::{LiftedSource, ServedRecord, capture, fixtures as test_fixtures, test_frames};

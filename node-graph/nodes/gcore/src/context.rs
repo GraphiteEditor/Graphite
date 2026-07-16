@@ -53,6 +53,7 @@ vararg_readers! {
 	read_color / read_color_extent / ReadColorNode: Color;
 	read_gradient / read_gradient_extent / ReadGradientNode: Gradient;
 	read_string / read_string_extent / ReadStringNode: String;
+	read_number / read_number_extent / ReadNumberNode: f64;
 }
 
 #[node_macro::node(category("Context"), path(core_types::vector))]

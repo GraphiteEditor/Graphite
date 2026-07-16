@@ -127,15 +127,6 @@ pub struct ShapedRows {
 
 type ShapedCache = std::sync::Arc<std::sync::Mutex<Option<ShapedRows>>>;
 
-/// The lane-normalized cache key and arena generation of one evaluation.
-macro_rules! eval_key {
-	($ctx:expr) => {{
-		let mut keyed = *$ctx;
-		InjectIndex::set_index(&mut keyed, 0);
-		(core_types::registry::cache_key(&keyed), $ctx.arena().generation())
-	}};
-}
-
 /// The `lane`-th path over all the strings' shaped rows, carrying its
 /// string's columns with the composed transform overriding. `key` and
 /// `generation` scope the cache to one evaluation.
@@ -186,7 +177,7 @@ fn text_to_vector<'e>(
 	strings: IList<String>,
 	#[data] shaped: ShapedCache,
 ) -> Result<IList<(Lane<Vector>, Attr<'e, TransformAttr>)>, Interrupt> {
-	shaped_lane(strings, ctx.index() as usize, eval_key!(ctx), shaped, false)
+	shaped_lane(strings, ctx.index() as usize, core_types::registry::eval_key(ctx), shaped, false)
 }
 
 fn text_to_vector_extent(strings: ListIn<'_, String>, level: LevelIn) -> GPoll<Extent> {
@@ -201,7 +192,7 @@ fn text_to_vector_glyphs<'e>(
 	strings: IList<String>,
 	#[data] shaped: ShapedCache,
 ) -> Result<IList<(Lane<Vector>, Attr<'e, TransformAttr>)>, Interrupt> {
-	shaped_lane(strings, ctx.index() as usize, eval_key!(ctx), shaped, true)
+	shaped_lane(strings, ctx.index() as usize, core_types::registry::eval_key(ctx), shaped, true)
 }
 
 fn text_to_vector_glyphs_extent(strings: ListIn<'_, String>, level: LevelIn) -> GPoll<Extent> {

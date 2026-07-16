@@ -104,7 +104,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform_nodes::FreezeRealTimeNode",
 			"graphene_core::vector::SubpathSegmentLengthsNode",
 			"core_types::vector::SubpathSegmentLengthsNode",
-			// The deleted debug Option trio degrades to a passthrough of its single input (audit resolution 8)
+			// The deleted debug Option trio degrades to a passthrough of its single input
 			"graphene_core::ops::SizeOfNode",
 			"graphene_core::debug::SizeOfNode",
 			"graphene_core::ops::SomeNode",
@@ -139,8 +139,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::extend::IDENTIFIER,
-		aliases: &["graphene_core::graphic::graphic::ExtendNode", "graphene_core::graphic::ExtendNode"],
+		node: graphene_std::list::extend::IDENTIFIER,
+		aliases: &[
+			"graphene_core::graphic::graphic::ExtendNode",
+			"graphene_core::graphic::ExtendNode",
+			"graphic_nodes::graphic::ExtendNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
@@ -155,18 +159,19 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::graphic::FlattenVectorNode", "graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::item_at_index::IDENTIFIER,
+		node: graphene_std::list::item_at_index::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::IndexNode",
 			"graphene_core::graphic::IndexNode",
 			"graphene_core::graphic::IndexElementsNode",
 			"graphic_nodes::graphic::IndexElementsNode",
 			"graphic_nodes::graphic::ExtractElementNode",
+			"graphic_nodes::graphic::ItemAtIndexNode",
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
-		aliases: &["graphic_nodes::graphic::OmitElementNode"],
+		node: graphene_std::list::remove_at_index::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::OmitElementNode", "graphic_nodes::graphic::RemoveAtIndexNode"],
 	},
 	// The legacy layer extend no longer exists as a node; the aliases still land on its identifier so the
 	// subgraph rebuild below recognizes and replaces the networks that carried it.
@@ -850,8 +855,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	// The string map folded into the general Map, and its reader into the vararg readers.
 	NodeReplacement {
-		node: graphene_std::graphic::map::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceMapNode", "text_nodes::MapStringNode"],
+		node: graphene_std::list::map::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceMapNode", "text_nodes::MapStringNode", "graphic_nodes::graphic::MapNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::context::read_position::IDENTIFIER,
@@ -2800,7 +2805,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
-	// The removed Attach Attribute node (merged into Write Attribute per audit resolution 6) degrades to a passthrough of its
+	// The removed Attach Attribute node degrades to a passthrough of its
 	// content: its eager whole-list source input cannot be mechanically rewired as Write Attribute's lazy per-item value producer.
 	if let Some(DefinitionIdentifier::ProtoNode(identifier)) = document.network_interface.reference(node_id, network_path)
 		&& identifier.as_str().ends_with("::AttachAttributeNode")

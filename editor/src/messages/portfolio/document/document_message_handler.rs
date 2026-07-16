@@ -2758,7 +2758,7 @@ impl DocumentMessageHandler {
 		}
 
 		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
-		let item_at_index_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::item_at_index::IDENTIFIER).expect("Item at Index node should exist");
+		let item_at_index_definition = document_node_definitions::resolve_proto_node_type(graphene_std::list::item_at_index::IDENTIFIER).expect("Item at Index node should exist");
 
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
@@ -4339,13 +4339,13 @@ mod document_message_handler_tests {
 		// A base that wrongly carried a phantom element would therefore show up as a recorded row, which this catches.
 		// The `news` guard below is what keeps both assertions honest, since a wrong `Output` type empties every record.
 		let base_lengths: Vec<usize> = instrumented
-			.grab_all_input_as::<graphene_std::graphic::extend::BaseInput<graphene_std::Graphic>, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+			.grab_all_input_as::<graphene_std::list::extend::BaseInput<graphene_std::Graphic>, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
 			.collect();
 		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
 
 		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented
-			.grab_all_input_as::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
+			.grab_all_input_as::<graphene_std::list::extend::NewInput<graphene_std::Graphic>, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.collect();
 		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element list");
 		let phantom_count = news

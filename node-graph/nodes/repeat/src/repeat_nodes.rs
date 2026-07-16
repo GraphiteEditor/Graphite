@@ -12,7 +12,7 @@ use graphic_types::Vector;
 /// producing a level of `count` copies.
 // Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
 #[node_macro::node(category("Repeat"), extent(repeat_extent))]
-fn repeat<T>(
+pub fn repeat<T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex,
 	content: impl Node<Context<'_>, Output = T>,
 	#[default(1)]

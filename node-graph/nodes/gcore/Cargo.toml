@@ -23,14 +23,22 @@ core-types = { workspace = true }
 graphene-hash = { workspace = true }
 raster-types = { workspace = true }
 graphic-types = { workspace = true }
+vector-types = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }
 glam = { workspace = true }
+rand = { workspace = true }
 log = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The level tests drive the production catalog's kernels
+graphic-nodes = { workspace = true }
+repeat-nodes = { workspace = true }
+math-nodes = { workspace = true }

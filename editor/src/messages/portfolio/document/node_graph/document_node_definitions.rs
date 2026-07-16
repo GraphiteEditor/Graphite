@@ -189,7 +189,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(list::extend::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -318,7 +318,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(List<Artboard>))), 0),
 									NodeInput::node(NodeId(3), 0),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(list::extend::IDENTIFIER),
 								..Default::default()
 							},
 							// Content coercion into a graphic level, evaluated within the artboard's footprint
@@ -836,7 +836,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 5: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(list::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
@@ -1335,13 +1335,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(list::item_at_index::IDENTIFIER),
 								..Default::default()
 							},
 							// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(list::remove_at_index::IDENTIFIER),
 								..Default::default()
 							},
 						]
