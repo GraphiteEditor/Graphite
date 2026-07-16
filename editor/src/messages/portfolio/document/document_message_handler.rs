@@ -1323,6 +1323,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetRenderMode { render_mode } => {
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
+				// Keep the document bar's render mode radio buttons in sync when the mode is set programmatically
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front

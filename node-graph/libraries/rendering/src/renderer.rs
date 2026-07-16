@@ -230,6 +230,10 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
+	/// Skip rendering artboard background rectangles, used for pen plotter output where a background would be traced as a giant filled contour.
+	pub hide_artboard_background: bool,
+	/// Cut dashed strokes into their visible dash segments so the path geometry itself carries the dash pattern, used for pen plotter output where `stroke-dasharray` would be ignored.
+	pub bake_stroke_dashes: bool,
 }
 
 impl RenderParams {
@@ -718,16 +722,18 @@ impl Render for List<Artboard> {
 			let height = dimensions.y.abs();
 
 			// Background
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
-				if background.a() < 1. {
-					attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
-				}
-				attributes.push("x", x.to_string());
-				attributes.push("y", y.to_string());
-				attributes.push("width", width.to_string());
-				attributes.push("height", height.to_string());
-			});
+			if !render_params.hide_artboard_background {
+				render.leaf_tag("rect", |attributes| {
+					attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
+					if background.a() < 1. {
+						attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
+					}
+					attributes.push("x", x.to_string());
+					attributes.push("y", y.to_string());
+					attributes.push("width", width.to_string());
+					attributes.push("height", height.to_string());
+				});
+			}
 
 			// Artwork
 			render.parent_tag(
@@ -775,10 +781,12 @@ impl Render for List<Artboard> {
 
 			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
 
-			let color = SRGBA8::from(background).to_peniko_color();
-			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
-			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
-			scene.pop_layer();
+			if !render_params.hide_artboard_background {
+				let color = SRGBA8::from(background).to_peniko_color();
+				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
+				scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
+				scene.pop_layer();
+			}
 
 			if clip {
 				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
@@ -1114,7 +1122,33 @@ impl Render for List<Vector> {
 			let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 			let use_face_fill = vector.use_face_fill();
 
-			if needs_separate_alignment_fill && !wants_stroke_below {
+			// When baking dashes, cut each stroked path into its visible dash segments so the geometry itself carries the dash
+			// pattern, letting consumers that ignore `stroke-dasharray` (like a pen plotter) still draw the dashes.
+			let baked_dash_path = (render_params.bake_stroke_dashes && stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent()))
+				.then_some(vector.stroke.as_ref())
+				.flatten()
+				.filter(|stroke| stroke.has_renderable_stroke() && !stroke.dash_lengths.is_empty())
+				.and_then(|stroke| {
+					let dash_pattern: Vec<f64> = stroke.dash_lengths.iter().map(|length| length.max(0.)).collect();
+					if dash_pattern.iter().sum::<f64>() <= 0. {
+						return None;
+					}
+
+					let mut dashed_path = String::new();
+					for mut bezpath in vector.stroke_bezpath_iter() {
+						bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						let dashed_bezpath: BezPath = kurbo::dash(bezpath.iter(), stroke.dash_offset, &dash_pattern).collect();
+						dashed_path.push_str(dashed_bezpath.to_svg().as_str());
+					}
+					Some(dashed_path)
+				});
+
+			// When dashes are baked, the fill is dropped entirely rather than emitted as a separate path: the pen plotter
+			// draws every path as its outline, and a fill's contour is the same uncut geometry the dashes were cut from,
+			// so it would be drawn as a solid line right over the dashes.
+			let emit_separate_fill = needs_separate_alignment_fill && baked_dash_path.is_none();
+
+			if emit_separate_fill && !wants_stroke_below {
 				emit_svg_fill_path(
 					render,
 					path.clone(),
@@ -1142,7 +1176,8 @@ impl Render for List<Vector> {
 				(id, mask_type, vector_item)
 			});
 
-			if use_face_fill {
+			// Face fills are dropped when dashes are baked for the same reason as above: their boundaries retrace the dashed edges
+			if use_face_fill && baked_dash_path.is_none() {
 				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 					let face_d = face_path.to_svg();
@@ -1161,7 +1196,7 @@ impl Render for List<Vector> {
 			}
 
 			render.leaf_tag("path", |attributes| {
-				attributes.push("d", path.clone());
+				attributes.push("d", baked_dash_path.clone().unwrap_or_else(|| path.clone()));
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push(ATTR_TRANSFORM, matrix);
@@ -1229,7 +1264,7 @@ impl Render for List<Vector> {
 					String::new()
 				};
 
-				let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
+				let fill_attribute = if needs_separate_alignment_fill || use_face_fill || baked_dash_path.is_some() {
 					r#" fill="none""#.to_string()
 				} else {
 					fill_graphic_list
@@ -1261,7 +1296,7 @@ impl Render for List<Vector> {
 			});
 
 			// When splitting passes and stroke is below, draw the fill after the stroke.
-			if needs_separate_alignment_fill && wants_stroke_below {
+			if emit_separate_fill && wants_stroke_below {
 				emit_svg_fill_path(
 					render,
 					path.clone(),
@@ -1473,7 +1508,16 @@ impl Render for List<Vector> {
 			// Render the path
 			match render_params.render_mode {
 				RenderMode::Outline => {
-					let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
+					let (mut outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
+
+					// Show the stroke's dash pattern in the outline preview so dashed strokes read the same as they will be plotted
+					if let Some(stroke) = stroke.filter(|stroke| stroke.has_renderable_stroke()) {
+						let dash_pattern: kurbo::Dashes = stroke.dash_lengths.iter().map(|length| length.max(0.)).collect();
+						if dash_pattern.iter().sum::<f64>() > 0. {
+							outline_stroke.dash_pattern = dash_pattern;
+							outline_stroke.dash_offset = stroke.dash_offset;
+						}
+					}
 
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
 				}

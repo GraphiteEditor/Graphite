@@ -174,6 +174,8 @@ async fn create_context<'a: 'n>(
 		render_output_type,
 		scale: render_config.scale,
 		viewport_zoom: logical_viewport.scale_magnitudes().x,
+		hide_artboard_background: render_config.hide_artboard_background,
+		bake_stroke_dashes: render_config.bake_stroke_dashes,
 		..Default::default()
 	};
 

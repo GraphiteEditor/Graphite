@@ -83,6 +83,10 @@ pub struct RenderConfig {
 	pub export_format: ExportFormat,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
+	/// Skip rendering artboard background rectangles, used for pen plotter output.
+	pub hide_artboard_background: bool,
+	/// Cut dashed strokes into their visible dash segments so the path geometry itself carries the dash pattern, used for pen plotter output.
+	pub bake_stroke_dashes: bool,
 }
 
 impl RenderConfig {

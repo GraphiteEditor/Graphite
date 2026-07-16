@@ -7,7 +7,7 @@ struct CompositeUniforms {
 	viewport_size: vec2<f32>,
 	pattern_origin: vec2<f32>,
 	checker_size: f32,
-	_pad: f32,
+	solid_white: f32,
 };
 
 @group(0) @binding(0)
@@ -40,6 +40,9 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let tile = floor((in.document_position - uniforms.pattern_origin) / uniforms.checker_size);
 	let parity = i32(tile.x + tile.y) & 1;
-	let luminance = vec3<f32>(select(1.0, 0.8, parity == 1));
+	var luminance = vec3<f32>(select(1.0, 0.8, parity == 1));
+	if uniforms.solid_white != 0.0 {
+		luminance = vec3<f32>(1.0);
+	}
 	return vec4<f32>(luminance, 1.0);
 }

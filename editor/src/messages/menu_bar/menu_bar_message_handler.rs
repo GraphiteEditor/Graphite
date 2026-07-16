@@ -172,6 +172,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.tooltip_shortcut(action_shortcut!(DialogMessageDiscriminant::RequestExportDialog))
 							.on_commit(|_| DialogMessage::RequestExportDialog.into())
 							.disabled(no_active_document),
+						MenuListEntry::new("Send to Plotter…")
+							.label("Send to Plotter…")
+							.icon("FileExport")
+							.tooltip_shortcut(action_shortcut!(DialogMessageDiscriminant::RequestSendToPlotterDialog))
+							.on_commit(|_| DialogMessage::RequestSendToPlotterDialog.into())
+							.disabled(no_active_document),
 					],
 					#[cfg(not(target_os = "macos"))]
 					vec![preferences],

@@ -197,6 +197,10 @@ pub enum PortfolioMessage {
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},
+	SubmitPlotterExport {
+		job_name: String,
+		estimate_only: bool,
+	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,

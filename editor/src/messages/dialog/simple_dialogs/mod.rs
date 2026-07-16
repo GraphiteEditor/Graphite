@@ -8,6 +8,7 @@ mod failed_to_load_documents_dialog;
 mod failed_to_open_document_dialog;
 mod licenses_dialog;
 mod licenses_third_party_dialog;
+mod send_to_plotter_success_dialog;
 
 pub use about_graphite_dialog::AboutGraphiteDialog;
 pub use close_all_documents_dialog::CloseAllDocumentsDialog;
@@ -20,3 +21,4 @@ pub use failed_to_load_documents_dialog::FailedToLoadDocumentsDialog;
 pub use failed_to_open_document_dialog::FailedToOpenDocumentDialog;
 pub use licenses_dialog::LicensesDialog;
 pub use licenses_third_party_dialog::LicensesThirdPartyDialog;
+pub use send_to_plotter_success_dialog::SendToPlotterSuccessDialog;

@@ -29,6 +29,9 @@ const initialState: PortfolioStoreState = {
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
+// Prevents double-submitting a plotter job while one upload is still in flight
+let plotterUploadInFlight = false;
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
@@ -129,6 +132,34 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
+	subscriptions.subscribeFrontendMessage("TriggerSendToPlotter", async (data) => {
+		const { name, svg, address } = data;
+
+		if (plotterUploadInFlight) return;
+		plotterUploadInFlight = true;
+
+		try {
+			// POST the SVG to the print server's job queue endpoint, with the job name in the query string
+			const endpoint = `${address}/api/jobs?name=${encodeURIComponent(name)}`;
+			let response;
+			try {
+				response = await fetch(endpoint, { method: "POST", headers: { "content-type": "image/svg+xml" }, body: svg });
+			} catch {
+				editor.errorDialog("Send to Plotter failed", `Could not reach the print server. Is it running at ${address} and connected to the same network?`);
+				return;
+			}
+
+			if (response.status === 201) {
+				editor.sendToPlotterSuccessDialog(name);
+			} else {
+				const serverError = (await response.json().catch(() => undefined))?.error;
+				editor.errorDialog("Send to Plotter failed", `The print server rejected the job${serverError ? `: ${serverError}` : ` (HTTP ${response.status})`}.`);
+			}
+		} finally {
+			plotterUploadInFlight = false;
+		}
+	});
+
 	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
 		update((state) => {
 			state.panelLayout = data.panelLayout;
@@ -196,6 +227,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
+	subscriptions.unsubscribeFrontendMessage("TriggerSendToPlotter");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");

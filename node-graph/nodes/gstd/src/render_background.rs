@@ -7,6 +7,7 @@ use core_types::{Ctx, ExtractFootprint};
 use glam::{Affine2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
+use graphic_types::vector_types::vector::style::RenderMode;
 use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
 use wgpu::util::DeviceExt;
@@ -33,6 +34,9 @@ async fn render_background<'a: 'n>(
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
+	// Outline mode previews the artwork as it would be drawn on paper, so transparency shows as solid white instead of the checkerboard
+	let solid_white_background = render_params.render_mode == RenderMode::Outline;
+
 	let data = match foreground_data {
 		RenderOutputType::Texture(foreground_texture) => {
 			let doc_to_screen = render_params.footprint.transform.as_affine2();
@@ -43,6 +47,7 @@ async fn render_background<'a: 'n>(
 					backgrounds: &metadata.backgrounds,
 					document_to_screen: doc_to_screen,
 					zoom: render_params.viewport_zoom.to_f32(),
+					solid_white: solid_white_background,
 				})
 				.await;
 
@@ -58,6 +63,17 @@ async fn render_background<'a: 'n>(
 
 			if render_params.viewport_zoom > 0. {
 				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
+					if solid_white_background {
+						render.leaf_tag("rect", |attributes| {
+							attributes.push("x", rect.x0.to_string());
+							attributes.push("y", rect.y0.to_string());
+							attributes.push("width", rect.width().to_string());
+							attributes.push("height", rect.height().to_string());
+							attributes.push("fill", "#ffffff".to_string());
+						});
+						return;
+					}
+
 					let checker_id = format!("{checker_id_prefix}-{}", generate_uuid());
 					let cell_size = 8. / render_params.viewport_zoom;
 					let pattern_size = cell_size * 2.;
@@ -148,6 +164,8 @@ pub struct CompositeBackgroundArgs<'a> {
 	backgrounds: &'a [rendering::Background],
 	document_to_screen: Affine2,
 	zoom: f32,
+	/// Draw solid white instead of the transparency checkerboard, used in Outline mode.
+	solid_white: bool,
 }
 
 impl AsyncWgpuPipeline for CompositeBackground {
@@ -339,6 +357,7 @@ impl AsyncWgpuPipeline for CompositeBackground {
 			backgrounds,
 			document_to_screen,
 			zoom,
+			solid_white,
 		} = args;
 
 		let foreground_size = foreground.size();
@@ -362,7 +381,7 @@ impl AsyncWgpuPipeline for CompositeBackground {
 		let checker_draws = if backgrounds.is_empty() {
 			vec![(
 				3,
-				self.create_checker_bind_group(device, CompositeUniforms::fullscreen(viewport_size, screen_to_document, checker_size_doc)),
+				self.create_checker_bind_group(device, CompositeUniforms::fullscreen(viewport_size, screen_to_document, checker_size_doc, solid_white)),
 			)]
 		} else {
 			backgrounds
@@ -378,7 +397,7 @@ impl AsyncWgpuPipeline for CompositeBackground {
 						return None;
 					}
 
-					let uniforms = CompositeUniforms::rect(min, max, document_to_screen, viewport_size, checker_size_doc);
+					let uniforms = CompositeUniforms::rect(min, max, document_to_screen, viewport_size, checker_size_doc, solid_white);
 					Some((6, self.create_checker_bind_group(device, uniforms)))
 				})
 				.collect()
@@ -474,19 +493,19 @@ struct CompositeUniforms {
 	viewport_size: [f32; 2],
 	pattern_origin: [f32; 2],
 	checker_size: f32,
-	_pad: f32,
+	solid_white: f32,
 }
 
 impl CompositeUniforms {
-	fn fullscreen(viewport_size: Vec2, screen_to_document: Affine2, checker_size_doc: f32) -> Self {
-		Self::new(screen_to_document, Vec2::ZERO, Vec2::ZERO, viewport_size, Vec2::ZERO, checker_size_doc)
+	fn fullscreen(viewport_size: Vec2, screen_to_document: Affine2, checker_size_doc: f32, solid_white: bool) -> Self {
+		Self::new(screen_to_document, Vec2::ZERO, Vec2::ZERO, viewport_size, Vec2::ZERO, checker_size_doc, solid_white)
 	}
 
-	fn rect(rect_min: Vec2, rect_max: Vec2, document_to_screen: Affine2, viewport_size: Vec2, checker_size_doc: f32) -> Self {
-		Self::new(document_to_screen, rect_min, rect_max, viewport_size, rect_min, checker_size_doc)
+	fn rect(rect_min: Vec2, rect_max: Vec2, document_to_screen: Affine2, viewport_size: Vec2, checker_size_doc: f32, solid_white: bool) -> Self {
+		Self::new(document_to_screen, rect_min, rect_max, viewport_size, rect_min, checker_size_doc, solid_white)
 	}
 
-	fn new(transform: Affine2, rect_min: Vec2, rect_max: Vec2, viewport_size: Vec2, pattern_origin: Vec2, checker_size: f32) -> Self {
+	fn new(transform: Affine2, rect_min: Vec2, rect_max: Vec2, viewport_size: Vec2, pattern_origin: Vec2, checker_size: f32, solid_white: bool) -> Self {
 		Self {
 			transform_x: transform.matrix2.x_axis.to_array(),
 			transform_y: transform.matrix2.y_axis.to_array(),
@@ -496,7 +515,7 @@ impl CompositeUniforms {
 			viewport_size: viewport_size.to_array(),
 			pattern_origin: pattern_origin.to_array(),
 			checker_size,
-			_pad: 0.,
+			solid_white: if solid_white { 1. } else { 0. },
 		}
 	}
 }

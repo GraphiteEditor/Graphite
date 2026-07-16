@@ -183,6 +183,23 @@ pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
 pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
+// PLOTTER
+/// Address of the pen plotter print server, hard-coded for the conference booth LAN where it won't change.
+pub const PLOTTER_SERVER_ADDRESS: &str = "http://192.168.77.10:4747";
+/// Drawable area of letter paper in the plotter, in inches (portrait). The artwork's bounding box (the artboard is
+/// dropped) is scaled to fit, rotated to landscape when wider than tall.
+pub const PLOTTER_PAPER_SIZE_INCHES: (f64, f64) = (7.5, 10.);
+/// Fixed per-job overhead in seconds before the pen starts moving. Derived directly from timed plots: two versions of
+/// the same artwork plotted separately (3:24 + 12:17) minus both overlaid in a single job (15:23) leaves the setup
+/// time counted one extra time, giving 18 seconds.
+pub const PLOTTER_SETUP_SECONDS: f64 = 18.;
+/// Pen-down drawing speed in inches per second. Fitted (with the pen lift time below) to timed plots of the same
+/// artwork with solid strokes (349 in, 20 lifts, 3:24) and dash-baked strokes (176 in, 818 lifts, 12:17).
+pub const PLOTTER_PEN_SPEED_INCHES_PER_SECOND: f64 = 2.047;
+/// Seconds per pen lift/reposition/lower cycle, once per subpath. This also covers pen-up travel, which is not
+/// modeled by distance because the print server reorders paths to minimize it. Fitted alongside the pen speed above.
+pub const PLOTTER_PEN_LIFT_SECONDS: f64 = 0.774;
+
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
 

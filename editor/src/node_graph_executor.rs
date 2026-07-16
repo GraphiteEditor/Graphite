@@ -196,6 +196,8 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			for_export: false,
 			for_eyedropper: false,
+			hide_artboard_background: false,
+			bake_stroke_dashes: false,
 		};
 
 		// Execute the node graph
@@ -267,6 +269,8 @@ impl NodeGraphExecutor {
 			render_mode,
 			for_export: false,
 			for_eyedropper: true,
+			hide_artboard_background: false,
+			bake_stroke_dashes: false,
 		};
 
 		// Execute the node graph
@@ -315,15 +319,25 @@ impl NodeGraphExecutor {
 			..Default::default()
 		};
 
+		// The plotter flow switches the viewport to Outline mode as a preview, so pin its export to the normal render
+		// mode for a deterministic serialization regardless of what the viewport is showing
+		let render_mode = if export_config.for_plotter {
+			graphene_std::vector::style::RenderMode::Normal
+		} else {
+			document.render_mode
+		};
+
 		let render_config = RenderConfig {
 			viewport,
 			scale: export_config.scale_factor,
 			time: Default::default(),
 			pointer: DVec2::ZERO,
 			export_format,
-			render_mode: document.render_mode,
+			render_mode,
 			for_export: true,
 			for_eyedropper: false,
+			hide_artboard_background: export_config.for_plotter,
+			bake_stroke_dashes: export_config.for_plotter,
 		};
 		export_config.size = resolution;
 
@@ -568,6 +582,8 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			for_export: false,
 			for_eyedropper: false,
+			hide_artboard_background: false,
+			bake_stroke_dashes: false,
 		};
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((
@@ -733,6 +749,8 @@ impl NodeGraphExecutor {
 			size,
 			artboard_name,
 			artboard_count,
+			for_plotter,
+			plotter_estimate_only,
 			..
 		} = export_config;
 
@@ -753,7 +771,18 @@ impl NodeGraphExecutor {
 				data: RenderOutputType::Svg { svg, .. },
 				..
 			}) => {
-				if file_type == FileType::Svg {
+				if plotter_estimate_only {
+					// Measure the SVG the plotter would receive and report the time estimate back to the dialog
+					let seconds =
+						graphene_std::renderer::plot_statistics::svg_plot_statistics(&svg).map(|statistics| crate::messages::dialog::send_to_plotter_dialog::estimated_plot_seconds(&statistics));
+					responses.add(DialogMessage::SendToPlotterDialog(SendToPlotterDialogMessage::UpdateTimeEstimate { seconds }));
+				} else if for_plotter {
+					responses.add(FrontendMessage::TriggerSendToPlotter {
+						name: base_name,
+						svg,
+						address: crate::consts::PLOTTER_SERVER_ADDRESS.to_string(),
+					});
+				} else if file_type == FileType::Svg {
 					responses.add(FrontendMessage::TriggerSaveFile {
 						name,
 						folder,

@@ -179,10 +179,11 @@ impl RenderExt for Stroke {
 
 		let default_weight = if self.align != StrokeAlign::Center && render_params.aligned_strokes { 1. / 2. } else { 1. };
 
-		// Set to None if the value is the SVG default
+		// Set to None if the value is the SVG default. When dashes are baked into the path geometry, the dash attributes must be
+		// omitted so the pattern isn't applied a second time to the already-cut dash segments.
 		let weight = (self.weight != default_weight).then_some(self.weight);
-		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
-		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
+		let dash_array = (!self.dash_lengths.is_empty() && !render_params.bake_stroke_dashes).then_some(self.dash_lengths());
+		let dash_offset = (self.dash_offset != 0. && !render_params.bake_stroke_dashes).then_some(self.dash_offset);
 		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);
 		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
 		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
