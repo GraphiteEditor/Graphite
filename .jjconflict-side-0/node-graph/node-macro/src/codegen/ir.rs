@@ -1,0 +1,1147 @@
+//! The intent IR: a node built from its signature, from which lowering derives.
+// Fields below the `Node` root are read by the IR's own tests only.
+#![allow(dead_code)]
+
+use crate::codegen::classify::{Dialect, RoutingIo, bare_ident, context_param, dialect, flip_carrier, generic_assignment, generic_extractable, is_served, record_shape, routing_io, slot_value_type};
+use crate::codegen::entries::implementation_rows;
+use crate::parsing::{AttributeRead, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RecordWrites, RegularParsedField, record_writes};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use syn::{GenericArgument, GenericParam, Ident, PathArguments, Type, TypeParamBound};
+
+pub(crate) fn build(parsed: &ParsedNodeFn) -> Node {
+	let generics = generics(parsed);
+	let generic_idents: Vec<Ident> = generics.iter().map(|generic| generic.ident.clone()).collect();
+	let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+	Node {
+		monomorphizations: monomorphizations(parsed, &fields, &generic_idents),
+		inputs: inputs(parsed, &fields, &generic_idents),
+		output: output(parsed, &generic_idents),
+		generics,
+		effect: effect(parsed),
+		derives: derives(parsed),
+	}
+}
+
+fn derives(parsed: &ParsedNodeFn) -> bool {
+	context_param(parsed).is_some_and(|ctx| {
+		ctx.bounds
+			.iter()
+			.any(|bound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx")))
+	})
+}
+
+fn generics(parsed: &ParsedNodeFn) -> Vec<Generic> {
+	let ctx = context_param(parsed).map(|param| param.ident.clone());
+	parsed
+		.fn_generics
+		.iter()
+		.filter_map(|param| match param {
+			GenericParam::Type(param) if Some(&param.ident) != ctx.as_ref() => Some(Generic {
+				ident: param.ident.clone(),
+				bounds: param.bounds.iter().cloned().collect(),
+			}),
+			_ => None,
+		})
+		.collect()
+}
+
+fn inputs(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) -> Vec<Input> {
+	let routing = routing_io(parsed);
+	let carrier_subject = flip_carrier(parsed) || record_shape(parsed).is_some_and(|shape| !shape.skips_carrier());
+	fields
+		.iter()
+		.enumerate()
+		.map(|(index, &field)| {
+			let evaluation = match &field.ty {
+				ParsedFieldType::Node(_) => Evaluation::Lazy,
+				ParsedFieldType::Regular(_) => Evaluation::Eager,
+			};
+			let (element, depth) = match &field.ty {
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => strip_ilist(output_type),
+				ParsedFieldType::Regular(RegularParsedField { ty, list_levels, .. }) => (ty.clone(), *list_levels),
+			};
+			Input {
+				ident: field.pat_ident.ident.clone(),
+				evaluation,
+				shape: item_shape(&element, depth, &field.attribute_reads, generics),
+				subject: subject(index, field, carrier_subject, routing.as_ref()),
+				lend: matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })),
+			}
+		})
+		.collect()
+}
+
+fn subject(index: usize, field: &ParsedField, carrier_subject: bool, routing: Option<&RoutingIo>) -> bool {
+	match &field.ty {
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
+			is_served(output_type) || routing.is_some_and(|routing| crate::codegen::classify::routing_source_output(output_type, &routing.generic)) || (index == 0 && carrier_subject)
+		}
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => routing.is_some_and(|routing| bare_ident(ty) == Some(&routing.generic)) || (index == 0 && carrier_subject),
+	}
+}
+
+fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
+	let row = slot_value_type(&parsed.output_type);
+	let depth = parsed.output_depth;
+	let (element, writes, removes) = match record_writes(&row) {
+		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
+		None => (row, Vec::new(), Vec::new()),
+	};
+	let (element, gathers) = match lane_inner(&element) {
+		Some(inner) => (inner, true),
+		None => (element, false),
+	};
+	Output {
+		shape: ItemShape {
+			element: element_of(&element, generics),
+			depth,
+			attrs: writes
+				.into_iter()
+				.map(|write| LevelAttr {
+					marker: write.marker,
+					level: 0,
+					owned: write.owned,
+				})
+				.collect(),
+		},
+		removes: removes.into_iter().map(|marker| LevelAttr { marker, level: 0, owned: false }).collect(),
+		gathers,
+	}
+}
+
+fn monomorphizations(parsed: &ParsedNodeFn, fields: &[&ParsedField], generics: &[Ident]) -> Vec<ImplRow> {
+	if generics.is_empty() {
+		return Vec::new();
+	}
+	let Some(rows) = implementation_rows(parsed, fields) else {
+		return Vec::new();
+	};
+	let positions: Option<Vec<(Ident, usize)>> = generics
+		.iter()
+		.map(|generic| {
+			fields
+				.iter()
+				.position(|&field| generic_extractable(field_element_type(field), generic))
+				.map(|index| (generic.clone(), index))
+		})
+		.collect();
+	let Some(positions) = positions else {
+		return Vec::new();
+	};
+	rows.iter()
+		.filter_map(|row| {
+			let assignments = positions
+				.iter()
+				.map(|(generic, index)| generic_assignment(field_element_type(fields[*index]), &row[*index], generic).map(|ty| (generic.clone(), ty)))
+				.collect::<Option<Vec<_>>>()?;
+			Some(ImplRow { assignments })
+		})
+		.collect()
+}
+
+fn effect(parsed: &ParsedNodeFn) -> Effect {
+	match dialect(parsed) {
+		Dialect::Sync => Effect::Pure,
+		Dialect::Interrupt => Effect::Fallible,
+		Dialect::Poll => Effect::Progressive,
+		Dialect::AsyncFn | Dialect::Future | Dialect::FutureInterrupt => Effect::AsyncSource,
+	}
+}
+
+fn field_element_type(field: &ParsedField) -> &Type {
+	match &field.ty {
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
+	}
+}
+
+fn item_shape(element: &Type, depth: u8, reads: &[AttributeRead], generics: &[Ident]) -> ItemShape {
+	ItemShape {
+		element: element_of(element, generics),
+		depth,
+		attrs: reads
+			.iter()
+			.map(|read| LevelAttr {
+				marker: read.marker.clone(),
+				level: 0,
+				owned: false,
+			})
+			.collect(),
+	}
+}
+
+fn element_of(ty: &Type, generics: &[Ident]) -> Element {
+	if is_served(ty) {
+		return Element::Opaque;
+	}
+	match bare_ident(ty) {
+		Some(ident) if generics.contains(ident) => Element::Generic(ident.clone()),
+		_ => Element::Concrete(ty.clone()),
+	}
+}
+
+pub(crate) fn strip_ilist(ty: &Type) -> (Type, u8) {
+	let mut element = ty.clone();
+	let mut depth = 0;
+	while let Some(inner) = ilist_inner(&element) {
+		element = inner;
+		depth += 1;
+	}
+	(element, depth)
+}
+
+/// Strips `IList` rank nesting from the output's value position, preserving the
+/// dialect wrapper (`Result`/`GPoll`), and returns the removed depth.
+pub(crate) fn strip_output_rank(output: &Type) -> (Type, u8) {
+	use crate::codegen::classify::{KernelKind, kernel_kind};
+	match kernel_kind(output) {
+		KernelKind::Plain => strip_ilist(output),
+		KernelKind::Interrupt(inner) | KernelKind::Poll(inner) => {
+			let (row, depth) = strip_ilist(&inner);
+			(replace_first_type_arg(output, row), depth)
+		}
+		KernelKind::Future(_) | KernelKind::FutureInterrupt(_) => (output.clone(), 0),
+	}
+}
+
+fn replace_first_type_arg(ty: &Type, replacement: Type) -> Type {
+	let mut ty = ty.clone();
+	if let Type::Path(path) = &mut ty
+		&& let Some(segment) = path.path.segments.last_mut()
+		&& let PathArguments::AngleBracketed(args) = &mut segment.arguments
+	{
+		for arg in args.args.iter_mut() {
+			if let GenericArgument::Type(inner) = arg {
+				*inner = replacement;
+				break;
+			}
+		}
+	}
+	ty
+}
+
+/// Whether the output's element position spells `Lane<T>`.
+pub(crate) fn gathers_lane(parsed: &ParsedNodeFn) -> bool {
+	gathered_element(parsed).is_some()
+}
+
+fn gathered_element(parsed: &ParsedNodeFn) -> Option<Type> {
+	let row = slot_value_type(&parsed.output_type);
+	let element = record_writes(&row).map_or(row, |writes| writes.element);
+	lane_inner(&element).is_some().then_some(element)
+}
+
+/// The element type inside a `Lane<T>` position, lifetime argument skipped.
+fn lane_inner(ty: &Type) -> Option<Type> {
+	let Type::Path(path) = ty else { return None };
+	let segment = path.path.segments.last()?;
+	if segment.ident != "Lane" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+	args.args.iter().find_map(|arg| match arg {
+		GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	})
+}
+
+fn ilist_inner(ty: &Type) -> Option<Type> {
+	let Type::Path(path) = ty else { return None };
+	let segment = path.path.segments.last()?;
+	if segment.ident != "IList" {
+		return None;
+	}
+	let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+	args.args.iter().find_map(|arg| match arg {
+		GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	})
+}
+
+/// Emits the `LayoutMeta` literal from the IR. `element_spec` is supplied by the
+/// caller since it is the one row-dependent facet; the rest folds from the node.
+pub(crate) fn layout_meta_tokens(node: &Node, element_spec: TokenStream2, core_types: &TokenStream2) -> TokenStream2 {
+	let sources = layout_sources(node).into_iter().map(|index| index as u8);
+	let reads = node
+		.inputs
+		.iter()
+		.enumerate()
+		.filter(|(_, input)| matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty())
+		.map(|(index, input)| {
+			let descs = field_writes(&input.shape.attrs, core_types);
+			let index = index as u8;
+			quote!(#core_types::record::InputReads { input: #index, reads: ::std::vec![#(#descs),*] })
+		});
+	let writes = field_writes(&node.output.shape.attrs, core_types);
+	let removes = node.output.removes.iter().map(|attr| {
+		let marker = &attr.marker;
+		let level = attr.level;
+		quote!((<#marker as #core_types::attribute::Attribute>::NAME, #level))
+	});
+	let level_delta = level_delta(node);
+	let folded = match folded_subject(node) {
+		Some((index, levels)) => quote!(::core::option::Option::Some((#index, #levels))),
+		None => quote!(::core::option::Option::None),
+	};
+	quote! {
+		#core_types::record::LayoutMeta {
+			sources: ::std::vec![#(#sources),*],
+			reads: ::std::vec![#(#reads),*],
+			element: #element_spec,
+			writes: ::std::vec![#(#writes),*],
+			removes: ::std::vec![#(#removes),*],
+			level_delta: #level_delta,
+			folded: #folded,
+		}
+	}
+}
+
+/// The subjects whose layouts union into the output's base: un-materialized
+/// ones, plus a gathered subject.
+pub(crate) fn layout_sources(node: &Node) -> Vec<usize> {
+	node.inputs
+		.iter()
+		.enumerate()
+		.filter(|(index, input)| input.subject && (materialized_levels(node, *index) == 0 || gathered_subject(node) == Some(*index)))
+		.map(|(index, _)| index)
+		.collect()
+}
+
+/// The materialized subject a gather-carrier copies its output frames from.
+pub(crate) fn gathered_subject(node: &Node) -> Option<usize> {
+	if !node.output.gathers {
+		return None;
+	}
+	node.inputs
+		.iter()
+		.enumerate()
+		.find(|(index, input)| input.subject && materialized_levels(node, *index) > 0)
+		.map(|(index, _)| index)
+}
+
+/// The single carried subject a level-preserving node forwards its extents
+/// to: exactly one un-materialized subject, no level shift, and no fold.
+pub(crate) fn forwarded_subject(node: &Node) -> Option<usize> {
+	if level_delta(node) != 0 || folded_subject(node).is_some() {
+		return None;
+	}
+	let mut sources = node
+		.inputs
+		.iter()
+		.enumerate()
+		.filter(|(index, input)| input.subject && materialized_levels(node, *index) == 0)
+		.map(|(index, _)| index);
+	match (sources.next(), sources.next()) {
+		(Some(index), None) => Some(index),
+		_ => None,
+	}
+}
+
+/// The materialized subject a node folds, as `(input, levels)`. A gathered
+/// subject is count-preserving, not folded.
+pub(crate) fn folded_subject(node: &Node) -> Option<(u8, u8)> {
+	if node.output.gathers {
+		return None;
+	}
+	node.inputs
+		.iter()
+		.enumerate()
+		.find(|(index, input)| input.subject && materialized_levels(node, *index) > 0)
+		.map(|(index, _)| (index as u8, materialized_levels(node, index)))
+}
+
+fn field_writes(attrs: &[LevelAttr], core_types: &TokenStream2) -> Vec<TokenStream2> {
+	attrs
+		.iter()
+		.map(|attr| {
+			let marker = &attr.marker;
+			let level = attr.level;
+			quote!(#core_types::record::FieldWrite::of::<#marker>(#level))
+		})
+		.collect()
+}
+
+fn level_delta(node: &Node) -> i8 {
+	// A folded subject contributes no base layout, so the delta is relative to
+	// the fresh (empty) base.
+	let base_depth = layout_sources(node).first().map_or(0, |&index| node.inputs[index].shape.depth as i8);
+	node.output.shape.depth as i8 - base_depth
+}
+
+/// How an eager value input binds in eval.
+pub(crate) enum ValueBinding {
+	Carrier,
+	Materialized,
+	Lend,
+	ReadingSecondary,
+	RecordElement,
+	Plain,
+}
+
+/// How a lazy (`impl Node`) input binds in eval. The `Poll` effect further
+/// selects the borrowed vs `__cell`-driven form within `Element`/`Generic`.
+pub(crate) enum LazyBinding {
+	Element,
+	/// The kernel holds the whole record behind a bare generic element.
+	Generic,
+	DeriveRouting,
+	DeriveCarrier,
+	OpaqueRecord,
+}
+
+impl ValueBinding {
+	/// Copies an element out of a record input, so the frame is reclaimed after.
+	pub(crate) fn reads_out(&self) -> bool {
+		matches!(self, ValueBinding::ReadingSecondary | ValueBinding::RecordElement | ValueBinding::Plain)
+	}
+}
+
+/// A record node's lazy inputs consumed as plain elements: their record inputs
+/// need a layout slot at wiring, like the reading secondaries.
+pub(crate) fn element_lazy_indices(regular_fields: &[&ParsedField], node: &Node) -> Vec<usize> {
+	if !matches!(node_kind(node), NodeKind::RecordIo) {
+		return Vec::new();
+	}
+	regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Node(_)) && matches!(lazy_binding(node, *index), LazyBinding::Element))
+		.map(|(index, _)| index)
+		.collect()
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum NodeKind {
+	Flip,
+	RecordIo,
+	Routing,
+	Opaque,
+}
+
+pub(crate) fn node_kind(node: &Node) -> NodeKind {
+	if matches!(node.output.shape.element, Element::Opaque) {
+		NodeKind::Opaque
+	} else if has_attr_io(node) {
+		NodeKind::RecordIo
+	} else if is_routing(node) {
+		NodeKind::Routing
+	} else {
+		NodeKind::Flip
+	}
+}
+
+/// Routing forwards an unbounded generic from a source whole; a bounded generic
+/// or one transformed into a different output type works on the element and flips.
+fn is_routing(node: &Node) -> bool {
+	let Element::Generic(output) = &node.output.shape.element else { return false };
+	node.monomorphizations.is_empty()
+		&& node.generics.iter().any(|generic| &generic.ident == output && generic.bounds.is_empty())
+		&& node
+			.inputs
+			.iter()
+			.any(|input| input.subject && matches!(&input.shape.element, Element::Generic(generic) if generic == output))
+}
+
+fn has_attr_io(node: &Node) -> bool {
+	// Reads on lazy inputs ride the flip; only eager reads make a record-io node.
+	// A gathered output takes the record tail regardless of its write set.
+	node.output.gathers
+		|| node.inputs.iter().any(|input| matches!(input.evaluation, Evaluation::Eager) && !input.shape.attrs.is_empty())
+		|| !node.output.shape.attrs.is_empty()
+		|| !node.output.removes.is_empty()
+}
+
+/// Levels of `input[index]` the output does not carry; `> 0` folds the input
+/// into a `List` before the kernel.
+pub(crate) fn materialized_levels(node: &Node, index: usize) -> u8 {
+	let input = &node.inputs[index];
+	// An eager input's declared `IList` nesting IS its materialization count,
+	// independent of the rank delta; lazy inputs never materialize.
+	match input.evaluation {
+		Evaluation::Eager => input.shape.depth,
+		Evaluation::Lazy => 0,
+	}
+}
+
+pub(crate) fn value_binding(node: &Node, index: usize) -> ValueBinding {
+	let input = &node.inputs[index];
+	let kind = node_kind(node);
+	if materialized_levels(node, index) > 0 {
+		ValueBinding::Materialized
+	} else if matches!(kind, NodeKind::RecordIo | NodeKind::Flip) && index == 0 && input.subject {
+		ValueBinding::Carrier
+	} else if matches!(kind, NodeKind::Flip) && input.lend {
+		ValueBinding::Lend
+	} else if matches!(kind, NodeKind::RecordIo) && !input.shape.attrs.is_empty() {
+		ValueBinding::ReadingSecondary
+	} else if matches!(kind, NodeKind::Flip) || (matches!(kind, NodeKind::Routing) && !input.subject) {
+		ValueBinding::RecordElement
+	} else {
+		ValueBinding::Plain
+	}
+}
+
+pub(crate) fn lazy_binding(node: &Node, index: usize) -> LazyBinding {
+	let input = &node.inputs[index];
+	let kind = node_kind(node);
+	if node.derives && matches!(kind, NodeKind::Routing) && input.subject {
+		LazyBinding::DeriveRouting
+	} else if node.derives && matches!(kind, NodeKind::RecordIo) && input.subject {
+		LazyBinding::DeriveCarrier
+	} else if matches!(kind, NodeKind::Flip) || (matches!(kind, NodeKind::RecordIo) && !input.subject) {
+		LazyBinding::Element
+	} else if matches!(input.shape.element, Element::Opaque) {
+		LazyBinding::OpaqueRecord
+	} else {
+		LazyBinding::Generic
+	}
+}
+
+pub(crate) struct Node {
+	pub(crate) generics: Vec<Generic>,
+	/// Correlated rows (zipped `#[implementations]`, not crossed); empty = erased.
+	pub(crate) monomorphizations: Vec<ImplRow>,
+	pub(crate) inputs: Vec<Input>,
+	pub(crate) output: Output,
+	pub(crate) effect: Effect,
+	/// The context is derived (a `DeriveCtx` bound), so routing sources rebind it.
+	pub(crate) derives: bool,
+}
+
+pub(crate) struct Generic {
+	pub(crate) ident: Ident,
+	pub(crate) bounds: Vec<TypeParamBound>,
+}
+
+/// One monomorphization: a concrete type per monomorphized generic.
+pub(crate) struct ImplRow {
+	pub(crate) assignments: Vec<(Ident, Type)>,
+}
+
+pub(crate) struct Input {
+	pub(crate) ident: Ident,
+	pub(crate) evaluation: Evaluation,
+	pub(crate) shape: ItemShape,
+	/// This input's layout folds into the output.
+	pub(crate) subject: bool,
+	/// Written `&T`; the kernel borrows the evaluated element.
+	pub(crate) lend: bool,
+}
+
+/// `Lazy` = `impl Node<..>`, the kernel drives it.
+pub(crate) enum Evaluation {
+	Eager,
+	Lazy,
+}
+
+pub(crate) struct Output {
+	pub(crate) shape: ItemShape,
+	pub(crate) removes: Vec<LevelAttr>,
+	/// The element position spells `Lane<T>`, so the output frame is a copy of a
+	/// chosen subject lane.
+	pub(crate) gathers: bool,
+}
+
+/// An item's ranked layout; `attrs` are reads on an input, writes on the output.
+pub(crate) struct ItemShape {
+	pub(crate) element: Element,
+	pub(crate) depth: u8,
+	pub(crate) attrs: Vec<LevelAttr>,
+}
+
+// Macro IR built once per node at expansion time, so the variant spread costs nothing at runtime.
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum Element {
+	Concrete(Type),
+	/// Indexes [`Node::generics`].
+	Generic(Ident),
+	/// A whole erased record; the element type is unknown.
+	Opaque,
+}
+
+/// An attribute at a nesting level; `0` = innermost (the element's level).
+pub(crate) struct LevelAttr {
+	pub(crate) marker: Type,
+	pub(crate) level: u8,
+	/// Writes only: the value crosses as an owned copy that parks at the lift.
+	pub(crate) owned: bool,
+}
+
+pub(crate) enum Effect {
+	Pure,
+	Fallible,
+	Progressive,
+	AsyncSource,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::codegen::classify::{Dialect, analyze, context_param, dialect, record_flip, record_opaque, unbounded_generic};
+	use crate::parsing::parse_node_fn;
+	use proc_macro2::TokenStream as TokenStream2;
+	use quote::{ToTokens, quote};
+
+	/// The layout facts every emitter expresses, derived from either the intent
+	/// IR or the resolved class, so the two paths can be checked equal.
+	#[derive(Debug, PartialEq)]
+	struct Facts {
+		sources: Vec<usize>,
+		carried: bool,
+		writes: Vec<String>,
+		removes: Vec<String>,
+		delta: i8,
+	}
+
+	fn markers<'a>(types: impl IntoIterator<Item = &'a Type>) -> Vec<String> {
+		types.into_iter().map(|ty| ty.to_token_stream().to_string()).collect()
+	}
+
+	fn facts_from_ir(node: &Node) -> Facts {
+		let carried = match &node.output.shape.element {
+			Element::Opaque => true,
+			Element::Generic(_) => node.monomorphizations.is_empty(),
+			Element::Concrete(_) => false,
+		};
+		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth as i8);
+		Facts {
+			sources: layout_sources(node),
+			carried,
+			writes: markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)),
+			removes: markers(node.output.removes.iter().map(|attr| &attr.marker)),
+			delta: node.output.shape.depth as i8 - subject_depth,
+		}
+	}
+
+	/// The kinds a supported node resolves to, from the classify predicates in
+	/// `analyze`'s order; the frozen oracle the IR's `node_kind` must reproduce.
+	struct Kinds {
+		record_io: bool,
+		routing: bool,
+		flip: bool,
+		opaque: bool,
+	}
+
+	fn kinds(parsed: &ParsedNodeFn) -> Kinds {
+		let record_io = record_shape(parsed).is_some();
+		let routing = !record_io && routing_io(parsed).is_some();
+		let flip = !record_io && !routing && record_flip(parsed);
+		let opaque = !record_io && !routing && !flip && record_opaque(parsed);
+		Kinds { record_io, routing, flip, opaque }
+	}
+
+	fn skips_carrier(parsed: &ParsedNodeFn) -> bool {
+		record_shape(parsed).is_some_and(|shape| shape.skips_carrier())
+	}
+
+	fn routing_generic(parsed: &ParsedNodeFn) -> Option<Ident> {
+		kinds(parsed).routing.then(|| routing_io(parsed).map(|routing| routing.generic)).flatten()
+	}
+
+	fn token_carrier(parsed: &ParsedNodeFn) -> bool {
+		let element = record_writes(&slot_value_type(&parsed.output_type)).map_or_else(|| slot_value_type(&parsed.output_type), |writes| writes.element);
+		kinds(parsed).record_io && unbounded_generic(parsed, &element).is_some()
+	}
+
+	fn facts_from_signature(parsed: &ParsedNodeFn) -> Facts {
+		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+		let source_ty = |field: &ParsedField| match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type.clone(),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+		};
+		let kinds = kinds(parsed);
+		if kinds.flip {
+			Facts {
+				sources: if flip_carrier(parsed) { vec![0] } else { vec![] },
+				carried: false,
+				writes: vec![],
+				removes: vec![],
+				delta: 0,
+			}
+		} else if kinds.opaque {
+			let record = fields
+				.iter()
+				.position(|field| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_served(output_type)));
+			Facts {
+				sources: record.into_iter().collect(),
+				carried: true,
+				writes: vec![],
+				removes: vec![],
+				delta: 0,
+			}
+		} else if kinds.routing {
+			let generic = routing_generic(parsed).expect("routing has a generic");
+			Facts {
+				sources: fields
+					.iter()
+					.enumerate()
+					.filter(|(_, field)| bare_ident(&source_ty(field)) == Some(&generic))
+					.map(|(index, _)| index)
+					.collect(),
+				carried: true,
+				writes: vec![],
+				removes: vec![],
+				delta: 0,
+			}
+		} else {
+			let (write_markers, removes) = record_writes(&slot_value_type(&parsed.output_type)).map_or((Vec::new(), Vec::new()), |writes| (writes.markers, writes.removes));
+			Facts {
+				sources: if skips_carrier(parsed) { vec![] } else { vec![0] },
+				carried: token_carrier(parsed),
+				writes: markers(write_markers.iter().map(|write| &write.marker)),
+				removes: markers(removes.iter()),
+				delta: 0,
+			}
+		}
+	}
+
+	fn assert_bridge(attr: TokenStream2, item: TokenStream2) -> Node {
+		let mut parsed = parse_node_fn(attr, item).unwrap();
+		parsed.replace_impl_trait_in_input();
+		analyze(&parsed).expect("representative resolves to a supported node");
+		let node = build(&parsed);
+		assert_eq!(facts_from_ir(&node), facts_from_signature(&parsed));
+		node
+	}
+
+	#[test]
+	fn bridge_flip_concrete() {
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn negate(_: impl Ctx, x: f64) -> f64 {
+					-x
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bridge_flip_generic() {
+		assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn add<A: core::ops::Add<B>, B>(_: impl Ctx, #[implementations(f64, u32)] augend: A, #[implementations(f64, u32)] addend: B) -> <A as core::ops::Add<B>>::Output { augend + addend }
+			},
+		);
+	}
+
+	#[test]
+	fn bridge_record_write() {
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn set_opacity(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) {
+					(val, Attr(1.))
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bridge_record_remove() {
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn strip(_: impl Ctx, val: f64) -> (f64, RemoveAttr<Opacity>) {
+					(val, RemoveAttr)
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bridge_record_fresh() {
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				fn make(_: impl Ctx, _: (), fill: f64) -> (f64, Attr<Opacity>) {
+					(fill, Attr(1.))
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bridge_record_write_async_source() {
+		let node = assert_bridge(
+			quote!(category("")),
+			quote!(
+				async fn set_opacity_async(_: impl Ctx, val: f64) -> (f64, Attr<Opacity>) {
+					(val, Attr(1.))
+				}
+			),
+		);
+		assert!(matches!(node_kind(&node), NodeKind::RecordIo), "a writing async source takes the record tail");
+		assert!(matches!(node.effect, Effect::AsyncSource), "the writes do not change the effect axis");
+	}
+
+	#[test]
+	fn bridge_record_fresh_async_source() {
+		assert_bridge(
+			quote!(category("")),
+			quote!(
+				async fn make_async(_: impl Ctx, _: (), fill: f64) -> (f64, Attr<Opacity>) {
+					(fill, Attr(1.))
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bridge_record_owned_write_async_source() {
+		let node = assert_bridge(
+			quote!(category("")),
+			quote!(
+				async fn tag_async(_: impl Ctx, _: (), val: f64) -> (f64, OwnedAttr<Label>) {
+					(val, OwnedAttr::new(""))
+				}
+			),
+		);
+		assert!(node.output.shape.attrs.iter().all(|attr| attr.owned), "an `OwnedAttr` slot crosses the boundary owned");
+	}
+
+	/// An async source's element is the value its slot stores, so a byte-carried
+	/// generic token has no form here.
+	#[test]
+	fn a_generic_token_carrier_has_no_async_source_form() {
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				async fn tag<T>(_: impl Ctx, val: T) -> (T, Attr<Opacity>) {
+					(val, Attr(1.))
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		assert!(record_shape(&parsed).is_none());
+	}
+
+	#[test]
+	fn bridge_routing() {
+		assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn switch<T>(_: impl Ctx, condition: bool, off: impl Node<(), Output = T>, on: impl Node<(), Output = T>) -> T { if condition { on.eval(()) } else { off.eval(()) } }
+			},
+		);
+	}
+
+	#[test]
+	fn bridge_opaque() {
+		assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>> { content.serve(&(), slot) }
+			},
+		);
+	}
+
+	fn ctx_derives(parsed: &ParsedNodeFn) -> bool {
+		context_param(parsed).is_some_and(|ctx| {
+			ctx.bounds
+				.iter()
+				.any(|bound| matches!(bound, TypeParamBound::Trait(trait_bound) if trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx")))
+		})
+	}
+
+	/// The frozen `field_role` classification the IR bindings must reproduce.
+	fn reference_label(parsed: &ParsedNodeFn, raw: bool, index: usize, field: &ParsedField) -> &'static str {
+		let Kinds {
+			record_io: record,
+			routing,
+			flip,
+			opaque,
+		} = kinds(parsed);
+		let skips_carrier = skips_carrier(parsed);
+		let carrier_flip = flip && flip_carrier(parsed);
+		let derives = ctx_derives(parsed);
+		let generic = routing_generic(parsed);
+		let routing_source = |ty: &Type| generic.as_ref().is_some_and(|generic| crate::codegen::classify::routing_source_output(ty, generic));
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => {
+				if index == 0 && ((record && !skips_carrier) || carrier_flip) {
+					"carrier"
+				} else if flip && lend.is_some() {
+					"lend"
+				} else if record && !field.attribute_reads.is_empty() {
+					"reading"
+				} else if flip || (routing && !routing_source(ty)) {
+					"record"
+				} else {
+					"plain"
+				}
+			}
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
+				if derives && routing && routing_source(output_type) {
+					"derive-routing"
+				} else if flip && raw {
+					"flip-raw"
+				} else if flip {
+					"flip-lazy"
+				} else if opaque && raw && is_served(output_type) {
+					"opaque-record"
+				} else if raw {
+					"raw-lazy"
+				} else {
+					"lazy"
+				}
+			}
+		}
+	}
+
+	fn ir_label(node: &Node, index: usize, field: &ParsedField, raw: bool) -> &'static str {
+		match &field.ty {
+			ParsedFieldType::Regular(_) => match value_binding(node, index) {
+				ValueBinding::Carrier => "carrier",
+				ValueBinding::Materialized => "materialized",
+				ValueBinding::Lend => "lend",
+				ValueBinding::ReadingSecondary => "reading",
+				ValueBinding::RecordElement => "record",
+				ValueBinding::Plain => "plain",
+			},
+			ParsedFieldType::Node(_) => match (lazy_binding(node, index), raw) {
+				(LazyBinding::DeriveRouting, _) => "derive-routing",
+				(LazyBinding::DeriveCarrier, _) => "derive-carrier",
+				(LazyBinding::OpaqueRecord, _) => "opaque-record",
+				(LazyBinding::Element, true) => "flip-raw",
+				(LazyBinding::Element, false) => "flip-lazy",
+				(LazyBinding::Generic, true) => "raw-lazy",
+				(LazyBinding::Generic, false) => "lazy",
+			},
+		}
+	}
+
+	fn assert_bindings(attr: TokenStream2, item: TokenStream2) {
+		let mut parsed = parse_node_fn(attr, item).unwrap();
+		parsed.replace_impl_trait_in_input();
+		analyze(&parsed).expect("representative resolves to a supported node");
+		let raw = matches!(dialect(&parsed), Dialect::Poll);
+		let node = build(&parsed);
+		let kinds = kinds(&parsed);
+		let expected_kind = if kinds.record_io {
+			"record-io"
+		} else if kinds.routing {
+			"routing"
+		} else if kinds.flip {
+			"flip"
+		} else {
+			"opaque"
+		};
+		let actual_kind = match node_kind(&node) {
+			NodeKind::RecordIo => "record-io",
+			NodeKind::Flip => "flip",
+			NodeKind::Routing => "routing",
+			NodeKind::Opaque => "opaque",
+		};
+		assert_eq!(actual_kind, expected_kind, "node_kind of {}", parsed.fn_name);
+		let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+		for (index, field) in fields.iter().enumerate() {
+			assert_eq!(ir_label(&node, index, field, raw), reference_label(&parsed, raw, index, field), "field {index} of {}", parsed.fn_name);
+		}
+	}
+
+	#[test]
+	fn bindings_flip() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn negate(_: impl Ctx, x: f64) -> f64 {
+					-x
+				}
+			),
+		);
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn add2(_: impl Ctx, a: f64, b: f64) -> f64 {
+					a + b
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_lend() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn borrow(_: impl Ctx, prim: f64, other: &f64) -> f64 {
+					prim + *other
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_reading_secondary() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn read_op(_: impl Ctx, carrier: f64, (other, op): (f64, Attr<Opacity>)) -> f64 {
+					carrier + other
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_flip_lazy() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn apply(_: impl Ctx, inner: impl Node<(), Output = f64>) -> f64 {
+					inner.eval(())
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_flip_lazy_reads() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn apply_reads(_: impl Ctx, carrier: f64, inner: impl Node<(), Output = (f64, Attr<Opacity>)>) -> f64 {
+					carrier + inner.eval(()).0
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_flip_raw() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn poll_apply(_: impl Ctx, inner: impl Node<(), Output = f64>) -> GPoll<f64> {
+					inner.eval(())
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_skip_impl_generic() {
+		// A bounded generic forwarded whole (passthrough) flips, not routes.
+		assert_bindings(
+			quote!(category(""), skip_impl),
+			quote!(
+				fn passthrough<T: Send>(_: impl Ctx, content: T) -> T {
+					content
+				}
+			),
+		);
+		// A generic transformed into a different output type flips.
+		assert_bindings(
+			quote!(category(""), skip_impl),
+			quote!(
+				fn into_ty<T: Send + Into<O>, O: Send>(_: impl Ctx, value: T, #[data] _out: PhantomData<O>) -> O {
+					value.into()
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_routing() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn switch<T>(_: impl Ctx, condition: bool, off: impl Node<(), Output = T>, on: impl Node<(), Output = T>) -> T {
+					if condition { on.eval(()) } else { off.eval(()) }
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_derive_routing() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn ctx_mod<T>(_: impl Ctx + DeriveCtx, inner: impl Node<(), Output = T>) -> T {
+					inner.eval(())
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn bindings_opaque() {
+		assert_bindings(
+			quote!(category("")),
+			quote!(
+				fn memo<'e, 'l>(_: impl Ctx, #[data] cache: Store, content: impl Node<Context<'_>>, slot: FrameClaim<'e, 'l>) -> GPoll<Served<'e>> {
+					content.serve(&(), slot)
+				}
+			),
+		);
+	}
+
+	#[test]
+	fn creator_ilist_return_pushes_a_level() {
+		let mut parsed = parse_node_fn(
+			quote!(category(""), extent(repeat_extent)),
+			quote!(
+				fn repeat<T>(_: impl Ctx, (element, transform): (T, Attr<Transform>), count: u32) -> IList<(T, Attr<Transform>)> {
+					emit(element, Attr(count as f64))
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+		// The `IList` return pushes one rank level, with the element and the
+		// written attribute read from the stripped row.
+		assert_eq!(node.output.shape.depth, 1);
+		assert!(matches!(node.output.shape.element, Element::Generic(_)));
+		assert_eq!(markers(node.output.shape.attrs.iter().map(|attr| &attr.marker)), vec!["Transform".to_string()]);
+		let subject_depth = node.inputs.iter().find(|input| input.subject).map_or(0, |input| input.shape.depth);
+		assert_eq!(node.output.shape.depth as i8 - subject_depth as i8, 1, "creator level_delta is +1");
+	}
+
+	#[test]
+	fn reducer_ilist_input_collapses_a_level() {
+		let mut parsed = parse_node_fn(
+			quote!(category("")),
+			quote!(
+				fn sum(_: impl Ctx, items: IList<f64>) -> f64 {
+					items.into_iter().sum()
+				}
+			),
+		)
+		.unwrap();
+		parsed.replace_impl_trait_in_input();
+		let node = build(&parsed);
+		// The `IList` input is a depth-1 subject; the scalar output collapses it.
+		let subject = node.inputs.iter().find(|input| input.subject).expect("the reduced input is the subject");
+		assert_eq!(subject.shape.depth, 1);
+		assert_eq!(node.output.shape.depth, 0);
+		assert_eq!(node.output.shape.depth as i8 - subject.shape.depth as i8, -1, "the reducer collapses one level");
+	}
+
+	#[test]
+	fn monomorphizations_key_by_generic() {
+		let node = assert_bridge(
+			quote!(category("")),
+			quote! {
+				fn add<A: core::ops::Add<B>, B>(_: impl Ctx, #[implementations(f64, u32)] augend: A, #[implementations(f64, u32)] addend: B) -> <A as core::ops::Add<B>>::Output { augend + addend }
+			},
+		);
+		let rows: Vec<Vec<(String, String)>> = node
+			.monomorphizations
+			.iter()
+			.map(|row| row.assignments.iter().map(|(generic, ty)| (generic.to_string(), ty.to_token_stream().to_string())).collect())
+			.collect();
+		assert_eq!(
+			rows,
+			vec![
+				vec![("A".to_string(), "f64".to_string()), ("B".to_string(), "f64".to_string())],
+				vec![("A".to_string(), "u32".to_string()), ("B".to_string(), "u32".to_string())],
+			]
+		);
+	}
+}
