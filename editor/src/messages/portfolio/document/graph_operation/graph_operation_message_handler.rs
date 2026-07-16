@@ -10,7 +10,10 @@ use graph_craft::descriptor;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
 use graphene_std::list::List;
-use graphene_std::renderer::usvg_utils::extract_graphite_gradient_stops;
+use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -30,9 +33,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 		let GraphOperationMessageContext { network_interface, .. } = context;
 
 		match message {
-			GraphOperationMessage::FillSet { layer, fill } => {
+			GraphOperationMessage::FillColorSet { layer, color } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_set(fill);
+					modify_inputs.fill_color_set(color);
+				}
+			}
+			GraphOperationMessage::FillGradientSet {
+				layer,
+				gradient,
+				gradient_type,
+				spread_method,
+				transform,
+			} => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -45,9 +59,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_stops_set(stops);
 				}
 			}
-			GraphOperationMessage::GradientLineSet { layer, start, end } => {
+			GraphOperationMessage::GradientTransformSet { layer, transform } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_line_set(start, end);
+					modify_inputs.gradient_transform_set(transform);
 				}
 			}
 			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
@@ -76,9 +90,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
-			GraphOperationMessage::StrokeSet { layer, stroke } => {
+			GraphOperationMessage::StrokeSet { layer, color, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.stroke_set(stroke);
+					modify_inputs.stroke_set(color, stroke);
 				}
 			}
 			GraphOperationMessage::TransformChange {

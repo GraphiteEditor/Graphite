@@ -1,13 +1,12 @@
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{WgpuContext, WgpuExecutor};
+use crate::wrapper::{WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
 pub(crate) struct RenderState {
-	surface: wgpu::Surface<'static>,
-	context: WgpuContext,
+	surface: WgpuSurface,
 	executor: WgpuExecutor,
 	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
@@ -162,12 +161,11 @@ impl RenderState {
 			cache: None,
 		});
 
-		let wgpu_executor = WgpuExecutor::with_context(context.clone()).expect("Failed to create WgpuExecutor");
+		let executor = WgpuExecutor::with_context(context).expect("Failed to create WgpuExecutor");
 
 		Self {
 			surface,
-			context,
-			executor: wgpu_executor,
+			executor,
 			config,
 			render_pipeline,
 			transparent_texture,
@@ -193,12 +191,6 @@ impl RenderState {
 		self.desired_width = width;
 		self.desired_height = height;
 		self.surface_outdated = true;
-
-		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
-			self.config.width = width;
-			self.config.height = height;
-			self.surface.configure(&self.context.device, &self.config);
-		}
 	}
 
 	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: std::sync::Arc<wgpu::Texture>) {
@@ -206,8 +198,12 @@ impl RenderState {
 		self.update_bindgroup();
 	}
 
-	pub(crate) fn bind_ui_texture(&mut self, bind_ui_texture: wgpu::Texture) {
-		self.ui_texture = Some(bind_ui_texture);
+	pub(crate) fn bind_ui_texture(&mut self, ui_texture: wgpu::Texture) {
+		if self.ui_texture.as_ref() == Some(&ui_texture) {
+			self.surface_outdated = true;
+			return;
+		}
+		self.ui_texture = Some(ui_texture);
 		self.update_bindgroup();
 	}
 
@@ -235,7 +231,7 @@ impl RenderState {
 		let result = futures::executor::block_on(self.executor.render_vello_scene(&scene, size, &Default::default(), None));
 		match result {
 			Ok(texture) => {
-				self.overlays_texture = Some(texture);
+				self.overlays_texture = Some(texture.into());
 			}
 			Err(e) => {
 				self.overlays_texture = None;
@@ -250,6 +246,14 @@ impl RenderState {
 		if !self.surface_outdated {
 			return Ok(());
 		}
+
+		// Apply resize once per presented frame.
+		if self.desired_width > 0 && self.desired_height > 0 && (self.config.width != self.desired_width || self.config.height != self.desired_height) {
+			self.config.width = self.desired_width;
+			self.config.height = self.desired_height;
+			self.surface.configure(&self.executor.context().device, &self.config);
+		}
+
 		let ui_scale = if let Some(ui_texture) = &self.ui_texture
 			&& (self.desired_width != ui_texture.width() || self.desired_height != ui_texture.height())
 		{
@@ -262,21 +266,19 @@ impl RenderState {
 			self.render_overlays(scene);
 		}
 
-		let (output, suboptimal) = match self.surface.get_current_texture() {
-			wgpu::CurrentSurfaceTexture::Success(t) => (t, false),
-			// wgpu reports the swapchain no longer matches the underlying surface; present this frame and reconfigure after present, since `Surface::configure` panics while an acquired `SurfaceTexture` is still alive
-			wgpu::CurrentSurfaceTexture::Suboptimal(t) => (t, true),
-			// Window is minimized or behind another window: skip the frame silently and try again once it becomes visible
-			wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
-			wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
-			wgpu::CurrentSurfaceTexture::Outdated => return Err(RenderError::SurfaceOutdated),
-			wgpu::CurrentSurfaceTexture::Timeout => return Err(RenderError::SurfaceTimeout),
-			wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
+		let (surface_texture, suboptimal) = match self.surface.get_current_texture(&self.executor.context().queue) {
+			WgpuCurrentSurfaceTexture::Success(t) => (t, false),
+			WgpuCurrentSurfaceTexture::Suboptimal(t) => (t, true),
+			WgpuCurrentSurfaceTexture::Occluded => return Ok(()),
+			WgpuCurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
+			WgpuCurrentSurfaceTexture::Outdated => return Err(RenderError::SurfaceOutdated),
+			WgpuCurrentSurfaceTexture::Timeout => return Err(RenderError::SurfaceTimeout),
+			WgpuCurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
 		};
 
-		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+		let mut encoder = self.executor.context().device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -314,12 +316,12 @@ impl RenderState {
 				tracing::warn!("No bind group available - showing clear color only");
 			}
 		}
-		self.context.queue.submit(std::iter::once(encoder.finish()));
+		surface_texture.queue.submit(std::iter::once(encoder.finish()));
 		window.pre_present_notify();
-		output.present();
+		surface_texture.present();
 
 		if suboptimal {
-			self.surface.configure(&self.context.device, &self.config);
+			self.surface.configure(&self.executor.context().device, &self.config);
 		}
 
 		if ui_scale.is_some() {
@@ -336,7 +338,7 @@ impl RenderState {
 		let overlays_texture_view = self.overlays_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
-		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+		let bind_group = self.executor.context().device.create_bind_group(&wgpu::BindGroupDescriptor {
 			layout: &self.render_pipeline.get_bind_group_layout(0),
 			entries: &[
 				wgpu::BindGroupEntry {

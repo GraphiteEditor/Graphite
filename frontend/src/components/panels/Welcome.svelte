@@ -35,7 +35,7 @@
 	<LayoutCol class="bottom-message">
 		{#if import.meta.env.MODE === "native"}
 			<TextLabel italic={true} disabled={true}>
-				You are testing Release Candidate 5 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
+				You are testing Release Candidate 6 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
 			</TextLabel>
 		{:else if new Date() < new Date(2026, 10, 1)}
 			<TextLabel italic={true} disabled={true}>

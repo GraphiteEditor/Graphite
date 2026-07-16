@@ -4,8 +4,6 @@ pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
 
-use std::sync::Arc;
-
 use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
 use anyhow::Result;
@@ -14,6 +12,8 @@ use core_types::color::SRGBA8;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
+use raster_types::Texture;
+use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::{Origin3d, TextureAspect};
 
@@ -25,6 +25,10 @@ pub use pipeline::PipelineCache as WgpuPipelineCache;
 pub use rendering::RenderContext;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
+pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
+pub use wgpu_sync::Instance as WgpuInstance;
+pub use wgpu_sync::Queue as WgpuQueue;
+pub use wgpu_sync::Surface as WgpuSurface;
 
 const TEXTURE_CACHE_SIZE: u64 = 256 * 1024 * 1024; // 256 MiB
 
@@ -64,7 +68,7 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 }
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Arc<wgpu::Texture>> {
+	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
 		let texture = self.request_texture(size).await;
 
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -81,14 +85,18 @@ impl WgpuExecutor {
 			let mut renderer = self.inner.vello_renderer.lock().await;
 			for (image_brush, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture: texture.clone(),
+					texture: (**texture).clone(),
 					mip_level: 0,
 					origin: Origin3d::ZERO,
 					aspect: TextureAspect::All,
 				};
 				renderer.override_image(&image_brush.image, Some(texture_view));
 			}
-			renderer.render_to_texture(&self.context().device, &self.context().queue, scene, &texture_view, &render_params)?;
+
+			{
+				let queue = self.context().queue.lock();
+				renderer.render_to_texture(&self.context().device, &queue, scene, &texture_view, &render_params)?;
+			}
 			for (image_brush, _) in context.resource_overrides.iter() {
 				renderer.override_image(&image_brush.image, None);
 			}
@@ -101,7 +109,7 @@ impl WgpuExecutor {
 		pipeline.init::<P>(self);
 	}
 
-	pub async fn request_texture(&self, size: UVec2) -> Arc<wgpu::Texture> {
+	pub async fn request_texture(&self, size: UVec2) -> Texture {
 		self.inner.texture_cache.lock().await.request_texture(&self.context().device, size)
 	}
 }

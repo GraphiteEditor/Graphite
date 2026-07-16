@@ -13,7 +13,7 @@ use crate::{EDITOR_HAS_CRASHED, Error, FRONTEND_READY, MESSAGE_BUFFER};
 #[cfg(not(feature = "native"))]
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Editor, Environment, Host, Platform};
-use editor::consts::FILE_EXTENSION;
+use editor::consts::{FILE_EXTENSION, GDD_FILE_EXTENSION};
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
@@ -95,7 +95,10 @@ impl EditorWrapper {
 
 		let application_io = PlatformApplicationIo::new().await;
 		let wake = crate::helpers::async_wake_callback();
-		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, application_io, wake);
+		// On web the working-copy root is an OPFS directory name (no real filesystem path); each
+		// document mounts under `documents/<id_hex>`.
+		let working_copy_root = Some(std::path::PathBuf::from("documents"));
+		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, working_copy_root, application_io, wake);
 
 		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
@@ -331,6 +334,12 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = fileExtension)]
 	pub fn file_extension(&self) -> String {
 		FILE_EXTENSION.into()
+	}
+
+	/// Get the constant `GDD_FILE_EXTENSION`
+	#[wasm_bindgen(js_name = gddFileExtension)]
+	pub fn gdd_file_extension(&self) -> String {
+		GDD_FILE_EXTENSION.into()
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
@@ -756,6 +765,15 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	/// Reorder a draggable Properties panel section to the given index among its peers.
+	#[wasm_bindgen(js_name = reorderPropertiesSection)]
+	pub fn reorder_properties_section(&self, node_id: u64, insert_index: usize) {
+		self.dispatch(DocumentMessage::ReorderPropertiesSection {
+			node_id: NodeId(node_id),
+			insert_index,
+		});
+	}
+
 	/// Duplicate the selected layers, placing the copies within the given folder at the given index.
 	/// If the folder is `None`, they are inserted into the document root.
 	/// If the insert index is `None`, they are inserted at the start of the folder.
@@ -877,7 +895,7 @@ impl EditorWrapper {
 			None
 		};
 
-		let message = PortfolioMessage::PasteImage {
+		let message = PortfolioMessage::InsertImage {
 			name,
 			image,
 			mouse,
@@ -899,7 +917,7 @@ impl EditorWrapper {
 			None
 		};
 
-		let message = PortfolioMessage::PasteSvg {
+		let message = PortfolioMessage::InsertSvg {
 			name,
 			svg,
 			mouse,
@@ -920,6 +938,12 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = setNodePinned)]
 	pub fn set_node_pinned(&self, id: u64, pinned: bool) {
 		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned });
+	}
+
+	/// Collapse or expand a node's section in the Properties panel
+	#[wasm_bindgen(js_name = toggleNodePropertiesSectionExpanded)]
+	pub fn toggle_node_properties_section_expanded(&self, id: u64) {
+		self.dispatch(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) });
 	}
 
 	/// Delete a layer or node given its node ID

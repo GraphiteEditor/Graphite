@@ -1,21 +1,78 @@
 .youtube-embed {
 	position: relative;
 	width: 100%;
+	padding-top: calc(100% / (16 / 9));
+	// Lets the overlay chrome scale proportionally with the player's width via `cqw` units
+	container-type: inline-size;
 
-	&.aspect-16x9 {
-		padding-top: calc(100% / (16 / 9));
-	}
-
-	img,
+	.youtube-embed-thumbnail,
+	.youtube-embed-shade,
 	iframe {
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		top: 0;
-		left: 0;
+		inset: 0;
+		border: none;
 	}
 
-	img {
+	.youtube-embed-thumbnail {
 		cursor: pointer;
+		object-fit: cover;
+		background: #000;
+	}
+
+	.youtube-embed-shade {
+		height: 8.75cqw;
+		background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.6), transparent);
+		pointer-events: none;
+	}
+
+	.youtube-embed-play {
+		position: absolute;
+		transform: translate(-50%, -50%);
+		top: 50%;
+		left: 50%;
+		width: 8.5cqw;
+		height: auto;
+		pointer-events: none;
+	}
+
+	.youtube-embed-title {
+		position: absolute;
+		top: 1cqw;
+		left: 3.4cqw;
+		right: 3.4cqw;
+		font-size: 2.5cqw;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-decoration: none;
+		color: #fff;
+		mask-image: linear-gradient(to right, #fff 95%, transparent);
+	}
+
+	.youtube-embed-watch {
+		display: flex;
+		align-items: center;
+		position: absolute;
+		border-radius: 3cqw;
+		height: 6cqw;
+		right: 3.6cqw;
+		bottom: 1.5cqw;
+		padding: 0 3cqw;
+		gap: 0.5cqw;
+		background: rgba(0, 0, 0, 0.3);
+		font-size: 2.25cqw;
+		font-weight: 400;
+		color: #fff;
+		text-decoration: none;
+
+		&:hover {
+			background: rgba(40, 40, 40, 0.6);
+		}
+
+		img {
+			height: 2.3cqw;
+		}
 	}
 }

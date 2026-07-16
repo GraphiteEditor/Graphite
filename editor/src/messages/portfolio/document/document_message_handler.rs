@@ -1,3 +1,5 @@
+use super::DocumentHistory;
+use super::document_diff::diff_networks;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
@@ -5,7 +7,7 @@ use super::utility_types::network_interface::{self, NodeNetworkInterface, Transa
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
-	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -35,14 +37,15 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graphene_std::graphic::is_paint_present;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
 use graphene_std::subpath::Subpath;
-use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::{Fill, RenderMode};
+use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::{PointId, graphic_types};
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -64,7 +67,8 @@ pub struct DocumentMessageContext<'a> {
 	pub fonts: &'a FontsMessageHandler,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
+#[derive(derivative::Derivative, serde::Serialize, serde::Deserialize, ExtractField)]
+#[derivative(Clone, Debug)]
 #[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================
@@ -94,6 +98,9 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
+	/// The node IDs whose section is collapsed in the Properties panel.
+	#[serde(default)]
+	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	pub commit_hash: String,
@@ -113,6 +120,12 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
+	// TODO: Eventually remove this document upgrade code
+	/// Fill nodes whose decomposed legacy gradient still awaits its bounding box measurement, each recorded as its enclosing
+	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
+	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -124,23 +137,15 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
-	// TODO: Eventually remove this document upgrade code
-	/// Set when a freshly-opened document still has legacy bounding-box-relative gradients; the deferred gradient
-	/// migration converts them to absolute after the first graph run (when geometry bounds are available) and clears this.
-	#[serde(skip)]
-	pub(crate) pending_gradient_migration: bool,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
 	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
 	#[serde(skip)]
 	selection_network_path: Vec<NodeId>,
-	/// Stack of document network snapshots for previous history states.
+	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
-	document_undo_history: VecDeque<NodeNetworkInterface>,
-	/// Stack of document network snapshots for future history states.
-	#[serde(skip)]
-	document_redo_history: VecDeque<NodeNetworkInterface>,
+	history: DocumentHistory,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -173,6 +178,7 @@ impl Default for DocumentMessageHandler {
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
+			properties_panel_collapsed_sections: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -181,17 +187,16 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
+			// TODO: Eventually remove this document upgrade code
+			pending_gradient_bbox_bake: Vec::new(),
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			path: None,
-			// TODO: Eventually remove this document upgrade code
-			pending_gradient_migration: false,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
-			document_undo_history: VecDeque::new(),
-			document_redo_history: VecDeque::new(),
+			history: DocumentHistory::default(),
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -248,6 +253,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_name: self.name.as_str(),
 					fonts,
 					properties_panel_open,
+					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -271,6 +277,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
 						collapsed: &mut self.collapsed,
+						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
@@ -396,8 +403,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, resource_storage, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, resource_storage, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -726,6 +733,39 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				self.move_selected_layers_to(parent, insert_index, responses);
 			}
+			DocumentMessage::ReorderPropertiesSection { node_id, insert_index } => {
+				// The Properties panel shows draggable sections in two cases, disambiguated by the current selection:
+				// a single selected layer (reorder within its node chain) or no selection (reorder the pinned nodes).
+				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path);
+				let Some(selected_nodes) = selected_nodes else { return };
+
+				let (mut layers, mut nodes) = (Vec::new(), Vec::new());
+
+				for selected in selected_nodes.selected_nodes() {
+					if self.network_interface.is_layer(selected, &self.selection_network_path) {
+						layers.push(*selected);
+					} else {
+						nodes.push(*selected);
+					}
+				}
+
+				layers.sort();
+				layers.dedup();
+
+				if layers.len() == 1 {
+					// Reorder a node within the selected layer's chain by rewiring the graph
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::ReorderChainNode { node_id, insert_index });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(PropertiesPanelMessage::Refresh);
+				} else if layers.is_empty() && nodes.is_empty() {
+					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed)
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::ReorderPinnedNode { node_id, insert_index });
+					responses.add(PropertiesPanelMessage::Refresh);
+				}
+			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
 				let all_layers_to_group_sorted = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
@@ -753,7 +793,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let resize_opposite = ipp.keyboard.key(resize_opposite);
 				self.nudge_selected_layers(delta_x, delta_y, resize, resize_opposite, responses);
 			}
-			DocumentMessage::PasteImage {
+			DocumentMessage::InsertImage {
 				name,
 				image,
 				mouse,
@@ -784,7 +824,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
-				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::StartTransaction);
 
 				let layer = graph_modification_utils::new_image_layer(image, layer_node_id, layer_parent, responses);
 
@@ -793,7 +833,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						node_id: layer.to_node(),
 						network_path: Vec::new(),
 						alias: name,
-						skip_adding_history_step: false,
+						// Fold the name into the paste's single transaction so the whole paste is one undo step.
+						skip_adding_history_step: true,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -814,10 +855,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					skip_rerender: false,
 				});
 
+				responses.add(DocumentMessage::CommitTransaction);
+
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
-			DocumentMessage::PasteSvg {
+			DocumentMessage::InsertSvg {
 				name,
 				svg,
 				mouse,
@@ -851,7 +894,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						node_id: layer.to_node(),
 						network_path: Vec::new(),
 						alias: name,
-						skip_adding_history_step: false,
+						// Fold the name into the paste's single transaction so the whole paste is one undo step.
+						skip_adding_history_step: true,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -985,28 +1029,63 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
-				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
-				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
+				// Save as a `.gdd` container or a plain legacy `.graphite`, per the editor preference.
+				let save_as_gdd = preferences.save_as_gdd;
+				let extension = if save_as_gdd { GDD_FILE_EXTENSION } else { FILE_EXTENSION };
+				let name = format!("{}.{}", self.name.clone(), extension);
+
+				// Keep the path's extension in sync with the chosen format so bytes and filename agree.
+				let path = match message {
+					DocumentMessage::SaveDocumentAs => None,
+					_ => self.path.clone().map(|path| path.with_extension(extension)),
+				};
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
+				// The clone shares the working-copy container (Arc), so it reads the state the queued
+				// AutoSaveActiveDocument just committed.
 				let mut document = self.clone();
 				let resources_load_handle = resource_storage.resources();
+				let export_load_handle = resource_storage.resources();
 
 				responses.add(async move {
 					document.resources.collect_garbage(document.used_resources(false).as_ref());
 					document.resources.embed_resources(resources_load_handle).await;
 
-					let content = document.serialize_document().into_bytes().into();
+					// Legacy .graphite blob with resources embedded inline, so it is self-contained and also
+					// serves as the .gdd recovery fallback.
+					let legacy_document = document.serialize_document().into_bytes();
+
+					// A .gdd exports the working copy with the legacy blob embedded, falling back to the bare
+					// blob when there is no working copy or the export fails.
+					let content = match (save_as_gdd, document.history.storage()) {
+						(false, _) => legacy_document,
+						(true, Some(storage)) => storage
+							.export_to_bytes(
+								document_format::ExportFormat::Xz,
+								document_format::ExportOptions::default(),
+								export_load_handle.as_ref(),
+								Some(&legacy_document),
+							)
+							.await
+							.unwrap_or_else(|error| {
+								log::error!("Save: building .gdd export failed, falling back to legacy .graphite: {error}");
+								legacy_document
+							}),
+						(true, None) => {
+							log::warn!("Save: working copy not mounted yet, saving legacy .graphite only");
+							legacy_document
+						}
+					};
 
 					Message::Frontend(FrontendMessage::TriggerSaveDocument {
 						document_id,
 						name,
 						path,
 						folder,
-						content,
+						content: content.into(),
 					})
 				});
 			}
@@ -1018,8 +1097,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
-					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
-						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					if path.extension().is_some_and(|extension| extension == FILE_EXTENSION || extension == GDD_FILE_EXTENSION) {
+						path.file_stem().map(|stem| stem.to_string_lossy().to_string())
 					} else {
 						None
 					}
@@ -1252,12 +1331,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
+				self.retire_storage_interaction();
+
 				self.network_interface.start_transaction();
-				let network_interface_clone = self.network_interface.clone();
-				self.document_undo_history.push_back(network_interface_clone);
-				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-					self.document_undo_history.pop_front();
-				}
+				self.history.push_undo(self.network_interface.clone());
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -1273,14 +1350,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			},
 			DocumentMessage::CancelTransaction => {
 				self.network_interface.finish_transaction();
-				self.document_undo_history.pop_back();
+				self.history.discard_last_undo();
 			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 				self.network_interface.finish_transaction();
-				self.document_redo_history.clear();
+				self.history.clear_redo();
+
+				self.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
@@ -1329,6 +1409,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
+				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
+					self.properties_panel_collapsed_sections.remove(index);
+				} else {
+					self.properties_panel_collapsed_sections.push(node_id);
+				}
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
@@ -1707,6 +1795,35 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Build a document handler from a `.gdd` working copy.
+	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, name: String, path: Option<std::path::PathBuf>) -> Self {
+		let mut document = Self {
+			network_interface: interface,
+			name,
+			path,
+			..Default::default()
+		};
+
+		document.apply_stored_document_settings(storage.view_settings());
+		match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => document.resources.registry = resource_registry,
+			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
+		}
+		document.history.set_storage(Some(storage));
+
+		document
+	}
+
+	/// Post-load fixups for a document built from storage.
+	pub fn finalize_storage_load(&mut self) {
+		for (node_id, node, path) in self.network_interface.document_network().clone().recursive_nodes() {
+			self.network_interface.validate_input_metadata(node_id, node, &path);
+			self.network_interface.validate_output_names(node_id, node, &path);
+		}
+
+		self.network_interface.load_structure();
+	}
+
 	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
 	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
 		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
@@ -1880,6 +1997,133 @@ impl DocumentMessageHandler {
 	/// Empty when the selection lives in the root document network.
 	pub fn selection_network_path(&self) -> &[NodeId] {
 		&self.selection_network_path
+	}
+
+	/// The `Gdd` working copy, `None` until the mount future resolves.
+	pub fn storage(&self) -> Option<&document_format::GddV1> {
+		self.history.storage()
+	}
+
+	/// Mutable access to the `Gdd` working copy.
+	pub fn storage_mut(&mut self) -> Option<&mut document_format::GddV1> {
+		self.history.storage_mut()
+	}
+
+	/// Attach (or clear) the `Gdd` working copy once the mount future resolves.
+	pub fn set_storage(&mut self, storage: Option<document_format::GddV1>) {
+		self.history.set_storage(storage);
+	}
+
+	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
+	pub(crate) fn retire_storage_interaction(&mut self) {
+		self.history.retire_storage_interaction();
+	}
+
+	/// Stages the runtime network into the `Gdd` working copy.
+	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
+
+		if self.history.storage().is_none() {
+			return;
+		}
+
+		let view_settings = DocumentSettings {
+			document_ptz: &self.document_ptz,
+			render_mode: &self.render_mode,
+			overlays_visibility: &self.overlays_visibility_settings,
+			rulers_visible: self.rulers_visible,
+			snapping_state: &self.snapping_state,
+			collapsed: &self.collapsed,
+		}
+		.to_view_map();
+
+		let legacy_document = self.serialize_document();
+
+		self.history
+			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
+
+		if validate {
+			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// Restore `view_settings` map into the document.
+	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
+		use graph_storage::attr::session::doc;
+
+		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
+			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())
+		}
+
+		if let Some(value) = decode(view_settings, doc::PTZ) {
+			self.document_ptz = value;
+		}
+		if let Some(value) = decode(view_settings, doc::RENDER_MODE) {
+			self.render_mode = value;
+		}
+		if let Some(value) = decode(view_settings, doc::OVERLAYS) {
+			self.overlays_visibility_settings = value;
+		}
+		if let Some(value) = decode(view_settings, doc::RULERS_VISIBLE) {
+			self.rulers_visible = value;
+		}
+		if let Some(value) = decode(view_settings, doc::SNAPPING) {
+			self.snapping_state = value;
+		}
+		if let Some(value) = decode(view_settings, doc::COLLAPSED) {
+			self.collapsed = value;
+		}
+	}
+
+	/// Move the `Gdd` undo/redo cursor and spawn the async future that rebuilds the
+	/// interface from the cursor and swaps it in. `had_oracle` records whether the legacy snapshot already
+	/// applied, so the completion can compare; it travels with the spawned message. Returns whether the
+	/// cursor moved, so callers know a rebuild is pending.
+	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, resource_storage: &ResourceStorageMessageHandler, had_oracle: bool, undo: bool, responses: &mut VecDeque<Message>) -> bool {
+		let Some(gdd) = self.history.move_cursor(undo) else { return false };
+
+		responses.add(crate::messages::portfolio::document_storage_io::rebuild_gdd_cursor(
+			gdd,
+			resource_storage.resources_mut(),
+			document_id,
+			had_oracle,
+		));
+		true
+	}
+
+	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
+	pub(crate) fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
+		rebuilt.copy_all_transient_view_state(&self.network_interface);
+		std::mem::swap(&mut rebuilt.resolved_types, &mut self.network_interface.resolved_types);
+		rebuilt.load_structure();
+
+		if validate && had_oracle {
+			self.compare_rebuild_against_legacy(&rebuilt);
+		}
+
+		self.network_interface = rebuilt;
+
+		if validate {
+			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
+			self.history.verify_cursor_matches_runtime(&self.network_interface, &self.resources.registry, &current_resources);
+		}
+
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
+	}
+
+	/// Check if the rebuilt network equals the legacy-restored one. Logs drift (panics in tests).
+	fn compare_rebuild_against_legacy(&self, rebuilt: &NodeNetworkInterface) {
+		let legacy = self.network_interface.document_network();
+		let candidate = rebuilt.document_network();
+		if candidate != legacy {
+			log::error!("undo/redo rebuild diverged from the legacy snapshot\n{}", diff_networks(legacy, candidate));
+			#[cfg(test)]
+			panic!("undo/redo rebuild diverged from the legacy snapshot")
+		}
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -2159,18 +2403,20 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(previous_network) = self.undo(viewport, responses) else { return };
+	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
+		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
+			self.history.push_redo(previous_network);
+			true
+		} else {
+			false
+		};
 
-		self.document_redo_history.push_back(previous_network);
-		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			self.document_redo_history.pop_front();
-		}
+		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
 	}
 
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.document_undo_history.pop_back()?;
+		let mut network_interface = self.history.pop_undo()?;
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
@@ -2195,19 +2441,20 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
-		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
-		let Some(previous_network) = self.redo(viewport, responses) else { return };
+	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
+		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
+			self.history.push_undo(previous_network);
+			true
+		} else {
+			false
+		};
 
-		self.document_undo_history.push_back(previous_network);
-		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			self.document_undo_history.pop_front();
-		}
+		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.document_redo_history.pop_back()?;
+		let mut network_interface = self.history.pop_redo()?;
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
@@ -2516,29 +2763,20 @@ impl DocumentMessageHandler {
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let style = self.network_interface.document_metadata().layer_vector_data.get(&layer).map(|arc| arc.style.clone());
-			let Some(style) = style else {
+			let Some(vector_data) = self.network_interface.document_metadata().layer_vector_data.get(&layer) else {
 				resulting_layers.push(layer.to_node());
 				continue;
 			};
+			let stroke = vector_data.stroke.as_ref();
 
 			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
 			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
 
-			let has_fill = if let Some(list) = fill_graphic_list {
-				list.element(0).is_some()
-			} else {
-				!matches!(style.fill, Fill::None)
-			};
-			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
-			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
-			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no attribute is present.
-			let stroke_visible = if let Some(list) = stroke_graphic_list {
-				list.element(0).is_some_and(|g| !g.is_fully_transparent())
-			} else {
-				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
-			};
-			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
+			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
+			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
+			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
+			let stroke_visible = stroke_graphic_list.is_some_and(|list| list.element(0).is_some_and(|g| !g.is_fully_transparent()));
+			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
@@ -3542,8 +3780,7 @@ impl DocumentMessageHandler {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
 		if include_history {
-			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
-			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.history.collect_used_resources(&mut resources);
 		}
 		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
 	}
@@ -3766,6 +4003,21 @@ fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: 
 mod document_message_handler_tests {
 	use super::*;
 	use crate::test_utils::test_prelude::*;
+
+	#[test]
+	fn pending_gradient_bakes_round_trip_through_serialization() {
+		let document = DocumentMessageHandler {
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::Gradient::default())],
+			..Default::default()
+		};
+
+		let serialized = document.serialize_document();
+		let deserialized = DocumentMessageHandler::deserialize_document(&serialized).expect("Document with pending gradient bakes should deserialize");
+		assert_eq!(deserialized.pending_gradient_bbox_bake, document.pending_gradient_bbox_bake);
+
+		// The common empty case must not add the field to saved files
+		assert!(!DocumentMessageHandler::default().serialize_document().contains("pending_gradient_bbox_bake"));
+	}
 
 	#[tokio::test]
 	async fn test_layer_selection_with_shift_and_ctrl() {

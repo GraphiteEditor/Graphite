@@ -10,6 +10,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_implementations_for_generics,
 		validate_primary_input_expose,
 		validate_min_max,
+		validate_range_slider_bounds,
 	];
 
 	for validator in validators {
@@ -39,18 +40,18 @@ fn validate_min_max(parsed: &ParsedNodeFn) {
 				if soft_min_value == hard_min_value {
 					emit_error!(
 						pat_ident.span(),
-						"Unnecessary #[soft_min] attribute on `{}`, as #[hard_min] has the same value.",
+						"Redundant lower bound on `{}`: the #[soft] and #[hard] lower bounds are equal.",
 						pat_ident.ident;
-						help = "You can safely remove the #[soft_min] attribute from this field.";
-						note = "#[soft_min] is redundant when it equals #[hard_min].",
+						help = "Drop the lower bound from #[soft] and let the slider fall back to #[hard].";
+						note = "A soft bound only matters when it sits inside the corresponding hard bound.",
 					);
 				} else if soft_min_value < hard_min_value {
 					emit_error!(
 						pat_ident.span(),
-						"The #[soft_min] attribute on `{}` is incorrectly greater than #[hard_min].",
+						"The #[soft] lower bound on `{}` is below the #[hard] lower bound.",
 						pat_ident.ident;
-						help = "You probably meant to reverse the two attribute values.";
-						note = "Allowing the possible slider range to preceed #[hard_min] doesn't make sense.",
+						help = "The soft (slider) range must stay within the hard (clamped) range.";
+						note = "Letting the slider range precede #[hard]'s lower bound doesn't make sense.",
 					);
 				}
 			}
@@ -61,21 +62,59 @@ fn validate_min_max(parsed: &ParsedNodeFn) {
 				if soft_max_value == hard_max_value {
 					emit_error!(
 						pat_ident.span(),
-						"Unnecessary #[soft_max] attribute on `{}`, as #[hard_max] has the same value.",
+						"Redundant upper bound on `{}`: the #[soft] and #[hard] upper bounds are equal.",
 						pat_ident.ident;
-						help = "You can safely remove the #[soft_max] attribute from this field.";
-						note = "#[soft_max] is redundant when it equals #[hard_max].",
+						help = "Drop the upper bound from #[soft] and let the slider fall back to #[hard].";
+						note = "A soft bound only matters when it sits inside the corresponding hard bound.",
 					);
-				} else if soft_max_value < hard_max_value {
+				} else if soft_max_value > hard_max_value {
 					emit_error!(
 						pat_ident.span(),
-						"The #[soft_max] attribute on `{}` is incorrectly greater than #[hard_max].",
+						"The #[soft] upper bound on `{}` is above the #[hard] upper bound.",
 						pat_ident.ident;
-						help = "You probably meant to reverse the two attribute values.";
-						note = "Allowing the possible slider range to exceed #[hard_max] doesn't make sense.",
+						help = "The soft (slider) range must stay within the hard (clamped) range.";
+						note = "Letting the slider range exceed #[hard]'s upper bound doesn't make sense.",
 					);
 				}
 			}
+		}
+	}
+}
+
+/// A `#[range]` slider needs a defined extent on both ends. The extent comes from `#[soft]` when present,
+/// otherwise it falls back to `#[hard]`, so each end must be covered by at least one of the two attributes.
+fn validate_range_slider_bounds(parsed: &ParsedNodeFn) {
+	for field in &parsed.fields {
+		if let ParsedField {
+			ty: ParsedFieldType::Regular(RegularParsedField {
+				number_mode_range: true,
+				number_soft_min,
+				number_soft_max,
+				number_hard_min,
+				number_hard_max,
+				..
+			}),
+			pat_ident,
+			..
+		} = field
+		{
+			let min_bounded = number_soft_min.is_some() || number_hard_min.is_some();
+			let max_bounded = number_soft_max.is_some() || number_hard_max.is_some();
+
+			let missing = match (min_bounded, max_bounded) {
+				(true, true) => continue,
+				(false, false) => "lower and upper bounds",
+				(false, true) => "a lower bound",
+				(true, false) => "an upper bound",
+			};
+
+			emit_error!(
+				pat_ident.span(),
+				"The #[range] slider on `{}` is missing {}.",
+				pat_ident.ident, missing;
+				help = "A slider needs both ends defined; add the missing bound via #[soft(..)] or #[hard(..)], e.g. #[soft(0..100)].";
+				note = "The slider's extent comes from #[soft] if present, otherwise #[hard].",
+			);
 		}
 	}
 }

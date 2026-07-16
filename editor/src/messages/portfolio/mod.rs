@@ -3,6 +3,7 @@ mod portfolio_message_handler;
 
 pub mod document;
 pub mod document_migration;
+pub mod document_storage_io;
 pub mod fonts;
 pub mod persistent_state;
 pub mod utility_types;

@@ -1,11 +1,9 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
-use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
+use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
-use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
@@ -13,15 +11,13 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
-use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
+use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
 use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -31,9 +27,6 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::BezierHandles;
-use graphene_std::vector::misc::HandleId;
-use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec;
@@ -68,11 +61,13 @@ pub struct PortfolioMessageHandler {
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
-	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
 	pub workspace_panel_layout: WorkspacePanelLayout,
+	working_copy_root: Option<PathBuf>,
+	/// Number of document not fully loaded. While non-zero, resource GC is skipped.
+	pending_opens: usize,
 }
 
 #[message_handler_data]
@@ -206,7 +201,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let Some(document) = self.document(document_id) else { return };
+				let validate = preferences.validate_storage_round_trip;
+				let Some(document) = self.documents.get_mut(&document_id) else { return };
+
+				document.commit_storage_snapshot(&resource_storage.resources_mut(), validate);
+
 				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
@@ -281,86 +280,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
-			PortfolioMessage::Copy { clipboard } => {
-				if context.current_tool == &ToolType::Path {
-					responses.add(PathToolMessage::Copy { clipboard });
-					return;
-				}
-
-				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
-				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
-					return;
-				};
-
-				if active_document.graph_view_overlay_open() {
-					responses.add(NodeGraphMessage::Copy);
-					return;
-				}
-
-				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
-
-					ordered_last_elements.sort_by_key(|layer| {
-						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
-						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
-					});
-
-					for layer in ordered_last_elements.into_iter() {
-						let layer_node_id = layer.to_node();
-
-						let mut copy_ids = HashMap::new();
-						copy_ids.insert(layer_node_id, NodeId(0));
-
-						active_document
-							.network_interface
-							.upstream_flow_back_from_nodes(vec![layer_node_id], &[], network_interface::FlowType::LayerChildrenUpstreamFlow)
-							.enumerate()
-							.for_each(|(index, node_id)| {
-								copy_ids.insert(node_id, NodeId((index + 1) as u64));
-							});
-
-						buffer.push(CopyBufferEntry {
-							nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
-							selected: active_document.network_interface.selected_nodes().selected_layers_contains(layer, active_document.metadata()),
-							visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
-							locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
-							collapsed: false,
-						});
-					}
-				};
-
-				if clipboard == Clipboard::Device {
-					let mut buffer = Vec::new();
-					copy_val(&mut buffer);
-					let Ok(data) = serde_json::to_string(&buffer) else {
-						log::error!("Failed to serialize nodes for clipboard");
-						return;
-					};
-					responses.add(ClipboardMessage::Write {
-						content: ClipboardContent::Layer(data),
-					});
-				} else {
-					let copy_buffer = &mut self.copy_buffer;
-					copy_buffer[clipboard as usize].clear();
-					copy_val(&mut copy_buffer[clipboard as usize]);
-				}
-			}
-			PortfolioMessage::Cut { clipboard } => {
-				if context.current_tool == &ToolType::Path {
-					responses.add(PathToolMessage::Cut { clipboard });
-					return;
-				}
-
-				if let Some(active_document) = self.active_document()
-					&& active_document.graph_view_overlay_open()
-				{
-					responses.add(NodeGraphMessage::Cut);
-					return;
-				}
-
-				responses.add(PortfolioMessage::Copy { clipboard });
-				responses.add(DocumentMessage::DeleteSelectedLayers);
-			}
 			PortfolioMessage::DeleteDocument { document_id } => {
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
@@ -381,6 +300,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
+			PortfolioMessage::DocumentStorageMounted { document_id, reopened, gdd } => {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Document was closed before its working copy finished mounting.
+					return;
+				};
+				document.set_storage(gdd);
+				if !reopened {
+					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+					document.retire_storage_interaction();
+				}
+			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
@@ -396,6 +326,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// We don't know what can be safely garbage collected
 					return;
 				}
+				if self.pending_opens > 0 {
+					// A document not fully loaded, skip garbage collection.
+					return;
+				}
 
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
@@ -409,6 +343,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
+
+					if let Some(storage) = document.storage() {
+						used_resources.extend(storage.all_referenced_resource_hashes());
+					}
 				}
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
@@ -594,7 +532,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses);
+				self.load_document(new_document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::MoveAllPanelTabs {
@@ -731,6 +669,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							document_serialized_content: content,
 						});
 					}
+					FileContent::GddDocument(content) => {
+						let document_path = if path.is_absolute() { Some(path) } else { None };
+						responses.add(PortfolioMessage::OpenGddDocument {
+							document_name: name,
+							document_path,
+							content,
+						});
+					}
 					FileContent::Svg(svg) => {
 						responses.add(PortfolioMessage::OpenSvg { name, svg });
 					}
@@ -758,8 +704,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							document_serialized_content: content,
 						});
 					}
+					FileContent::GddDocument(content) => {
+						responses.add(PortfolioMessage::OpenGddDocument {
+							document_name: name,
+							document_path: Some(path),
+							content,
+						});
+					}
 					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::PasteSvg {
+						responses.add(PortfolioMessage::InsertSvg {
 							name,
 							svg,
 							mouse: None,
@@ -767,7 +720,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 					}
 					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::PasteImage {
+						responses.add(PortfolioMessage::InsertImage {
 							name,
 							image,
 							mouse: None,
@@ -798,6 +751,68 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_serialized_content,
 				});
 				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::OpenGddDocument {
+				document_name,
+				document_path,
+				content,
+			} => {
+				let document_id = DocumentId(generate_uuid());
+
+				// Suppress resource GC until the open completes
+				self.pending_opens += 1;
+
+				responses.add(open_gdd_document(
+					self.working_copy_root.clone(),
+					document_id,
+					document_name,
+					document_path,
+					content,
+					resource_storage.resources_mut(),
+					preferences.validate_storage_round_trip,
+				));
+			}
+			PortfolioMessage::GddDocumentLoaded {
+				document_id,
+				document_name,
+				document_path,
+				document,
+			} => {
+				self.pending_opens = self.pending_opens.saturating_sub(1);
+
+				let Some(mut document) = document.map(|boxed| *boxed) else {
+					let name = document_name
+						.filter(|name| !name.trim().is_empty())
+						.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
+						.unwrap_or_default();
+					simple_dialogs::FailedToOpenDocumentDialog { document_name: name }.send_dialog_to_frontend(responses);
+					return;
+				};
+				document.finalize_storage_load();
+				document.set_save_state(true);
+
+				let name = document_name
+					.filter(|name| !name.trim().is_empty())
+					.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
+					.unwrap_or_else(|| DEFAULT_DOCUMENT_NAME.to_string());
+				document.name = self.resolve_document_name(name, None);
+				document.path = document_path;
+
+				// The working copy is already mounted (we opened the .gdd), so skip the async re-mount.
+				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface } => {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Document was closed before its undo/redo rebuild completed; drop the payload.
+					return;
+				};
+				let Some(interface) = interface.map(|boxed| *boxed) else {
+					// The rebuild failed and already logged; leave the live document untouched.
+					return;
+				};
+
+				document.apply_gdd_cursor_rebuild(interface, had_oracle, preferences.validate_storage_round_trip, responses);
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
@@ -925,8 +940,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.set_save_state(document_is_saved);
 
 				let document_name_from_path = document_path.as_ref().and_then(|path| {
-					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
-						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					if path.extension().is_some_and(|extension| extension == FILE_EXTENSION || extension == GDD_FILE_EXTENSION) {
+						path.file_stem().map(|stem| stem.to_string_lossy().to_string())
 					} else {
 						None
 					}
@@ -944,7 +959,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.name = self.resolve_document_name(candidate_name, None);
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, responses);
+				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
 
 				responses.add(AppWindowMessage::Focus);
 
@@ -959,7 +974,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					name: name.clone().unwrap_or_default(),
 				});
 
-				responses.add(DocumentMessage::PasteImage {
+				responses.add(DocumentMessage::InsertImage {
 					name,
 					image,
 					mouse: None,
@@ -1014,7 +1029,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						})
 					});
 
-				responses.add(DocumentMessage::PasteSvg {
+				responses.add(DocumentMessage::InsertSvg {
 					name,
 					svg,
 					mouse: None,
@@ -1036,153 +1051,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 				});
 			}
-			// TODO: Unused except by tests, remove?
-			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
-				let mut all_new_ids = Vec::new();
-				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
-					if self.active_document().is_some() {
-						trace!("Pasting into folder {parent:?} as index: {insert_index}");
-						let nodes = entry.clone().nodes;
-						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-						all_new_ids.extend(new_ids.values().cloned());
-						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
-						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
-					}
-				};
-
-				responses.add(DocumentMessage::DeselectAllLayers);
-
-				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
-					paste(entry, responses, &mut all_new_ids)
-				}
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-			}
-			PortfolioMessage::PasteSerializedData { data } => {
-				if let Some(document) = self.active_document() {
-					let mut all_new_ids = Vec::new();
-					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
-						let parent = document.new_layer_parent(false);
-						let mut layers = Vec::new();
-
-						let mut added_nodes = false;
-
-						for entry in data.into_iter().rev() {
-							if !added_nodes {
-								responses.add(DocumentMessage::DeselectAllLayers);
-								responses.add(DocumentMessage::AddTransaction);
-								added_nodes = true;
-							}
-
-							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-							all_new_ids.extend(new_ids.values().cloned());
-
-							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
-							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
-							layers.push(layer);
-						}
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
-						responses.add(DeferMessage::AfterGraphRun {
-							messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
-						});
-					}
-				}
-			}
-			// Custom paste implementation for Path tool
-			PortfolioMessage::PasteSerializedVector { data } => {
-				// If using Path tool then send the operation to Path tool
-				if *current_tool == ToolType::Path {
-					responses.add(PathToolMessage::Paste { data });
-					return;
-				}
-
-				// If not using Path tool, create new layers and add paths into those
-				if let Some(document) = self.active_document() {
-					let Ok(data) = serde_json::from_str::<Vec<(LayerNodeIdentifier, Vector, DAffine2)>>(&data) else {
-						return;
-					};
-
-					let mut layers = Vec::new();
-
-					for (_, new_vector, transform) in data {
-						let Some(node_type) = resolve_network_node_type("Path") else {
-							error!("Path node does not exist");
-							continue;
-						};
-						let nodes = vec![(NodeId(0), node_type.default_node_template())];
-
-						let parent = document.new_layer_parent(false);
-
-						let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-						layers.push(layer);
-
-						// Adding the transform back into the layer
-						responses.add(GraphOperationMessage::TransformSet {
-							layer,
-							transform,
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
-
-						// Add default fill and stroke to the layer
-						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
-						responses.add(GraphOperationMessage::FillSet { layer, fill });
-
-						let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
-						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
-
-						// Create new point ids and add those into the existing Vector path
-						let mut points_map = HashMap::new();
-						for (point, position) in new_vector.point_domain.iter() {
-							let new_point_id = PointId::generate();
-							points_map.insert(point, new_point_id);
-							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						// Create new segment ids and add the segments into the existing Vector path
-						let mut segments_map = HashMap::new();
-						for (segment_id, bezier, start, end) in new_vector.segment_bezier_iter() {
-							let new_segment_id = SegmentId::generate();
-
-							segments_map.insert(segment_id, new_segment_id);
-
-							let handles = match bezier.handles {
-								BezierHandles::Linear => [None, None],
-								BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
-								BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
-							};
-
-							let points = [points_map[&start], points_map[&end]];
-							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-
-						// Set G1 continuity
-						for handles in new_vector.colinear_manipulators {
-							let to_new_handle = |handle: HandleId| -> HandleId {
-								HandleId {
-									ty: handle.ty,
-									segment: segments_map[&handle.segment],
-								}
-							};
-							let new_handles = [to_new_handle(handles[0]), to_new_handle(handles[1])];
-							let modification_type = VectorModificationType::SetG1Continuous { handles: new_handles, enabled: true };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-					}
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(Message::Defer(DeferMessage::AfterGraphRun {
-						messages: vec![PortfolioMessage::CenterPastedLayers { layers }.into()],
-					}));
-				}
-			}
-			PortfolioMessage::CenterPastedLayers { layers } => {
+			PortfolioMessage::CenterLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
 					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.size().into_dvec2()]); // In viewport pixel coordinates
 					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
@@ -1287,7 +1156,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::PasteImage {
+			PortfolioMessage::InsertImage {
 				name,
 				image,
 				mouse,
@@ -1296,7 +1165,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.document_ids.is_empty() {
 					responses.add(PortfolioMessage::OpenImage { name, image });
 				} else {
-					responses.add(DocumentMessage::PasteImage {
+					responses.add(DocumentMessage::InsertImage {
 						name,
 						image,
 						mouse,
@@ -1305,7 +1174,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
-			PortfolioMessage::PasteSvg {
+			PortfolioMessage::InsertSvg {
 				name,
 				svg,
 				mouse,
@@ -1314,7 +1183,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.document_ids.is_empty() {
 					responses.add(PortfolioMessage::OpenSvg { name, svg });
 				} else {
-					responses.add(DocumentMessage::PasteSvg {
+					responses.add(DocumentMessage::InsertSvg {
 						name,
 						svg,
 						mouse,
@@ -1418,7 +1287,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC5").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC6").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
@@ -1622,9 +1491,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
 				// TODO: Eventually remove this document upgrade code
-				// A freshly-opened document with legacy gradients runs a one-time measurement pre-pass instead of rendering, until every gradient is converted to absolute space
-				if document.pending_gradient_migration {
-					self.executor.drive_gradient_migration(document, document_id, physical_resolution, scale, responses);
+				// A freshly-opened document with legacy gradients (whether newly decomposed or persisted from a save made before every bake landed) runs a
+				// one-time measurement pre-pass instead of rendering, until every gradient's transform is baked into absolute space
+				if !document.pending_gradient_bbox_bake.is_empty() && self.executor.drive_gradient_migration(document, document_id, physical_resolution, scale, responses) {
 					return;
 				}
 
@@ -1816,14 +1685,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				PrevDocument,
 				Import,
 			));
-
-			// Extend with actions that must have a selected layer
-			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
-				common.extend(actions!(PortfolioMessageDiscriminant;
-					Copy,
-					Cut,
-				));
-			}
 		}
 
 		// Extend with actions that are disabled when focusing the document
@@ -1842,6 +1703,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 impl PortfolioMessageHandler {
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
 		Self { executor, ..Default::default() }
+	}
+
+	pub fn set_working_copy_root(&mut self, root: Option<PathBuf>) {
+		self.working_copy_root = root;
 	}
 
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
@@ -1941,6 +1806,7 @@ impl PortfolioMessageHandler {
 				Ok(content) => FileContent::Document(content),
 				Err(_) => FileContent::Unsupported,
 			},
+			GDD_FILE_EXTENSION => FileContent::GddDocument(content),
 			"svg" => match String::from_utf8(content) {
 				Ok(content) => FileContent::Svg(content),
 				Err(_) => FileContent::Unsupported,
@@ -1960,7 +1826,14 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+	fn load_document(
+		&mut self,
+		mut new_document: DocumentMessageHandler,
+		document_id: DocumentId,
+		resource_storage: &ResourceStorageMessageHandler,
+		validate: bool,
+		responses: &mut VecDeque<Message>,
+	) {
 		let is_new_document = !self.document_ids.contains(&document_id);
 		if is_new_document {
 			self.document_ids.push_back(document_id);
@@ -1987,6 +1860,64 @@ impl PortfolioMessageHandler {
 		if is_new_document {
 			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		}
+
+		// Mount the per-document `Gdd` working copy asynchronously.
+		//
+		// Only mount for legacy loads: a `.gdd` open already mounted its working copy
+		// and remounting would overwrite it and drop that history state.
+		if self.documents.get(&document_id).and_then(|document| document.storage()).is_none() {
+			let legacy_network = self
+				.documents
+				.get(&document_id)
+				.map(|document| document.network_interface.document_network().clone())
+				.unwrap_or_default();
+
+			responses.add(Self::mount_document_storage(
+				self.working_copy_root.clone(),
+				document_id,
+				legacy_network,
+				resource_storage.resources(),
+				validate,
+			));
+		}
+	}
+
+	/// With a configured root the working copy lives at `<root>/<id_hex>`; without one it is in-memory.
+	///
+	/// On a *reopen* (existing working copy), the freshly-read `.gdd` is converted back to a runtime
+	/// network and compared against `legacy_network` before
+	/// the working copy attaches. It validates the `.gdd` *read* path.
+	fn mount_document_storage(
+		working_copy_root: Option<std::path::PathBuf>,
+		document_id: DocumentId,
+		legacy_network: graph_craft::document::NodeNetwork,
+		byte_store: Box<dyn graph_craft::application_io::resource::LoadResource>,
+		validate: bool,
+	) -> Message {
+		let path = working_copy_root.map(|root| root.join(format!("{:016x}", document_id.0)));
+		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
+		let peer = graph_storage::PeerId(generate_uuid());
+
+		let future = async move {
+			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {
+				Ok(result) => result,
+				Err(error) => {
+					log::error!("Failed to mount document storage for {document_id:?}: {error}");
+					return Message::NoOp;
+				}
+			};
+
+			if validate && reopened {
+				compare_storage_against_runtime(&gdd, &legacy_network, byte_store.as_ref(), document_id).await;
+			}
+
+			Message::Portfolio(PortfolioMessage::DocumentStorageMounted {
+				document_id,
+				reopened,
+				gdd: Some(gdd),
+			})
+		};
+		future.into()
 	}
 
 	/// Returns an iterator over the open documents in order.

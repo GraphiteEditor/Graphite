@@ -1,6 +1,6 @@
 import { execSync } from "child_process";
 import { createHash } from "crypto";
-import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
+import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import path from "path";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
@@ -11,7 +11,17 @@ const projectRootDir = path.resolve(__dirname);
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
 	return {
-		plugins: [svelteGlobalStyles(), svelte(), staticAssets(), mode !== "native" && thirdPartyLicenses(), mode !== "native" && serviceWorker()],
+		plugins: [
+			svelteGlobalStyles(),
+			webkitUserSelectPrefix(),
+			svelte(),
+			staticAssets(),
+			mode !== "native" && thirdPartyLicenses(),
+			mode !== "native" && wasmSplitting(),
+			mode !== "native" && serviceWorker(),
+		],
+		// Default for builds that exclude the `wasmSplitting` plugin, which overrides this when active
+		define: { __WASM_PART_COUNT__: "1" },
 		resolve: {
 			alias: [{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") }],
 		},
@@ -31,6 +41,31 @@ function svelteGlobalStyles(): PluginOption {
 			if (!id.endsWith(".svelte")) return;
 
 			return code.replace(/<style(?=\s|>)([^>]*)>(.*?)<\/style>/gs, (_, attrs, content) => `<style${attrs}>\n:global {\n${content}\n}\n</style>`);
+		},
+	};
+}
+
+// Adds the `-webkit-user-select` prefix alongside every `user-select` declaration in Svelte component styles (still required by Safari). Remove when Safari ships the unprefixed version.
+// WebKit tracking issue:
+//   https://bugs.webkit.org/show_bug.cgi?id=208677
+// Included in Interop 2026:
+//   https://webkit.org/blog/17818/announcing-interop-2026/#web-compat
+//   https://github.com/web-platform-tests/interop/issues/1000#issuecomment-3892214470
+// Web platform test for WebKit implementation status:
+//   https://wpt.fyi/results/css/css-ui/parsing/user-select-computed.html?label=master&label=experimental&aligned&view=interop&q=label%3Ainterop-2026-webcompat
+function webkitUserSelectPrefix(): PluginOption {
+	return {
+		name: "webkit-user-select-prefix",
+		enforce: "pre",
+		transform(code, id) {
+			if (!id.endsWith(".svelte")) return;
+
+			return code.replace(/<style(?=\s|>)([^>]*)>(.*?)<\/style>/gs, (_, attrs, content) => {
+				// The lookbehind requires a property boundary on the left, so it skips `-webkit-`/`-moz-` prefixes, `--custom` properties, and `$scss-variables`.
+				// Excluding newlines/braces from the value stops a `user-select` mentioned in a comment from swallowing the following declarations.
+				const prefixed = content.replace(/(?<![\w$-])user-select\s*:\s*([^;{}\r\n]+);/g, "-webkit-user-select: $1; user-select: $1;");
+				return `<style${attrs}>${prefixed}</style>`;
+			});
 		},
 	};
 }
@@ -107,6 +142,48 @@ function thirdPartyLicenses(): PluginOption {
 		},
 		writeBundle(options) {
 			copyFileSync(path.resolve(projectRootDir, "third-party-licenses.txt"), path.join(options.dir || "dist", "third-party-licenses.txt"));
+		},
+	};
+}
+
+// Splits the Wasm binary into parts small enough for Cloudflare Pages' 25 MiB single-file limit, rejoined at runtime by `initWasm()` in `src/utility-functions/wasm-loader.ts`.
+// Only active when the `SPLIT_WASM` environment variable is set, which CI does for deployments; local builds keep the single file.
+function wasmSplitting(): PluginOption {
+	const PART_SIZE = 24 * 1024 * 1024;
+
+	let partCount = 1;
+
+	return {
+		name: "wasm-splitting",
+		config(_, { command }) {
+			// Measure the Wasm binary (already built by `cargo run build web` before Vite runs) to decide how many parts are needed
+			if (command === "build" && process.env.SPLIT_WASM) {
+				const wasmPath = path.resolve(projectRootDir, "wrapper/pkg/graphite_wasm_wrapper_bg.wasm");
+				if (!existsSync(wasmPath)) throw new Error(`SPLIT_WASM is set but the Wasm binary is missing at ${wasmPath}`);
+				partCount = Math.ceil(statSync(wasmPath).size / PART_SIZE);
+			}
+
+			// Bake the part count into the bundle so `initWasm()` knows how many parts to fetch and rejoin
+			return { define: { __WASM_PART_COUNT__: String(partCount) } };
+		},
+		// Synchronous so it completes before the `serviceWorker` plugin's `writeBundle` collects the precache manifest
+		writeBundle(options) {
+			if (partCount <= 1) return;
+
+			const assetsDir = path.join(options.dir || "dist", "assets");
+			const wasmFileName = readdirSync(assetsDir).find((name) => name.startsWith("graphite_wasm_wrapper_bg-") && name.endsWith(".wasm"));
+			if (!wasmFileName) throw new Error("Could not find the emitted Wasm asset to split");
+			const wasmPath = path.join(assetsDir, wasmFileName);
+
+			const contents = readFileSync(wasmPath);
+			if (Math.ceil(contents.length / PART_SIZE) !== partCount) throw new Error("Wasm binary size changed during the build, invalidating the baked-in part count");
+
+			// Replace the single Wasm file with its parts so only they get deployed and precached
+			for (let index = 0; index < partCount; index += 1) {
+				const partName = wasmFileName.replace(/\.wasm$/, `-part${index}.wasm`);
+				writeFileSync(path.join(assetsDir, partName), contents.subarray(index * PART_SIZE, (index + 1) * PART_SIZE));
+			}
+			rmSync(wasmPath);
 		},
 	};
 }

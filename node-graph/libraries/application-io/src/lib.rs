@@ -11,35 +11,10 @@ use vector_types::vector::style::RenderMode;
 pub use graphene_resource as resource;
 
 #[cfg(feature = "wgpu")]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
-pub struct ImageTexture(Arc<wgpu::Texture>);
-#[cfg(feature = "wgpu")]
-impl AsRef<wgpu::Texture> for ImageTexture {
-	fn as_ref(&self) -> &wgpu::Texture {
-		&self.0
-	}
-}
-#[cfg(feature = "wgpu")]
-impl From<wgpu::Texture> for ImageTexture {
-	fn from(texture: wgpu::Texture) -> Self {
-		Self(Arc::new(texture))
-	}
-}
-#[cfg(feature = "wgpu")]
-impl From<Arc<wgpu::Texture>> for ImageTexture {
-	fn from(texture: Arc<wgpu::Texture>) -> Self {
-		Self(texture)
-	}
-}
-#[cfg(feature = "wgpu")]
-impl From<ImageTexture> for Arc<wgpu::Texture> {
-	fn from(image_texture: ImageTexture) -> Self {
-		image_texture.0
-	}
-}
+pub use raster_types::Texture;
 #[cfg(not(feature = "wgpu"))]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
-pub struct ImageTexture;
+pub struct Texture; // TODO: Consider removing this
 
 pub trait ApplicationIo {
 	type Executor;

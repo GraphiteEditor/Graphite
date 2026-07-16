@@ -2,8 +2,8 @@ use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphic_types::raster_types::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
-use std::sync::Arc;
 use vector_types::vector::style::RenderMode;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
@@ -65,7 +65,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 		})
 		.await;
 
-	result.data = RenderOutputType::Texture(resampled.into());
+	result.data = RenderOutputType::Texture(resampled);
 
 	result
 		.metadata
@@ -99,7 +99,7 @@ pub struct PixelPreviewArgs<'a> {
 
 impl AsyncWgpuPipeline for PixelPreview {
 	type Args<'a> = PixelPreviewArgs<'a>;
-	type Out = Arc<wgpu::Texture>;
+	type Out = Texture;
 
 	fn create(executor: &WgpuExecutor) -> Self {
 		let device = &executor.context().device;

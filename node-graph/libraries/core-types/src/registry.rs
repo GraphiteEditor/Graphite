@@ -30,9 +30,13 @@ pub struct FieldMetadata {
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,
 	pub default_type: Option<Type>,
-	pub number_min: Option<f64>,
-	pub number_max: Option<f64>,
-	pub number_mode_range: Option<(f64, f64)>,
+	/// The slider's suggested extent, from `#[soft(a..b)]`. Typed values may exceed it.
+	pub number_soft_min: Option<f64>,
+	pub number_soft_max: Option<f64>,
+	/// The enforced clamp, from `#[hard(a..b)]`. Applied to typed values and at eval time.
+	pub number_hard_min: Option<f64>,
+	pub number_hard_max: Option<f64>,
+	pub number_mode_range: bool,
 	pub number_display_decimal_places: Option<u32>,
 	pub number_step: Option<f64>,
 	pub unit: Option<&'static str>,

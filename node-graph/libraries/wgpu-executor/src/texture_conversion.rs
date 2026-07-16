@@ -50,6 +50,7 @@ struct RasterGpuToRasterCpuConverter {
 	height: u32,
 	unpadded_bytes_per_row: u32,
 	padded_bytes_per_row: u32,
+	_source: raster_types::Texture,
 }
 impl RasterGpuToRasterCpuConverter {
 	fn new(device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
@@ -97,6 +98,8 @@ impl RasterGpuToRasterCpuConverter {
 			height,
 			unpadded_bytes_per_row,
 			padded_bytes_per_row,
+			// Keep source texture alive
+			_source: data_gpu.texture.clone(),
 		}
 	}
 
@@ -150,12 +153,12 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
 impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
 		let device = &executor.context().device;
-		let queue = &executor.context().queue;
+		let queue = executor.context().queue.lock();
 		let list = self
 			.into_iter()
 			.map(|row| {
 				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(device, queue, &image);
+				let texture = upload_to_texture(device, &queue, &image);
 
 				Item::from_parts(Raster::new_gpu(texture), attributes)
 			})
@@ -170,8 +173,8 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
 		let device = &executor.context().device;
-		let queue = &executor.context().queue;
-		let texture = upload_to_texture(device, queue, &self);
+		let queue = executor.context().queue.lock();
+		let texture = upload_to_texture(device, &queue, &self);
 
 		queue.submit([]);
 		Raster::new_gpu(texture)

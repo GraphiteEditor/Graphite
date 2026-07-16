@@ -8,7 +8,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
-use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
@@ -61,7 +61,7 @@ pub struct NodeRuntime {
 	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
 	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
-	current_viewport_texture: Option<ImageTexture>,
+	current_viewport_texture: Option<Texture>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -157,7 +157,7 @@ impl NodeRuntime {
 		}
 	}
 
-	pub async fn run(&mut self) -> Option<ImageTexture> {
+	pub async fn run(&mut self) -> Option<Texture> {
 		let mut preferences = None;
 		let mut graph = None;
 		let mut eyedropper = None;
@@ -250,7 +250,7 @@ impl NodeRuntime {
 
 					let (result, texture) = match result {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(image_texture),
+							data: RenderOutputType::Texture(texture),
 							metadata,
 						})) if render_config.for_export => {
 							let executor = self
@@ -261,7 +261,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -274,7 +274,7 @@ impl NodeRuntime {
 							)
 						}
 						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(image_texture),
+							data: RenderOutputType::Texture(texture),
 							metadata: _,
 						})) if render_config.for_eyedropper => {
 							let executor = self
@@ -285,7 +285,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -296,15 +296,15 @@ impl NodeRuntime {
 						}
 						#[cfg(all(target_family = "wasm", feature = "gpu"))]
 						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(image_texture),
+							data: RenderOutputType::Texture(texture),
 							metadata,
 						})) if !render_config.for_export => {
-							self.current_viewport_texture = Some(image_texture.clone());
+							self.current_viewport_texture = Some(texture.clone());
 
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
-							self.wasm_canvas_cache.present(&image_texture, executor);
+							self.wasm_canvas_cache.present(&texture, executor);
 
 							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
 							(
@@ -552,7 +552,7 @@ pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + 
 	Err(IntrospectError::RuntimeNotReady)
 }
 
-pub async fn run_node_graph() -> (bool, Option<ImageTexture>) {
+pub async fn run_node_graph() -> (bool, Option<Texture>) {
 	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
 	if let Some(ref mut runtime) = runtime.as_mut() {
 		return (true, runtime.run().await);
