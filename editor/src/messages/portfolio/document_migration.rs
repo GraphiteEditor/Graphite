@@ -108,7 +108,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform_nodes::FreezeRealTimeNode",
 			"graphene_core::vector::SubpathSegmentLengthsNode",
 			"core_types::vector::SubpathSegmentLengthsNode",
-			// The deleted debug Option trio degrades to a passthrough of its single input (audit resolution 8)
+			// The deleted debug Option trio degrades to a passthrough of its single input
 			"graphene_core::ops::SizeOfNode",
 			"graphene_core::debug::SizeOfNode",
 			"graphene_core::ops::SomeNode",
@@ -2765,7 +2765,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
-	// The removed Attach Attribute node (merged into Write Attribute per audit resolution 6) degrades to a passthrough of its
+	// The removed Attach Attribute node degrades to a passthrough of its
 	// content: its eager whole-list source input cannot be mechanically rewired as Write Attribute's lazy per-item value producer.
 	if let Some(DefinitionIdentifier::ProtoNode(identifier)) = document.network_interface.reference(node_id, network_path)
 		&& identifier.as_str().ends_with("::AttachAttributeNode")

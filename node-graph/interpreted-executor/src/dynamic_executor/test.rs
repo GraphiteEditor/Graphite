@@ -346,6 +346,50 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
 }
 
+// A scalar wire feeding a `DVec2` connector splats into both axes through the input adapter's `Convert` row
+#[test]
+fn number_value_splats_through_the_vec2_input_adapter() {
+	let number_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(-60.).into()), vec![NodeId(0)]);
+
+	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<DVec2>");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), number_node), (NodeId(1), input_adapter_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("An f64 wire should resolve the adapter's splat conversion row");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The splat constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<glam::DVec2>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	assert_eq!(result.map(|item| *item.element()), Some(glam::DVec2::splat(-60.)), "The scalar should splat into both axes");
+}
+
+// A scalar wire feeding a `String` connector formats as text through the input adapter's `Convert` row
+#[test]
+fn number_value_formats_through_the_string_input_adapter() {
+	let number_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(42.).into()), vec![NodeId(0)]);
+
+	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<String>");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), number_node), (NodeId(1), input_adapter_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).expect("An f64 wire should resolve the adapter's formatting conversion row");
+	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The formatting constructor should instantiate");
+
+	let context: Context = None;
+	let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	assert_eq!(result.map(|item| item.element().clone()), Some("42".to_string()), "The number should format as its text representation");
+}
+
 // A `List` wire feeding a `ListDyn` connector erases its element type through the input adapter's `Into` row
 #[test]
 fn list_wire_erases_through_the_list_dyn_input_adapter() {

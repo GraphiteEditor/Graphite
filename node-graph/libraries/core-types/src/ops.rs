@@ -45,6 +45,14 @@ pub trait Convert<T, C>: Sized {
 	fn convert(self, footprint: Footprint, converter: C) -> impl Future<Output = T> + Send;
 }
 
+impl<T: ToString + Send> Convert<String, ()> for T {
+	/// Converts this type into a `String` using its `ToString` implementation.
+	#[inline]
+	async fn convert(self, _: Footprint, _converter: ()) -> String {
+		self.to_string()
+	}
+}
+
 /// Constructs `Self` from a single anchor point at the given position. Implemented by the vector crate's
 /// path type so a position wire can convert to a single-point path without core-types depending on that crate.
 pub trait FromAnchorPosition {
