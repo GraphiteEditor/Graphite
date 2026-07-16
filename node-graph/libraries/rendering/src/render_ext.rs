@@ -9,7 +9,7 @@ use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 use vector_types::gradient::GradientSpreadMethod;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -76,7 +76,7 @@ impl RenderExt for List<Color> {
 	}
 }
 
-impl RenderExt for List<GradientStops> {
+impl RenderExt for List<Gradient> {
 	type Output = u64;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
@@ -241,6 +241,7 @@ impl RenderExt for List<Graphic> {
 				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target);
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
+			Some(Graphic::None) => format!(r#" {paint_attr}="none""#),
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.

@@ -57,7 +57,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor.execute(render_config).await?;
+	let result = executor.execute(render_config.into_context()).await?;
 
 	// Handle the result based on output type
 	match result {
@@ -195,7 +195,7 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor.execute(render_config).await?;
+		let result = executor.execute(render_config.into_context()).await?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {

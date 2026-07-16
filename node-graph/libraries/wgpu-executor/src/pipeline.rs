@@ -54,7 +54,7 @@ impl PipelineCache {
 	pub async fn run<P: Pipeline>(&self, args: &P::Args<'_>) -> P::Out {
 		let executor = self.executor.get().expect("PipelineCache not initialized");
 		let entry = self.pipeline.get().expect("PipelineCache not initialized");
-		let pipeline = (&**entry)
+		let pipeline = (**entry)
 			.downcast_ref::<P>()
 			.unwrap_or_else(|| panic!("PipelineCache type mismatch: run::<{}>() but init used a different pipeline type", std::any::type_name::<P>(),));
 		pipeline.run(executor, args).await

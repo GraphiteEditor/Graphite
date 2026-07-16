@@ -1,8 +1,6 @@
 use crate::Node;
-use crate::list::{Attribute, AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
-use graphene_hash::CacheHash;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -47,77 +45,10 @@ pub trait Convert<T, C>: Sized {
 	fn convert(self, footprint: Footprint, converter: C) -> impl Future<Output = T> + Send;
 }
 
-impl<T: ToString + Send> Convert<String, ()> for T {
-	/// Converts this type into a `String` using its `ToString` implementation.
-	#[inline]
-	async fn convert(self, _: Footprint, _converter: ()) -> String {
-		self.to_string()
-	}
-}
-
-pub trait ListConvert<U> {
-	fn convert_item(self) -> U;
-}
-
-impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> List<U> {
-		let list: List<U> = self
-			.into_iter()
-			.map(|row| {
-				let (element, attributes) = row.into_parts();
-				Item::from_parts(element.convert_item(), attributes)
-			})
-			.collect();
-		list
-	}
-}
-
-/// Wraps each row's element into a type-erased attribute. Lets nodes that accept a source attribute
-/// from any `List<U>` express their signature as `AttributeDyn` and avoid monomorphizing
-/// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
-impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
-		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
-		AttributeDyn(Box::new(Attribute(values)))
-	}
-}
-
-/// Wraps a value into a type-erased attribute value. Lets nodes that take a per-item value source
-/// (such as `write_attribute`'s value-producing input) be generic over the destination list type
-/// alone, with the compiler-inserted convert handling each concrete value type at the wire level.
-impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeValueDyn, ()> for T {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
-		AttributeValueDyn(Box::new(self))
-	}
-}
-
-/// Erases a `List<T>`'s element type, exposing only its attributes and row count. Lets nodes that
-/// only need attribute access (such as the `read_attribute_*` family) take a single `ListDyn` input
-/// instead of monomorphizing over every possible carrier list type.
-impl<T: Send> Convert<ListDyn, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> ListDyn {
-		self.into()
-	}
-}
-
-impl Convert<DVec2, ()> for DVec2 {
-	async fn convert(self, _: Footprint, _: ()) -> DVec2 {
-		self
-	}
-}
-
 /// Constructs `Self` from a single anchor point at the given position. Implemented by the vector crate's
-/// path type so the `Convert` impl below can build a single-point path without core-types depending on
-/// that crate (mirroring how [`ListConvert`] bridges per-item list conversions).
+/// path type so a position wire can convert to a single-point path without core-types depending on that crate.
 pub trait FromAnchorPosition {
 	fn from_anchor_position(position: DVec2) -> Self;
-}
-
-// Converts a position into a vector path composed of a single anchor point
-impl<T: FromAnchorPosition + Send> Convert<List<T>, ()> for DVec2 {
-	async fn convert(self, _: Footprint, _: ()) -> List<T> {
-		List::new_from_item(Item::new_from_element(T::from_anchor_position(self)))
-	}
 }
 
 /// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.

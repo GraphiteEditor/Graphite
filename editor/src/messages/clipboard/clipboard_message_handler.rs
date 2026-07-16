@@ -252,9 +252,20 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let mut vectors = Vec::new();
 				let mut resources = Vec::new();
 				for item in items {
+					// Pasted templates skip document migration, so stored types normalize here
 					match item {
-						ClipboardItem::Layer(entry) => layers.push(entry),
-						ClipboardItem::Nodes(nodes) => node_groups.push(nodes),
+						ClipboardItem::Layer(mut entry) => {
+							for (_, template) in &mut entry.nodes {
+								template.document_node.normalize_stored_types();
+							}
+							layers.push(entry);
+						}
+						ClipboardItem::Nodes(mut nodes) => {
+							for (_, template) in &mut nodes {
+								template.document_node.normalize_stored_types();
+							}
+							node_groups.push(nodes);
+						}
 						ClipboardItem::Vector(vector) => vectors.push(vector),
 						ClipboardItem::Resource(resource) => resources.push(resource),
 					}

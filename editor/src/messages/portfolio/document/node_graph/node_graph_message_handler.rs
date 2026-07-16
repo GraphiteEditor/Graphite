@@ -1179,6 +1179,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							data_type: self.wire_in_progress_type,
 							thick: false,
 							dashed: false,
+							is_list: false,
+							center_path_string: String::new(),
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
@@ -1431,7 +1433,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 											return None;
 										}
 
-										let (wire, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
+										let (wire, _center_line, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
 
 										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
 										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
@@ -1726,7 +1728,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						continue;
 					};
 
-					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
+					// Expand the cull box by a grid cell so a node stays rendered until its connectors, which reach beyond its bounding box, also leave the viewport
+					let cull_margin = 24.;
+					if node_bbox[1].x + cull_margin >= document_bbox[0].x
+						&& node_bbox[0].x - cull_margin <= document_bbox[1].x
+						&& node_bbox[1].y + cull_margin >= document_bbox[0].y
+						&& node_bbox[0].y - cull_margin <= document_bbox[1].y
+					{
 						nodes.push(*node_id);
 					}
 					for error in &network_interface.resolved_types.node_graph_errors {
@@ -2167,7 +2175,37 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
+				// Hidden passthrough nodes let a wire borrow its color and rank from an upstream node, so any type change can restyle wires whose own node is unchanged.
+				// Compare each displayed wire's style (color, rank) across the update and unload only those that changed, so value-only recompiles keep their built wire paths.
+				let types_changed = !resolved_types.add.is_empty() || !resolved_types.remove.is_empty();
+				let wire_style = |network_interface: &mut NodeNetworkInterface, input: &InputConnector| {
+					network_interface.upstream_output_connector(input, breadcrumb_network_path).map(|output| {
+						let output_type = network_interface.output_type(&output, breadcrumb_network_path);
+						(output_type.displayed_type(), output_type.is_list())
+					})
+				};
+				let styles_before = types_changed.then(|| {
+					network_interface
+						.node_graph_input_connectors(breadcrumb_network_path)
+						.into_iter()
+						.map(|input| {
+							let style = wire_style(network_interface, &input);
+							(input, style)
+						})
+						.collect::<Vec<_>>()
+				});
+
 				network_interface.resolved_types.update(resolved_types, node_graph_errors);
+
+				if let Some(styles_before) = styles_before {
+					for (input, style_before) in styles_before {
+						if wire_style(network_interface, &input) != style_before {
+							network_interface.unload_wire(&input, breadcrumb_network_path);
+						}
+					}
+				}
+
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {

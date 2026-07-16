@@ -82,7 +82,7 @@ struct ExecutionContext {
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
 	/// gradient; such runs never touch the visible artwork. Carrying the entry keeps a stale re-dispatched response paired with the fill it measured.
-	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -92,7 +92,7 @@ struct ExecutionContext {
 #[derive(Debug, Clone)]
 struct GradientMigration {
 	document_id: DocumentId,
-	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 	resolution: UVec2,
 	scale: f64,
 }
@@ -450,7 +450,6 @@ impl NodeGraphExecutor {
 								resolved_types: incomplete_delta,
 								node_graph_errors,
 							});
-							responses.add(NodeGraphMessage::SendGraph);
 
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -461,7 +460,6 @@ impl NodeGraphExecutor {
 						resolved_types: type_delta,
 						node_graph_errors,
 					});
-					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
@@ -492,7 +490,7 @@ impl NodeGraphExecutor {
 		}
 
 		// Snapshot the queue but leave `pending_gradient_bbox_bake` populated, so subsequent render requests keep deferring here (and hit the guard above); each entry is removed from the document as its bake lands.
-		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
+		let remaining: VecDeque<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)> = document.pending_gradient_bbox_bake.iter().cloned().collect();
 		let Some((first_network_path, first_fill, first_gradient)) = remaining.front().cloned() else {
 			return false;
 		};
@@ -519,7 +517,7 @@ impl NodeGraphExecutor {
 		document_id: DocumentId,
 		network_path: Vec<NodeId>,
 		fill_node_id: NodeId,
-		gradient: graphic_types::migrations::legacy::Gradient,
+		gradient: graphic_types::migrations::legacy::LegacyGradient,
 		resolution: UVec2,
 		scale: f64,
 		responses: &mut VecDeque<Message>,
@@ -588,7 +586,7 @@ impl NodeGraphExecutor {
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
-		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient),
+		bake_target: (Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient),
 		inspect_result: Option<InspectResult>,
 		responses: &mut VecDeque<Message>,
 	) {
@@ -610,10 +608,14 @@ impl NodeGraphExecutor {
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
 					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-					let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					let has_transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX);
+					let transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
 					document
 						.network_interface
-						.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
+						.set_input(&has_transform_input, NodeInput::value(TaggedValue::Bool(true), false), &network_path);
+					document
+						.network_interface
+						.set_input(&transform_input, NodeInput::value(TaggedValue::DAffine2(gradient_transform), false), &network_path);
 				}
 
 				// The transform is settled, so its entry no longer needs to persist for a retry on the next open
@@ -821,16 +823,16 @@ impl NodeGraphExecutor {
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Whether the fill node's transform input is still the unset `OptionalDAffine2(None)` placeholder that the migration leaves
-/// behind, meaning its gradient placement has not yet been baked (or set by the user), so a measured bake may safely be written.
+/// Whether the fill node's `_has_transform` is still `false`, meaning its gradient placement has not yet been baked
+/// (or set by the user), so a measured bake may safely be written.
 fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[NodeId], fill_node_id: NodeId) -> bool {
 	let Some(network) = document.network_interface.document_network().nested_network(network_path) else {
 		return false;
 	};
 	let Some(node) = network.nodes.get(&fill_node_id) else { return false };
 	matches!(
-		node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()),
-		Some(TaggedValue::OptionalDAffine2(None))
+		node.inputs.get(graphene_std::vector::fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
+		Some(TaggedValue::Bool(false))
 	)
 }
 
@@ -917,8 +919,17 @@ mod test {
 	use graph_craft::document::NodeNetwork;
 	use graphene_std::Context;
 	use graphene_std::NodeInputDecleration;
+	use graphene_std::list::Item;
 	use graphene_std::memo::IORecord;
 	use test_prelude::LayerNodeIdentifier;
+
+	/// A ranked input whose `Item<E>` Result carries an element `E`, recovered by `grab_ranked_input`.
+	pub trait RankedResult {
+		type Element: Send + Sync + Clone + 'static;
+	}
+	impl<E: Send + Sync + Clone + 'static> RankedResult for Item<E> {
+		type Element = E;
+	}
 
 	/// Stores all of the monitor nodes that have been attached to a graph
 	#[derive(Default)]
@@ -942,11 +953,17 @@ mod test {
 				let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
 				for input in &mut node.inputs {
 					let node_id = NodeId::new();
-					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
-					monitor_nodes.push((old_input, node_id));
 					path.push(node_id);
 					monitor_node_ids.push(path.clone());
 					path.pop();
+
+					// A None value is a unit wire with nothing to record and no Monitor row, so its slot stays a dead path that introspects as absent
+					if matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None)) {
+						continue;
+					}
+
+					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+					monitor_nodes.push((old_input, node_id));
 				}
 				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
 					path.push(*id);
@@ -978,15 +995,21 @@ mod test {
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
-			// This is quite inflexible since it only allows the footprint as inputs.
-			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
+			Self::downcast_record::<Input::Result>(dynamic).or_else(|| {
+				warn!("cannot downcast type for introspection");
+				None
+			})
+		}
+
+		/// Pulls a concrete output type out of a monitor record, tolerating the three context shapes the executor records against.
+		fn downcast_record<Output: Send + Sync + Clone + 'static>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Output> {
+			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Output>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Output>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Output>>() {
 				Some(x.output.clone())
 			} else {
-				warn!("cannot downcast type for introspection");
 				None
 			}
 		}
@@ -1005,6 +1028,18 @@ mod test {
 				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
 		}
 
+		/// Like [`Self::grab_all_input`], but downcasting the recorded values to `Output` instead of the marker's `Result`.
+		/// Useful when a stored value's wire form (e.g. `Item<Color>`) differs from the declared row types the marker's generic accepts.
+		pub fn grab_all_input_as<'a, Input: NodeInputDecleration + 'a, Output: Send + Sync + Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
+			self.protonodes_by_name
+				.get(&Input::identifier())
+				.map_or([].as_slice(), |x| x.as_slice())
+				.iter()
+				.filter_map(|inputs| inputs.get(Input::INDEX))
+				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
+				.filter_map(Instrumented::downcast_record::<Output>)
+		}
+
 		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
 		where
 			Input::Result: Send + Sync + Clone + 'static,
@@ -1014,6 +1049,17 @@ mod test {
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
 			Self::downcast::<Input>(dynamic)
+		}
+
+		/// Grabs a ranked (`Item<E>`) input's recorded value as its bare element `E`.
+		/// A stored value materializes as an `Item<E>` wire, so the monitor records the whole cell and this unwraps its element.
+		pub fn grab_ranked_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<<Input::Result as RankedResult>::Element>
+		where
+			Input::Result: RankedResult,
+		{
+			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
+			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
+			Self::downcast_record::<Item<<Input::Result as RankedResult>::Element>>(dynamic).map(|item| item.into_element())
 		}
 
 		pub fn grab_input_from_layer<Input: NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>

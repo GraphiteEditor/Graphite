@@ -12,6 +12,12 @@ pub struct WirePath {
 	pub data_type: FrontendGraphDataType,
 	pub thick: bool,
 	pub dashed: bool,
+	// A rank-1 `List<T>` wire renders as a doubled-up pair of parallel lines to distinguish it from a rank-0 `Item<T>` wire
+	#[serde(rename = "isList")]
+	pub is_list: bool,
+	// A thick wire's center line reaches past the wire into the cleaved connector slots, so it needs its own longer path; empty otherwise
+	#[serde(rename = "centerPathString")]
+	pub center_path_string: String,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -57,6 +63,19 @@ impl GraphWireStyle {
 
 pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool, graph_wire_style: GraphWireStyle) -> BezPath {
 	let grid_spacing = 24.;
+
+	// A thick layer-stack wire (vertical at both ends) is skipped across a single straight grid cell where its connectors
+	// already meet, and otherwise trimmed 3px inward at each end since it overshoots the connectors.
+	let (output_position, input_position) = if vertical_out && vertical_in {
+		if thick_wire_spans_single_cell(output_position, input_position) {
+			return BezPath::new();
+		}
+		let trim = 3. * (input_position.y - output_position.y).signum();
+		(output_position + DVec2::new(0., trim), input_position - DVec2::new(0., trim))
+	} else {
+		(output_position, input_position)
+	};
+
 	match graph_wire_style {
 		GraphWireStyle::Direct => {
 			let horizontal_gap = (output_position.x - input_position.x).abs();
@@ -99,6 +118,31 @@ pub fn build_vector_wire(output_position: DVec2, input_position: DVec2, vertical
 			straight_wire_to_bezpath(locations)
 		}
 	}
+}
+
+fn thick_wire_spans_single_cell(output_position: DVec2, input_position: DVec2) -> bool {
+	let grid_spacing = 24.;
+	(output_position.x - input_position.x).abs() < 1. && (output_position.y - input_position.y).abs() <= grid_spacing
+}
+
+/// The center line that cleaves a thick layer-stack wire. Its ends reach past the wire (1.5px toward the output
+/// connector and 2px toward the input) so the color runs through the full cleaved connector slots. Empty for other wires.
+pub fn build_thick_wire_center_line(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> BezPath {
+	if !(vertical_out && vertical_in) || thick_wire_spans_single_cell(output_position, input_position) {
+		return BezPath::new();
+	}
+
+	// The 8px wire trims 3px at each end; the center line trims less so it reaches further into the cleaved slots
+	let sign = (input_position.y - output_position.y).signum();
+	let output_trim = 1.5;
+	let input_trim = 1.;
+	let start = output_position + DVec2::new(0., output_trim * sign);
+	let end = input_position - DVec2::new(0., input_trim * sign);
+
+	let mut center_line = BezPath::new();
+	center_line.move_to(dvec2_to_point(start));
+	center_line.line_to(dvec2_to_point(end));
+	center_line
 }
 
 fn straight_wire_path(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<IVec2> {

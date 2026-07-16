@@ -47,7 +47,7 @@ impl MergeByDistanceExt for Vector {
 		// Collect points and segments to delete at the end to avoid invalidating indices
 		let mut points_to_delete = FxHashSet::default();
 		let mut segments_to_delete = FxHashSet::default();
-		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position.into_iter()) {
+		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position) {
 			// Remove any segments where both endpoints are in the collapse set
 			segments_to_delete.extend(self.segment_domain.iter().filter_map(|(id, start_offset, end_offset, _)| {
 				let start = self.point_domain.ids()[start_offset];
