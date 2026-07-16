@@ -15,7 +15,7 @@ use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::DashPattern;
-use graphic_types::vector_types::vector::style::Gradient;
+use graphic_types::vector_types::vector::style::{Gradient, MeshGradient};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -96,6 +96,8 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(Gradient),
+			/// Stored compactly as a `MeshGradient`, materializing as an `Item<MeshGradient>` at runtime.
+			MeshGradient(MeshGradient),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
@@ -141,6 +143,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
+					Self::MeshGradient(mesh_gradient) => mesh_gradient.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
@@ -203,6 +206,7 @@ macro_rules! tagged_value {
 					}
 					Self::Color(color) => Box::new(Item::new_from_element(color)),
 					Self::Gradient(stops) => Box::new(Item::new_from_element(stops)),
+					Self::MeshGradient(mesh_gradient) => Box::new(Item::new_from_element(mesh_gradient)),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -265,6 +269,7 @@ macro_rules! tagged_value {
 					}
 					Self::Color(color) => Arc::new(Item::new_from_element(color)),
 					Self::Gradient(stops) => Arc::new(Item::new_from_element(stops)),
+					Self::MeshGradient(mesh_gradient) => Arc::new(Item::new_from_element(mesh_gradient)),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -293,6 +298,7 @@ macro_rules! tagged_value {
 					Self::F64Array(_) => list!(f64),
 					Self::Color(_) => item!(Color),
 					Self::Gradient(_) => item!(Gradient),
+					Self::MeshGradient(_) => item!(MeshGradient),
 					Self::BrushStrokes(_) => item!(BrushTrace),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -372,6 +378,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
 						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::Gradient(Gradient::default())) }
+						if name == std::any::type_name::<MeshGradient>() { return Some(TaggedValue::MeshGradient(MeshGradient::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<BrushTrace>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
@@ -425,6 +432,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
+					Self::MeshGradient(mesh_gradient) => format!("MeshGradient({mesh_gradient:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS

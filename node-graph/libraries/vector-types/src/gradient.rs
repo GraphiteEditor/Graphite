@@ -7,7 +7,7 @@ use kurbo::{ParamCurve, PathSeg};
 
 use crate::{
 	Vector,
-	vector::{PointId, SegmentId, misc::point_to_dvec2},
+	vector::{PointId, SegmentId, StrokeId, misc::point_to_dvec2},
 };
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -511,15 +511,17 @@ pub struct MeshPatch {
 
 /// Definition of a mesh gradient patch. The entity is stored in the corresponding `MeshGradient` struct.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct MeshPatchDefinition {
+	/// Corner indices in MeshGradient::corner_points/corner_colors. [top-left, top-right, bottom-left, bottom-right]
 	corner_indices: [usize; 4],
+	/// Segment ids of edges defining the patch. [top, bottom, left, right]
 	edges: [SegmentId; 4],
 }
 
 /// Mesh gradient defined by multiple coons patches.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MeshGradient {
 	mesh_geometry: Vector,
 	pub corner_rows: usize,
@@ -532,7 +534,113 @@ pub struct MeshGradient {
 	patch_defs: Vec<MeshPatchDefinition>,
 }
 
+impl Default for MeshGradient {
+	fn default() -> Self {
+		// Build 2x2 patches
+		let corner_rows = 3;
+		let corner_columns = 3;
+		let positions: Vec<DVec2> = (0..corner_rows)
+			.flat_map(|row| {
+				let v = row as f64 / (corner_rows - 1) as f64;
+				(0..corner_columns).map(move |column| {
+					let u = column as f64 / (corner_columns - 1) as f64;
+					DVec2::new(u, v)
+				})
+			})
+			.collect();
+
+		MeshGradient::from_positions(positions.as_slice(), corner_rows, corner_columns).expect("2x2 patches should be valid mesh gradient")
+	}
+}
+
 impl MeshGradient {
+	pub fn from_positions(positions: &[DVec2], corner_rows: usize, corner_columns: usize) -> Option<Self> {
+		if corner_rows < 2 || corner_columns < 2 {
+			return None;
+		}
+
+		let corner_count = corner_rows.checked_mul(corner_columns)?;
+		if positions.len() != corner_count {
+			return None;
+		}
+
+		let mut vector = Vector::default();
+		let mut corner_points = Vec::with_capacity(corner_count);
+
+		for &position in positions {
+			let point_id = vector.point_domain.next_id();
+			vector.point_domain.push(point_id, position);
+			corner_points.push(point_id);
+		}
+
+		let mut horizontal_edges = Vec::with_capacity(corner_rows * (corner_columns - 1));
+		for row in 0..corner_rows {
+			for column in 0..(corner_columns - 1) {
+				let start_index = row * corner_columns + column;
+				let end_index = start_index + 1;
+
+				let segment_id = vector.segment_domain.next_id();
+				vector.push(segment_id, corner_points[start_index], corner_points[end_index], (None, None), StrokeId::ZERO);
+				horizontal_edges.push(segment_id);
+			}
+		}
+
+		let mut vertical_edges = Vec::with_capacity((corner_rows - 1) * corner_columns);
+		for row in 0..(corner_rows - 1) {
+			for column in 0..corner_columns {
+				let start_index = row * corner_columns + column;
+				let end_index = start_index + corner_columns;
+
+				let segment_id = vector.segment_domain.next_id();
+				vector.push(segment_id, corner_points[start_index], corner_points[end_index], (None, None), StrokeId::ZERO);
+				vertical_edges.push(segment_id);
+			}
+		}
+
+		// FIXME: alternative color is only for testing purpose
+		let corner_colors = (0..corner_rows)
+			.flat_map(|row| {
+				(0..corner_columns).map(move |column| {
+					let luminance = (row + column).is_multiple_of(2) as u8 as f32;
+					Color::from_luminance(luminance)
+				})
+			})
+			.collect();
+
+		let patch_rows = corner_rows - 1;
+		let patch_columns = corner_columns - 1;
+		let mut patch_defs = Vec::with_capacity((corner_rows - 1) * (corner_columns - 1));
+		for row in 0..patch_rows {
+			for column in 0..patch_columns {
+				let top_edge_index = row * patch_columns + column;
+				let bottom_edge_index = (row + 1) * patch_columns + column;
+				let left_edge_index = row * corner_columns + column;
+				let right_edge_index = left_edge_index + 1;
+				let edges = [
+					horizontal_edges[top_edge_index],
+					horizontal_edges[bottom_edge_index],
+					vertical_edges[left_edge_index],
+					vertical_edges[right_edge_index],
+				];
+				let top_left = row * corner_columns + column;
+				let top_right = top_left + 1;
+				let bottom_left = top_left + corner_columns;
+				let bottom_right = bottom_left + 1;
+				let corner_indices = [top_left, top_right, bottom_left, bottom_right];
+				patch_defs.push(MeshPatchDefinition { corner_indices, edges });
+			}
+		}
+
+		Some(Self {
+			mesh_geometry: vector,
+			corner_rows,
+			corner_columns,
+			corner_points,
+			corner_colors,
+			patch_defs,
+		})
+	}
+
 	fn resolve_patch(&self, patch_def: &MeshPatchDefinition) -> Option<MeshPatch> {
 		// Normalizes the orientation of the patch edge.
 		let resolve_oriented_edge = |segment_id: SegmentId, expected_start: PointId, expected_end: PointId| -> Option<PathSeg> {
@@ -811,11 +919,12 @@ impl MeshGradientEvaluator {
 				.ok()?;
 
 			let [top_left_pos, top_right_pos, bottom_left_pos, bottom_right_pos] = patch.corners;
+			// [top, bottom, left, right]
 			let lengths = [
-				top_left_pos.distance(top_right_pos) as f32,       // top
-				bottom_left_pos.distance(bottom_right_pos) as f32, // bottom
-				top_left_pos.distance(bottom_left_pos) as f32,     // left
-				top_right_pos.distance(bottom_right_pos) as f32,   // right
+				top_left_pos.distance(top_right_pos) as f32,
+				bottom_left_pos.distance(bottom_right_pos) as f32,
+				top_left_pos.distance(bottom_left_pos) as f32,
+				top_right_pos.distance(bottom_right_pos) as f32,
 			];
 			patch_color_data.push(MeshPatchEvaluator {
 				corners: patch.corners,
