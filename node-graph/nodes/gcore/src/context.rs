@@ -1,5 +1,5 @@
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractIndices, ExtractPosition};
 use glam::DVec2;
@@ -117,6 +117,33 @@ pub fn read_gradient_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Resul
 
 fn read_gradient_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadGradientRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
 	vararg_lanes::<Gradient>(ctx, level)
+}
+
+/// Reads the current number from within a **Map** node's loop.
+#[node_macro::node(category("Context"))]
+fn read_number(ctx: impl Ctx + ExtractVarArgs) -> Item<f64> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	if let Some(item) = var_arg.downcast_ref::<Item<f64>>() {
+		return item.clone();
+	}
+
+	// Numeric lists carry several possible element types, so probe each and widen to f64, keeping the item's attributes
+	if let Some(item) = var_arg.downcast_ref::<Item<f32>>() {
+		let (element, attributes) = item.clone().into_parts();
+		return Item::from_parts(element as f64, attributes);
+	}
+	if let Some(item) = var_arg.downcast_ref::<Item<u32>>() {
+		let (element, attributes) = item.clone().into_parts();
+		return Item::from_parts(element as f64, attributes);
+	}
+	if let Some(item) = var_arg.downcast_ref::<Item<u64>>() {
+		let (element, attributes) = item.clone().into_parts();
+		return Item::from_parts(element as f64, attributes);
+	}
+
+	Default::default()
 }
 
 #[node_macro::node(category("Context"), path(core_types::vector))]

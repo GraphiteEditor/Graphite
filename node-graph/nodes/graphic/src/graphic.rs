@@ -2,14 +2,17 @@ use core_types::attribute::{Attr, EditorLayerPath, Name0, Named, Transform as Tr
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
-use core_types::list::List;
-use core_types::registry::types::{Angle, SignedInteger};
+use core_types::list::{Item, List, ListDyn};
+use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
+use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
+use std::cmp::Ordering;
 
 use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
 use vector_types::{Gradient, GradientStop, ReferencePoint};
@@ -72,6 +75,327 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 	index: SignedInteger,
 ) -> T {
 	resolve_index(index, list.len() as u64).map(|resolved| list.element_ref(resolved as usize).clone()).unwrap_or_default()
+}
+
+/// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* bool list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
+#[node_macro::node(category("General"))]
+fn filter<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to filter.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// The list of true and false values that determines which corresponding items are kept (`true`) and discarded (`false`). The pattern may repeat if it is shorter than the list of data.
+	keep_pattern: List<bool>,
+) -> List<T> {
+	// Tile the keep pattern over the items, so a short pattern repeats from the start
+	let pattern = keep_pattern.iter_element_values().as_slice();
+	if pattern.is_empty() {
+		return list;
+	}
+
+	list.into_iter().enumerate().filter_map(|(index, item)| pattern[index % pattern.len()].then_some(item)).collect()
+}
+
+/// Reverses the order of the items in a list, so the last item comes first and the first comes last.
+#[node_macro::node(category("General"))]
+fn reverse<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to reverse.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+) -> List<T> {
+	list.into_iter().rev().collect()
+}
+
+/// Shifts the items in a list by a number of positions. With wrapping, items pushed off one end reappear at the other. Otherwise they are dropped, shortening the list.
+#[node_macro::node(category("General"))]
+fn shift<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to shift.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// How many positions to shift each item. Positive values shift items toward the start of the list, negative toward the end.
+	amount: SignedInteger,
+	/// Whether items shifted off one end wrap around to the other. When off, they are dropped and the list gets shorter.
+	#[default(true)]
+	wrap: bool,
+) -> List<T> {
+	let amount = amount as i64;
+	let len = list.len() as i64;
+	if len == 0 {
+		return list;
+	}
+
+	let mut items: Vec<Item<T>> = list.into_iter().collect();
+	if wrap {
+		items.rotate_left((((amount % len) + len) % len) as usize);
+		items.into_iter().collect()
+	} else if amount >= 0 {
+		items.into_iter().skip(amount.min(len) as usize).collect()
+	} else {
+		items.into_iter().take((len + amount).max(0) as usize).collect()
+	}
+}
+
+/// Randomly reorders the items in a list. The same seed always produces the same ordering.
+#[node_macro::node(category("General"))]
+fn shuffle<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list to have its items randomly reordered.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// Seed to determine the unique variation of the random shuffle ordering. The same seed always produces the same ordering.
+	seed: SeedValue,
+) -> List<T> {
+	let mut items: Vec<Item<T>> = list.into_iter().collect();
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	items.shuffle(&mut rng);
+
+	items.into_iter().collect()
+}
+
+/// Generates a list of evenly spaced numbers, starting at a value and progressing by a step (which may be positive, negative, or zero) for a given count.
+#[node_macro::node(category("General"), name("Number Sequence"))]
+fn number_sequence(
+	_: impl Ctx,
+	_primary: (),
+	/// The first number in the sequence.
+	start: f64,
+	/// The amount added to reach each successive number.
+	#[default(1.)]
+	step: f64,
+	/// How many numbers to generate.
+	#[default(10)]
+	count: u32,
+) -> List<f64> {
+	(0..count).map(|i| Item::new_from_element(start + step * i as f64)).collect()
+}
+
+/// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
+#[node_macro::node(category("General"))]
+fn list_indices(
+	_: impl Ctx,
+	/// The list whose items are counted.
+	list: ListDyn,
+	/// The number that the count begins from for the first item.
+	start_index: SignedInteger,
+) -> List<f64> {
+	(0..list.len()).map(|index| Item::new_from_element(start_index + index as f64)).collect()
+}
+
+/// Extracts a portion of a list, starting at "Start" and ending before "End".
+///
+/// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
+#[node_macro::node(category("General"))]
+fn list_slice<T: Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to take a portion of.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// The index of the first item in the portion. Negative indices count from the end of the list.
+	start: SignedInteger,
+	/// The index the portion ends before, which is not included. Zero or negative indices count from the end of the list.
+	end: SignedInteger,
+) -> List<T> {
+	let total_items = list.len();
+
+	let start = if start < 0. {
+		total_items.saturating_sub(start.abs() as usize)
+	} else {
+		(start as usize).min(total_items)
+	};
+	let end = if end <= 0. {
+		total_items.saturating_sub(end.abs() as usize)
+	} else {
+		(end as usize).min(total_items)
+	};
+
+	if start >= end {
+		return List::new();
+	}
+
+	list.into_iter().skip(start).take(end - start).collect()
+}
+
+/// Pairwise ordering used by the Sort node for element values. Types without a natural
+/// order compare as equal, so the stable sort leaves their items in their original relative positions.
+pub trait ElementOrder {
+	fn element_order(&self, _other: &Self) -> Ordering {
+		Ordering::Equal
+	}
+}
+impl ElementOrder for String {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for bool {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for f32 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.total_cmp(other)
+	}
+}
+impl ElementOrder for f64 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.total_cmp(other)
+	}
+}
+impl ElementOrder for u32 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for u64 {
+	fn element_order(&self, other: &Self) -> Ordering {
+		self.cmp(other)
+	}
+}
+impl ElementOrder for DVec2 {}
+impl ElementOrder for DAffine2 {}
+impl ElementOrder for Vector {}
+impl<'e> ElementOrder for Graphic<'e> {}
+impl ElementOrder for Raster<CPU> {}
+impl ElementOrder for Raster<GPU> {}
+impl ElementOrder for Color {}
+impl ElementOrder for Gradient {}
+impl<'e> ElementOrder for Artboard<'e> {}
+
+/// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
+#[node_macro::node(category("General"))]
+fn sort<T: ElementOrder + Clone + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The list of data to reorder.
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
+	list: List<T>,
+	/// The optional list of orderable values, corresponding item-to-item with the input list, to sort by instead of the items' own values.
+	// The two-generic grid master authors here (f64/String/bool key lists) needs multi-generic implementations support our macro does not have; narrowed to f64 keys.
+	#[expose]
+	sort_order: List<f64>,
+	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
+	reverse: bool,
+) -> List<T> {
+	// Order by the parallel keys when provided (repeating the last if there are fewer keys than items), otherwise by the element values themselves
+	let keys = sort_order.iter_element_values().as_slice();
+	let elements: Vec<&T> = list.iter_element_values().collect();
+
+	let mut order: Vec<usize> = (0..list.len()).collect();
+	order.sort_by(|&a, &b| {
+		let ordering = match keys {
+			[] => elements[a].element_order(elements[b]),
+			keys => keys[a.min(keys.len() - 1)].element_order(&keys[b.min(keys.len() - 1)]),
+		};
+		if reverse { ordering.reverse() } else { ordering }
+	});
+
+	let mut result = List::new();
+	for index in order {
+		if let Some(item) = list.clone_item(index) {
+			result.push(item);
+		}
+	}
+
+	result
 }
 
 /// One subgraph invocation per content row, the row riding as a vararg, with
@@ -684,5 +1008,123 @@ fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 			stop(1., colors.element(0).copied().unwrap_or(Color::BLACK)),
 		]),
 		total => Gradient::new(colors.into_iter().enumerate().map(|(index, row)| stop(index as f64 / (total - 1) as f64, row.into_element()))),
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	fn list_of<T>(elements: impl IntoIterator<Item = T>) -> List<T> {
+		elements.into_iter().map(Item::new_from_element).collect()
+	}
+
+	fn elements<T: Clone>(list: &List<T>) -> Vec<T> {
+		list.iter_element_values().cloned().collect()
+	}
+
+	#[test]
+	fn sorts_elements_by_their_natural_order() {
+		let list = list_of(["banana".to_string(), "apple".to_string(), "cherry".to_string()]);
+		let sorted = sort(&(), list, List::<f64>::new(), false);
+		assert_eq!(elements(&sorted), ["apple", "banana", "cherry"]);
+	}
+
+	#[test]
+	fn sorts_elements_in_reverse() {
+		let list = list_of([3., 1., 2.]);
+		let sorted = sort(&(), list, List::<f64>::new(), true);
+		assert_eq!(elements(&sorted), [3., 2., 1.]);
+	}
+
+	#[test]
+	fn sort_order_keys_override_element_order() {
+		let list = list_of(["apple".to_string(), "banana".to_string(), "cherry".to_string()]);
+		let sorted = sort(&(), list, list_of([2., 0., 1.]), false);
+		assert_eq!(elements(&sorted), ["banana", "cherry", "apple"]);
+	}
+
+	#[test]
+	fn short_sort_order_repeats_its_last_key() {
+		let list = list_of(["a".to_string(), "b".to_string(), "c".to_string()]);
+		let sorted = sort(&(), list, list_of([2., 1.]), false);
+		assert_eq!(elements(&sorted), ["b", "c", "a"]);
+	}
+
+	#[test]
+	fn long_sort_order_ignores_its_extra_keys() {
+		let list = list_of([1., 2.]);
+		let sorted = sort(&(), list, list_of([3., 1., 0., 5.]), false);
+		assert_eq!(elements(&sorted), [2., 1.]);
+	}
+
+	#[test]
+	fn unsortable_elements_keep_their_original_order() {
+		let list = list_of([DVec2::new(3., 3.), DVec2::new(1., 1.), DVec2::new(2., 2.)]);
+		let sorted = sort(&(), list, List::<f64>::new(), false);
+		assert_eq!(elements(&sorted), [DVec2::new(3., 3.), DVec2::new(1., 1.), DVec2::new(2., 2.)]);
+	}
+
+	#[test]
+	fn shift_wraps_items_around() {
+		let forward = shift(&(), list_of([1., 2., 3., 4.]), 1., true);
+		assert_eq!(elements(&forward), [2., 3., 4., 1.]);
+
+		let backward = shift(&(), list_of([1., 2., 3., 4.]), -1., true);
+		assert_eq!(elements(&backward), [4., 1., 2., 3.]);
+	}
+
+	#[test]
+	fn shift_without_wrapping_drops_items() {
+		let dropped_front = shift(&(), list_of([1., 2., 3., 4.]), 1., false);
+		assert_eq!(elements(&dropped_front), [2., 3., 4.]);
+
+		let dropped_back = shift(&(), list_of([1., 2., 3., 4.]), -1., false);
+		assert_eq!(elements(&dropped_back), [1., 2., 3.]);
+	}
+
+	#[test]
+	fn shuffle_is_deterministic_and_preserves_elements() {
+		let original = [1., 2., 3., 4., 5., 6., 7., 8.];
+		let first = shuffle(&(), list_of(original), 42_u32.into());
+		let second = shuffle(&(), list_of(original), 42_u32.into());
+		assert_eq!(elements(&first), elements(&second), "the same seed should always produce the same ordering");
+
+		let mut recovered = elements(&first);
+		recovered.sort_by(|a, b| a.partial_cmp(b).unwrap());
+		assert_eq!(recovered, original, "shuffling should preserve all the elements");
+	}
+
+	#[test]
+	fn number_sequence_generates_evenly_spaced_numbers() {
+		let sequence = number_sequence(&(), (), 0., 2., 4_u32);
+		assert_eq!(elements(&sequence), [0., 2., 4., 6.]);
+	}
+
+	#[test]
+	fn list_indices_counts_each_item() {
+		let indices = list_indices(&(), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), 0.);
+		assert_eq!(elements(&indices), [0., 1., 2.]);
+
+		let from_one = list_indices(&(), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), 1.);
+		assert_eq!(elements(&from_one), [1., 2., 3.]);
+	}
+
+	#[test]
+	fn list_slice_takes_the_portion_between_start_and_end() {
+		let portion = list_slice(&(), list_of([1., 2., 3., 4., 5.]), 1., 3.);
+		assert_eq!(elements(&portion), [2., 3.]);
+	}
+
+	#[test]
+	fn list_slice_resolves_negative_indices_from_the_end() {
+		let portion = list_slice(&(), list_of([1., 2., 3., 4., 5.]), -2., 0.);
+		assert_eq!(elements(&portion), [4., 5.], "an end of zero reaches through the end of the list");
+	}
+
+	#[test]
+	fn list_slice_yields_nothing_when_start_reaches_end() {
+		let portion = list_slice(&(), list_of([1., 2., 3., 4., 5.]), 3., 3.);
+		assert!(elements(&portion).is_empty());
 	}
 }
