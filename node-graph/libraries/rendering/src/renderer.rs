@@ -2288,85 +2288,82 @@ impl Render for List<MeshGradient> {
 				continue;
 			};
 
+			let clip_inflation = 0.01;
+			let paint_inflation = 0.02;
+			let clip_min = -clip_inflation;
+			let clip_size = 1. + 2. * clip_inflation;
+			let paint_min = -paint_inflation;
+			let paint_size = 1. + 2. * paint_inflation;
+			let shared_id = generate_uuid();
+			write!(
+					&mut render.svg_defs,
+					r##"<clipPath id="mc{shared_id}" clipPathUnits="userSpaceOnUse"><rect x="{clip_min}" y="{clip_min}" width="{clip_size}" height="{clip_size}"/></clipPath>
+					<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+					<mask id="mm{shared_id}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="url(#gm{shared_id})"/></mask>
+					<mask id="mi{shared_id}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="#fff"/></mask>"##,
+				)
+				.unwrap();
+
 			let mut unique_id = generate_uuid();
 			subpatches.iter().for_each(|subpatch| {
 				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
 				let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
 
 				// linear gradient for the bottom line
-					write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-							float_gamma_color_to_hex(bottom_left.gamma_color),
-							float_gamma_color_to_hex(bottom_right.gamma_color),
-						)
-						.unwrap();
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+					float_gamma_color_to_hex(bottom_left.gamma_color),
+					float_gamma_color_to_hex(bottom_right.gamma_color),
+				)
+				.unwrap();
 
-					// linear gradient for the top line
-					write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-							float_gamma_color_to_hex(top_left.gamma_color),
-							float_gamma_color_to_hex(top_right.gamma_color),
-						)
-						.unwrap();
+				// linear gradient for the top line
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+					float_gamma_color_to_hex(top_left.gamma_color),
+					float_gamma_color_to_hex(top_right.gamma_color),
+				)
+				.unwrap();
 
-					// top mask gradient
-					write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="gm{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientTransform="{subpatch_transform}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
-						)
-						.unwrap();
+				render.parent_tag(
+					"g",
+					|attributes| {
+						attributes.push(ATTR_TRANSFORM, subpatch_transform);
+						attributes.push("clip-path", format!("url(#mc{shared_id})"));
+					},
+					|render| {
+						// Force both gradient layers to composite before the outer clip applies edge coverage.
+						render.parent_tag(
+							"g",
+							|attributes| {
+								attributes.push("style", "isolation:isolate");
+								attributes.push("mask", format!("url(#mi{shared_id})"));
+							},
+							|render| {
+								render.leaf_tag("rect", |attributes| {
+									attributes.push("x", paint_min.to_string());
+									attributes.push("y", paint_min.to_string());
+									attributes.push("width", paint_size.to_string());
+									attributes.push("height", paint_size.to_string());
+									attributes.push("fill", format!("url(#gb{unique_id})"));
+								});
 
-					// Inflate the subpatch to hide gaps caused by anti-aliasing
-					let inflation_amount = 1.;
+								render.leaf_tag("rect", |attributes| {
+									attributes.push("x", paint_min.to_string());
+									attributes.push("y", paint_min.to_string());
+									attributes.push("width", paint_size.to_string());
+									attributes.push("height", paint_size.to_string());
+									attributes.push("fill", format!("url(#gt{unique_id})"));
+									attributes.push("mask", format!("url(#mm{shared_id})"));
+								});
+							},
+						);
+					},
+				);
 
-					let top_normal = (top_left.position - top_right.position).perp().normalize();
-					let bottom_normal = (bottom_right.position - bottom_left.position).perp().normalize();
-					let left_normal = (bottom_left.position - top_left.position).perp().normalize();
-					let right_normal = (top_right.position - bottom_right.position).perp().normalize();
-
-					let inflated_top_left_pos = top_left.position + (top_normal + left_normal) * inflation_amount;
-					let inflated_top_right_pos = top_right.position + (top_normal + right_normal) * inflation_amount;
-					let inflated_bottom_left_pos = bottom_left.position + (bottom_normal + left_normal) * inflation_amount;
-					let inflated_bottom_right_pos = bottom_right.position + (bottom_normal + right_normal) * inflation_amount;
-
-					let DVec2 { x: top_left_x, y: top_left_y } = inflated_top_left_pos;
-					let DVec2 { x: top_right_x, y: top_right_y } = inflated_top_right_pos;
-					let DVec2 { x: bottom_left_x, y: bottom_left_y } = inflated_bottom_left_pos;
-					let DVec2 { x: bottom_right_x, y: bottom_right_y } = inflated_bottom_right_pos;
-
-					// mask
-					let min_x = bottom_left_x.min(top_left_x.min(bottom_right_x.min(top_right_x)));
-					let max_x = bottom_left_x.max(top_left_x.max(bottom_right_x.max(top_right_x)));
-					let min_y = bottom_left_y.min(top_left_y.min(bottom_right_y.min(top_right_y)));
-					let max_y = bottom_left_y.max(top_left_y.max(bottom_right_y.max(top_right_y)));
-					let mask_width = max_x - min_x;
-					let mask_height = max_y - min_y;
-					write!(
-						&mut render.svg_defs,
-						r##"<mask id="m{unique_id}" x="{min_x}" y="{min_y}" width="{mask_width}" height="{mask_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
-							<rect
-							x="{min_x}"
-							y="{min_y}"
-							width="{mask_width}"
-							height="{mask_height}"
-							fill="url(#gm{unique_id})" /></mask>"##,
-					)
-					.unwrap();
-
-					render.leaf_tag("polygon", |attributes| {
-						attributes.push("points", format!("{bottom_left_x},{bottom_left_y} {bottom_right_x},{bottom_right_y} {top_right_x},{top_right_y} {top_left_x},{top_left_y}"));
-						attributes.push("fill", format!("url(#gb{unique_id})"));
-					});
-
-					render.leaf_tag("polygon", |attributes| {
-						attributes.push("points", format!("{bottom_left_x},{bottom_left_y} {bottom_right_x},{bottom_right_y} {top_right_x},{top_right_y} {top_left_x},{top_left_y}"));
-						attributes.push("fill", format!("url(#gt{unique_id})"));
-						attributes.push("mask", format!("url(#m{unique_id})"));
-					});
-
-					unique_id += 1;
+				unique_id += 1;
 			});
 		}
 	}
