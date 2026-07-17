@@ -1,3 +1,6 @@
+//! JS-facing editor handle. Owns the callback that delivers `FrontendMessage`s to JS; on web `dispatch` runs
+//! messages through the in-process editor, on native `send` forwards them as `EditorCommand`s.
+
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
 #[cfg(not(feature = "native"))]

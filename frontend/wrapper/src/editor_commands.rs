@@ -1,3 +1,7 @@
+//! Commands that JS can call on the editor. Each function maps its arguments to a `Message`. On web the generated
+//! stub dispatches it directly, on native the arguments are sent as an `EditorCommand` and the same body runs in
+//! the editor process.
+
 #![allow(clippy::too_many_arguments)]
 #[cfg(target_family = "wasm")]
 use crate::editor_wrapper::EditorWrapper;

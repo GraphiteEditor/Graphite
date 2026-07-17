@@ -1,3 +1,6 @@
+//! Messaging with the native process. Serialized `FrontendMessage`s come in and are forwarded to JS,
+//! `EditorCommand`s go back out. Encoding and decoding both live here so the wire format stays in one place.
+
 use crate::editor_wrapper::{EditorWrapper, IMAGE_DATA_HASH};
 use crate::helpers::{calculate_hash, render_image_data_to_canvases, wrapper};
 use crate::wasm_value::WasmValue;
@@ -16,7 +19,7 @@ pub fn receive_native_message(buffer: ArrayBuffer) {
 						"UpdateImageData" => {
 							let new_hash = calculate_hash(&data);
 							if IMAGE_DATA_HASH.swap(new_hash, Ordering::Relaxed) == new_hash {
-								return;
+								continue;
 							}
 
 							match serde_json::from_str::<Vec<RasterizedImage>>(&data) {

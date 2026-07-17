@@ -1,3 +1,7 @@
+//! Serializable stand-in for `JsValue`, used to send `FrontendMessage`s from the native editor process to JS.
+//! Keeps the types JSON can't represent (`BigInt`, `Uint8Array`, `Map`, `undefined`, `NaN`) so the wasm side
+//! can reconstruct the same `JsValue`s that `serde_wasm_bindgen` produces on web.
+
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use serde_json::Error;
