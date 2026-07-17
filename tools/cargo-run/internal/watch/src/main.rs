@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const EXCLUDED_DIRECTORIES: &[&str] = &["target", ".git", "frontend/node_modules", "frontend/dist", "frontend/wrapper/pkg", "tools"];
+const EXCLUDED_DIRECTORIES: &[&str] = &["target", ".git", "frontend/node_modules", "frontend/dist", "frontend/wrapper/pkg", "frontend/wrapper/pkg-native", "tools"];
 const INCLUDED_EXTENSIONS: &[&str] = &["rs"];
 
 const DEBOUNCE: Duration = Duration::from_millis(500);
