@@ -2181,6 +2181,7 @@ dependencies = [
  "glam",
  "graphic-types",
  "node-macro",
+ "rand",
  "raster-types",
  "serde",
  "vector-types",

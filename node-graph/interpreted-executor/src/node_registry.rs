@@ -411,7 +411,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Raster<CPU>,
 		Color,
 		Gradient,
+		f32,
 		f64,
+		u32,
+		u64,
 		bool,
 		String,
 		DVec2,
@@ -485,8 +488,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(input_adapter_row!(from_element: String, element: BoxCorners));
 	// A number wire may feed the ranked `Item<BoxCorners>` connector, each number becoming a uniform radius for all four corners
 	node_types.extend(input_adapter_row!(from_element: f64, element: BoxCorners));
-	// Numeric wires cast between element types at a ranked connector, as `Convert` does for bare numeric wires
-	macro_rules! numeric_convert_node {
+	// The `Convert`-based counterpart of `input_adapter_row!`, for casts the std `Into` trait cannot express
+	macro_rules! convert_adapter_node {
 		(from_element: $from:ty, element: $element:ty) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 				input_adapter_row!(node: ConvertItemNode, from: Item<$from>, to: Item<$element>, element: $element),
@@ -495,19 +498,24 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			entries
 		}};
 	}
-	macro_rules! numeric_convert_star {
+	macro_rules! convert_adapter_wildcard {
 		(from: $from:ty, to: [$($to:ty),*]) => {{
 			let mut entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = Vec::new();
-			$(entries.extend(numeric_convert_node!(from_element: $from, element: $to));)*
+			$(entries.extend(convert_adapter_node!(from_element: $from, element: $to));)*
 			entries
 		}};
 	}
-	node_types.extend(numeric_convert_star!(from: f64, to: [f32, u32, u64, i32, i64]));
-	node_types.extend(numeric_convert_star!(from: f32, to: [f64, u32, u64, i32, i64]));
-	node_types.extend(numeric_convert_star!(from: u32, to: [f64, f32, u64, i32, i64]));
-	node_types.extend(numeric_convert_star!(from: u64, to: [f64, f32, u32, i32, i64]));
-	node_types.extend(numeric_convert_star!(from: i32, to: [f64, f32, u32, u64, i64]));
-	node_types.extend(numeric_convert_star!(from: i64, to: [f64, f32, u32, u64, i32]));
+	// Numeric wires cast between numeric element types, splat to fill both axes of a `DVec2` connector, and format into a `String` connector
+	node_types.extend(convert_adapter_wildcard!(from: f64, to: [f32, u32, u64, i32, i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: f32, to: [f64, u32, u64, i32, i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: u32, to: [f64, f32, u64, i32, i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: u64, to: [f64, f32, u32, i32, i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: i32, to: [f64, f32, u32, u64, i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, f32, u32, u64, i32, DVec2, String]));
+	// Bool, position, and transform wires may feed a ranked `String` connector by formatting each element as text
+	node_types.extend(convert_adapter_node!(from_element: bool, element: String));
+	node_types.extend(convert_adapter_node!(from_element: DVec2, element: String));
+	node_types.extend(convert_adapter_node!(from_element: DAffine2, element: String));
 	// The sanctioned attribute value conversions: an Item wire's elements box per cell, while a List wire boxes whole as one value
 	macro_rules! attribute_value_node {
 		(Item<$element:ty>) => {
