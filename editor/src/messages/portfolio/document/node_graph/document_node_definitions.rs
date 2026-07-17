@@ -1239,7 +1239,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed(
 				"Decomposes the X and Y components of a vec2.\n\
 				\n\
-				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
+				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
 			),
 			properties: None,
 		},
