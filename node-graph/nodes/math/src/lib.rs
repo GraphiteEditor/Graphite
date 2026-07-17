@@ -14,7 +14,7 @@ use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Div, Mul, Rem, Sub};
-use vector_types::Gradient;
+use vector_types::{Gradient, MeshGradient};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1014,6 +1014,12 @@ fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vect
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
 	gradient
+}
+
+/// Constructs a mesh gradient value composed of a grid of patches defined by colored corners and curved boundary segments.
+#[node_macro::node(category("Value"))]
+fn mesh_gradient_value(_: impl Ctx, _primary: (), mesh_gradient: Item<MeshGradient>) -> Item<MeshGradient> {
+	mesh_gradient
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
