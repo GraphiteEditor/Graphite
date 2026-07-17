@@ -3,6 +3,7 @@
 mod as_message;
 mod combined_message_attrs;
 mod discriminant;
+mod editor_commands;
 mod extract_fields;
 mod helper_structs;
 mod helpers;
@@ -15,6 +16,7 @@ mod widget_builder;
 use crate::as_message::derive_as_message_impl;
 use crate::combined_message_attrs::combined_message_attrs_impl;
 use crate::discriminant::derive_discriminant_impl;
+use crate::editor_commands::editor_commands_impl;
 use crate::extract_fields::derive_extract_field_impl;
 use crate::helper_structs::AttrInnerSingleString;
 use crate::hierarchical_tree::generate_hierarchical_tree;
@@ -300,6 +302,12 @@ pub fn derive_extract_field(input_item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn message_handler_data(attr: TokenStream, input_item: TokenStream) -> TokenStream {
 	TokenStream::from(message_handler_data_attr_impl(attr.into(), input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+}
+
+#[proc_macro]
+pub fn editor_commands(input: TokenStream) -> TokenStream {
+	let input = syn::parse_macro_input!(input as editor_commands::EditorCommands);
+	TokenStream::from(editor_commands_impl(input).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 #[cfg(test)]

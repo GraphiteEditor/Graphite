@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage};
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -660,19 +660,15 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Convert each linear-light `Image<Color>` into the JS-boundary `Image<SRGBA8>` form (gamma byte channels) before dispatching.
+				// Convert each linear-light `Image<Color>` into gamma sRGB bytes (the DOM boundary form) before dispatching.
+				let rgba8_bytes = |&color: &_| <[u8; 4]>::from(SRGBA8::from(color));
 				let image_data = image_data
 					.into_iter()
-					.map(|(id, image)| {
-						(
-							id,
-							graphene_std::raster::Image {
-								width: image.width,
-								height: image.height,
-								data: image.data.iter().map(|&c| SRGBA8::from(c)).collect(),
-								base64_string: image.base64_string,
-							},
-						)
+					.map(|(id, image)| RasterizedImage {
+						id,
+						width: image.width,
+						height: image.height,
+						pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
 					})
 					.collect();
 				responses.add(FrontendMessage::UpdateImageData { image_data });

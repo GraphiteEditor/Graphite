@@ -2312,9 +2312,9 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "graphite-wasm-wrapper",
  "image",
  "keyboard-types",
- "ron",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -2374,6 +2374,7 @@ dependencies = [
 name = "graphite-proc-macros"
 version = "0.0.0"
 dependencies = [
+ "convert_case",
  "graphite-editor",
  "proc-macro2",
  "quote",
@@ -2385,17 +2386,18 @@ dependencies = [
 name = "graphite-wasm-wrapper"
 version = "0.0.0"
 dependencies = [
- "bytemuck",
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "graphite-proc-macros",
  "js-sys",
  "log",
  "node-macro",
- "ron",
  "serde",
  "serde-wasm-bindgen",
+ "serde_bytes",
  "serde_json",
+ "tsify",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
