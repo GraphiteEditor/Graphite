@@ -436,7 +436,7 @@ mod ser {
 			};
 
 			let json: &str = &encode(&message).unwrap();
-			let decoded = serde_json::from_str(json).unwrap();
+			let decoded: WasmValue = serde_json::from_str(json).unwrap();
 
 			assert_eq!(decoded, to_value(&message).unwrap());
 		}
