@@ -37,7 +37,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::{GradientSpreadMethod, MeshGradient};
+use vector_types::gradient::{GradientSpreadMethod, MeshGradient, MeshSubpatch};
 use vector_types::vector::misc::point_to_dvec2;
 use vello::*;
 
@@ -263,6 +263,45 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 		let comma = if i == 5 { "" } else { "," };
 		val + &(num + comma)
 	}) + ")"
+}
+
+const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 8;
+const MESH_POSITION_ERROR_TOLERANCE: f64 = 0.25;
+const MESH_COLOR_ERROR_TOLERANCE: f32 = 1. / 255.;
+const MESH_BASE_CLIP_INFLATION: f64 = 0.01;
+const MESH_MAXIMUM_INFLATION_BUCKET: usize = 8;
+
+fn mesh_gamma_color_to_srgba8(color: [f32; 4]) -> SRGBA8 {
+	let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
+	SRGBA8 {
+		red: float_to_u8(color[0]),
+		green: float_to_u8(color[1]),
+		blue: float_to_u8(color[2]),
+		alpha: float_to_u8(color[3]),
+	}
+}
+
+fn mesh_subpatch_inflation_bucket(subpatch: &MeshSubpatch) -> usize {
+	let [top_left, top_right, bottom_left, _] = subpatch.corners;
+	let subpatch_transform = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
+	let (_, smallest_scale) = singular_values(subpatch_transform);
+	let required_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
+		(1. / smallest_scale).max(MESH_BASE_CLIP_INFLATION)
+	} else {
+		MESH_BASE_CLIP_INFLATION
+	};
+
+	((required_inflation / MESH_BASE_CLIP_INFLATION).log2().ceil() as usize).min(MESH_MAXIMUM_INFLATION_BUCKET)
+}
+
+fn mesh_inflation_values(bucket: usize) -> (f64, f64, f64, f64) {
+	let clip_inflation = MESH_BASE_CLIP_INFLATION * 2_f64.powi(bucket as i32);
+	let paint_inflation = clip_inflation * 2.;
+	let clip_min = -clip_inflation;
+	let clip_size = 1. + 2. * clip_inflation;
+	let paint_min = -paint_inflation;
+	let paint_size = 1. + 2. * paint_inflation;
+	(clip_min, clip_size, paint_min, paint_size)
 }
 
 /// `(max, min)` factors by which a unit vector is stretched under `transform`'s linear part — the
@@ -1390,13 +1429,10 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::MeshGradient(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 							paint.render_to_vello(scene, multiplied_transform, context, render_params);
 							scene.pop_layer();
-						}
-						Graphic::MeshGradient(_) => {
-							// FIXME: implement vello rendering
 						}
 					};
 				}
@@ -1476,10 +1512,7 @@ impl Render for List<Vector> {
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 						}
-						Graphic::MeshGradient(_) => {
-							// FIXME: implement vello rendering
-						}
-						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) | Graphic::MeshGradient(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -2267,53 +2300,16 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let maximum_subdivisions_per_patch_per_axis = 8;
-			let position_error_tolerance = 0.25;
-			let color_error_tolerance = 1. / 255.;
-
-			let float_gamma_color_to_hex = |color: [f32; 4]| -> String {
-				let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
-				SRGBA8 {
-					red: float_to_u8(color[0]),
-					green: float_to_u8(color[1]),
-					blue: float_to_u8(color[2]),
-					alpha: float_to_u8(color[3]),
-				}
-				.to_rgba_hex()
-			};
-
 			let Some(subpatches) = mesh_gradient
 				.evaluator()
-				.and_then(|evaluator| evaluator.subdivide_patches_adaptive(maximum_subdivisions_per_patch_per_axis, mesh_transform, position_error_tolerance, color_error_tolerance))
+				.and_then(|evaluator| evaluator.subdivide_patches_adaptive(MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS, mesh_transform, MESH_POSITION_ERROR_TOLERANCE, MESH_COLOR_ERROR_TOLERANCE))
 			else {
 				continue;
 			};
 
-			const BASE_CLIP_INFLATION: f64 = 0.01;
-			const MAX_INFLATION_BUCKET: usize = 6;
-			let inflation_bucket = |subpatch: &vector_types::gradient::MeshSubpatch| {
-				let [top_left, top_right, bottom_left, _] = subpatch.corners;
-				let subpatch_transform = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
-				let (_, smallest_scale) = singular_values(subpatch_transform);
-				let required_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
-					(1. / smallest_scale).max(BASE_CLIP_INFLATION)
-				} else {
-					BASE_CLIP_INFLATION
-				};
-				((required_inflation / BASE_CLIP_INFLATION).log2().ceil() as usize).min(MAX_INFLATION_BUCKET)
-			};
-			let inflation_buckets: Vec<_> = subpatches.iter().map(inflation_bucket).collect();
-			let mut used_inflation_buckets = [false; MAX_INFLATION_BUCKET + 1];
+			let inflation_buckets: Vec<_> = subpatches.iter().map(mesh_subpatch_inflation_bucket).collect();
+			let mut used_inflation_buckets = [false; MESH_MAXIMUM_INFLATION_BUCKET + 1];
 			inflation_buckets.iter().for_each(|&bucket| used_inflation_buckets[bucket] = true);
-			let inflation_values = |bucket: usize| {
-				let clip_inflation = BASE_CLIP_INFLATION * 2_f64.powi(bucket as i32);
-				let paint_inflation = clip_inflation * 2.;
-				let clip_min = -clip_inflation;
-				let clip_size = 1. + 2. * clip_inflation;
-				let paint_min = -paint_inflation;
-				let paint_size = 1. + 2. * paint_inflation;
-				(clip_min, clip_size, paint_min, paint_size)
-			};
 
 			let shared_id = generate_uuid();
 			write!(
@@ -2326,7 +2322,7 @@ impl Render for List<MeshGradient> {
 				.enumerate()
 				.filter(|(_, used)| **used)
 				.for_each(|(bucket, _)| {
-					let (clip_min, clip_size, paint_min, paint_size) = inflation_values(bucket);
+					let (clip_min, clip_size, paint_min, paint_size) = mesh_inflation_values(bucket);
 					write!(
 						&mut render.svg_defs,
 						r##"<clipPath id="mc{shared_id}-{bucket}" clipPathUnits="userSpaceOnUse"><rect x="{clip_min}" y="{clip_min}" width="{clip_size}" height="{clip_size}"/></clipPath>
@@ -2340,14 +2336,14 @@ impl Render for List<MeshGradient> {
 			subpatches.iter().zip(inflation_buckets).for_each(|(subpatch, bucket)| {
 				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
 				let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
-				let (_, _, paint_min, paint_size) = inflation_values(bucket);
+				let (_, _, paint_min, paint_size) = mesh_inflation_values(bucket);
 
 				// linear gradient for the bottom line
 				write!(
 					&mut render.svg_defs,
 					r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-					float_gamma_color_to_hex(bottom_left.gamma_color),
-					float_gamma_color_to_hex(bottom_right.gamma_color),
+					mesh_gamma_color_to_srgba8(bottom_left.gamma_color).to_rgba_hex(),
+					mesh_gamma_color_to_srgba8(bottom_right.gamma_color).to_rgba_hex(),
 				)
 				.unwrap();
 
@@ -2355,8 +2351,8 @@ impl Render for List<MeshGradient> {
 				write!(
 					&mut render.svg_defs,
 					r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-					float_gamma_color_to_hex(top_left.gamma_color),
-					float_gamma_color_to_hex(top_right.gamma_color),
+					mesh_gamma_color_to_srgba8(top_left.gamma_color).to_rgba_hex(),
+					mesh_gamma_color_to_srgba8(top_right.gamma_color).to_rgba_hex(),
 				)
 				.unwrap();
 
@@ -2402,7 +2398,114 @@ impl Render for List<MeshGradient> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		// FIXME:
+		use vello::peniko;
+
+		if let RenderMode::Outline = render_params.render_mode {
+			return;
+		}
+
+		let linear_gradient = |start: DVec2, end: DVec2, start_color: SRGBA8, end_color: SRGBA8| {
+			let mut stops = peniko::ColorStops::new();
+			for (offset, color) in [(0., start_color), (1., end_color)] {
+				stops.push(peniko::ColorStop {
+					offset,
+					color: peniko::color::DynamicColor::from_alpha_color(color.to_peniko_color()),
+				});
+			}
+
+			peniko::Brush::Gradient(peniko::Gradient {
+				kind: peniko::LinearGradientPosition {
+					start: to_point(start),
+					end: to_point(end),
+				}
+				.into(),
+				stops,
+				extend: peniko::Extend::Pad,
+				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
+				..Default::default()
+			})
+		};
+		let transparent_white = SRGBA8 {
+			red: 255,
+			green: 255,
+			blue: 255,
+			alpha: 0,
+		};
+		let opaque_white = SRGBA8 {
+			red: 255,
+			green: 255,
+			blue: 255,
+			alpha: 255,
+		};
+		let mask_gradient = linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), opaque_white, transparent_white);
+		let infinite_rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
+
+		for index in 0..self.len() {
+			let Some(mesh_gradient) = self.element(index) else { continue };
+			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+
+			let Some(subpatches) = mesh_gradient
+				.evaluator()
+				.and_then(|evaluator| evaluator.subdivide_patches_adaptive(MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS, mesh_transform, MESH_POSITION_ERROR_TOLERANCE, MESH_COLOR_ERROR_TOLERANCE))
+			else {
+				continue;
+			};
+
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+			let mut item_layer = false;
+			if opacity < 1. || blend_mode_attr != BlendMode::default() {
+				let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &infinite_rect);
+				item_layer = true;
+			}
+
+			for subpatch in subpatches {
+				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
+				let local_to_mesh = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
+				let local_to_scene = kurbo::Affine::new((parent_transform * local_to_mesh).to_cols_array());
+				let bucket = mesh_subpatch_inflation_bucket(&subpatch);
+				let (clip_min, clip_size, paint_min, paint_size) = mesh_inflation_values(bucket);
+				let clip_rect = kurbo::Rect::new(clip_min, clip_min, clip_min + clip_size, clip_min + clip_size);
+				let paint_rect = kurbo::Rect::new(paint_min, paint_min, paint_min + paint_size, paint_min + paint_size);
+
+				let bottom_gradient = linear_gradient(
+					DVec2::new(0., 1.),
+					DVec2::new(1., 1.),
+					mesh_gamma_color_to_srgba8(bottom_left.gamma_color),
+					mesh_gamma_color_to_srgba8(bottom_right.gamma_color),
+				);
+				let top_gradient = linear_gradient(
+					DVec2::ZERO,
+					DVec2::X,
+					mesh_gamma_color_to_srgba8(top_left.gamma_color),
+					mesh_gamma_color_to_srgba8(top_right.gamma_color),
+				);
+
+				// Composite both horizontal gradients first, then apply edge coverage once through the outer clip.
+				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &clip_rect);
+				scene.fill(peniko::Fill::NonZero, local_to_scene, &bottom_gradient, None, &paint_rect);
+				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &paint_rect);
+				scene.fill(peniko::Fill::NonZero, local_to_scene, &mask_gradient, None, &paint_rect);
+				scene.push_layer(
+					peniko::Fill::NonZero,
+					peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+					1.,
+					local_to_scene,
+					&paint_rect,
+				);
+				scene.fill(peniko::Fill::NonZero, local_to_scene, &top_gradient, None, &paint_rect);
+				scene.pop_layer();
+				scene.pop_layer();
+				scene.pop_layer();
+			}
+
+			if item_layer {
+				scene.pop_layer();
+			}
+		}
 	}
 }
 
