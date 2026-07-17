@@ -2267,8 +2267,9 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			// TODO: add adaptive subpatch size
-			let subdivisions_per_patch_per_axis = 4;
+			let maximum_subdivisions_per_patch_per_axis = 8;
+			let position_error_tolerance = 0.25;
+			let color_error_tolerance = 1. / 255.;
 
 			let float_gamma_color_to_hex = |color: [f32; 4]| -> String {
 				let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
@@ -2288,26 +2289,58 @@ impl Render for List<MeshGradient> {
 				continue;
 			};
 
-			let clip_inflation = 0.01;
-			let paint_inflation = 0.02;
-			let clip_min = -clip_inflation;
-			let clip_size = 1. + 2. * clip_inflation;
-			let paint_min = -paint_inflation;
-			let paint_size = 1. + 2. * paint_inflation;
+			const BASE_CLIP_INFLATION: f64 = 0.01;
+			const MAX_INFLATION_BUCKET: usize = 6;
+			let inflation_bucket = |subpatch: &vector_types::gradient::MeshSubpatch| {
+				let [top_left, top_right, bottom_left, _] = subpatch.corners;
+				let subpatch_transform = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
+				let (_, smallest_scale) = singular_values(subpatch_transform);
+				let required_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
+					(1. / smallest_scale).max(BASE_CLIP_INFLATION)
+				} else {
+					BASE_CLIP_INFLATION
+				};
+				((required_inflation / BASE_CLIP_INFLATION).log2().ceil() as usize).min(MAX_INFLATION_BUCKET)
+			};
+			let inflation_buckets: Vec<_> = subpatches.iter().map(inflation_bucket).collect();
+			let mut used_inflation_buckets = [false; MAX_INFLATION_BUCKET + 1];
+			inflation_buckets.iter().for_each(|&bucket| used_inflation_buckets[bucket] = true);
+			let inflation_values = |bucket: usize| {
+				let clip_inflation = BASE_CLIP_INFLATION * 2_f64.powi(bucket as i32);
+				let paint_inflation = clip_inflation * 2.;
+				let clip_min = -clip_inflation;
+				let clip_size = 1. + 2. * clip_inflation;
+				let paint_min = -paint_inflation;
+				let paint_size = 1. + 2. * paint_inflation;
+				(clip_min, clip_size, paint_min, paint_size)
+			};
+
 			let shared_id = generate_uuid();
 			write!(
-					&mut render.svg_defs,
-					r##"<clipPath id="mc{shared_id}" clipPathUnits="userSpaceOnUse"><rect x="{clip_min}" y="{clip_min}" width="{clip_size}" height="{clip_size}"/></clipPath>
-					<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
-					<mask id="mm{shared_id}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="url(#gm{shared_id})"/></mask>
-					<mask id="mi{shared_id}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="#fff"/></mask>"##,
-				)
-				.unwrap();
+				&mut render.svg_defs,
+				r##"<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
+			)
+			.unwrap();
+			used_inflation_buckets
+				.iter()
+				.enumerate()
+				.filter(|(_, used)| **used)
+				.for_each(|(bucket, _)| {
+					let (clip_min, clip_size, paint_min, paint_size) = inflation_values(bucket);
+					write!(
+						&mut render.svg_defs,
+						r##"<clipPath id="mc{shared_id}-{bucket}" clipPathUnits="userSpaceOnUse"><rect x="{clip_min}" y="{clip_min}" width="{clip_size}" height="{clip_size}"/></clipPath>
+						<mask id="mm{shared_id}-{bucket}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="url(#gm{shared_id})"/></mask>
+						<mask id="mi{shared_id}-{bucket}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="#fff"/></mask>"##,
+					)
+					.unwrap();
+				});
 
 			let mut unique_id = generate_uuid();
-			subpatches.iter().for_each(|subpatch| {
+			subpatches.iter().zip(inflation_buckets).for_each(|(subpatch, bucket)| {
 				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
 				let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
+				let (_, _, paint_min, paint_size) = inflation_values(bucket);
 
 				// linear gradient for the bottom line
 				write!(
@@ -2331,7 +2364,7 @@ impl Render for List<MeshGradient> {
 					"g",
 					|attributes| {
 						attributes.push(ATTR_TRANSFORM, subpatch_transform);
-						attributes.push("clip-path", format!("url(#mc{shared_id})"));
+						attributes.push("clip-path", format!("url(#mc{shared_id}-{bucket})"));
 					},
 					|render| {
 						// Force both gradient layers to composite before the outer clip applies edge coverage.
@@ -2339,7 +2372,7 @@ impl Render for List<MeshGradient> {
 							"g",
 							|attributes| {
 								attributes.push("style", "isolation:isolate");
-								attributes.push("mask", format!("url(#mi{shared_id})"));
+								attributes.push("mask", format!("url(#mi{shared_id}-{bucket})"));
 							},
 							|render| {
 								render.leaf_tag("rect", |attributes| {
@@ -2356,7 +2389,7 @@ impl Render for List<MeshGradient> {
 									attributes.push("width", paint_size.to_string());
 									attributes.push("height", paint_size.to_string());
 									attributes.push("fill", format!("url(#gt{unique_id})"));
-									attributes.push("mask", format!("url(#mm{shared_id})"));
+									attributes.push("mask", format!("url(#mm{shared_id}-{bucket})"));
 								});
 							},
 						);
