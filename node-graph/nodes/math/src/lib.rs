@@ -1152,10 +1152,9 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	Item::from_parts(result, attributes)
 }
 
-// TODO: Rename to "Magnitude"
 /// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow represented by the vector.
 #[node_macro::node(category("Math: Vector"))]
-fn length(_: impl Ctx, vector: Item<DVec2>) -> Item<f64> {
+fn magnitude(_: impl Ctx, vector: Item<DVec2>) -> Item<f64> {
 	let (vector, attributes) = vector.into_parts();
 
 	Item::from_parts(vector.length(), attributes)
@@ -1185,9 +1184,9 @@ mod test {
 	}
 
 	#[test]
-	pub fn length_function() {
+	pub fn magnitude_function() {
 		let vector = Item::new_from_element(DVec2::new(3., 4.));
-		assert_eq!(length((), vector).into_element(), 5.);
+		assert_eq!(magnitude((), vector).into_element(), 5.);
 	}
 
 	#[test]

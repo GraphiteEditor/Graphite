@@ -294,8 +294,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::length::IDENTIFIER,
-		aliases: &["graphene_math_nodes::LengthNode", "graphene_core::ops::LenghtNode"],
+		node: graphene_std::math_nodes::magnitude::IDENTIFIER,
+		aliases: &["math_nodes::LengthNode", "graphene_math_nodes::LengthNode", "graphene_core::ops::LenghtNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::less_than::IDENTIFIER,
