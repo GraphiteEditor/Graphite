@@ -2284,7 +2284,7 @@ impl Render for List<MeshGradient> {
 
 			let Some(subpatches) = mesh_gradient
 				.evaluator()
-				.and_then(|evaluator| evaluator.subdivide_patches(subdivisions_per_patch_per_axis, mesh_transform))
+				.and_then(|evaluator| evaluator.subdivide_patches_adaptive(maximum_subdivisions_per_patch_per_axis, mesh_transform, position_error_tolerance, color_error_tolerance))
 			else {
 				continue;
 			};

@@ -977,6 +977,71 @@ impl MeshGradientEvaluator {
 
 		Some(subpatches)
 	}
+
+	/// Recursively subdivide only the regions that do not approximate the source mesh within the given tolerances.
+	pub fn subdivide_patches_adaptive(
+		&self,
+		maximum_subdivisions_per_patch_per_axis: usize,
+		mesh_transform: DAffine2,
+		position_error_tolerance: f64,
+		color_error_tolerance: f32,
+	) -> Option<Vec<MeshSubpatch>> {
+		if !maximum_subdivisions_per_patch_per_axis.is_power_of_two()
+			|| !position_error_tolerance.is_finite()
+			|| position_error_tolerance < 0.
+			|| !color_error_tolerance.is_finite()
+			|| color_error_tolerance < 0.
+		{
+			return None;
+		}
+
+		let samples = [0., 0.25, 0.5, 0.75, 1.];
+		let mut subpatches = Vec::new();
+		for patch in &self.patches {
+			let mut pending = vec![(0., 0., 1., 1_usize)];
+			while let Some((u_start, v_start, stride, subdivisions_per_axis)) = pending.pop() {
+				let top_left = patch.eval_vertex(u_start, v_start, mesh_transform)?;
+				let top_right = patch.eval_vertex(u_start + stride, v_start, mesh_transform)?;
+				let bottom_left = patch.eval_vertex(u_start, v_start + stride, mesh_transform)?;
+				let bottom_right = patch.eval_vertex(u_start + stride, v_start + stride, mesh_transform)?;
+				let corners = [top_left, top_right, bottom_left, bottom_right];
+				let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = corners.map(|vertex| Vec4::from_array(vertex.gamma_color));
+
+				let mut within_tolerance = true;
+				'error_samples: for &local_v in &samples {
+					for &local_u in &samples {
+						let vertex = patch.eval_vertex(u_start + local_u * stride, v_start + local_v * stride, mesh_transform)?;
+						let approximated_position = top_left.position + (top_right.position - top_left.position) * local_u + (bottom_left.position - top_left.position) * local_v;
+						let top_color = top_left_color.lerp(top_right_color, local_u as f32);
+						let bottom_color = bottom_left_color.lerp(bottom_right_color, local_u as f32);
+						let approximated_color = top_color.lerp(bottom_color, local_v as f32);
+
+						let position_error = vertex.position.distance(approximated_position);
+						let color_error = (Vec4::from_array(vertex.gamma_color) - approximated_color).abs().max_element();
+						if !position_error.is_finite() || !color_error.is_finite() || position_error > position_error_tolerance || color_error > color_error_tolerance {
+							within_tolerance = false;
+							break 'error_samples;
+						}
+					}
+				}
+
+				if within_tolerance || subdivisions_per_axis >= maximum_subdivisions_per_patch_per_axis {
+					subpatches.push(MeshSubpatch { corners });
+				} else {
+					let half_stride = stride / 2.;
+					let child_subdivisions_per_axis = subdivisions_per_axis.saturating_mul(2);
+					pending.extend([
+						(u_start + half_stride, v_start + half_stride, half_stride, child_subdivisions_per_axis),
+						(u_start, v_start + half_stride, half_stride, child_subdivisions_per_axis),
+						(u_start + half_stride, v_start, half_stride, child_subdivisions_per_axis),
+						(u_start, v_start, half_stride, child_subdivisions_per_axis),
+					]);
+				}
+			}
+		}
+
+		Some(subpatches)
+	}
 }
 
 impl RenderComplexity for MeshGradient {
