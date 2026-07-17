@@ -2,6 +2,7 @@ pub mod generator_nodes;
 pub mod merge_qr_squares;
 pub mod vector_modification_nodes;
 mod vector_nodes;
+mod voronoi;
 
 #[macro_use]
 extern crate log;
