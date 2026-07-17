@@ -2047,9 +2047,9 @@ fn flatten_path_core<'e>(
 	Ok((output, Attr(DAffine2::IDENTITY), Attr(fill), Attr(stroke), Attr(layer_path.as_slice()), Attr(Some(merged_layers))))
 }
 
-// TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
+// TODO: Make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub fn flatten_path<'e>(
+pub fn combine_paths<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic<'static>>,
 ) -> Result<
@@ -2069,10 +2069,10 @@ pub fn flatten_path<'e>(
 	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
 
-/// The path flattening over a plain vector level, as [`flatten_path`].
-/// Registered under the flatten path identifier.
+/// The path flattening over a plain vector level, as [`combine_paths`].
+/// Registered under the combine paths identifier.
 #[node_macro::node(category(""))]
-pub fn flatten_path_vector<'e>(
+pub fn combine_paths_vector<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Vector>,
 ) -> Result<
@@ -2092,7 +2092,7 @@ pub fn flatten_path_vector<'e>(
 	flatten_path_core(ctx.arena(), flattened, snapshot)
 }
 
-pub use _flatten_path_vector_mod::flatten_path_vector_entries;
+pub use _combine_paths_vector_mod::combine_paths_vector_entries;
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
@@ -4111,6 +4111,7 @@ mod test {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
+
 	#[test]
 	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
