@@ -1830,7 +1830,7 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(source: &S, metadata
 		}
 
 		// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-		// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+		// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 		// surface the original child layers' click targets.
 		if let Some(upstream_nested_layers) = source.attr::<EditorMergedLayers>(index).filter(|layers| !layers.is_empty()) {
 			let mut upstream_footprint = footprint;

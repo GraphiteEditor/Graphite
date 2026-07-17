@@ -399,7 +399,7 @@ fn vector_row_count(level: GraphicLevel<'_>) -> usize {
 // TODO: Flattening erases the upstream `Graphic` hierarchy that editor metadata collection walks to populate
 // TODO: `upstream_footprints` / `local_transforms` / `click_targets` per child layer, so the pre-flattened list
 // TODO: is stashed on row 0 for `collect_metadata` to recurse into (as Boolean Operation, Solidify Stroke,
-// TODO: Flatten Path, Morph and Rasterize do). Driving each layer's metadata from its own Monitor's captured
+// TODO: Combine Paths, Morph and Rasterize do). Driving each layer's metadata from its own Monitor's captured
 // TODO: `(Context, List<Graphic>)` would make this attribute unnecessary.
 /// The parked merged-layers snapshot for row 0. Row 0 carries a composed
 /// transform the snapshot's own transforms already include, so the snapshot is
