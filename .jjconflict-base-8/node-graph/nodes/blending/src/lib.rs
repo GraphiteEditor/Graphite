@@ -1,204 +1,25 @@
-use core_types::list::List;
+use core_types::list::Item;
 use core_types::registry::types::Percentage;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
-use graphic_types::raster_types::{CPU, Raster};
-use vector_types::GradientStops;
-
-pub(crate) trait MultiplyAlpha {
-	fn multiply_alpha(&mut self, factor: f64);
-}
-
-impl MultiplyAlpha for Color {
-	fn multiply_alpha(&mut self, factor: f64) {
-		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
-	}
-}
-
-fn multiply_list_attribute<T>(list: &mut List<T>, key: &str, factor: f64) {
-	if let Some(values) = list.iter_attribute_values_mut::<f64>(key) {
-		for v in values {
-			*v *= factor;
-		}
-	} else {
-		for v in list.iter_attribute_values_mut_or_default::<f64>(key) {
-			*v = factor;
-		}
-	}
-}
-
-impl MultiplyAlpha for List<Vector> {
-	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY, factor);
-	}
-}
-impl MultiplyAlpha for List<Graphic> {
-	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY, factor);
-	}
-}
-impl MultiplyAlpha for List<Raster<CPU>> {
-	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY, factor);
-	}
-}
-impl MultiplyAlpha for List<Color> {
-	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY, factor);
-	}
-}
-impl MultiplyAlpha for List<GradientStops> {
-	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY, factor);
-	}
-}
-impl MultiplyAlpha for List<String> {
-	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY, factor);
-	}
-}
-
-pub(crate) trait MultiplyFill {
-	fn multiply_fill(&mut self, factor: f64);
-}
-impl MultiplyFill for Color {
-	fn multiply_fill(&mut self, factor: f64) {
-		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
-	}
-}
-impl MultiplyFill for List<Vector> {
-	fn multiply_fill(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
-	}
-}
-impl MultiplyFill for List<Graphic> {
-	fn multiply_fill(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
-	}
-}
-impl MultiplyFill for List<Raster<CPU>> {
-	fn multiply_fill(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
-	}
-}
-impl MultiplyFill for List<Color> {
-	fn multiply_fill(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
-	}
-}
-impl MultiplyFill for List<GradientStops> {
-	fn multiply_fill(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
-	}
-}
-impl MultiplyFill for List<String> {
-	fn multiply_fill(&mut self, factor: f64) {
-		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
-	}
-}
-
-trait SetBlendMode {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode);
-}
-
-fn set_list_blend_mode<T>(list: &mut List<T>, blend_mode: BlendMode) {
-	for v in list.iter_attribute_values_mut_or_default::<BlendMode>(ATTR_BLEND_MODE) {
-		*v = blend_mode;
-	}
-}
-
-impl SetBlendMode for List<Vector> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_list_blend_mode(self, blend_mode);
-	}
-}
-impl SetBlendMode for List<Graphic> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_list_blend_mode(self, blend_mode);
-	}
-}
-impl SetBlendMode for List<Raster<CPU>> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_list_blend_mode(self, blend_mode);
-	}
-}
-impl SetBlendMode for List<Color> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_list_blend_mode(self, blend_mode);
-	}
-}
-impl SetBlendMode for List<GradientStops> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_list_blend_mode(self, blend_mode);
-	}
-}
-impl SetBlendMode for List<String> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_list_blend_mode(self, blend_mode);
-	}
-}
-
-trait SetClip {
-	fn set_clip(&mut self, clip: bool);
-}
-
-fn set_list_clip<T>(list: &mut List<T>, clip: bool) {
-	for v in list.iter_attribute_values_mut_or_default::<bool>(ATTR_CLIPPING_MASK) {
-		*v = clip;
-	}
-}
-
-impl SetClip for List<Vector> {
-	fn set_clip(&mut self, clip: bool) {
-		set_list_clip(self, clip);
-	}
-}
-impl SetClip for List<Graphic> {
-	fn set_clip(&mut self, clip: bool) {
-		set_list_clip(self, clip);
-	}
-}
-impl SetClip for List<Raster<CPU>> {
-	fn set_clip(&mut self, clip: bool) {
-		set_list_clip(self, clip);
-	}
-}
-impl SetClip for List<Color> {
-	fn set_clip(&mut self, clip: bool) {
-		set_list_clip(self, clip);
-	}
-}
-impl SetClip for List<GradientStops> {
-	fn set_clip(&mut self, clip: bool) {
-		set_list_clip(self, clip);
-	}
-}
-impl SetClip for List<String> {
-	fn set_clip(&mut self, clip: bool) {
-		set_list_clip(self, clip);
-	}
-}
+use graphic_types::raster_types::{CPU, GPU, Raster};
+use vector_types::Gradient;
 
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
 #[node_macro::node(category("Blending"))]
-fn blend_mode<T: SetBlendMode>(
+fn blend_mode<T>(
 	_: impl Ctx,
-	/// The layer stack that will be composited when rendering.
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<String>,
-	)]
-	mut content: T,
+	/// The content that will be composited when rendering.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
-	blend_mode: BlendMode,
-) -> T {
-	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
-	content.set_blend_mode(blend_mode);
+	blend_mode: Item<BlendMode>,
+) -> Item<T> {
+	let mut content = content;
+	let blend_mode = *blend_mode.element();
+
+	content.set_attribute(ATTR_BLEND_MODE, blend_mode);
 	content
 }
 
@@ -206,64 +27,58 @@ fn blend_mode<T: SetBlendMode>(
 /// Opacity affects the transparency of the content (together with anything above which is clipped to it).
 /// Fill affects the transparency of the content itself, independent of any content clipped to it.
 #[node_macro::node(category("Blending"))]
-fn opacity<T: MultiplyAlpha + MultiplyFill>(
+fn opacity<T>(
 	_: impl Ctx,
-	/// The layer stack that will be composited when rendering.
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<String>,
-	)]
-	mut content: T,
+	/// The content that will be composited when rendering.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	#[default(true)]
-	has_opacity: bool,
+	has_opacity: Item<bool>,
 	/// How visible the content should be, including any content clipped to it.
 	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	opacity: Percentage,
+	opacity: Item<Percentage>,
 	/// Whether the *Fill* property is enabled, multiplying the existing fill by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
-	has_fill: bool,
+	has_fill: Item<bool>,
 	/// How visible the content should be, independent of any content clipped to it.
 	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	fill: Percentage,
-) -> T {
-	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
+	fill: Item<Percentage>,
+) -> Item<T> {
+	let mut content = content;
+	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());
+
 	if has_opacity {
-		content.multiply_alpha(opacity / 100.);
+		let multiplied = content.attribute_cloned_or(ATTR_OPACITY, 1.) * (opacity / 100.);
+		content.set_attribute(ATTR_OPACITY, multiplied);
 	}
+
 	if has_fill {
-		content.multiply_fill(fill / 100.);
+		let multiplied = content.attribute_cloned_or(ATTR_OPACITY_FILL, 1.) * (fill / 100.);
+		content.set_attribute(ATTR_OPACITY_FILL, multiplied);
 	}
+
 	content
 }
 
 /// Sets whether the input graphics inherit the alpha of the content beneath them, "clipping" them to that content.
 #[node_macro::node(category("Blending"))]
-fn clipping_mask<T: SetClip>(
+fn clipping_mask<T>(
 	_: impl Ctx,
-	/// The layer stack that will be composited when rendering.
-	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
-		List<String>,
-	)]
-	mut content: T,
+	/// The content that will be composited when rendering.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
 	/// Whether the content inherits the alpha of the content beneath it.
-	clip: bool,
-) -> T {
-	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
-	content.set_clip(clip);
+	clip: Item<bool>,
+) -> Item<T> {
+	let mut content = content;
+	let clip = *clip.element();
+
+	content.set_attribute(ATTR_CLIPPING_MASK, clip);
 	content
 }

@@ -17,3 +17,4 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 serde = { workspace = true }
 node-macro = { workspace = true }
+rand = { workspace = true }

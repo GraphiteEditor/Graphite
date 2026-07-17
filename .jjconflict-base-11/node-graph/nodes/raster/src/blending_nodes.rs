@@ -8,7 +8,7 @@ use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::{Gradient, GradientStop};
+use vector_types::{GradientStop, Gradient};
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;

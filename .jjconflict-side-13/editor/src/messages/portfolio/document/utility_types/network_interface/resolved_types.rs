@@ -4,6 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
+use graphene_std::list::List;
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
@@ -62,13 +63,13 @@ impl TypeSource {
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
 				TaggedValue::LegacyGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
-				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the stored structural type.
-				TaggedValue::TypeDefault(td) => match &td {
-					Type::List(element) if **element == concrete!(Graphic) => FrontendGraphDataType::Graphic,
-					Type::List(element) if **element == concrete!(Artboard) => FrontendGraphDataType::Artboard,
-					Type::List(element) if **element == concrete!(Raster<CPU>) => FrontendGraphDataType::Raster,
-					Type::List(element) if **element == concrete!(Vector) => FrontendGraphDataType::Vector,
-					Type::List(element) if **element == concrete!(String) => FrontendGraphDataType::Typography,
+				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
+				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) => FrontendGraphDataType::Graphic,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) => FrontendGraphDataType::Artboard,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) => FrontendGraphDataType::Raster,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) => FrontendGraphDataType::Vector,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<String>>()) => FrontendGraphDataType::Typography,
 					_ => FrontendGraphDataType::General,
 				},
 				_ => FrontendGraphDataType::General,
@@ -252,8 +253,9 @@ impl NodeNetworkInterface {
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
 				implementations
-					.keys()
-					.filter_map(|node_io| {
+					.iter()
+					.filter_map(|entry| {
+						let node_io = &entry.io;
 						// Check if this NodeIOTypes implementation is valid for the other inputs
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
@@ -292,8 +294,9 @@ impl NodeNetworkInterface {
 						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
 
 						implementations
-							.keys()
-							.filter_map(|node_io| {
+							.iter()
+							.filter_map(|entry| {
+								let node_io = &entry.io;
 								if !valid_output_types.iter().any(|output_type| output_type.nested_type() == node_io.return_value.nested_type()) {
 									return None;
 								}
@@ -322,7 +325,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {render_node:?} not found in registry");
 							return Vec::new();
 						};
-						implementations.keys().map(|types| types.inputs[1].clone()).collect()
+						implementations.iter().map(|entry| entry.io.inputs[1].clone()).collect()
 					}
 				}
 			}

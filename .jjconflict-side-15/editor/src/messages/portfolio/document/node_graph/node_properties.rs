@@ -16,11 +16,13 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
+use graphene_std::Graphic;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
+use graphene_std::list::List;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
@@ -333,7 +335,6 @@ pub(crate) fn property_from_type(
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
-		Type::Record(inner) => return property_from_type(node_id, index, inner, number_options, unit, display_decimal_places, step, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -2402,7 +2403,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							return Vec::new();
 						};
 
-						let mut input_types = implementations.iter().filter_map(|entry| entry.io.inputs.get(input_index)).collect::<Vec<_>>();
+						let mut input_types = implementations.keys().filter_map(|item| item.inputs.get(input_index)).collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
 
@@ -2496,9 +2497,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	}
 
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::INDEX, false, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Graphic>>::INDEX, false, context));
 
-	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::INDEX).is_some_and(|input| input.is_exposed())) {
+	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::<List<Graphic>>::INDEX).is_some_and(|input| input.is_exposed())) {
 		return vec![LayoutGroup::row(widgets_first_row)];
 	}
 
@@ -2507,7 +2508,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let layer = root_layer_for_chain_node(node_id, context);
 
 	let fill = match get_document_node(node_id, context) {
-		Ok(document_node) => match document_node.inputs[FillInput::INDEX].as_value() {
+		Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
 			Some(TaggedValue::Gradient(_)) => {
@@ -2551,7 +2552,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2575,7 +2576,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let mut messages = vec![
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::INDEX,
+				input_index: FillInput::<List<Graphic>>::INDEX,
 				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
 			}
 			.into(),
@@ -2597,7 +2598,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::INDEX,
+				input_index: FillInput::<List<Graphic>>::INDEX,
 				value: TaggedValue::Gradient(gradient.clone()),
 			}
 			.into(),
@@ -2641,12 +2642,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.on_update(update_value(
 					move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
 					node_id,
-					FillInput::INDEX,
+					FillInput::<List<Graphic>>::INDEX,
 				))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
 				.on_commit(commit_value),
 		];
 
@@ -2774,7 +2775,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, PaintInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, PaintInput::<List<Graphic>>::INDEX, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));

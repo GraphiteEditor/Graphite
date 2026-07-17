@@ -12,10 +12,7 @@ use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
-use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
-use graphic_types::vector_types::vector::misc::BoxCorners;
-use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::Gradient;
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -400,21 +397,19 @@ tagged_value! {
 	DVec2(DVec2),
 	#[serde(alias = "Affine2")]
 	DAffine2(DAffine2),
+	OptionalDAffine2(Option<DAffine2>),
+	#[serde(alias = "FillGradient")]
+	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
-	Resource(ResourceId),
-	// Legacy
-	#[serde(alias = "OptionalDAffine2")]
-	LegacyOptionalDAffine2(Option<DAffine2>),
-	#[serde(alias = "FillGradient")]
-	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
-	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
+	Resource(graphene_application_io::resource::ResourceId),
 	// ==========
 	// ENUM TYPES
 	// ==========
+	#[serde(alias = "Fill")]
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
@@ -444,8 +439,6 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	DashPattern(vector::style::DashPattern),
-	BoxCorners(vector::misc::BoxCorners),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
@@ -592,8 +585,6 @@ impl TaggedValue {
 					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
-					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
-					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
 					_ => return None,
 				};
 				Some(ty)

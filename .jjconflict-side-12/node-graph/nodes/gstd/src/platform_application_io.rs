@@ -2,14 +2,20 @@
 use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
+#[cfg(target_family = "wasm")]
+use core_types::attribute::{Attr, OwnedAttr, Transform};
 use core_types::color::SRGBA8;
-use core_types::list::{Item, List};
+use core_types::gpoll::GPoll;
+#[cfg(target_family = "wasm")]
+use core_types::list::List;
+
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
-use core_types::ops::Convert;
+use core_types::runtime::SourceFuture;
+#[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
+use core_types::{ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -22,8 +28,10 @@ use graphic_types::Graphic;
 use graphic_types::IntoGraphicList;
 #[cfg(target_family = "wasm")]
 use graphic_types::Vector;
+#[cfg(target_family = "wasm")]
+use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{CPU, Raster};
 #[cfg(target_family = "wasm")]
 use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
@@ -86,14 +94,14 @@ async fn post_request(
 	#[name("URL")]
 	url: String,
 	/// The binary data to include in the body of the POST request.
-	body: List<u8>,
+	body: Arc<[u8]>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
 ) -> String {
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let body_bytes: Vec<u8> = body.iter_element_values().copied().collect();
+	let body_bytes: Vec<u8> = body.to_vec();
 	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
@@ -116,28 +124,31 @@ async fn post_request(
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: String) -> List<u8> {
-	string.into_bytes().into_iter().map(Item::new_from_element).collect()
+fn string_to_bytes(_: impl Ctx, string: String) -> Arc<[u8]> {
+	Arc::from(string.into_bytes())
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
-	let Some(image) = image.element(0) else { return List::new() };
-	image
+fn image_to_bytes(_: impl Ctx, image: IList<Raster<CPU>>) -> Arc<[u8]> {
+	if image.is_empty() {
+		return Arc::from(Vec::new());
+	}
+	let bytes: Vec<u8> = image
+		.element_ref(0)
 		.data
 		.iter()
 		.flat_map(|color| {
 			let SRGBA8 { red, green, blue, alpha } = (*color).into();
 			[red, green, blue, alpha]
 		})
-		.map(Item::new_from_element)
-		.collect()
+		.collect();
+	Arc::from(bytes)
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Arc<[u8]> {
+async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Arc<[u8]> {
 	let placeholder = || -> Arc<[u8]> { Arc::from(Vec::<u8>::new()) };
 
 	let response = match reqwest::Client::new().get(&url).send().await {
@@ -161,9 +172,10 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: St
 ///
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Raster<CPU> {
+	// A zero-size raster renders as nothing, matching the legacy empty list
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return List::new();
+		return Raster::new_cpu(Image::default());
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -180,20 +192,21 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 		..Default::default()
 	};
 
-	List::new_from_element(Raster::new_cpu(image))
+	Raster::new_cpu(image)
 }
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn create_canvas(_: impl Ctx) -> CanvasHandle {
+fn create_canvas(_: impl Ctx) -> CanvasHandle {
 	CanvasHandle::new()
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + Clone + 'n>(
+async fn rasterize<T: WasmNotSend + Clone>(
 	_: impl Ctx,
+	_: (),
 	#[implementations(
 		List<Vector>,
 		List<Raster<CPU>>,
@@ -204,7 +217,7 @@ async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	mut data: List<T>,
 	footprint: Footprint,
 	mut canvas: CanvasHandle,
-) -> List<Raster<CPU>>
+) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
@@ -212,12 +225,15 @@ where
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return List::new();
+		// A zero-size raster renders as nothing, matching the legacy empty list
+		return (Raster::new_cpu(Image::default()), Attr(DAffine2::IDENTITY), OwnedAttr::new(None));
 	}
 
 	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
 	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
+	// The copy is owned before the first await: the input's arena content dies with the spawning evaluation.
 	let upstream_graphic_list = data.clone().into_graphic_list();
+	let merged_layers = OwnedAttr::new(Some(&upstream_graphic_list));
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -254,47 +270,41 @@ where
 	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	List::new_from_item(
-		Item::new_from_element(Raster::new_cpu(image))
-			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
-	)
+	(Raster::new_cpu(image), Attr(footprint.transform), merged_layers)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a PlatformEditorApi {
+pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Arc<PlatformEditorApi>) -> Arc<PlatformEditorApi> {
 	editor_api
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Resource {
-	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	application_io.load_resource(hash).await.unwrap_or_else(|| {
-		panic!("Resource {hash} not found");
+pub fn resource(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> SourceFuture<GPoll<Resource>> {
+	let application_io = editor_api.application_io.clone();
+	Box::pin(async move {
+		let Some(application_io) = application_io else {
+			return GPoll::error("ApplicationIo not available");
+		};
+		match application_io.load_resource(hash).await {
+			Some(resource) => GPoll::Final(resource),
+			None => GPoll::error("resource not found"),
+		}
 	})
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
-	editor_api
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not not available")
-		.gpu_executor()
-		.expect("GPU executor not available")
+pub fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> ::wgpu_executor::WgpuExecutorHandle {
+	::wgpu_executor::WgpuExecutorHandle(
+		editor_api
+			.application_io
+			.as_ref()
+			.expect("ApplicationIo not not available")
+			.gpu_executor_arc()
+			.expect("GPU executor not available"),
+	)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
-	editor_api.application_io.as_ref()?.gpu_executor()
-}
-
-/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Debug"), memoize)]
-pub async fn upload_texture<'a: 'n, T: Convert<List<Raster<GPU>>, &'a ::wgpu_executor::WgpuExecutor>>(
-	_: impl Ctx,
-	#[implementations(List<Raster<CPU>>)] content: T,
-	#[scope(wgpu_executor::IDENTIFIER)] executor: &'a ::wgpu_executor::WgpuExecutor,
-) -> List<Raster<GPU>> {
-	content.convert(Footprint::DEFAULT, executor).await
+pub fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> Option<::wgpu_executor::WgpuExecutorHandle> {
+	editor_api.application_io.as_ref()?.gpu_executor_arc().map(::wgpu_executor::WgpuExecutorHandle)
 }

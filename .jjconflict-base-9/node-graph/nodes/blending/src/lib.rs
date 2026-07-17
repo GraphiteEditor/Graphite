@@ -4,7 +4,7 @@ use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, Raster};
-use vector_types::Gradient;
+use vector_types::GradientStops;
 
 pub(crate) trait MultiplyAlpha {
 	fn multiply_alpha(&mut self, factor: f64);
@@ -48,7 +48,7 @@ impl MultiplyAlpha for List<Color> {
 		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
-impl MultiplyAlpha for List<Gradient> {
+impl MultiplyAlpha for List<GradientStops> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
@@ -87,7 +87,7 @@ impl MultiplyFill for List<Color> {
 		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
 }
-impl MultiplyFill for List<Gradient> {
+impl MultiplyFill for List<GradientStops> {
 	fn multiply_fill(&mut self, factor: f64) {
 		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
@@ -128,7 +128,7 @@ impl SetBlendMode for List<Color> {
 		set_list_blend_mode(self, blend_mode);
 	}
 }
-impl SetBlendMode for List<Gradient> {
+impl SetBlendMode for List<GradientStops> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		set_list_blend_mode(self, blend_mode);
 	}
@@ -169,7 +169,7 @@ impl SetClip for List<Color> {
 		set_list_clip(self, clip);
 	}
 }
-impl SetClip for List<Gradient> {
+impl SetClip for List<GradientStops> {
 	fn set_clip(&mut self, clip: bool) {
 		set_list_clip(self, clip);
 	}
@@ -190,7 +190,7 @@ fn blend_mode<T: SetBlendMode>(
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<Gradient>,
+		List<GradientStops>,
 		List<String>,
 	)]
 	mut content: T,
@@ -214,7 +214,7 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<Gradient>,
+		List<GradientStops>,
 		List<String>,
 	)]
 	mut content: T,
@@ -256,7 +256,7 @@ fn clipping_mask<T: SetClip>(
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Color>,
-		List<Gradient>,
+		List<GradientStops>,
 		List<String>,
 	)]
 	mut content: T,

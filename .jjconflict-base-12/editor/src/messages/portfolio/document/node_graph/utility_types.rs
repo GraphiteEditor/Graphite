@@ -31,11 +31,11 @@ impl FrontendGraphDataType {
 			TaggedValue::String(_) => Self::Typography,
 			// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
 			TaggedValue::TypeDefault(td) => match td.name.as_ref() {
-				n if n == std::any::type_name::<List<Graphic>>() => Self::Graphic,
-				n if n == std::any::type_name::<List<Artboard>>() => Self::Artboard,
-				n if n == std::any::type_name::<List<Raster<CPU>>>() => Self::Raster,
-				n if n == std::any::type_name::<List<Vector>>() => Self::Vector,
-				n if n == std::any::type_name::<List<String>>() => Self::Typography,
+				n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) => Self::Graphic,
+				n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) => Self::Artboard,
+				n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) => Self::Raster,
+				n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) => Self::Vector,
+				n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<String>>()) => Self::Typography,
 				_ => Self::General,
 			},
 			_ => Self::General,

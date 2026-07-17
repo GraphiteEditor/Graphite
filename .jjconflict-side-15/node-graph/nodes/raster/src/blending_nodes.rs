@@ -108,9 +108,8 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster"), cfg(feature = "std"))]
-fn mix<T: Blend<Color> + Clone + Send + Sync + core_types::CacheHash + 'static>(
+fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
@@ -140,7 +139,7 @@ fn mix<T: Blend<Color> + Clone + Send + Sync + core_types::CacheHash + 'static>(
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn color_overlay<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
@@ -180,8 +179,8 @@ mod test {
 	use raster_types::Image;
 	use raster_types::Raster;
 
-	#[test]
-	fn color_overlay_multiply() {
+	#[tokio::test]
+	async fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
 		let image = Image::new(1, 1, image_color);
 

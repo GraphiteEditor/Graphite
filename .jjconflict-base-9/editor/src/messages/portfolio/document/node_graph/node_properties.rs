@@ -16,7 +16,6 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
-use graphene_std::Graphic;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushStroke;
@@ -252,6 +251,10 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<List<Gradient>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<List<BrushStroke>>() => brush_strokes_widget(default_info).into(),
+						// Leveled wires type by their element; each element keeps its list form's widget.
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<BrushStroke>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -323,6 +326,7 @@ pub(crate) fn property_from_type(
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Record(inner) => return property_from_type(node_id, index, inner, number_options, unit, display_decimal_places, step, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -2167,7 +2171,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
 	// Corner Radius
-	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::<f64>::INDEX, true, context));
+	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::INDEX, true, context));
 	corner_radius_row_1.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
@@ -2187,7 +2191,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(CornerRadiusInput::<f64>::INDEX) else {
+		let Some(input) = document_node.inputs.get(CornerRadiusInput::INDEX) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -2215,7 +2219,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
+						input_index: CornerRadiusInput::INDEX,
 						value: TaggedValue::F64(uniform_val),
 					}
 					.into(),
@@ -2235,7 +2239,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
+						input_index: CornerRadiusInput::INDEX,
 						value: TaggedValue::F64Array(individual_val_for_switch.clone()),
 					}
 					.into(),
@@ -2258,13 +2262,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			};
 			TextInput::default()
 				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, CornerRadiusInput::<f64>::INDEX))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, CornerRadiusInput::INDEX))
 				.widget_instance()
 		} else {
 			NumberInput::default()
 				.value(Some(uniform_val))
 				.unit(" px")
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::<f64>::INDEX))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::INDEX))
 				.on_commit(commit_value)
 				.widget_instance()
 		};
@@ -2359,7 +2363,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							return Vec::new();
 						};
 
-						let mut input_types = implementations.keys().filter_map(|item| item.inputs.get(input_index)).collect::<Vec<_>>();
+						let mut input_types = implementations.iter().filter_map(|entry| entry.io.inputs.get(input_index)).collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
 
@@ -2452,13 +2456,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Other,
 	}
 
-	let connector = InputConnector::node(node_id, FillInput::<List<Graphic>>::INDEX);
+	let connector = InputConnector::node(node_id, FillInput::INDEX);
 	let input_type = context.network_interface.input_type(&connector, context.selection_network_path);
 
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Graphic>>::INDEX, false, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::INDEX, false, context));
 
-	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::<List<Graphic>>::INDEX).is_some_and(|input| input.is_exposed())) {
+	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::INDEX).is_some_and(|input| input.is_exposed())) {
 		return vec![LayoutGroup::row(widgets_first_row)];
 	}
 
@@ -2469,7 +2473,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let fill = match input_type.compiled_nested_type() {
 		Some(ty) if ty == &concrete!(List<Color>) => {
 			if let Ok(document_node) = get_document_node(node_id, context) {
-				let color = match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
+				let color = match document_node.inputs[FillInput::INDEX].as_value() {
 					Some(&TaggedValue::Color(c)) => c,
 					_ => None,
 				};
@@ -2520,7 +2524,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::INDEX))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2544,7 +2548,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::<List<Graphic>>::INDEX,
+				input_index: FillInput::INDEX,
 				value: TaggedValue::Color(color),
 			}
 			.into(),
@@ -2561,7 +2565,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::<List<Graphic>>::INDEX,
+				input_index: FillInput::INDEX,
 				value: TaggedValue::Gradient(gradient.clone()),
 			}
 			.into(),
@@ -2602,11 +2606,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Color(backup_color), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Color(backup_color), node_id, FillInput::INDEX))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::INDEX))
 				.on_commit(commit_value),
 		];
 
@@ -2712,14 +2716,14 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<List<f64>>::INDEX].as_value() {
+	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::INDEX].as_value() {
 		Some(TaggedValue::F64Array(values)) => values.is_empty(),
 		_ => true,
 	};
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, PaintInput::<List<Graphic>>::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, PaintInput::INDEX, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));
@@ -2739,10 +2743,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
-	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<List<f64>>::INDEX, true, context),
-		TextInput::default().centered(true),
-	);
+	let dash_lengths = array_of_number_widget(ParameterWidgetsInfo::new(node_id, DashLengthsInput::INDEX, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
 	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
 

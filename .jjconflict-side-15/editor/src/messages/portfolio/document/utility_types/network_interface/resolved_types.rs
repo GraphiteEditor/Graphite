@@ -262,9 +262,8 @@ impl NodeNetworkInterface {
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
 				implementations
-					.iter()
-					.filter_map(|entry| {
-						let node_io = &entry.io;
+					.keys()
+					.filter_map(|node_io| {
 						// Check if this NodeIOTypes implementation is valid for the other inputs
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
@@ -303,9 +302,8 @@ impl NodeNetworkInterface {
 						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
 
 						implementations
-							.iter()
-							.filter_map(|entry| {
-								let node_io = &entry.io;
+							.keys()
+							.filter_map(|node_io| {
 								if !valid_output_types.iter().any(|output_type| output_type.nested_type() == node_io.return_value.nested_type()) {
 									return None;
 								}
@@ -334,7 +332,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {render_node:?} not found in registry");
 							return Vec::new();
 						};
-						implementations.iter().map(|entry| entry.io.inputs[1].clone()).collect()
+						implementations.keys().map(|types| types.inputs[1].clone()).collect()
 					}
 				}
 			}

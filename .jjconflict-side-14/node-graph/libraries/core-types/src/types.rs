@@ -462,12 +462,6 @@ impl Type {
 		}
 	}
 
-	/// The element name if this is the concrete type of a rank-0 `Item` cell, e.g. `f64` from `Item<f64>`.
-	pub fn item_element_name(&self) -> Option<&str> {
-		let Type::Concrete(descriptor) = self else { return None };
-		descriptor.name.strip_prefix("core_types::list::Item<")?.strip_suffix('>')
-	}
-
 	/// The element name if this is the type of an `Item<Bundle<X>>` cell carrying a whole list, e.g. `f64` from `Item<Bundle<f64>>`.
 	/// The `Bundle` layer stays name-encoded inside the structural `Item` since it has no structural variant.
 	pub fn bundle_element_name(&self) -> Option<&str> {

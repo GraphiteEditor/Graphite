@@ -8,7 +8,7 @@ use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::{GradientStop, Gradient};
+use vector_types::{GradientStop, GradientStops};
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -60,7 +60,7 @@ mod blend_std {
 			result_list
 		}
 	}
-	impl Blend<Color> for List<Gradient> {
+	impl Blend<Color> for List<GradientStops> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_list = self.clone();
 			let pair_count = result_list.len().min(under.len());
@@ -73,7 +73,7 @@ mod blend_std {
 			result_list
 		}
 	}
-	impl Blend<Color> for Gradient {
+	impl Blend<Color> for GradientStops {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut combined_stops = self.position.iter().chain(under.position.iter()).copied().collect::<Vec<_>>();
 			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
@@ -84,7 +84,7 @@ mod blend_std {
 				let color = blend_fn(over_color, under_color);
 				GradientStop { position, midpoint: 0.5, color }
 			});
-			Gradient::new(stops)
+			GradientStops::new(stops)
 		}
 	}
 }
@@ -147,7 +147,7 @@ fn mix<T: Blend<Color> + Send>(
 	#[implementations(
 		List<Raster<CPU>>,
 		List<Color>,
-		List<Gradient>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	over: T,
@@ -155,7 +155,7 @@ fn mix<T: Blend<Color> + Send>(
 	#[implementations(
 		List<Raster<CPU>>,
 		List<Color>,
-		List<Gradient>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	under: T,
@@ -171,7 +171,7 @@ fn color_overlay<T: Adjust<Color>>(
 	#[implementations(
 		List<Raster<CPU>>,
 		List<Color>,
-		List<Gradient>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,

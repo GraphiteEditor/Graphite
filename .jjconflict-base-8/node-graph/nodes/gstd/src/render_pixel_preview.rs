@@ -1,22 +1,23 @@
-use core_types::gpoll::Interrupt;
+use core_types::list::Item;
 use core_types::transform::{Footprint, Transform};
-use core_types::{Ctx, DeriveCtx, ExtractAll};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
-use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
+use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-pub fn render_pixel_preview(
-	ctx: impl Ctx + ExtractAll + DeriveCtx,
-	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
-	data: impl Node<Context<'_>, Output = RenderOutput>,
-) -> Result<RenderOutput, Interrupt> {
+pub async fn render_pixel_preview<'a: 'n>(
+	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
+	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
+) -> Item<RenderOutput> {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");
-		return data.eval(&ctx.derived());
+		let context = OwnedContextImpl::from(ctx).into_context();
+		return data.eval(context).await;
 	};
 	let physical_scale = render_params.scale;
 
@@ -24,7 +25,8 @@ pub fn render_pixel_preview(
 	let viewport_zoom = footprint.scale_magnitudes().x;
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
-		return data.eval(&ctx.derived());
+		let context = OwnedContextImpl::from(ctx).into_context();
+		return data.eval(context).await;
 	}
 
 	let physical_resolution = footprint.resolution;
@@ -50,37 +52,42 @@ pub fn render_pixel_preview(
 		quality: footprint.quality,
 	};
 
-	let scoped = ctx.push_vararg(&render_params);
-	let mut result = data.eval(&scoped.ctx().with_footprint(&upstream_footprint))?;
+	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(upstream_footprint).with_vararg(Box::new(render_params)).into_context();
+	let mut result = data.eval(new_ctx).await.into_element();
 
-	let RenderOutputType::Texture(ref source_texture) = result.data else { return Ok(result) };
+	let RenderOutputType::Texture(ref source_texture) = result.data else {
+		return Item::new_from_element(result);
+	};
 
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
 	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
-	let resampled = pipeline.run::<PixelPreview>(&PixelPreviewArgs {
-		source: source_texture.as_ref(),
-		transform: &transform,
-		size: physical_resolution,
-	});
+	let resampled = pipeline
+		.into_element()
+		.run::<PixelPreview>(&PixelPreviewArgs {
+			source: source_texture.as_ref(),
+			transform: &transform,
+			size: physical_resolution,
+		})
+		.await;
 
 	result.data = RenderOutputType::Texture(resampled);
 
 	result.metadata.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min));
 
-	Ok(result)
+	Item::new_from_element(result)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn pixel_preview_pipeline(
+async fn pixel_preview_pipeline<'a: 'n>(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
 	#[data] pipeline: WgpuPipelineCache,
-) -> WgpuPipelineCache {
-	if let Some(executor) = executor {
+) -> Item<WgpuPipelineCache> {
+	if let Some(executor) = executor.into_element() {
 		executor.pipeline_init::<PixelPreview>(pipeline);
 	}
-	pipeline.clone()
+	Item::new_from_element(pipeline.clone())
 }
 
 pub struct PixelPreview {
@@ -94,7 +101,7 @@ pub struct PixelPreviewArgs<'a> {
 	size: UVec2,
 }
 
-impl WgpuPipeline for PixelPreview {
+impl AsyncWgpuPipeline for PixelPreview {
 	type Args<'a> = PixelPreviewArgs<'a>;
 	type Out = Texture;
 
@@ -166,11 +173,11 @@ impl WgpuPipeline for PixelPreview {
 		PixelPreview { pipeline, bind_group_layout }
 	}
 
-	fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
+	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
 		let context = &executor.context();
 		let &PixelPreviewArgs { source, transform, size } = args;
 
-		let output = executor.request_texture(size);
+		let output = executor.request_texture(size).await;
 
 		let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
 		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());

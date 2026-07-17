@@ -12,21 +12,12 @@ macro_rules! concrete {
 	};
 }
 
-/// The type's name with lifetime arguments stripped, so a lifetimed type
-/// keeps its pre-lifetime registry and document name.
-pub fn normalize_type_name<'a>(name: &'a str) -> std::borrow::Cow<'a, str> {
-	if !name.contains("<'") && !name.contains(", '") {
-		return std::borrow::Cow::Borrowed(name);
-	}
-	std::borrow::Cow::Owned(name.replace("<'_>", "").replace("<'_, ", "<").replace(", '_", ""))
-}
-
 #[macro_export]
 macro_rules! descriptor {
 	($type:ty) => {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::normalize_type_name(std::any::type_name::<$type>()),
+			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
@@ -35,7 +26,7 @@ macro_rules! descriptor {
 	($type:ty, $name:ty) => {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::normalize_type_name(std::any::type_name::<$type>()),
+			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
@@ -61,8 +52,48 @@ macro_rules! generic {
 	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
+/// Constructs the [`Type`] of an `Item` holding the given element type, e.g. `item!(f64)` is the type of an `Item<f64>`.
+/// The two-argument form tags the element descriptor with an alias, preserving the source spelling for widget dispatch.
+#[macro_export]
+macro_rules! item {
+	(Item<$inner:ty>) => {
+		$crate::Type::Item(Box::new($crate::item!($inner)))
+	};
+	($element:ty) => {
+		$crate::Type::Item(Box::new($crate::concrete!($element)))
+	};
+	($element:ty, $alias:ty) => {
+		$crate::Type::Item(Box::new($crate::concrete!($element, $alias)))
+	};
+}
+
+/// Constructs the [`Type`] of a `List` holding the given element type, e.g. `list!(f64)` is the type of a `List<f64>`.
+#[macro_export]
+macro_rules! list {
+	(List<$inner:ty>) => {
+		$crate::Type::List(Box::new($crate::list!($inner)))
+	};
+	($element:ty) => {
+		$crate::Type::List(Box::new($crate::concrete!($element)))
+	};
+}
+
+// The `List<...>`/`Item<...>` rules must appear before the generic `$type:ty` rules, and in each macro that sees the literal tokens,
+// because a type captured as `ty` becomes opaque to any inner macro's ranked pattern
 #[macro_export]
 macro_rules! future {
+	(List<$inner:ty>) => {
+		$crate::Type::Future(Box::new($crate::list!($inner)))
+	};
+	(List<$inner:ty>, $name:ty) => {
+		$crate::Type::Future(Box::new($crate::list!($inner)))
+	};
+	(Item<$inner:ty>) => {
+		$crate::Type::Future(Box::new($crate::item!($inner)))
+	};
+	(Item<$inner:ty>, $name:ty) => {
+		$crate::Type::Future(Box::new($crate::item!($inner, $name)))
+	};
 	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
 	($type:ty, $name:ty) => {
 		$crate::Type::Future(Box::new(concrete!($type, $name)))
@@ -70,9 +101,57 @@ macro_rules! future {
 }
 
 #[macro_export]
+macro_rules! fn_type {
+	(List<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::list!($inner)))
+	};
+	(Item<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::item!($inner)))
+	};
+	($type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
+	};
+	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
+	};
+	($in_type:ty, List<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
+	};
+	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner, $inner)))
+	};
+	($in_type:ty, Item<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner)))
+	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type, $outname)))
+	};
+	($in_type:ty, $type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
+	};
+}
+#[macro_export]
 macro_rules! fn_type_fut {
+	(List<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
+	};
+	(Item<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
+	};
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
+	};
+	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
+	};
+	($in_type:ty, List<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
+	};
+	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner, $inner)))))
+	};
+	($in_type:ty, Item<$inner:ty>) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
 	};
 	($in_type:ty, $type:ty, alias: $outname:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
@@ -94,6 +173,15 @@ pub struct NodeIOTypes {
 impl NodeIOTypes {
 	pub const fn new(call_argument: Type, return_value: Type, inputs: Vec<Type>) -> Self {
 		Self { call_argument, return_value, inputs }
+	}
+
+	/// Applies [`Type::normalize_rank`] to every type in the signature.
+	pub fn normalize_rank(self) -> Self {
+		Self {
+			call_argument: self.call_argument.normalize_rank(),
+			return_value: self.return_value.normalize_rank(),
+			inputs: self.inputs.into_iter().map(Type::normalize_rank).collect(),
+		}
 	}
 
 	pub const fn empty() -> Self {
@@ -189,13 +277,13 @@ pub struct TypeDescriptor {
 
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		normalize_type_name(&self.name).hash(state);
+		self.name.hash(state);
 	}
 }
 
 impl graphene_hash::CacheHash for TypeDescriptor {
 	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
-		graphene_hash::CacheHash::cache_hash(&normalize_type_name(&self.name), state);
+		graphene_hash::CacheHash::cache_hash(&self.name, state);
 	}
 }
 
@@ -213,7 +301,7 @@ impl PartialEq for TypeDescriptor {
 			_ => {
 				// TODO: Add a flag to disable this warning
 				// warn!("TypeDescriptor::eq: comparing types without ids based on name");
-				normalize_type_name(&self.name) == normalize_type_name(&other.name)
+				self.name == other.name
 			}
 		}
 	}
@@ -232,8 +320,10 @@ pub enum Type {
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
-	/// A packed record input over the element type; the layout stays node-resident metadata.
-	Record(Box<Type>),
+	/// Represents a recursive [Type] allowing nested levels of types to represent the type of an Item<T>.
+	Item(Box<Type>),
+	/// Represents a list of this recursive [Type] allowing nested levels of types to represent the type of a List<T>.
+	List(Box<Type>),
 }
 
 impl Default for Type {
@@ -294,7 +384,7 @@ impl Type {
 	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
-			name: normalize_type_name(std::any::type_name::<T::Static>()),
+			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
 			alias: None,
 			size: size_of::<T>(),
 			align: align_of::<T>(),
@@ -307,7 +397,8 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
-			Self::Record(_) => None,
+			Self::Item(_) => None,
+			Self::List(_) => None,
 		}
 	}
 
@@ -317,7 +408,8 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
-			Self::Record(_) => None,
+			Self::Item(_) => None,
+			Self::List(_) => None,
 		}
 	}
 
@@ -327,7 +419,8 @@ impl Type {
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
-			Self::Record(inner) => inner.nested_type(),
+			Self::Item(_) => self,
+			Self::List(_) => self,
 		}
 	}
 
@@ -340,7 +433,8 @@ impl Type {
 			Self::Concrete(_) => None,
 			Self::Fn(_, output) => output.replace_nested(f),
 			Self::Future(output) => output.replace_nested(f),
-			Self::Record(inner) => inner.replace_nested(f),
+			Self::Item(_) => None,
+			Self::List(_) => None,
 		}
 	}
 
@@ -350,7 +444,68 @@ impl Type {
 			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
 			Type::Future(ty) => ty.identifier_name(),
-			Type::Record(ty) => ty.identifier_name(),
+			Type::Item(element) => element.identifier_name(),
+			Type::List(element) => format!("{}[]", element.identifier_name()),
+		}
+	}
+
+	/// Constructs the [`Type`] of a `List` holding elements of the given type, the expression-position counterpart of [`list!`].
+	pub fn list_of(element: Type) -> Type {
+		Type::List(Box::new(element))
+	}
+
+	/// The element type if this is a rank-1 `List` wire type.
+	pub fn list_element(&self) -> Option<&Type> {
+		match self {
+			Type::List(element) => Some(element),
+			_ => None,
+		}
+	}
+
+	/// The element name if this is the concrete type of a rank-0 `Item` cell, e.g. `f64` from `Item<f64>`.
+	pub fn item_element_name(&self) -> Option<&str> {
+		let Type::Concrete(descriptor) = self else { return None };
+		descriptor.name.strip_prefix("core_types::list::Item<")?.strip_suffix('>')
+	}
+
+	/// The element name if this is the type of an `Item<Bundle<X>>` cell carrying a whole list, e.g. `f64` from `Item<Bundle<f64>>`.
+	/// The `Bundle` layer stays name-encoded inside the structural `Item` since it has no structural variant.
+	pub fn bundle_element_name(&self) -> Option<&str> {
+		let Type::Item(element) = self else { return None };
+		let Type::Concrete(descriptor) = element.as_ref() else { return None };
+		descriptor.name.strip_prefix("core_types::list::Bundle<")?.strip_suffix('>')
+	}
+
+	/// Converts a name-encoded `List` or `Item` concrete type into its structural form, recursively.
+	/// Structurally-built types pass through unchanged, so sources which cannot construct ranked types
+	/// (reflection and opaque macro captures) converge with macro-built ones at this single point.
+	pub fn normalize_rank(self) -> Type {
+		fn parse_element(element_name: &str) -> Type {
+			let element = Type::Concrete(TypeDescriptor {
+				id: None,
+				name: Cow::Owned(element_name.to_string()),
+				alias: None,
+				size: 0,
+				align: 0,
+			});
+			element.normalize_rank()
+		}
+
+		match self {
+			Type::Concrete(descriptor) => {
+				if let Some(element_name) = descriptor.name.strip_prefix("core_types::list::List<").and_then(|rest| rest.strip_suffix('>')) {
+					return Type::List(Box::new(parse_element(element_name)));
+				}
+				if let Some(element_name) = descriptor.name.strip_prefix("core_types::list::Item<").and_then(|rest| rest.strip_suffix('>')) {
+					return Type::Item(Box::new(parse_element(element_name)));
+				}
+				Type::Concrete(descriptor)
+			}
+			Type::Fn(input, output) => Type::Fn(Box::new(input.normalize_rank()), Box::new(output.normalize_rank())),
+			Type::Future(inner) => Type::Future(Box::new(inner.normalize_rank())),
+			Type::Item(element) => Type::Item(Box::new(element.normalize_rank())),
+			Type::List(element) => Type::List(Box::new(element.normalize_rank())),
+			Type::Generic(_) => self,
 		}
 	}
 }
@@ -365,7 +520,7 @@ pub fn simplify_identifier_name(ty: &str) -> String {
 /// Converts a Rust-internal type name to its user-facing form.
 pub fn make_type_user_readable(ty: &str) -> String {
 	let ty = ty
-		.replace("ContextImpl", "Context")
+		.replace("Option<Arc<OwnedContextImpl>>", "Context")
 		.replace("Raster<CPU>", "Raster")
 		.replace("Raster<GPU>", "Raster")
 		.replace("DAffine2", "Transform")
@@ -375,12 +530,13 @@ pub fn make_type_user_readable(ty: &str) -> String {
 		.replace("UVec2", "Vec2")
 		.replace("&str", "String");
 
-	rewrite_list_as_array_brackets(&ty)
+	rewrite_ranked_type_wrappers(&ty)
 }
 
-/// Rewrites `List<T>` as `T[]`. Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
-/// Respects word boundaries so unrelated identifiers that happen to end in `List` are not affected.
-fn rewrite_list_as_array_brackets(input: &str) -> String {
+/// Rewrites `List<T>` and the whole-collection `Bundle<T>` as `T[]`, and unwraps `Item<T>` to `T`, so ranked wires read as their element type.
+/// Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
+/// Respects word boundaries so unrelated identifiers that happen to end in `List` or `Item` are not affected.
+fn rewrite_ranked_type_wrappers(input: &str) -> String {
 	let bytes = input.as_bytes();
 	let mut result = String::with_capacity(input.len());
 	let mut i = 0;
@@ -391,8 +547,27 @@ fn rewrite_list_as_array_brackets(input: &str) -> String {
 			let inner_start = i + b"List<".len();
 			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
 				let inner = &input[inner_start..close];
-				result.push_str(&rewrite_list_as_array_brackets(inner));
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
 				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if at_word_boundary && bytes[i..].starts_with(b"Bundle<") {
+			let inner_start = i + b"Bundle<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
+				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		if at_word_boundary && bytes[i..].starts_with(b"Item<") {
+			let inner_start = i + b"Item<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_ranked_type_wrappers(inner));
 				i = close + 1;
 				continue;
 			}
@@ -445,7 +620,8 @@ impl std::fmt::Display for Type {
 			Type::Concrete(ty) => write!(f, "{ty}"),
 			Type::Fn(_, return_value) => write!(f, "{return_value}"),
 			Type::Future(ty) => write!(f, "{ty}"),
-			Type::Record(ty) => write!(f, "{ty}"),
+			Type::Item(element) => write!(f, "{element}"),
+			Type::List(element) => write!(f, "{element}[]"),
 		}
 	}
 }

@@ -10,11 +10,10 @@ use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::List;
-use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
-use graphene_std::{Artboard, Color, Context, Graphic};
+use graphene_std::{Artboard, Color, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -167,8 +166,8 @@ macro_rules! generate_layout_downcast {
 	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
 		if false { None }
 		$(
-			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
-				Some(io.output.layout_with_breadcrumb($data))
+			else if let Some(element) = $introspected_data.downcast_ref::<$ty>() {
+				Some(element.layout_with_breadcrumb($data))
 			}
 		)*
 		else { None }
@@ -178,8 +177,13 @@ macro_rules! generate_layout_downcast {
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `List<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<NodeId>>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
+	if let Some(list) = introspected_data.downcast_ref::<List<NodeId>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(list, data));
+	}
+	// The path's plain value form, produced by `path_of_subgraph` on leveled wires.
+	if let Some(path) = introspected_data.downcast_ref::<Vec<NodeId>>() {
+		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
+		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
 		List<Artboard>,
@@ -308,7 +312,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 	}
 }
 
-impl TableItemLayout for Artboard {
+impl TableItemLayout for Artboard<'_> {
 	fn type_name() -> &'static str {
 		"Artboard"
 	}
@@ -324,7 +328,7 @@ impl TableItemLayout for Artboard {
 	}
 }
 
-impl TableItemLayout for Graphic {
+impl TableItemLayout for Graphic<'_> {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}
@@ -338,6 +342,7 @@ impl TableItemLayout for Graphic {
 			Self::Color(list) => list.identifier(),
 			Self::Gradient(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
+			Self::Group(_) => "Group".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -354,6 +359,7 @@ impl TableItemLayout for Graphic {
 			Self::Color(list) => list.layout_with_breadcrumb(data),
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
+			Self::Group(_) => Vec::new(),
 		}
 	}
 }
@@ -1011,6 +1017,11 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 	// resolves against the prefix made up of preceding items. Handled before the generic `List<T>` blanket impl.
 	if let Some(path) = any.downcast_ref::<List<NodeId>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
+	}
+	// The path's plain value form, the layer-path marker's owned shape.
+	if let Some(path) = any.downcast_ref::<Vec<NodeId>>() {
+		let list: List<NodeId> = path.iter().copied().map(graphene_std::list::Item::new_from_element).collect();
+		return Some(table_node_id_path_layout_with_breadcrumb(&list, data));
 	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
