@@ -6,11 +6,11 @@ use crate::MESSAGE_BUFFER;
 use crate::editor_commands::EditorCommand;
 #[cfg(not(feature = "native"))]
 use crate::helpers::poll_node_graph_evaluation;
+#[cfg(any(not(feature = "native"), target_family = "wasm"))]
+use crate::helpers::wrapper;
 #[cfg(feature = "editor")]
 use crate::helpers::{calculate_hash, render_image_data_to_canvases};
 use crate::helpers::{request_animation_frame, set_timeout};
-#[cfg(any(not(feature = "native"), target_family = "wasm"))]
-use crate::helpers::wrapper;
 use crate::{EDITOR_HAS_CRASHED, FRONTEND_READY};
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Editor, Environment, Host, Platform};
