@@ -803,8 +803,8 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
 
 /// Constructs a two-dimensional vector value which may be set to any XY pair.
 #[node_macro::node(category("Value"), name("Vec2 Value"))]
-fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
-	DVec2::new(x, y)
+fn vec2_value(_: impl Ctx, _primary: (), #[name("Vec2")] vec2: DVec2) -> DVec2 {
+	vec2
 }
 
 /// Constructs a color value which may be set to any color.
@@ -897,6 +897,23 @@ fn footprint_value(_: impl Ctx, _primary: (), transform: DAffine2, #[default(100
 	}
 }
 
+/// Composes a vec2 from its X and Y components.
+///
+/// The inverse of this node is **Split Vec2**, which decomposes a vec2 back into its X and Y components.
+#[node_macro::node(category("Math: Vector"), name("Combine Vec2"))]
+fn combine_vec2(
+	_: impl Ctx,
+	_primary: (),
+	/// The X component of the vec2.
+	#[expose]
+	x: f64,
+	/// The Y component of the vec2.
+	#[expose]
+	y: f64,
+) -> DVec2 {
+	DVec2::new(x, y)
+}
+
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.
 ///
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).
@@ -965,10 +982,9 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	if radians { angle } else { angle.to_degrees() }
 }
 
-// TODO: Rename to "Magnitude"
 /// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow represented by the vector.
 #[node_macro::node(category("Math: Vector"))]
-fn length(_: impl Ctx, vector: DVec2) -> f64 {
+fn magnitude(_: impl Ctx, vector: DVec2) -> f64 {
 	vector.length()
 }
 
@@ -992,9 +1008,9 @@ mod test {
 	}
 
 	#[test]
-	pub fn length_function() {
+	pub fn magnitude_function() {
 		let vector = DVec2::new(3., 4.);
-		assert_eq!(length(&(), vector), 5.);
+		assert_eq!(magnitude(&(), vector), 5.);
 	}
 
 	#[test]

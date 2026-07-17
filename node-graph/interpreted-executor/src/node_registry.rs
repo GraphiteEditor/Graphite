@@ -81,9 +81,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 	);
 	// The path flattening's plain vector rows, served under its identifier.
 	node_types.extend(
-		graphene_std::vector::flatten_path_vector_entries()
+		graphene_std::vector::combine_paths_vector_entries()
 			.into_iter()
-			.map(|entry| (graphene_std::vector::flatten_path::IDENTIFIER.clone(), entry)),
+			.map(|entry| (graphene_std::vector::combine_paths::IDENTIFIER.clone(), entry)),
 	);
 	// The solidify's plain vector rows, served under its identifier.
 	node_types.extend(
