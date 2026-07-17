@@ -321,7 +321,7 @@ mod test {
 			Item::new_from_element(count),
 		)
 		.await;
-		let vector_list = List::new_from_item(vector_nodes::flatten_path(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 3);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
@@ -340,7 +340,7 @@ mod test {
 			Item::new_from_element(1),
 		)
 		.await;
-		let vector_list = List::new_from_item(vector_nodes::flatten_path(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 1);
 
@@ -362,7 +362,7 @@ mod test {
 			Item::new_from_element(count),
 		)
 		.await;
-		let vector_list = List::new_from_item(vector_nodes::flatten_path(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
@@ -381,7 +381,7 @@ mod test {
 			Item::new_from_element(8),
 		)
 		.await;
-		let vector_list = List::new_from_item(vector_nodes::flatten_path(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::Vector(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 

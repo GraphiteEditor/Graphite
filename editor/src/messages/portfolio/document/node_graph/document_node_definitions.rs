@@ -806,9 +806,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
-							// 6: Flatten Path
+							// 6: Combine Paths
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::flatten_path::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::combine_paths::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(5), 0)],
 								..Default::default()
 							},
@@ -883,7 +883,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 6: Flatten Path
+								// 6: Combine Paths
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(35, 0)),
@@ -1239,7 +1239,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed(
 				"Decomposes the X and Y components of a vec2.\n\
 				\n\
-				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
+				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
 			),
 			properties: None,
 		},

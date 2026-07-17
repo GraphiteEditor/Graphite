@@ -975,8 +975,8 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Item<Percentage>) -> 
 
 /// Constructs a two-dimensional vector value which may be set to any XY pair.
 #[node_macro::node(category("Value"), name("Vec2 Value"))]
-fn vec2_value(_: impl Ctx, _primary: (), x: Item<f64>, y: Item<f64>) -> Item<DVec2> {
-	Item::new_from_element(DVec2::new(*x.element(), *y.element()))
+fn vec2_value(_: impl Ctx, _primary: (), #[name("Vec2")] vec2: Item<DVec2>) -> Item<DVec2> {
+	vec2
 }
 
 /// Constructs a color value which may be set to any color.
@@ -1073,6 +1073,23 @@ fn footprint_value(_: impl Ctx, _primary: (), transform: Item<DAffine2>, #[defau
 	})
 }
 
+/// Composes a vec2 from its X and Y components.
+///
+/// The inverse of this node is **Split Vec2**, which decomposes a vec2 back into its X and Y components.
+#[node_macro::node(category("Math: Vector"), name("Combine Vec2"))]
+fn combine_vec2(
+	_: impl Ctx,
+	_primary: (),
+	/// The X component of the vec2.
+	#[expose]
+	x: Item<f64>,
+	/// The Y component of the vec2.
+	#[expose]
+	y: Item<f64>,
+) -> Item<DVec2> {
+	Item::new_from_element(DVec2::new(*x.element(), *y.element()))
+}
+
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.
 ///
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).
@@ -1152,10 +1169,9 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	Item::from_parts(result, attributes)
 }
 
-// TODO: Rename to "Magnitude"
 /// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow represented by the vector.
 #[node_macro::node(category("Math: Vector"))]
-fn length(_: impl Ctx, vector: Item<DVec2>) -> Item<f64> {
+fn magnitude(_: impl Ctx, vector: Item<DVec2>) -> Item<f64> {
 	let (vector, attributes) = vector.into_parts();
 
 	Item::from_parts(vector.length(), attributes)
@@ -1185,9 +1201,9 @@ mod test {
 	}
 
 	#[test]
-	pub fn length_function() {
+	pub fn magnitude_function() {
 		let vector = Item::new_from_element(DVec2::new(3., 4.));
-		assert_eq!(length((), vector).into_element(), 5.);
+		assert_eq!(magnitude((), vector).into_element(), 5.);
 	}
 
 	#[test]

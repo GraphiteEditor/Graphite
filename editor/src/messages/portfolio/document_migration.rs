@@ -294,8 +294,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::length::IDENTIFIER,
-		aliases: &["graphene_math_nodes::LengthNode", "graphene_core::ops::LenghtNode"],
+		node: graphene_std::math_nodes::magnitude::IDENTIFIER,
+		aliases: &["math_nodes::LengthNode", "graphene_math_nodes::LengthNode", "graphene_core::ops::LenghtNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::less_than::IDENTIFIER,
@@ -420,6 +420,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::math_nodes::as_u_64::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node", "math_nodes::ToU64Node"],
 	},
+	// The old 'Vec2 Value' node took separate X and Y inputs, a role now filled by 'Combine Vec2', while the new 'Vec2 Value' node takes a single vec2 input.
+	// Old references (including these older aliases) are remapped here to `vec_2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Combine Vec2' node.
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
 		aliases: &[
@@ -803,7 +805,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::vector_nodes::FillNode", "graphene_core::vector::FillNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::flatten_path::IDENTIFIER,
+		node: graphene_std::vector::combine_paths::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::FlattenPathNode",
 			"graphene_core::vector::FlattenVectorElementsNode",
@@ -2019,6 +2021,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// Convert the old 'Vec2 Value' node, identified by its leftover 3-input shape with separate X and Y inputs,
+	// into the 'Combine Vec2' node which now fills that role (the new 'Vec2 Value' node instead takes a single vec2 input)
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::vec_2_value::IDENTIFIER) && inputs_count == 3 {
+		let combine_vec2_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::combine_vec_2::IDENTIFIER);
+		let mut node_template = resolve_document_node_type(&combine_vec2_reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
 	}
 
 	// Upgrade the Mirror node to add the `keep_original` boolean input
