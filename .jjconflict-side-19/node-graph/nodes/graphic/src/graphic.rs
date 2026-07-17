@@ -967,7 +967,7 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 	// TODO: we stash the pre-flattened list on the output so `List<Vector>::collect_metadata` can recurse into it,
 	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
 	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
-	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Flatten Path,
+	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Combine Paths,
 	// TODO: Morph, Rasterize) become unnecessary.
 	if !output.is_empty() {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
