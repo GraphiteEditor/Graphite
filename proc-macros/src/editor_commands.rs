@@ -1,38 +1,37 @@
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream;
-use quote::quote;
-use syn::parse::{Parse, ParseStream};
+use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
-use syn::{Error, FnArg, Ident, ItemFn, ItemUse, Pat, Token, Visibility};
+use syn::{Error, FnArg, Ident, Item, ItemFn, ItemMod, ItemUse, Pat, Visibility};
 
-pub struct EditorCommands {
-	imports: Vec<ItemUse>,
-	functions: Vec<ItemFn>,
-}
-
-impl Parse for EditorCommands {
-	fn parse(input: ParseStream) -> syn::Result<Self> {
-		let mut imports = Vec::new();
-		let mut functions = Vec::new();
-		while !input.is_empty() {
-			if input.peek(Token![use]) {
-				imports.push(input.parse()?);
-			} else {
-				functions.push(input.parse()?);
-			}
-		}
-		Ok(Self { imports, functions })
+pub fn editor_commands_impl(attr: TokenStream, module: ItemMod) -> syn::Result<TokenStream> {
+	if !attr.is_empty() {
+		return Err(Error::new(attr.span(), "#[editor_commands] takes no arguments"));
 	}
-}
+	for attr in &module.attrs {
+		if !attr.path().is_ident("doc") {
+			return Err(Error::new(attr.span(), "the #[editor_commands] module may not have other attributes"));
+		}
+	}
+	let Some((_, items)) = module.content else {
+		return Err(Error::new(module.mod_token.span, "#[editor_commands] requires a module with an inline body"));
+	};
 
-pub fn editor_commands_impl(input: EditorCommands) -> syn::Result<TokenStream> {
-	let imports = &input.imports;
+	let mut imports: Vec<ItemUse> = Vec::new();
+	let mut functions: Vec<ItemFn> = Vec::new();
+	for item in items {
+		match item {
+			Item::Use(import) => imports.push(import),
+			Item::Fn(function) => functions.push(function),
+			other => return Err(Error::new(other.span(), "only `use` imports and command functions may appear in an #[editor_commands] module")),
+		}
+	}
 
 	let mut variants = TokenStream::new();
 	let mut stubs = TokenStream::new();
 	let mut arms = TokenStream::new();
 
-	for function in &input.functions {
+	for function in &functions {
 		for attr in &function.attrs {
 			if !attr.path().is_ident("doc") {
 				return Err(Error::new(
@@ -75,11 +74,12 @@ pub fn editor_commands_impl(input: EditorCommands) -> syn::Result<TokenStream> {
 		let return_type = &signature.output;
 		let body = &function.block;
 
-		variants.extend(quote! {
+		let span = fn_name.span();
+		variants.extend(quote_spanned! {span=>
 			#(#docs)*
 			#variant { #(#param_names: #param_types,)* },
 		});
-		stubs.extend(quote! {
+		stubs.extend(quote_spanned! {span=>
 			#(#docs)*
 			#[cfg(not(feature = "native"))]
 			#[wasm_bindgen(js_name = #js_name)]
@@ -93,7 +93,7 @@ pub fn editor_commands_impl(input: EditorCommands) -> syn::Result<TokenStream> {
 				self.send(EditorCommand::#variant { #(#param_names,)* })
 			}
 		});
-		arms.extend(quote! {
+		arms.extend(quote_spanned! {span=>
 			EditorCommand::#variant { #(#param_names,)* } => #body,
 		});
 	}

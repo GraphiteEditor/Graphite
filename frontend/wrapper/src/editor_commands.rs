@@ -7,7 +7,8 @@ use tsify::Tsify;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
-editor_commands! {
+#[editor_commands]
+mod editor_commands {
 	use crate::helpers::translate_key;
 	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 	use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;

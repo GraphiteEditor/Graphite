@@ -304,10 +304,10 @@ pub fn message_handler_data(attr: TokenStream, input_item: TokenStream) -> Token
 	TokenStream::from(message_handler_data_attr_impl(attr.into(), input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
-#[proc_macro]
-pub fn editor_commands(input: TokenStream) -> TokenStream {
-	let input = syn::parse_macro_input!(input as editor_commands::EditorCommands);
-	TokenStream::from(editor_commands_impl(input).unwrap_or_else(|err| err.to_compile_error()))
+#[proc_macro_attribute]
+pub fn editor_commands(attr: TokenStream, input_item: TokenStream) -> TokenStream {
+	let module = syn::parse_macro_input!(input_item as syn::ItemMod);
+	TokenStream::from(editor_commands_impl(attr.into(), module).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 #[cfg(test)]
