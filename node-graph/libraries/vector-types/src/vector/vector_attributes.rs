@@ -941,6 +941,15 @@ impl Vector {
 		self.segment_points_from_id(id).map(|(_, _, bezier)| bezier)
 	}
 
+	/// Tries to convert a segment with the specified id to a [`PathSeg`], returning None if the id is invalid.
+	pub fn path_segment_from_id(&self, id: SegmentId) -> Option<PathSeg> {
+		let segment_index = self.segment_domain.id_to_index(id)?;
+		let start_index = *self.segment_domain.start_point().get(segment_index)?;
+		let end_index = *self.segment_domain.end_point().get(segment_index)?;
+		let handles = *self.segment_domain.handles().get(segment_index)?;
+		Some(self.path_segment_from_index(start_index, end_index, handles))
+	}
+
 	/// Tries to convert a segment with the specified id to the start and end points and a [`Bezier`], returning None if the id is invalid.
 	pub fn segment_points_from_id(&self, id: SegmentId) -> Option<(PointId, PointId, Bezier)> {
 		Some(self.segment_points_from_index(self.segment_domain.id_to_index(id)?))

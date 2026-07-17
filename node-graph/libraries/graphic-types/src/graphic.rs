@@ -10,6 +10,7 @@ use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
 use vector_types::Gradient;
 pub use vector_types::Vector;
+use vector_types::gradient::MeshGradient;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
@@ -23,6 +24,7 @@ pub enum Graphic {
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
 	Gradient(List<Gradient>),
+	MeshGradient(List<MeshGradient>),
 	Text(List<String>),
 }
 
@@ -234,6 +236,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 				Graphic::RasterCPU(list) => bake_list_transform(list, transform),
 				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
 				Graphic::Gradient(list) => bake_list_transform(list, transform),
+				Graphic::MeshGradient(list) => bake_list_transform(list, transform),
 				Graphic::Text(list) => bake_list_transform(list, transform),
 				Graphic::Color(_) => {}
 			}
@@ -339,6 +342,12 @@ impl IntoGraphicList for List<Gradient> {
 	}
 }
 
+impl IntoGraphicList for List<MeshGradient> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::MeshGradient(self))
+	}
+}
+
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
@@ -427,6 +436,7 @@ impl Graphic {
 			Graphic::RasterGPU(list) => all_clipped(list),
 			Graphic::Color(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
+			Graphic::MeshGradient(list) => all_clipped(list),
 			Graphic::Text(list) => all_clipped(list),
 		}
 	}
@@ -467,7 +477,8 @@ impl Graphic {
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			// TODO: Graphic::MeshGradient should be able to have this check
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::MeshGradient(_) => false,
 		}
 	}
 
@@ -491,7 +502,8 @@ impl Graphic {
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			// TODO: Graphic::MeshGradient should be able to have this check
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::MeshGradient(_) => false,
 		}
 	}
 
@@ -509,6 +521,7 @@ impl Graphic {
 			Graphic::Vector(list) => list.is_empty(),
 			Graphic::Color(list) => list.is_empty(),
 			Graphic::Gradient(list) => list.is_empty(),
+			Graphic::MeshGradient(list) => list.is_empty(),
 			Graphic::RasterCPU(list) => list.is_empty(),
 			Graphic::RasterGPU(list) => list.is_empty(),
 			Graphic::Text(list) => list.is_empty(),
@@ -526,6 +539,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
+			Graphic::MeshGradient(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
@@ -539,6 +553,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::MeshGradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
 	}
@@ -554,6 +569,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
+			Self::MeshGradient(list) => list.render_complexity(),
 			Self::Text(list) => list.render_complexity(),
 		}
 	}

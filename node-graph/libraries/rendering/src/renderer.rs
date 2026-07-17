@@ -2,10 +2,8 @@ use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
-use core_types::bounds::BoundingBox;
-use core_types::bounds::RenderBoundingBox;
-use core_types::color::Color;
-use core_types::color::SRGBA8;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::color::{Color, SRGBA8};
 use core_types::consts::DEFAULT_FONT_SIZE;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
@@ -18,7 +16,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, Vec4};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
@@ -28,7 +26,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, CubicBez, Join, ParamCurve, PathSeg, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -39,7 +37,8 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::{GradientSpreadMethod, MeshGradient};
+use vector_types::vector::misc::point_to_dvec2;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -382,7 +381,7 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
 	match gradient_type {
 		GradientType::Radial => transform,
-		GradientType::Linear => {
+		GradientType::Linear | GradientType::Mesh => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
 			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
@@ -414,7 +413,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
-			GradientType::Linear => peniko::LinearGradientPosition {
+			GradientType::Linear | GradientType::Mesh => peniko::LinearGradientPosition {
 				start: to_point(start),
 				end: to_point(end),
 			}
@@ -553,6 +552,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(list) => list.render_svg(render, render_params),
 			Graphic::Gradient(list) => list.render_svg(render, render_params),
+			Graphic::MeshGradient(list) => list.render_svg(render, render_params),
 			Graphic::Text(list) => list.render_svg(render, render_params),
 		}
 	}
@@ -566,6 +566,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::MeshGradient(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
@@ -621,6 +622,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
+				Graphic::MeshGradient(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
 				Graphic::Text(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
@@ -640,6 +649,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::MeshGradient(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id),
 		}
 	}
@@ -653,6 +663,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::MeshGradient(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Text(list) => list.add_upstream_click_targets(click_targets),
 		}
 	}
@@ -666,6 +677,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::MeshGradient(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Text(list) => list.add_upstream_outline_targets(outlines),
 		}
 	}
@@ -679,6 +691,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.contains_artboard(),
 			Graphic::Color(list) => list.contains_artboard(),
 			Graphic::Gradient(list) => list.contains_artboard(),
+			Graphic::MeshGradient(list) => list.contains_artboard(),
 			Graphic::Text(list) => list.contains_artboard(),
 		}
 	}
@@ -692,6 +705,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
+			Graphic::MeshGradient(_) => (),
 			Graphic::Text(_) => (),
 		}
 	}
@@ -1097,7 +1111,7 @@ impl Render for List<Vector> {
 				MaskType::Mask
 			};
 
-			let fill_graphic_list = graphic_list_at(self, index, ATTR_FILL);
+			let fill_graphic_list: Option<std::borrow::Cow<'_, List<Graphic>>> = graphic_list_at(self, index, ATTR_FILL);
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
 			let stroke_graphic_list = graphic_list_at(self, index, ATTR_STROKE);
@@ -1381,6 +1395,9 @@ impl Render for List<Vector> {
 							paint.render_to_vello(scene, multiplied_transform, context, render_params);
 							scene.pop_layer();
 						}
+						Graphic::MeshGradient(_) => {
+							// FIXME: implement vello rendering
+						}
 					};
 				}
 			};
@@ -1458,6 +1475,9 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+						}
+						Graphic::MeshGradient(_) => {
+							// FIXME: implement vello rendering
 						}
 						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) | Graphic::Text(_) => {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
@@ -2122,7 +2142,7 @@ impl Render for List<Gradient> {
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
 				match gradient_type {
-					GradientType::Linear => {
+					GradientType::Linear | GradientType::Mesh => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
 							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
@@ -2189,7 +2209,7 @@ impl Render for List<Gradient> {
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
 			let kind = match gradient_type {
-				GradientType::Linear => peniko::LinearGradientPosition {
+				GradientType::Linear | GradientType::Mesh => peniko::LinearGradientPosition {
 					start: to_point(DVec2::ZERO),
 					end: to_point(DVec2::X),
 				}
@@ -2234,6 +2254,122 @@ impl Render for List<Gradient> {
 				scene.pop_layer();
 			}
 		}
+	}
+}
+
+impl Render for List<MeshGradient> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			let Some(mesh_gradient) = self.element(index) else { continue };
+			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			// FIXME: use below attrs
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+
+			// TODO: add adaptive subpatch size
+			let subdivisions_per_patch_per_axis = 4;
+
+			let float_gamma_color_to_hex = |color: [f32; 4]| -> String {
+				let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
+				SRGBA8 {
+					red: float_to_u8(color[0]),
+					green: float_to_u8(color[1]),
+					blue: float_to_u8(color[2]),
+					alpha: float_to_u8(color[3]),
+				}
+				.to_rgba_hex()
+			};
+
+			let Some(subpatches) = mesh_gradient
+				.evaluator()
+				.and_then(|evaluator| evaluator.subdivide_patches(subdivisions_per_patch_per_axis, mesh_transform))
+			else {
+				continue;
+			};
+
+			let clip_inflation = 0.01;
+			let paint_inflation = 0.02;
+			let clip_min = -clip_inflation;
+			let clip_size = 1. + 2. * clip_inflation;
+			let paint_min = -paint_inflation;
+			let paint_size = 1. + 2. * paint_inflation;
+			let shared_id = generate_uuid();
+			write!(
+					&mut render.svg_defs,
+					r##"<clipPath id="mc{shared_id}" clipPathUnits="userSpaceOnUse"><rect x="{clip_min}" y="{clip_min}" width="{clip_size}" height="{clip_size}"/></clipPath>
+					<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+					<mask id="mm{shared_id}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="url(#gm{shared_id})"/></mask>
+					<mask id="mi{shared_id}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="#fff"/></mask>"##,
+				)
+				.unwrap();
+
+			let mut unique_id = generate_uuid();
+			subpatches.iter().for_each(|subpatch| {
+				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
+				let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
+
+				// linear gradient for the bottom line
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+					float_gamma_color_to_hex(bottom_left.gamma_color),
+					float_gamma_color_to_hex(bottom_right.gamma_color),
+				)
+				.unwrap();
+
+				// linear gradient for the top line
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+					float_gamma_color_to_hex(top_left.gamma_color),
+					float_gamma_color_to_hex(top_right.gamma_color),
+				)
+				.unwrap();
+
+				render.parent_tag(
+					"g",
+					|attributes| {
+						attributes.push(ATTR_TRANSFORM, subpatch_transform);
+						attributes.push("clip-path", format!("url(#mc{shared_id})"));
+					},
+					|render| {
+						// Force both gradient layers to composite before the outer clip applies edge coverage.
+						render.parent_tag(
+							"g",
+							|attributes| {
+								attributes.push("style", "isolation:isolate");
+								attributes.push("mask", format!("url(#mi{shared_id})"));
+							},
+							|render| {
+								render.leaf_tag("rect", |attributes| {
+									attributes.push("x", paint_min.to_string());
+									attributes.push("y", paint_min.to_string());
+									attributes.push("width", paint_size.to_string());
+									attributes.push("height", paint_size.to_string());
+									attributes.push("fill", format!("url(#gb{unique_id})"));
+								});
+
+								render.leaf_tag("rect", |attributes| {
+									attributes.push("x", paint_min.to_string());
+									attributes.push("y", paint_min.to_string());
+									attributes.push("width", paint_size.to_string());
+									attributes.push("height", paint_size.to_string());
+									attributes.push("fill", format!("url(#gt{unique_id})"));
+									attributes.push("mask", format!("url(#mm{shared_id})"));
+								});
+							},
+						);
+					},
+				);
+
+				unique_id += 1;
+			});
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		// FIXME:
 	}
 }
 

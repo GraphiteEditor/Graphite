@@ -23,7 +23,7 @@ use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType, MeshGradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
@@ -518,6 +518,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(list) => list.identifier(),
 			Self::Color(list) => list.identifier(),
 			Self::Gradient(list) => list.identifier(),
+			Self::MeshGradient(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
 		}
 	}
@@ -534,6 +535,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
 			Self::Color(list) => list.layout_with_breadcrumb(data),
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
+			Self::MeshGradient(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
 		}
 	}
@@ -736,6 +738,21 @@ impl TableItemLayout for Gradient {
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.value_widget(PathStep::Element(0), _data)];
+		vec![LayoutGroup::row(widgets)]
+	}
+}
+
+impl TableItemLayout for MeshGradient {
+	fn type_name() -> &'static str {
+		"MeshGradient"
+	}
+	fn identifier(&self) -> String {
+		//FIXME: not implemented yet
+		format!("MeshGradient ({})", 1)
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		//FIXME: not implemented yet
+		let widgets = vec![TextLabel::new("FIXME: MeshGradient cannot be displayed here").widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }

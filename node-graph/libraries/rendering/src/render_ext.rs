@@ -138,7 +138,7 @@ impl RenderExt for List<Gradient> {
 		let gradient_id = generate_uuid();
 
 		match gradient_type {
-			GradientType::Linear => {
+			GradientType::Linear | GradientType::Mesh => {
 				let _ = write!(
 					svg_defs,
 					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
@@ -242,7 +242,7 @@ impl RenderExt for List<Graphic> {
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::None) => format!(r#" {paint_attr}="none""#),
-			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) => {
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) | Some(Graphic::Text(_)) | Some(Graphic::MeshGradient(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };
@@ -263,7 +263,7 @@ impl RenderExt for List<Graphic> {
 }
 
 /// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the paint content, and returns the pattern ID.
-/// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
+/// Currently, this function is only used for clipping-based filling and stroking and mesh gradient, not considering tiling yet.
 fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);

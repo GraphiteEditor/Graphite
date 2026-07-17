@@ -2,7 +2,13 @@ use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, Vec4};
+use kurbo::{ParamCurve, PathSeg};
+
+use crate::{
+	Vector,
+	vector::{PointId, SegmentId, StrokeId, misc::point_to_dvec2},
+};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
@@ -12,6 +18,7 @@ pub enum GradientType {
 	#[default]
 	Linear,
 	Radial,
+	Mesh,
 }
 
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
@@ -491,6 +498,501 @@ impl GradientSpreadMethod {
 	}
 }
 
+/// Resolved patch of a mesh gradient.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshPatch {
+	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
+	pub corners: [DVec2; 4],
+	/// Corner colors. [top-left, top-right, bottom-left, bottom-right]
+	pub colors: [Color; 4],
+	/// Edges defining the patch. [top, bottom, left, right]
+	pub edges: [PathSeg; 4],
+}
+
+/// Definition of a mesh gradient patch. The entity is stored in the corresponding `MeshGradient` struct.
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+struct MeshPatchDefinition {
+	/// Corner indices in MeshGradient::corner_points/corner_colors. [top-left, top-right, bottom-left, bottom-right]
+	corner_indices: [usize; 4],
+	/// Segment ids of edges defining the patch. [top, bottom, left, right]
+	edges: [SegmentId; 4],
+}
+
+/// Mesh gradient defined by multiple coons patches.
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MeshGradient {
+	mesh_geometry: Vector,
+	pub corner_rows: usize,
+	pub corner_columns: usize,
+	/// Flatten list of corner's point IDs, row-major order.
+	corner_points: Vec<PointId>,
+	/// Flatten list of corner colors, row-major order.
+	corner_colors: Vec<Color>,
+	/// Flatten list of mesh patches, row-major order.
+	patch_defs: Vec<MeshPatchDefinition>,
+}
+
+impl Default for MeshGradient {
+	fn default() -> Self {
+		// Build 2x2 patches
+		let corner_rows = 3;
+		let corner_columns = 3;
+		let positions: Vec<DVec2> = (0..corner_rows)
+			.flat_map(|row| {
+				let v = row as f64 / (corner_rows - 1) as f64;
+				(0..corner_columns).map(move |column| {
+					let u = column as f64 / (corner_columns - 1) as f64;
+					DVec2::new(u, v)
+				})
+			})
+			.collect();
+
+		MeshGradient::from_positions(positions.as_slice(), corner_rows, corner_columns).expect("2x2 patches should be valid mesh gradient")
+	}
+}
+
+impl MeshGradient {
+	pub fn from_positions(positions: &[DVec2], corner_rows: usize, corner_columns: usize) -> Option<Self> {
+		if corner_rows < 2 || corner_columns < 2 {
+			return None;
+		}
+
+		let corner_count = corner_rows.checked_mul(corner_columns)?;
+		if positions.len() != corner_count {
+			return None;
+		}
+
+		let mut vector = Vector::default();
+		let mut corner_points = Vec::with_capacity(corner_count);
+
+		for &position in positions {
+			let point_id = vector.point_domain.next_id();
+			vector.point_domain.push(point_id, position);
+			corner_points.push(point_id);
+		}
+
+		let mut horizontal_edges = Vec::with_capacity(corner_rows * (corner_columns - 1));
+		for row in 0..corner_rows {
+			for column in 0..(corner_columns - 1) {
+				let start_index = row * corner_columns + column;
+				let end_index = start_index + 1;
+
+				let segment_id = vector.segment_domain.next_id();
+				vector.push(segment_id, corner_points[start_index], corner_points[end_index], (None, None), StrokeId::ZERO);
+				horizontal_edges.push(segment_id);
+			}
+		}
+
+		let mut vertical_edges = Vec::with_capacity((corner_rows - 1) * corner_columns);
+		for row in 0..(corner_rows - 1) {
+			for column in 0..corner_columns {
+				let start_index = row * corner_columns + column;
+				let end_index = start_index + corner_columns;
+
+				let segment_id = vector.segment_domain.next_id();
+				vector.push(segment_id, corner_points[start_index], corner_points[end_index], (None, None), StrokeId::ZERO);
+				vertical_edges.push(segment_id);
+			}
+		}
+
+		// FIXME: alternative color is only for testing purpose
+		let corner_colors = (0..corner_rows)
+			.flat_map(|row| {
+				(0..corner_columns).map(move |column| {
+					let luminance = (row + column).is_multiple_of(2) as u8 as f32;
+					Color::from_luminance(luminance)
+				})
+			})
+			.collect();
+
+		let patch_rows = corner_rows - 1;
+		let patch_columns = corner_columns - 1;
+		let mut patch_defs = Vec::with_capacity((corner_rows - 1) * (corner_columns - 1));
+		for row in 0..patch_rows {
+			for column in 0..patch_columns {
+				let top_edge_index = row * patch_columns + column;
+				let bottom_edge_index = (row + 1) * patch_columns + column;
+				let left_edge_index = row * corner_columns + column;
+				let right_edge_index = left_edge_index + 1;
+				let edges = [
+					horizontal_edges[top_edge_index],
+					horizontal_edges[bottom_edge_index],
+					vertical_edges[left_edge_index],
+					vertical_edges[right_edge_index],
+				];
+				let top_left = row * corner_columns + column;
+				let top_right = top_left + 1;
+				let bottom_left = top_left + corner_columns;
+				let bottom_right = bottom_left + 1;
+				let corner_indices = [top_left, top_right, bottom_left, bottom_right];
+				patch_defs.push(MeshPatchDefinition { corner_indices, edges });
+			}
+		}
+
+		Some(Self {
+			mesh_geometry: vector,
+			corner_rows,
+			corner_columns,
+			corner_points,
+			corner_colors,
+			patch_defs,
+		})
+	}
+
+	fn resolve_patch(&self, patch_def: &MeshPatchDefinition) -> Option<MeshPatch> {
+		// Normalizes the orientation of the patch edge.
+		let resolve_oriented_edge = |segment_id: SegmentId, expected_start: PointId, expected_end: PointId| -> Option<PathSeg> {
+			let (actual_start, actual_end, _) = self.mesh_geometry.segment_points_from_id(segment_id)?;
+			let segment = self.mesh_geometry.path_segment_from_id(segment_id)?;
+
+			if actual_start == expected_start && actual_end == expected_end {
+				Some(segment)
+			} else if actual_start == expected_end && actual_end == expected_start {
+				Some(segment.reverse())
+			} else {
+				// Segment is not connected to the expected patch corners.
+				None
+			}
+		};
+
+		let [top_left_index, top_right_index, bottom_left_index, bottom_right_index] = patch_def.corner_indices;
+
+		let top_left_id = *self.corner_points.get(top_left_index)?;
+		let top_right_id = *self.corner_points.get(top_right_index)?;
+		let bottom_left_id = *self.corner_points.get(bottom_left_index)?;
+		let bottom_right_id = *self.corner_points.get(bottom_right_index)?;
+
+		let corners = [
+			self.mesh_geometry.point_domain.position_from_id(top_left_id)?,
+			self.mesh_geometry.point_domain.position_from_id(top_right_id)?,
+			self.mesh_geometry.point_domain.position_from_id(bottom_left_id)?,
+			self.mesh_geometry.point_domain.position_from_id(bottom_right_id)?,
+		];
+
+		let colors = [
+			*self.corner_colors.get(top_left_index)?,
+			*self.corner_colors.get(top_right_index)?,
+			*self.corner_colors.get(bottom_left_index)?,
+			*self.corner_colors.get(bottom_right_index)?,
+		];
+
+		let [top_edge_id, bottom_edge_id, left_edge_id, right_edge_id] = patch_def.edges;
+
+		let edges = [
+			resolve_oriented_edge(top_edge_id, top_left_id, top_right_id)?,
+			resolve_oriented_edge(bottom_edge_id, bottom_left_id, bottom_right_id)?,
+			resolve_oriented_edge(left_edge_id, top_left_id, bottom_left_id)?,
+			resolve_oriented_edge(right_edge_id, top_right_id, bottom_right_id)?,
+		];
+
+		Some(MeshPatch { corners, colors, edges })
+	}
+
+	// Returns resolved patch by the provided row/column position, if any.
+	fn patch(&self, row: usize, column: usize) -> Option<MeshPatch> {
+		let patch_rows = self.corner_rows.checked_sub(1)?;
+		let patch_columns = self.corner_columns.checked_sub(1)?;
+
+		if row >= patch_rows || column >= patch_columns {
+			return None;
+		}
+
+		let patch_columns = self.corner_columns.saturating_sub(1);
+		let patch_index = row.checked_mul(patch_columns)?.checked_add(column)?;
+		let patch_def = self.patch_defs.get(patch_index)?;
+
+		self.resolve_patch(patch_def)
+	}
+
+	pub fn patches(&self) -> impl Iterator<Item = Option<MeshPatch>> + '_ {
+		let patch_rows = self.corner_rows.saturating_sub(1);
+		let patch_columns = self.corner_columns.saturating_sub(1);
+		(0..patch_rows).flat_map(move |row| (0..patch_columns).map(move |column| self.patch(row, column)))
+	}
+
+	pub fn evaluator(&self) -> Option<MeshGradientEvaluator> {
+		MeshGradientEvaluator::new(self)
+	}
+}
+
+/// Single vertex of a subpatch. Only for rendering purpose.
+#[derive(Clone, Copy)]
+
+pub struct MeshSubpatchVertex {
+	pub position: DVec2,
+	pub gamma_color: [f32; 4],
+}
+
+pub struct MeshSubpatch {
+	pub corners: [MeshSubpatchVertex; 4],
+}
+
+#[derive(Clone, Copy)]
+struct MeshCornerDerivatives {
+	u: Vec4,
+	v: Vec4,
+}
+
+/// A cached mesh patch for subdivision into subpatches in rendering phase.
+#[derive(Clone, Copy)]
+struct MeshPatchEvaluator {
+	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
+	pub corners: [DVec2; 4],
+	/// Edges defining the patch. [top, bottom, left, right]
+	pub edges: [PathSeg; 4],
+	// sRGB gamma space color in 0.-1. [top-left, top-right, bottom-left, bottom-right]
+	gamma_colors: [Vec4; 4],
+	/// Slopes of corner colors for bicubic hermite interpolation. [top-left, top-right, bottom-left, bottom-right]
+	color_slopes: [MeshCornerDerivatives; 4],
+	/// Linear length of between each corner. [top, bottom, left, right]
+	lengths: [f32; 4],
+}
+
+impl MeshPatchEvaluator {
+	/// Evaluate interpolated color in a mesh gradient's patch using bicubic hermite interpolation.
+	fn eval_color(&self, u: f32, v: f32) -> Option<[f32; 4]> {
+		if !(0. ..=1.).contains(&u) || !(0. ..=1.).contains(&v) {
+			return None;
+		}
+
+		let hermite = |a: f32, ma: f32, b: f32, mb: f32, t: f32| -> f32 {
+			let t_power_2 = t * t;
+			let t_power_3 = t_power_2 * t;
+
+			let h1 = 2. * t_power_3 - 3. * t_power_2 + 1.;
+			let h2 = -2. * t_power_3 + 3. * t_power_2;
+			let h3 = t_power_3 - 2. * t_power_2 + t;
+			let h4 = t_power_3 - t_power_2;
+
+			ma * h3 + a * h1 + b * h2 + mb * h4
+		};
+
+		let [top_left_gamma, top_right_gamma, bottom_left_gamma, bottom_right_gamma] = self.gamma_colors;
+		let [top_length, bottom_length, left_length, right_length] = self.lengths;
+		let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = self.color_slopes;
+
+		let interpolated_gamma_color: [f32; 4] = std::array::from_fn(|channel| {
+			let top_color_interpolated = hermite(
+				top_left_gamma[channel],
+				top_left_color_slope.u[channel] * top_length,
+				top_right_gamma[channel],
+				top_right_color_slope.u[channel] * top_length,
+				u,
+			);
+			let bottom_color_interpolated = hermite(
+				bottom_left_gamma[channel],
+				bottom_left_color_slope.u[channel] * bottom_length,
+				bottom_right_gamma[channel],
+				bottom_right_color_slope.u[channel] * bottom_length,
+				u,
+			);
+			let top_slope_interpolated = hermite(top_left_color_slope.v[channel] * left_length, 0., top_right_color_slope.v[channel] * right_length, 0., u);
+			let bottom_slope_interpolated = hermite(bottom_left_color_slope.v[channel] * left_length, 0., bottom_right_color_slope.v[channel] * right_length, 0., u);
+			hermite(top_color_interpolated, top_slope_interpolated, bottom_color_interpolated, bottom_slope_interpolated, v)
+		});
+
+		Some(interpolated_gamma_color)
+	}
+
+	fn eval_vertex(&self, u: f64, v: f64, mesh_transform: DAffine2) -> Option<MeshSubpatchVertex> {
+		let [top_seg, bottom_seg, left_seg, right_seg] = self.edges;
+		let [top_left, top_right, bottom_left, bottom_right] = self.corners;
+
+		let top_u = point_to_dvec2(top_seg.eval(u));
+		let bottom_u = point_to_dvec2(bottom_seg.eval(u));
+		let left_v = point_to_dvec2(left_seg.eval(v));
+		let right_v = point_to_dvec2(right_seg.eval(v));
+
+		let s_c = (1. - v) * top_u + v * bottom_u;
+		let s_d = (1. - u) * left_v + u * right_v;
+		let s_b = top_left * (1. - u) * (1. - v) + top_right * u * (1. - v) + bottom_left * (1. - u) * v + bottom_right * u * v;
+
+		Some(MeshSubpatchVertex {
+			position: mesh_transform.transform_point2(s_c + s_d - s_b),
+			gamma_color: self.eval_color(u as f32, v as f32)?,
+		})
+	}
+}
+
+/// Struct for evaluating color for subpatch corners.
+/// The main purpose is to prevent duplicated calculation of the slopes for hermite interpolation for each subpatch.
+#[derive(Clone)]
+pub struct MeshGradientEvaluator {
+	/// List of required data for color interpolation, row major order.
+	patches: Vec<MeshPatchEvaluator>,
+}
+
+impl MeshGradientEvaluator {
+	// TODO: probably it is better to use u/v for slope calculation
+	pub fn new(mesh_gradient: &MeshGradient) -> Option<Self> {
+		let &MeshGradient { corner_columns, corner_rows, .. } = mesh_gradient;
+		if corner_rows < 2 || corner_columns < 2 {
+			return None;
+		}
+		let patch_columns = corner_columns - 1;
+		let patch_rows = corner_rows - 1;
+
+		if mesh_gradient.patch_defs.len() != patch_rows * patch_columns {
+			return None;
+		}
+		let corner_count = corner_rows.checked_mul(corner_columns)?;
+		if mesh_gradient.corner_points.len() != corner_count || mesh_gradient.corner_colors.len() != corner_count {
+			return None;
+		}
+
+		let corner_positions: Vec<DVec2> = mesh_gradient
+			.corner_points
+			.iter()
+			.map(|&point_id| mesh_gradient.mesh_geometry.point_domain.position_from_id(point_id))
+			.collect::<Option<_>>()?;
+
+		// We need to calculate the color derivatives in sRGB since SVG uses sRGB for color interpolation.
+		// `color-interpolation="linearRGB"` is part of the SVG2 spec but not yet implemented in major browsers as of Jul. 2026.
+		// See also: https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/color-interpolation
+		let gamma_colors: Vec<Vec4> = mesh_gradient.corner_colors.iter().map(|color| Vec4::from_array(color.to_gamma_srgb_channels())).collect();
+
+		// Calculate the slope of the `curr_index` corner by FDM. The slope is derived from the linear distance from the previous/next corners.
+		let calculate_color_slope = |prev_index: usize, curr_index: usize, next_index: usize| {
+			let prev_color = gamma_colors[prev_index];
+			let curr_color = gamma_colors[curr_index];
+			let next_color = gamma_colors[next_index];
+
+			let [prev_pos, curr_pos, next_pos] = [prev_index, curr_index, next_index].map(|index| corner_positions[index]);
+			let prev_distance = curr_pos.distance(prev_pos) as f32;
+			let next_distance = next_pos.distance(curr_pos) as f32;
+
+			if prev_index == curr_index {
+				// FIXME: resolve zero-division problem
+				(next_color - curr_color) / next_distance
+			} else if next_index == curr_index {
+				(curr_color - prev_color) / prev_distance
+			} else {
+				let backward_diff = (curr_color - prev_color) / prev_distance;
+				let forward_diff = (next_color - curr_color) / next_distance;
+				let central_diff = (backward_diff + forward_diff) / 2.;
+
+				// Prevent overshooting by applying a zero slope at local minimum/maximum
+				// TODO: consider clamping slope by a constant value
+				Vec4::from_array(std::array::from_fn(
+					|channel| {
+						if backward_diff[channel] * forward_diff[channel] <= 0. { 0. } else { central_diff[channel] }
+					},
+				))
+			}
+		};
+
+		let sample_index = |row: isize, column: isize| -> usize {
+			let clamped_column = column.clamp(0, corner_columns as isize - 1) as usize;
+			let clamped_row = row.clamp(0, corner_rows as isize - 1) as usize;
+			clamped_row * corner_columns + clamped_column
+		};
+
+		let mut corner_slopes = Vec::with_capacity(corner_rows * corner_columns);
+		for row in 0..corner_rows as isize {
+			for col in 0..corner_columns as isize {
+				let curr_index = sample_index(row, col);
+				let u = calculate_color_slope(sample_index(row, col - 1), curr_index, sample_index(row, col + 1));
+				let v = calculate_color_slope(sample_index(row - 1, col), curr_index, sample_index(row + 1, col));
+				corner_slopes.push(MeshCornerDerivatives { u, v });
+			}
+		}
+
+		let mut patch_color_data: Vec<MeshPatchEvaluator> = vec![];
+		for patch_def in &mesh_gradient.patch_defs {
+			let patch = mesh_gradient.resolve_patch(patch_def)?;
+			let gamma_colors = patch_def
+				.corner_indices
+				.map(|index| gamma_colors.get(index).copied())
+				.into_iter()
+				.collect::<Option<Vec<_>>>()?
+				.try_into()
+				.ok()?;
+
+			let color_slopes = patch_def
+				.corner_indices
+				.map(|index| corner_slopes.get(index).copied())
+				.into_iter()
+				.collect::<Option<Vec<_>>>()?
+				.try_into()
+				.ok()?;
+
+			let [top_left_pos, top_right_pos, bottom_left_pos, bottom_right_pos] = patch.corners;
+			// [top, bottom, left, right]
+			let lengths = [
+				top_left_pos.distance(top_right_pos) as f32,
+				bottom_left_pos.distance(bottom_right_pos) as f32,
+				top_left_pos.distance(bottom_left_pos) as f32,
+				top_right_pos.distance(bottom_right_pos) as f32,
+			];
+			patch_color_data.push(MeshPatchEvaluator {
+				corners: patch.corners,
+				edges: patch.edges,
+				gamma_colors,
+				color_slopes,
+				lengths,
+			});
+		}
+
+		Some(Self { patches: patch_color_data })
+	}
+
+	/// Subdivide all patches in a mesh into parallelogram subpatches so to renderable by two linear gradients with mask.
+	/// Returns subpatchs in row-major.
+	pub fn subdivide_patches(&self, subdivisions_per_patch_per_axis: usize, mesh_transform: DAffine2) -> Option<Vec<MeshSubpatch>> {
+		let count = subdivisions_per_patch_per_axis;
+		if count == 0 {
+			return None;
+		}
+
+		let capacity = self.patches.len().checked_mul(count)?.checked_mul(count)?;
+		let mut subpatches = Vec::with_capacity(capacity);
+
+		for patch in &self.patches {
+			let evaluate_row = |row: usize| -> Option<Vec<MeshSubpatchVertex>> {
+				let v = row as f64 / count as f64;
+
+				(0..=count)
+					.map(|column| {
+						let u = column as f64 / count as f64;
+						patch.eval_vertex(u, v, mesh_transform)
+					})
+					.collect()
+			};
+
+			// Reusing the previous bottom row as a current top row to prevent duplicated evaluation on the same subpatch vertices.
+			let mut top_row = evaluate_row(0)?;
+			for row in 0..count {
+				let bottom_row = evaluate_row(row + 1)?;
+				for column in 0..count {
+					subpatches.push(MeshSubpatch {
+						corners: [top_row[column], top_row[column + 1], bottom_row[column], bottom_row[column + 1]],
+					});
+				}
+
+				top_row = bottom_row;
+			}
+		}
+
+		Some(subpatches)
+	}
+}
+
+impl RenderComplexity for MeshGradient {
+	fn render_complexity(&self) -> usize {
+		let patch_rows = self.corner_rows.saturating_sub(1);
+		let patch_columns = self.corner_columns.saturating_sub(1);
+
+		// FIXME: probably better to calculate the approximate number of subpatchs
+		let subpatch_count_per_patch = 64;
+		patch_rows
+			.saturating_mul(patch_columns)
+			.saturating_mul(subpatch_count_per_patch)
+			.saturating_mul(subpatch_count_per_patch)
+	}
+}
+
 /// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
 /// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
 /// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
@@ -570,6 +1072,20 @@ impl core_types::bounds::BoundingBox for Gradient {
 	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		// AABB of the gradient line itself, leaving aspect padding and sub-pixel fallbacks to the runtime so this stays
 		// a clean per-item geometric bound that combines naturally with siblings
+		let start = transform.transform_point2(DVec2::ZERO);
+		let end = transform.transform_point2(DVec2::X);
+		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	}
+}
+
+impl core_types::bounds::BoundingBox for MeshGradient {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		// FIXME: infinite? finite?
+		core_types::bounds::RenderBoundingBox::Infinite
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		// FIXME: implement actual check of the bounding box
 		let start = transform.transform_point2(DVec2::ZERO);
 		let end = transform.transform_point2(DVec2::X);
 		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])

@@ -252,8 +252,14 @@ impl LayoutHolder for GradientTool {
 				}
 				.into()
 			}),
+			RadioEntryData::new("Mesh").label("Mesh").tooltip_label(" Gradient").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::Type(GradientType::Mesh),
+				}
+				.into()
+			}),
 		])
-		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
+		.selected_index(Some(self.options.gradient_type as u32))
 		.widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors

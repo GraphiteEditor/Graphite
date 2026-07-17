@@ -33,7 +33,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
-use vector_types::{GradientSpreadMethod, GradientType};
+use vector_types::{GradientSpreadMethod, GradientType, MeshGradient};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
 /// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
@@ -178,13 +178,13 @@ where
 async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
 	content: Item<V>,
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
@@ -203,51 +203,78 @@ where
 	let mut content = content;
 	let mut fill = fill.into_graphic_list();
 
-	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
-	for graphic in fill.iter_element_values_mut() {
-		let Graphic::Gradient(gradient) = graphic else { continue };
-
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = _gradient_type;
-			}
-		}
-
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = _spread_method;
-			}
-		}
-
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
-			let transform = if _has_transform {
-				_transform
-			} else {
-				let mut bounds: Option<[DVec2; 2]> = None;
-				content.for_each_vector_mut(|vector, _| {
-					if let Some([min, max]) = vector.bounding_box() {
-						bounds = Some(match bounds {
-							Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
-							None => [min, max],
-						});
-					}
+	let mut vector_bounds = || {
+		let mut bounds: Option<[DVec2; 2]> = None;
+		content.for_each_vector_mut(|vector, _| {
+			if let Some([min, max]) = vector.bounding_box() {
+				bounds = Some(match bounds {
+					Some([bmin, bmax]) => [bmin.min(min), bmax.max(max)],
+					None => [min, max],
 				});
-
-				// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
-				let [min, mut max] = bounds.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			}
+		});
+		bounds
+			.map(|bounds| {
+				let [min, mut max] = bounds;
 				if max.x - min.x < 1e-10 {
 					max.x = min.x + 1.;
 				}
 				if max.y - min.y < 1e-10 {
 					max.y = min.y + 1.;
 				}
-				initial_gradient_transform_for_bounding_box([min, max])
-			};
+				[min, max]
+			})
+			.unwrap_or([DVec2::ZERO, DVec2::ONE])
+	};
 
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*value = transform;
+	// Stamp the gradient styling inputs onto any gradient paint missing them, whether the paint arrived as a picker value or a wire
+	for graphic in fill.iter_element_values_mut() {
+		match graphic {
+			Graphic::Gradient(gradient) => {
+				if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
+					for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
+						*value = _gradient_type;
+					}
+				}
+
+				if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
+					for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+						*value = _spread_method;
+					}
+				}
+
+				if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+					// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
+					let transform = if _has_transform {
+						_transform
+					} else {
+						// Nudge a degenerate axis so the gradient transform stays invertible, matching the editor's `nonzero_bounding_box`
+						let [min, max] = vector_bounds();
+						initial_gradient_transform_for_bounding_box([min, max])
+					};
+
+					for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+						*value = transform;
+					}
+				}
 			}
+			Graphic::MeshGradient(mesh_gradient) => {
+				if mesh_gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+					// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
+					let transform = if _has_transform {
+						_transform
+					} else {
+						let [min, max] = vector_bounds();
+						let size = max - min;
+						DAffine2::from_cols(DVec2::new(size.x, 0.), DVec2::new(0., size.y), min)
+					};
+
+					for value in mesh_gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+						*value = transform;
+					}
+				}
+			}
+			_ => continue,
 		}
 	}
 
@@ -260,13 +287,13 @@ where
 async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
+	#[implementations(Vector, Vector, Vector, Vector, Vector, Vector, Vector, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic, Graphic)]
 	content: Item<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<MeshGradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
@@ -324,7 +351,7 @@ where
 		vector.stroke = Some(stroke);
 	});
 
-	let paint = paint.into_graphic_list();
+	let paint: List<Graphic> = paint.into_graphic_list();
 	content.set_vector_paint(ATTR_STROKE, paint);
 	content
 }
