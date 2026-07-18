@@ -354,7 +354,6 @@ impl ClosestSegment {
 		(c1, c2): (DVec2, DVec2),
 		new_b: DVec2,
 		break_colinear_molding: bool,
-		lock_direction: bool,
 		temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	) -> Option<[Option<HandleId>; 2]> {
 		let transform = document.metadata().transform_to_viewport_if_feeds(self.layer, &document.network_interface);
@@ -364,13 +363,6 @@ impl ClosestSegment {
 
 		// Apply the drag delta to the segment's handles
 		let b = self.bezier_point_to_viewport;
-		// When the lock direction modifier is held, constrain the drag to the dominant screen axis (purely horizontal or vertical).
-		let new_b = if lock_direction {
-			let drag = new_b - b;
-			if drag.x.abs() >= drag.y.abs() { DVec2::new(new_b.x, b.y) } else { DVec2::new(b.x, new_b.y) }
-		} else {
-			new_b
-		};
 		let delta = transform.inverse().transform_vector2(new_b - b);
 		let (nc1, nc2) = (c1 + delta, c2 + delta);
 
