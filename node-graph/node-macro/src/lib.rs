@@ -3,6 +3,7 @@ use proc_macro::TokenStream;
 use proc_macro_error2::proc_macro_error;
 use syn::GenericParam;
 
+mod attrs;
 mod buffer_struct;
 mod codegen;
 mod crate_ident;
@@ -31,6 +32,13 @@ pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
 pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
 	derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
+}
+
+/// Declares typed attribute keys implementing the `Attr` trait, plus a wire-name lookup for their
+/// implicit defaults. See `core_types::attr` for the trait and syntax.
+#[proc_macro]
+pub fn attrs(input: TokenStream) -> TokenStream {
+	attrs::attrs_impl(input.into()).unwrap_or_else(|err| err.to_compile_error()).into()
 }
 
 /// Derive a struct to implement `ShaderStruct`, see that for docs.

@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+pub mod attr;
 pub mod gradient;
 pub mod math;
 pub mod subpath;

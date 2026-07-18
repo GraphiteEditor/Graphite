@@ -1,3 +1,4 @@
+use crate::attr::{self, Attr};
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
@@ -132,12 +133,22 @@ unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
 // Implicit attribute defaults
 // ===========================
 
+// TODO: Remove this is not maintainable
 /// Overrides the type's default value for certain attributes.
 fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
-	match key {
-		ATTR_OPACITY | ATTR_OPACITY_FILL => Some(Box::new(1_f64)),
-		_ => None,
+	if key == attr::Opacity::name() || key == attr::OpacityFill::name() {
+		Some(Box::new(1_f64))
+	} else {
+		None
 	}
+}
+
+/// The value an item without attribute `A` is considered to have: the key's implicit default if it
+/// has one, otherwise the value type's `Default`.
+fn implicit_default<A: Attr>() -> A::Value {
+	implicit_default_value(A::name())
+		.and_then(|value| value.into_any().downcast::<A::Value>().ok())
+		.map_or_else(Default::default, |value| *value)
 }
 
 /// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).
@@ -500,6 +511,11 @@ impl ListDyn {
 			.iter()
 			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<U>() } else { None })
 	}
+
+	/// Returns a reference to the value of the typed attribute at the given item index, if present.
+	pub fn attr<A: Attr>(&self, index: usize) -> Option<&A::Value> {
+		self.attribute(A::name(), index)
+	}
 }
 
 impl<T> From<List<T>> for ListDyn {
@@ -622,6 +638,11 @@ impl ItemAttributeValues {
 
 	/// Gets a mutable reference to the value, inserting a default if it doesn't exist or has the wrong type.
 	pub fn get_or_insert_default_mut<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> &mut T {
+		self.get_or_insert_with_mut(key, T::default)
+	}
+
+	/// Gets a mutable reference to the value, inserting the provided default if it doesn't exist or has the wrong type.
+	pub fn get_or_insert_with_mut<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str, default: impl FnOnce() -> T) -> &mut T {
 		let needs_insert = match self.0.iter().position(|(existing_key, _)| existing_key == key) {
 			Some(index) => {
 				if (*self.0[index].1).as_any().downcast_ref::<T>().is_some() {
@@ -635,7 +656,7 @@ impl ItemAttributeValues {
 		};
 
 		if needs_insert {
-			self.0.push((key.to_string(), Box::new(T::default())));
+			self.0.push((key.to_string(), Box::new(default())));
 		}
 
 		self.get_mut::<T>(key).expect("Attribute was just ensured to exist with correct type")
@@ -699,6 +720,35 @@ impl ItemAttributeValues {
 		} else {
 			self.0.push((key.to_string(), value));
 		}
+	}
+
+	// ==================
+	// Typed key variants
+	// ==================
+
+	/// Gets a reference to the value of the typed attribute, if present.
+	pub fn attr<A: Attr>(&self) -> Option<&A::Value> {
+		self.get(A::name())
+	}
+
+	/// Gets a mutable reference to the value of the typed attribute, if present.
+	pub fn attr_mut<A: Attr>(&mut self) -> Option<&mut A::Value> {
+		self.get_mut(A::name())
+	}
+
+	/// Gets a mutable reference to the value of the typed attribute, inserting the key's default value if absent.
+	pub fn attr_mut_or_insert_default<A: Attr>(&mut self) -> &mut A::Value {
+		self.get_or_insert_with_mut(A::name(), implicit_default::<A>)
+	}
+
+	/// Inserts the typed attribute's value, replacing any existing entry.
+	pub fn set_attr<A: Attr>(&mut self, value: A::Value) {
+		self.insert(A::name(), value);
+	}
+
+	/// Removes and returns the value of the typed attribute, if present.
+	pub fn remove_attr<A: Attr>(&mut self) -> Option<A::Value> {
+		self.remove(A::name())
 	}
 }
 
@@ -1126,6 +1176,68 @@ impl<T> List<T> {
 	}
 
 	// ==================
+	// Typed key variants
+	// ==================
+
+	/// Returns a shared reference to the value of the typed attribute at the given item index, if present.
+	pub fn attr<A: Attr>(&self, index: usize) -> Option<&A::Value> {
+		self.attribute(A::name(), index)
+	}
+
+	/// Returns a clone of the value of the typed attribute at the given item index, or the key's default value if absent.
+	pub fn attr_cloned_or_default<A: Attr>(&self, index: usize) -> A::Value {
+		self.attr::<A>(index).cloned().unwrap_or_else(implicit_default::<A>)
+	}
+
+	/// Returns a clone of the value of the typed attribute at the given item index, or the provided default if absent.
+	pub fn attr_cloned_or<A: Attr>(&self, index: usize, default: A::Value) -> A::Value {
+		self.attr::<A>(index).cloned().unwrap_or(default)
+	}
+
+	/// Sets the value of the typed attribute at the given item index, creating the attribute with defaults if it doesn't exist.
+	pub fn set_attr<A: Attr>(&mut self, index: usize, value: A::Value) {
+		self.set_attribute(A::name(), index, value);
+	}
+
+	/// Removes the entire typed attribute, if present.
+	pub fn remove_attr<A: Attr>(&mut self) {
+		self.remove_attribute(A::name());
+	}
+
+	/// Runs the given closure on a mutable reference to the value of the typed attribute at the given item index,
+	/// creating the attribute with defaults if it doesn't exist, and returns the closure's result.
+	pub fn with_attr_mut_or_default<A: Attr, R, F: FnOnce(&mut A::Value) -> R>(&mut self, index: usize, f: F) -> R {
+		self.with_attribute_mut_or_default(A::name(), index, f)
+	}
+
+	/// Returns an iterator over shared references to the values of the typed attribute, or `None` if it doesn't exist.
+	pub fn iter_attr_values<A: Attr>(&self) -> Option<std::slice::Iter<'_, A::Value>> {
+		self.iter_attribute_values(A::name())
+	}
+
+	/// Returns an iterator over mutable references to the values of the typed attribute, or `None` if it doesn't exist.
+	pub fn iter_attr_values_mut<A: Attr>(&mut self) -> Option<std::slice::IterMut<'_, A::Value>> {
+		self.iter_attribute_values_mut(A::name())
+	}
+
+	/// Returns an iterator that yields cloned values of the typed attribute, falling back to the key's default value for each item if the attribute is missing.
+	pub fn iter_attr_values_or_default<A: Attr>(&self) -> impl Iterator<Item = A::Value> + '_ {
+		let slice = self.attributes.get_attribute_slice::<A::Value>(A::name());
+		let len = self.element.len();
+		(0..len).map(move |i| slice.map_or_else(implicit_default::<A>, |s| s[i].clone()))
+	}
+
+	/// Returns a mutable iterator over the typed attribute, creating the attribute with defaults if it doesn't exist.
+	pub fn iter_attr_values_mut_or_default<A: Attr>(&mut self) -> std::slice::IterMut<'_, A::Value> {
+		self.iter_attribute_values_mut_or_default(A::name())
+	}
+
+	/// Returns disjoint mutable references to the element slice and the typed attribute's slice, creating the attribute with defaults if it doesn't exist.
+	pub fn element_and_attr_slices_mut<A: Attr>(&mut self) -> (&mut [T], &mut [A::Value]) {
+		self.element_and_attribute_slices_mut(A::name())
+	}
+
+	// ==================
 	// Item-level cloning
 	// ==================
 
@@ -1394,6 +1506,56 @@ impl<T> Item<T> {
 	pub fn remove_attribute<U: 'static>(&mut self, key: &str) -> Option<U> {
 		self.attributes.remove(key)
 	}
+
+	// ==================
+	// Typed key variants
+	// ==================
+
+	/// Returns a reference to the value of the typed attribute, if present.
+	pub fn attr<A: Attr>(&self) -> Option<&A::Value> {
+		self.attributes.attr::<A>()
+	}
+
+	/// Returns a reference to the value of the typed attribute, or the provided default if absent.
+	pub fn attr_or<'a, A: Attr>(&'a self, default: &'a A::Value) -> &'a A::Value {
+		self.attr::<A>().unwrap_or(default)
+	}
+
+	/// Returns a clone of the value of the typed attribute, or the provided default if absent.
+	pub fn attr_cloned_or<A: Attr>(&self, default: A::Value) -> A::Value {
+		self.attr::<A>().cloned().unwrap_or(default)
+	}
+
+	/// Returns a clone of the value of the typed attribute, or the key's default value if absent.
+	pub fn attr_cloned_or_default<A: Attr>(&self) -> A::Value {
+		self.attr::<A>().cloned().unwrap_or_else(implicit_default::<A>)
+	}
+
+	/// Returns a mutable reference to the value of the typed attribute, if present.
+	pub fn attr_mut<A: Attr>(&mut self) -> Option<&mut A::Value> {
+		self.attributes.attr_mut::<A>()
+	}
+
+	/// Returns a mutable reference to the value of the typed attribute, inserting the key's default value if absent.
+	pub fn attr_mut_or_insert_default<A: Attr>(&mut self) -> &mut A::Value {
+		self.attributes.attr_mut_or_insert_default::<A>()
+	}
+
+	/// Sets the value of the typed attribute, replacing any existing entry.
+	pub fn set_attr<A: Attr>(&mut self, value: A::Value) {
+		self.attributes.set_attr::<A>(value);
+	}
+
+	/// Sets the value of the typed attribute and returns the item, enabling builder-style chaining.
+	pub fn with_attr<A: Attr>(mut self, value: A::Value) -> Self {
+		self.set_attr::<A>(value);
+		self
+	}
+
+	/// Removes and returns the value of the typed attribute, if present.
+	pub fn remove_attr<A: Attr>(&mut self) -> Option<A::Value> {
+		self.attributes.remove_attr::<A>()
+	}
 }
 
 impl<T> From<T> for Item<T> {
@@ -1500,5 +1662,54 @@ mod tests {
 		other.push(Item::new_from_element(()));
 		other.push(Item::new_from_element(()).with_attribute(ATTR_START, 5_u64));
 		assert_eq!(other.attribute_cloned_or_default::<u64>(ATTR_START, 0), 0);
+	}
+
+	// The typed keys must resolve to the same names as the string constants, and the typed
+	// and string-keyed accessors must hit the same storage.
+	#[test]
+	fn typed_attribute_keys() {
+		use crate::attr;
+
+		assert_eq!(attr::Transform::name(), ATTR_TRANSFORM);
+		assert_eq!(attr::BlendMode::name(), ATTR_BLEND_MODE);
+		assert_eq!(attr::Opacity::name(), ATTR_OPACITY);
+		assert_eq!(attr::OpacityFill::name(), ATTR_OPACITY_FILL);
+		assert_eq!(attr::ClippingMask::name(), ATTR_CLIPPING_MASK);
+		assert_eq!(attr::editor::LayerPath::name(), ATTR_EDITOR_LAYER_PATH);
+		assert_eq!(attr::editor::TextFrame::name(), ATTR_EDITOR_TEXT_FRAME);
+		assert_eq!(attr::Start::name(), ATTR_START);
+		assert_eq!(attr::End::name(), ATTR_END);
+		assert_eq!(attr::Name::name(), ATTR_NAME);
+		assert_eq!(attr::Type::name(), ATTR_TYPE);
+		assert_eq!(attr::Location::name(), ATTR_LOCATION);
+		assert_eq!(attr::Dimensions::name(), ATTR_DIMENSIONS);
+		assert_eq!(attr::Background::name(), ATTR_BACKGROUND);
+		assert_eq!(attr::Clip::name(), ATTR_CLIP);
+		assert_eq!(attr::FontSize::name(), ATTR_FONT_SIZE);
+		assert_eq!(attr::LineHeight::name(), ATTR_LINE_HEIGHT);
+		assert_eq!(attr::LetterSpacing::name(), ATTR_LETTER_SPACING);
+		assert_eq!(attr::MaxWidth::name(), ATTR_MAX_WIDTH);
+		assert_eq!(attr::MaxHeight::name(), ATTR_MAX_HEIGHT);
+		assert_eq!(attr::LetterTilt::name(), ATTR_LETTER_TILT);
+
+		// Typed writes are visible through string reads and vice versa
+		let mut item = Item::new_from_element(());
+		item.set_attr::<attr::Opacity>(0.5);
+		assert_eq!(item.attribute::<f64>(ATTR_OPACITY), Some(&0.5));
+		item.set_attribute(ATTR_START, 5_u64);
+		assert_eq!(item.attr::<attr::Start>(), Some(&5));
+
+		// A missing attribute reads as the key's declared default
+		let empty = Item::new_from_element(());
+		assert_eq!(empty.attr_cloned_or_default::<attr::Opacity>(), 1.);
+		assert_eq!(empty.attr_cloned_or_default::<attr::Start>(), 0);
+
+		// The generated implicit-default lookup drives dense-store padding
+		let mut list = List::<()>::new();
+		list.push(Item::new_from_element(()));
+		list.push(Item::new_from_element(()));
+		list.set_attr::<attr::Opacity>(1, 0.5);
+		assert_eq!(list.attr_cloned_or_default::<attr::Opacity>(0), 1.);
+		assert_eq!(list.attr_cloned_or_default::<attr::Opacity>(1), 0.5);
 	}
 }

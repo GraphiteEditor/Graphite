@@ -1,5 +1,6 @@
 extern crate log;
 
+pub mod attr;
 pub mod bounds;
 pub mod consts;
 pub mod context;
@@ -16,6 +17,7 @@ pub mod uuid;
 pub mod value;
 
 pub use crate as core_types;
+pub use attr::Attr;
 pub use blending::*;
 pub use color::Color;
 pub use context::*;
