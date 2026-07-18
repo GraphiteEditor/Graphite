@@ -22,7 +22,6 @@ use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::*;
-use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
@@ -88,12 +87,8 @@ impl DefinitionIdentifier {
 			DefinitionIdentifier::Network(data) => format!("NETWORK:{}", data),
 		}
 	}
-}
 
-impl From<Value> for DefinitionIdentifier {
-	fn from(value: Value) -> Self {
-		let s = value.as_str().expect("DefinitionIdentifier value must be a string");
-
+	pub fn from_serialized(s: &str) -> Self {
 		match s.split_once(':') {
 			Some(("PROTONODE", data)) => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
 			Some(("NETWORK", data)) => DefinitionIdentifier::Network(data.to_string()),
