@@ -92,12 +92,13 @@ export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, m
 		const imageData = await extractPixelData(file);
 		editor.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
 	} else {
-		// The editor classifies the file by its extension and shows an error dialog if it is unsupported
 		// TODO: When we eventually have sub-documents, this should be changed to import the document as a node instead of opening it in a separate tab
 		editor.openFile(file.name, await file.bytes());
 	}
 }
 
 export function acceptStringFromFilters(filters: FileFilter[]): string {
-	return filters.flatMap((filter) => filter.extensions.map((extension) => `.${extension}`)).join(",");
+	const extensions = filters.flatMap((filter) => filter.extensions);
+	const imageMime = extensions.some((extension) => ["svg", "png", "jpg", "jpeg", "bmp", "gif", "webp", "avif", "tif", "tiff"].includes(extension)) ? ["image/*"] : [];
+	return [...imageMime, ...extensions.map((extension) => `.${extension}`)].join(",");
 }

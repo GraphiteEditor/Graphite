@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileFilter, FileType, RasterizedImage};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage};
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -732,25 +732,13 @@ impl NodeGraphExecutor {
 			..
 		} = export_config;
 
-		let file_extension = match file_type {
-			FileType::Svg => "svg",
-			FileType::Png => "png",
-			FileType::Jpg => "jpg",
-		};
 		let base_name = match (artboard_name, artboard_count) {
 			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
 			_ => name,
 		};
-		let name = format!("{base_name}.{file_extension}");
+		let name = format!("{base_name}.{}", file_type.extension());
 		let folder = document.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
-		let filters = vec![FileFilter {
-			name: match file_type {
-				FileType::Svg => "SVG Image".into(),
-				FileType::Png => "PNG Image".into(),
-				FileType::Jpg => "JPEG Image".into(),
-			},
-			extensions: vec![file_extension.into()],
-		}];
+		let filters = vec![file_type.file_filter()];
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
