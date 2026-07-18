@@ -112,6 +112,8 @@ jobs:
       - name: 🌐 Build Graphite web code
         env:
           NODE_ENV: production
+          # Split the Wasm binary to fit Cloudflare Pages' file size limit (see `wasmSplitting` in `frontend/vite.config.ts`)
+          SPLIT_WASM: "1"
         run: mold -run cargo run build web${{ inputs.debug && ' debug' || '' }}
 
       - name: 📤 Publish to Cloudflare Pages

@@ -1896,7 +1896,7 @@ impl PortfolioMessageHandler {
 	) -> Message {
 		let path = working_copy_root.map(|root| root.join(format!("{:016x}", document_id.0)));
 		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
-		let peer = graph_storage::PeerId(generate_uuid());
+		let peer = document_graph_storage::PeerId(generate_uuid());
 
 		let future = async move {
 			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {

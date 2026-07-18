@@ -2,9 +2,10 @@ use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
 use crate::wrapper::messages::MenuItem;
 use crate::wrapper::{WgpuInstance, WgpuSurface};
+use graphite_desktop_ui::Cursor;
 use std::collections::HashMap;
 use std::sync::Arc;
-use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
+use winit::cursor::{CustomCursor, CustomCursorSource};
 use winit::event_loop::ActiveEventLoop;
 use winit::monitor::Fullscreen;
 use winit::window::{Window as WinitWindow, WindowAttributes};
@@ -161,7 +162,17 @@ impl Window {
 	pub(crate) fn set_cursor(&mut self, event_loop: &dyn ActiveEventLoop, cursor: Cursor) {
 		let cursor = match cursor {
 			Cursor::Icon(cursor_icon) => cursor_icon.into(),
-			Cursor::Custom(custom_cursor_source) => {
+			Cursor::Custom {
+				rgba,
+				width,
+				height,
+				hotspot_x,
+				hotspot_y,
+			} => {
+				let Ok(custom_cursor_source) = CustomCursorSource::from_rgba(rgba, width, height, hotspot_x, hotspot_y) else {
+					tracing::error!("Invalid custom cursor image");
+					return;
+				};
 				let custom_cursor = match self.custom_cursors.get(&custom_cursor_source).cloned() {
 					Some(cursor) => cursor,
 					None => {
@@ -220,21 +231,5 @@ impl Window {
 		if let Err(e) = clipboard.write(data) {
 			tracing::error!("Failed to write to clipboard: {e}")
 		}
-	}
-}
-
-pub(crate) enum Cursor {
-	Icon(CursorIcon),
-	Custom(CustomCursorSource),
-	None,
-}
-impl From<CursorIcon> for Cursor {
-	fn from(icon: CursorIcon) -> Self {
-		Cursor::Icon(icon)
-	}
-}
-impl From<CustomCursorSource> for Cursor {
-	fn from(custom: CustomCursorSource) -> Self {
-		Cursor::Custom(custom)
 	}
 }

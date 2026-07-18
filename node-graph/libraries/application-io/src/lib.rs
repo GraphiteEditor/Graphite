@@ -1,6 +1,8 @@
 use core_types::transform::Footprint;
+use core_types::{Context, OwnedContextImpl};
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DVec2;
+use graphene_hash::CacheHash;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::ptr::addr_of;
@@ -11,35 +13,10 @@ use vector_types::vector::style::RenderMode;
 pub use graphene_resource as resource;
 
 #[cfg(feature = "wgpu")]
-#[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
-pub struct ImageTexture(Arc<wgpu::Texture>);
-#[cfg(feature = "wgpu")]
-impl AsRef<wgpu::Texture> for ImageTexture {
-	fn as_ref(&self) -> &wgpu::Texture {
-		&self.0
-	}
-}
-#[cfg(feature = "wgpu")]
-impl From<wgpu::Texture> for ImageTexture {
-	fn from(texture: wgpu::Texture) -> Self {
-		Self(Arc::new(texture))
-	}
-}
-#[cfg(feature = "wgpu")]
-impl From<Arc<wgpu::Texture>> for ImageTexture {
-	fn from(texture: Arc<wgpu::Texture>) -> Self {
-		Self(texture)
-	}
-}
-#[cfg(feature = "wgpu")]
-impl From<ImageTexture> for Arc<wgpu::Texture> {
-	fn from(image_texture: ImageTexture) -> Self {
-		image_texture.0
-	}
-}
+pub use raster_types::Texture;
 #[cfg(not(feature = "wgpu"))]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
-pub struct ImageTexture;
+pub struct Texture; // TODO: Consider removing this
 
 pub trait ApplicationIo {
 	type Executor;
@@ -79,7 +56,7 @@ pub trait GetEditorPreferences {
 	fn max_render_region_area(&self) -> u32;
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExportFormat {
 	#[default]
@@ -87,14 +64,14 @@ pub enum ExportFormat {
 	Raster,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TimingInformation {
 	pub time: f64,
 	pub animation_time: Duration,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderConfig {
 	pub viewport: Footprint,
@@ -106,6 +83,13 @@ pub struct RenderConfig {
 	pub export_format: ExportFormat,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
+}
+
+impl RenderConfig {
+	/// Wraps this render configuration as the sole vararg of a fresh context, the call argument of a compiled network's boundary node.
+	pub fn into_context(self) -> Context<'static> {
+		OwnedContextImpl::default().with_vararg(Box::new(self)).into_context()
+	}
 }
 
 struct Logger;
@@ -152,7 +136,7 @@ impl<Io> Hash for EditorApi<Io> {
 	}
 }
 
-impl<Io> core_types::graphene_hash::CacheHash for EditorApi<Io> {
+impl<Io> CacheHash for EditorApi<Io> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		core::hash::Hash::hash(self, state);
 	}

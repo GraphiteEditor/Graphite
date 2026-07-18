@@ -34,9 +34,9 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
-use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graph_craft::list;
 use graphene_std::graphic::is_paint_present;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
@@ -125,7 +125,7 @@ pub struct DocumentMessageHandler {
 	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
 	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -2049,7 +2049,7 @@ impl DocumentMessageHandler {
 
 	/// Restore `view_settings` map into the document.
 	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
-		use graph_storage::attr::session::doc;
+		use document_graph_storage::attr::session::doc;
 
 		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
 			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())
@@ -2748,7 +2748,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// For each selected layer, splits its fill and stroke into two stacked layers connected
-	/// to a shared `Solidify Stroke` node via two `Index Elements` nodes (indices 0 and 1).
+	/// to a shared `Solidify Stroke` node via two `Item at Index` nodes (indices 0 and 1).
 	/// Layers with only a stroke get just a `Solidify Stroke` added.
 	/// Layers with only a fill, or neither, are left untouched.
 	fn handle_expand_fill_stroke_on_selected_layers(&mut self, responses: &mut VecDeque<Message>) {
@@ -2758,7 +2758,7 @@ impl DocumentMessageHandler {
 		}
 
 		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
-		let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
+		let item_at_index_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::item_at_index::IDENTIFIER).expect("Item at Index node should exist");
 
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
@@ -2791,7 +2791,7 @@ impl DocumentMessageHandler {
 			if has_fill && has_stroke {
 				let (existing_index, new_index) = (0_f64, 1_f64);
 
-				let existing_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
 				let existing_index_id = NodeId::new();
 				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
@@ -2813,7 +2813,7 @@ impl DocumentMessageHandler {
 					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
 				}
 
-				let new_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
 				let new_index_id = NodeId::new();
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
@@ -3789,7 +3789,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::TypeDefault(descriptor!(graphene_std::list::List<graphene_std::Artboard>)), -1, "", &[]);
+	network_interface.add_export(TaggedValue::TypeDefault(list!(graphene_std::Artboard)), -1, "", &[]);
 	network_interface
 }
 
@@ -4007,7 +4007,7 @@ mod document_message_handler_tests {
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
 		let document = DocumentMessageHandler {
-			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::Gradient::default())],
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::LegacyGradient::default())],
 			..Default::default()
 		};
 
@@ -4317,5 +4317,36 @@ mod document_message_handler_tests {
 			After:  {after_center:?}\n\
 			Dist:   {distance} (should be < 1)"
 		);
+	}
+
+	// Grouping choreography transiently disconnects the stack wire, and the stored default for that connector
+	// must stay an empty list rather than any value which materializes as a one-element phantom in the stack
+	#[tokio::test]
+	async fn grouping_adds_no_phantom_element_to_the_stack() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let instrumented = editor.eval_graph().await.unwrap();
+
+		let base_lengths: Vec<usize> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::BaseInput<graphene_std::Graphic>>(&editor.runtime)
+			.map(|base| base.len())
+			.collect();
+		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
+
+		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>>(&editor.runtime).collect();
+		let phantom_count = news
+			.iter()
+			.flat_map(|new| new.iter_element_values())
+			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None))
+			.count();
+		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}
 }

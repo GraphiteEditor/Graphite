@@ -231,7 +231,7 @@ impl RenderState {
 		let result = futures::executor::block_on(self.executor.render_vello_scene(&scene, size, &Default::default(), None));
 		match result {
 			Ok(texture) => {
-				self.overlays_texture = Some(texture);
+				self.overlays_texture = Some(texture.into());
 			}
 			Err(e) => {
 				self.overlays_texture = None;

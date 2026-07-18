@@ -2,7 +2,7 @@
 	import { createEventDispatcher } from "svelte";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
-	import { contrastingOutlineFactor, fillChoiceUIColor, fillChoiceUIGradientStops } from "/src/utility-functions/colors";
+	import { contrastingOutlineFactor, fillChoiceUIColor, fillChoiceUIGradient } from "/src/utility-functions/colors";
 	import type { FillChoiceUI, MenuDirection, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoiceUI; startHistoryTransaction: undefined }>();
@@ -29,10 +29,10 @@
 
 	$: outlineFactor = contrastingOutlineFactor(value, "--color-3-darkgray", 0.01);
 	$: outlined = outlineFactor > 0.0001;
-	$: gradientStops = fillChoiceUIGradientStops(value);
+	$: gradient = fillChoiceUIGradient(value);
 	$: solidColor = fillChoiceUIColor(value);
 	$: none = value === "None";
-	$: transparency = gradientStops ? gradientStops.color.some((color) => color.alpha < 255) : solidColor ? solidColor.alpha < 255 : false;
+	$: transparency = gradient ? gradient.color.some((color) => color.alpha < 255) : solidColor ? solidColor.alpha < 255 : false;
 </script>
 
 <LayoutCol
