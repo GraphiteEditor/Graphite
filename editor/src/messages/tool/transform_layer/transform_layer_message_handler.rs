@@ -232,7 +232,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				match self.transform_operation {
 					TransformOperation::None => (),
 					TransformOperation::Grabbing(translation) => {
-						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation.to_dvec(&self.state, document);
+						let translation_local = translation.to_dvec(&self.state, document);
+						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation_local;
 						let pivot = document_to_viewport.transform_point2(self.grab_target);
 
 						responses.add(SelectToolMessage::PivotShift {
@@ -242,22 +243,13 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
 
-						// When constrained to a single axis in local space, the translation vector is tilted along the layer's
-						// local axis. Draw one dashed line (with a single measurement label) along that axis, instead of the
-						// axis-aligned box, which would incorrectly show both the X and Y screen-space components.
-						if self.state.is_transforming_in_local_space && axis_constraint != Axis::Both {
-							let end_point = pivot + translation_viewport;
-							overlay_context.dashed_line(pivot, end_point, None, None, Some(2.), Some(2.), Some(0.5));
-
-							let axis_direction = self.state.constraint_axis(axis_constraint).unwrap_or(DVec2::X).normalize_or(DVec2::X);
-							let length = translation_viewport.dot(axis_direction) / document_to_viewport.matrix2.y_axis.length();
-							let label = match typed_string {
-								Some(typed_string) => typed_string,
-								None => format!("{length:.2}").trim_end_matches('0').trim_end_matches('.').to_string(),
-							};
-							let text_position = pivot.midpoint(end_point) + translation_viewport.perp().normalize_or(DVec2::X) * 24.;
-							let transform = DAffine2::from_translation(text_position);
-							overlay_context.text(&label, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+						// When constrained to a single axis in local space, the translation lies along the layer's tilted local
+						// axis, so build the measurement quad in that local frame. That way the box drawn by `translation_box`
+						// is a single line along the axis, instead of incorrectly showing both X and Y screen-space components.
+						if self.state.constraint_axis(axis_constraint).is_some() && self.state.is_transforming_in_local_space {
+							let quad = DAffine2::from_translation(pivot) * self.state.local_to_viewport_transform() * Quad::from_box([DVec2::ZERO, translation_local]);
+							let translation_document = document_to_viewport.inverse().transform_vector2(translation_viewport);
+							overlay_context.translation_box(translation_local.normalize_or_zero() * translation_document.length(), quad, typed_string);
 						} else {
 							let quad = Quad::from_box([pivot, pivot + translation_viewport]);
 							overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
