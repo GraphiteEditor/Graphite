@@ -1,5 +1,5 @@
 import { extractPixelData } from "/src/utility-functions/rasterization";
-import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, FileFilter } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
@@ -91,8 +91,13 @@ export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, m
 	} else if (file.type.startsWith("image/")) {
 		const imageData = await extractPixelData(file);
 		editor.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
-	} else if (file.name.endsWith("." + editor.fileExtension())) {
+	} else {
+		// The editor classifies the file by its extension and shows an error dialog if it is unsupported
 		// TODO: When we eventually have sub-documents, this should be changed to import the document as a node instead of opening it in a separate tab
 		editor.openFile(file.name, await file.bytes());
 	}
+}
+
+export function acceptStringFromFilters(filters: FileFilter[]): string {
+	return filters.flatMap((filter) => filter.extensions.map((extension) => `.${extension}`)).join(",");
 }

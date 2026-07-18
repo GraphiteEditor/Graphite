@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage};
+use crate::messages::frontend::utility_types::{ExportBounds, FileFilter, FileType, RasterizedImage};
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -743,6 +743,14 @@ impl NodeGraphExecutor {
 		};
 		let name = format!("{base_name}.{file_extension}");
 		let folder = document.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
+		let filters = vec![FileFilter {
+			name: match file_type {
+				FileType::Svg => "SVG Image".into(),
+				FileType::Png => "PNG Image".into(),
+				FileType::Jpg => "JPEG Image".into(),
+			},
+			extensions: vec![file_extension.into()],
+		}];
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -753,6 +761,7 @@ impl NodeGraphExecutor {
 					responses.add(FrontendMessage::TriggerSaveFile {
 						name,
 						folder,
+						filters,
 						content: svg.into_bytes().into(),
 					});
 				} else {
@@ -806,6 +815,7 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::TriggerSaveFile {
 					name,
 					folder,
+					filters,
 					content: encoded.into(),
 				});
 			}

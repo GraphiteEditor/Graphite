@@ -3,25 +3,25 @@ use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarge
 use graphite_editor::messages::prelude::FrontendMessage;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, OpenFileDialogContext, SaveFileDialogContext};
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
 		FrontendMessage::RenderOverlays { context } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
 		}
-		FrontendMessage::TriggerOpen => {
+		FrontendMessage::TriggerOpen { filters } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
-				filters: vec![],
+				filters,
 				multiple: true,
 				context: OpenFileDialogContext::Open,
 			});
 		}
-		FrontendMessage::TriggerImport => {
+		FrontendMessage::TriggerImport { filters } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Import File".to_string(),
-				filters: vec![],
+				filters,
 				multiple: false,
 				context: OpenFileDialogContext::Import,
 			});
@@ -31,32 +31,29 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			name,
 			path,
 			folder,
+			filters,
 			content,
 		} => {
 			let content = content.into_vec();
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			} else {
-				let extension = std::path::Path::new(&name).extension().and_then(|extension| extension.to_str()).unwrap_or("*").to_string();
 				dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
 					default_folder: folder,
-					filters: vec![FileFilter {
-						name: "Graphite Document".to_string(),
-						extensions: vec![extension],
-					}],
+					filters,
 					context: SaveFileDialogContext::Document { document_id, content },
 				});
 			}
 		}
-		FrontendMessage::TriggerSaveFile { name, folder, content } => {
+		FrontendMessage::TriggerSaveFile { name, folder, filters, content } => {
 			let content = content.into_vec();
 			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 				title: "Save File".to_string(),
 				default_filename: name,
 				default_folder: folder,
-				filters: Vec::new(),
+				filters,
 				context: SaveFileDialogContext::File { content },
 			});
 		}

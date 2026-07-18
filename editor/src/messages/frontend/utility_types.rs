@@ -91,3 +91,10 @@ pub struct RasterizedImage {
 	pub height: u32,
 	pub pixels: serde_bytes::ByteBuf,
 }
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FileFilter {
+	pub name: String,
+	pub extensions: Vec<String>,
+}

@@ -5,7 +5,7 @@ use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
+use crate::messages::frontend::utility_types::{DocumentInfo, FileFilter, PersistedState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -501,6 +501,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(FrontendMessage::TriggerSaveFile {
 						name: filename,
 						folder: None,
+						filters: vec![FileFilter {
+							name: "Graphite Document".into(),
+							extensions: vec![FILE_EXTENSION.into()],
+						}],
 						content: serde_bytes::ByteBuf::from(content),
 					});
 				} else {
@@ -508,6 +512,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						Ok(zip_bytes) => responses.add(FrontendMessage::TriggerSaveFile {
 							name: format!("{FOLDER_NAME}.zip"),
 							folder: None,
+							filters: vec![FileFilter {
+								name: "Zip Archive".into(),
+								extensions: vec!["zip".into()],
+							}],
 							content: serde_bytes::ByteBuf::from(zip_bytes),
 						}),
 						Err(e) => {
@@ -652,11 +660,28 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::Open => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerOpen);
+				responses.add(FrontendMessage::TriggerOpen {
+					filters: vec![
+						FileFilter {
+							name: "Graphite Document".into(),
+							extensions: vec![FILE_EXTENSION.into(), GDD_FILE_EXTENSION.into()],
+						},
+						FileFilter {
+							name: "Image".into(),
+							extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
+						},
+					],
+				});
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerImport);
+				// TODO: Also offer the Graphite document filter once importing Graphite documents as nodes is supported
+				responses.add(FrontendMessage::TriggerImport {
+					filters: vec![FileFilter {
+						name: "Image".into(),
+						extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
+					}],
+				});
 			}
 			PortfolioMessage::OpenFile { path, content } => {
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
