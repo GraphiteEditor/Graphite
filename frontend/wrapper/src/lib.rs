@@ -4,11 +4,18 @@
 #[macro_use]
 extern crate log;
 
+pub mod editor_commands;
 pub mod editor_wrapper;
 pub mod helpers;
 pub mod native_communication;
+mod wasm_value;
 
+#[cfg(any(feature = "native", not(target_family = "wasm")))]
+pub use editor_commands::EditorCommand;
+
+#[cfg(feature = "editor")]
 use crate::helpers::wrapper;
+#[cfg(feature = "editor")]
 use editor::messages::prelude::*;
 use std::panic;
 use std::sync::Mutex;
@@ -24,6 +31,7 @@ pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
 	#[cfg(not(feature = "native"))]
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
+	#[cfg(not(feature = "native"))]
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
 	pub static EDITOR_WRAPPER: Mutex<Option<editor_wrapper::EditorWrapper>> = const { Mutex::new(None) };
 	pub static PANIC_DIALOG_MESSAGE_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> = const { std::cell::RefCell::new(None) };
@@ -43,35 +51,40 @@ pub fn init_graphite() {
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicHookInfo) {
 	let info = info.to_string();
-	let backtrace = Error::new("stack").stack().to_string();
-	if backtrace.contains("DynAnyNode") {
-		log::error!("Node graph evaluation panicked {info}");
 
-		// When the graph panics, the node runtime lock may not be released properly
-		if editor::node_graph_executor::NODE_RUNTIME.try_lock().is_none() {
-			unsafe { editor::node_graph_executor::NODE_RUNTIME.force_unlock() };
+	// Node graph panics can only originate here when the node graph runs inside this wasm module
+	#[cfg(feature = "editor")]
+	{
+		let backtrace = Error::new("stack").stack().to_string();
+		if backtrace.contains("DynAnyNode") {
+			log::error!("Node graph evaluation panicked {info}");
+
+			// When the graph panics, the node runtime lock may not be released properly
+			if editor::node_graph_executor::NODE_RUNTIME.try_lock().is_none() {
+				unsafe { editor::node_graph_executor::NODE_RUNTIME.force_unlock() };
+			}
+
+			if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
+				NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
+				wrapper(|wrapper| {
+					let error = r#"
+					<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
+					<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
+						<tspan x="50%" dy="-24" font-weight="bold">The document crashed while being rendered in its current state.</tspan>
+						<tspan x="50%" dy="24">The editor is now unstable! Undo your last action to restore the artwork,</tspan>
+						<tspan x="50%" dy="24">then save your document and restart the editor before continuing work.</tspan>
+					/text>"#
+					// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
+					.to_string();
+					wrapper.send_frontend_message_to_js(FrontendMessage::UpdateDocumentArtwork { svg: error });
+				});
+			}
+
+			return;
 		}
-
-		if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
-			NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
-			wrapper(|wrapper| {
-				let error = r#"
-				<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
-				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document crashed while being rendered in its current state.</tspan>
-					<tspan x="50%" dy="24">The editor is now unstable! Undo your last action to restore the artwork,</tspan>
-					<tspan x="50%" dy="24">then save your document and restart the editor before continuing work.</tspan>
-				/text>"#
-				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-				.to_string();
-				wrapper.send_frontend_message_to_js_rust_proxy(FrontendMessage::UpdateDocumentArtwork { svg: error });
-			});
-		}
-
-		return;
-	} else {
-		EDITOR_HAS_CRASHED.store(true, Ordering::SeqCst);
 	}
+
+	EDITOR_HAS_CRASHED.store(true, Ordering::SeqCst);
 
 	log::error!("{info}");
 
@@ -82,30 +95,20 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 }
 
 fn send_panic_dialog_via_callback(panic_info: String) -> Result<(), String> {
-	let message = FrontendMessage::DisplayDialogPanic { panic_info };
-	let message_type = message.to_discriminant().local_name();
+	let message = PanicDialogMessage::DisplayDialogPanic { panic_info: panic_info.clone() };
 	let Ok(message_data) = serde_wasm_bindgen::to_value(&message) else {
 		log::error!("Failed to serialize crash dialog panic message");
-		let FrontendMessage::DisplayDialogPanic { panic_info } = message else {
-			unreachable!("Message variant changed unexpectedly")
-		};
 		return Err(panic_info);
 	};
 
 	PANIC_DIALOG_MESSAGE_CALLBACK.with(|callback| {
 		let callback_ref = callback.borrow();
 		let Some(callback) = callback_ref.as_ref() else {
-			let FrontendMessage::DisplayDialogPanic { panic_info } = message else {
-				unreachable!("Message variant changed unexpectedly")
-			};
 			return Err(panic_info);
 		};
 
-		if let Err(error) = callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data) {
-			log::error!("Failed to send crash dialog panic message to JS: {:?}", error);
-			let FrontendMessage::DisplayDialogPanic { panic_info } = message else {
-				unreachable!("Message variant changed unexpectedly")
-			};
+		if let Err(error) = callback.call2(&JsValue::null(), &JsValue::from("DisplayDialogPanic"), &message_data) {
+			log::error!("Failed to send crash dialog panic message to JS: {error:?}");
 			return Err(panic_info);
 		}
 
@@ -200,4 +203,31 @@ impl log::Log for WasmLog {
 	}
 
 	fn flush(&self) {}
+}
+
+#[cfg(feature = "editor")]
+use editor::messages::prelude::FrontendMessage as PanicDialogMessage;
+
+#[cfg(not(feature = "editor"))]
+use PanicDialogMessageCopy as PanicDialogMessage;
+
+#[cfg(any(not(feature = "editor"), test))]
+#[derive(serde::Serialize)]
+enum PanicDialogMessageCopy {
+	DisplayDialogPanic {
+		#[serde(rename = "panicInfo")]
+		panic_info: String,
+	},
+}
+
+#[cfg(all(test, feature = "editor"))]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn panic_dialog_copy_matches_editor_shape() {
+		let copy = serde_json::to_value(PanicDialogMessageCopy::DisplayDialogPanic { panic_info: "info".into() }).unwrap();
+		let real = serde_json::to_value(FrontendMessage::DisplayDialogPanic { panic_info: "info".into() }).unwrap();
+		assert_eq!(copy, real);
+	}
 }

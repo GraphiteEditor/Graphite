@@ -23,7 +23,10 @@ export default defineConfig(({ mode }) => {
 		// Default for builds that exclude the `wasmSplitting` plugin, which overrides this when active
 		define: { __WASM_PART_COUNT__: "1" },
 		resolve: {
-			alias: [{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") }],
+			alias: [
+				...(mode === "native" ? [{ find: /^\/wrapper\/pkg\//, replacement: "/wrapper/pkg-native/" }] : []),
+				{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") },
+			],
 		},
 		server: {
 			port: 8080,

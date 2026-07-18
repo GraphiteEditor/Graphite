@@ -82,3 +82,12 @@ pub struct EyedropperPreviewImage {
 	pub width: u32,
 	pub height: u32,
 }
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct RasterizedImage {
+	pub id: u64,
+	pub width: u32,
+	pub height: u32,
+	pub pixels: serde_bytes::ByteBuf,
+}
