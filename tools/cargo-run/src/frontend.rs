@@ -10,8 +10,12 @@ pub fn frontend_dir() -> PathBuf {
 	workspace_dir().join("frontend")
 }
 
-fn wasm_glue_path() -> PathBuf {
-	frontend_dir().join("wrapper").join("pkg").join(format!("{OUT_NAME}.js"))
+fn pkg_dir(native: bool) -> PathBuf {
+	frontend_dir().join("wrapper").join(if native { "pkg-native" } else { "pkg" })
+}
+
+fn wasm_glue_path(native: bool) -> PathBuf {
+	pkg_dir(native).join(format!("{OUT_NAME}.js"))
 }
 
 pub fn setup() -> Result<(), Error> {
@@ -50,15 +54,15 @@ pub fn build_wasm(release: bool, native: bool) -> Result<(), Error> {
 
 pub fn build_wasm_steps(release: bool, native: bool) -> Vec<Expression> {
 	let wasm_artifact = target_dir().join(WASM_TARGET).join(if release { "release" } else { "debug" }).join(format!("{OUT_NAME}.wasm"));
-	let pkg_dir = frontend_dir().join("wrapper").join("pkg");
+	let pkg_dir = pkg_dir(native);
 
 	let mut steps = vec![
 		cmd!("cargo", "build", "--lib", "--package", WRAPPER_CRATE, "--target", WASM_TARGET)
 			.arg_if(release, "--release")
 			.args_if(native, ["--no-default-features", "--features", "native"])
 			.dir(workspace_dir())
-			.before_spawn(|_| {
-				if is_build_corrupted() {
+			.before_spawn(move |_| {
+				if is_build_corrupted(wasm_glue_path(native)) {
 					clean_wasm();
 				}
 				Ok(())
@@ -90,8 +94,8 @@ pub fn clean_wasm() -> bool {
 	true
 }
 
-pub fn is_build_corrupted() -> bool {
-	let Ok(js) = std::fs::read_to_string(wasm_glue_path()) else {
+pub fn is_build_corrupted(path: PathBuf) -> bool {
+	let Ok(js) = std::fs::read_to_string(&path) else {
 		return false;
 	};
 	js.contains("from \"env\"") || js.contains("from 'env'")

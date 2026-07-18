@@ -1,14 +1,18 @@
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
+#[cfg(not(feature = "native"))]
+use crate::EDITOR_HAS_CRASHED;
+use crate::EDITOR_WRAPPER;
 use crate::editor_wrapper::EditorWrapper;
-use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER};
+use crate::native_communication::RasterizedImage;
 #[cfg(not(feature = "native"))]
 use editor::application::Editor;
+#[cfg(feature = "editor")]
 use editor::messages::input_mapper::utility_types::input_keyboard::Key;
+#[cfg(not(feature = "native"))]
 use editor::messages::prelude::*;
-use graphene_std::color::SRGBA8;
-use graphene_std::raster::Image;
 use js_sys::{Object, Reflect};
+#[cfg(not(feature = "native"))]
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -119,18 +123,8 @@ pub(crate) fn async_wake_callback() -> Wake {
 	})
 }
 
-pub(crate) fn auto_save_all_documents() {
-	// Process no further messages after a crash to avoid spamming the console
-	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-		return;
-	}
-
-	wrapper(|wrapper| {
-		wrapper.dispatch(PortfolioMessage::AutoSaveAllDocuments);
-	});
-}
-
-pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<SRGBA8>)]) {
+/// Blits each rasterized image to a canvas registered on `window.imageCanvases`
+pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<Item = &'a RasterizedImage>) {
 	let window = match window() {
 		Some(window) => window,
 		None => {
@@ -155,11 +149,13 @@ pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<SRGBA8>)])
 	};
 	let canvases_obj = Object::from(canvases_obj);
 
-	for (placeholder_id, image) in image_data.iter() {
+	for image in image_data {
+		let (placeholder_id, width, height) = (image.id, image.width, image.height);
+		let pixels = image.pixels.as_slice();
 		let canvas_name = placeholder_id.to_string();
 		let js_key = JsValue::from_str(&canvas_name);
 
-		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
+		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || width == 0 || height == 0 {
 			continue;
 		}
 
@@ -169,8 +165,8 @@ pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<SRGBA8>)])
 			.dyn_into::<HtmlCanvasElement>()
 			.expect("Failed to cast element to HtmlCanvasElement");
 
-		canvas.set_width(image.width);
-		canvas.set_height(image.height);
+		canvas.set_width(width);
+		canvas.set_height(height);
 
 		let context: CanvasRenderingContext2d = canvas
 			.get_context("2d")
@@ -178,10 +174,8 @@ pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<SRGBA8>)])
 			.expect("2d context was not found")
 			.dyn_into::<CanvasRenderingContext2d>()
 			.expect("Failed to cast context to CanvasRenderingContext2d");
-		// `SRGBA8` is `#[repr(C)]` of four `u8`s, so the data buffer is already the byte format the canvas expects
-		let u8_data: &[u8] = bytemuck::cast_slice(&image.data);
-		let clamped_u8_data = wasm_bindgen::Clamped(u8_data);
-		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
+		let clamped_pixels = wasm_bindgen::Clamped(pixels);
+		match ImageData::new_with_u8_clamped_array_and_sh(clamped_pixels, width, height) {
 			Ok(image_data_obj) => {
 				if context.put_image_data(&image_data_obj, 0, 0).is_err() {
 					error!("Failed to put image data on canvas for id: {placeholder_id}");
@@ -209,6 +203,7 @@ pub(crate) fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 }
 
 /// Translate a keyboard key from its JS name to its Rust `Key` enum
+#[cfg(feature = "editor")]
 pub(crate) fn translate_key(name: &str) -> Key {
 	use Key::*;
 
