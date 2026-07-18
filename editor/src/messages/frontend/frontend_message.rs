@@ -106,6 +106,11 @@ pub enum FrontendMessage {
 		mime: String,
 		size: (f64, f64),
 	},
+	TriggerSendToPlotter {
+		name: String,
+		svg: String,
+		address: String,
+	},
 	TriggerFetchAndOpenDocument {
 		name: String,
 		filename: String,

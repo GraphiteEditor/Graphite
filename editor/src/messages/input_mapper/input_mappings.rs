@@ -453,6 +453,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
 		entry!(KeyDown(KeyN); modifiers=[Accel], action_dispatch=DialogMessage::RequestNewDocumentDialog),
+		entry!(KeyDown(KeyP); modifiers=[Accel], action_dispatch=DialogMessage::RequestSendToPlotterDialog),
 		entry!(KeyDown(Comma); modifiers=[Accel], action_dispatch=DialogMessage::RequestPreferencesDialog),
 		//
 		// DebugMessage

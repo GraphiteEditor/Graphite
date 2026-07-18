@@ -10,6 +10,8 @@ pub enum DialogMessage {
 	NewDocumentDialog(NewDocumentDialogMessage),
 	#[child]
 	PreferencesDialog(PreferencesDialogMessage),
+	#[child]
+	SendToPlotterDialog(SendToPlotterDialogMessage),
 
 	// Messages
 	Dismiss,
@@ -21,6 +23,9 @@ pub enum DialogMessage {
 	DisplayDialogError {
 		title: String,
 		description: String,
+	},
+	DisplaySendToPlotterSuccess {
+		job_name: String,
 	},
 	RequestAboutGraphiteDialog,
 	RequestAboutGraphiteDialogWithLocalizedCommitDate {
@@ -37,6 +42,7 @@ pub enum DialogMessage {
 	},
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,
+	RequestSendToPlotterDialog,
 	RequestConfirmRestartDialog {
 		preferences_requiring_restart: Vec<String>,
 	},

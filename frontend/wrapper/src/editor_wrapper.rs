@@ -318,6 +318,13 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	/// Displays a dialog confirming that a job was successfully queued on the pen plotter print server
+	#[wasm_bindgen(js_name = sendToPlotterSuccessDialog)]
+	pub fn send_to_plotter_success_dialog(&self, job_name: String) {
+		let message = DialogMessage::DisplaySendToPlotterSuccess { job_name };
+		self.dispatch(message);
+	}
+
 	/// Answer whether or not the editor has crashed
 	#[wasm_bindgen(js_name = hasCrashed)]
 	pub fn has_crashed(&self) -> bool {

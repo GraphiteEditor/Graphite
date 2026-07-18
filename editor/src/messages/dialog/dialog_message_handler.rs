@@ -4,6 +4,7 @@ use crate::messages::dialog::simple_dialogs::{ConfirmRestartDialog, LicensesThir
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
+use graphene_std::vector::style::RenderMode;
 
 #[derive(ExtractField)]
 pub struct DialogMessageContext<'a> {
@@ -18,6 +19,7 @@ pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
 	preferences_dialog: PreferencesDialogMessageHandler,
+	send_to_plotter_dialog: SendToPlotterDialogMessageHandler,
 }
 
 #[message_handler_data]
@@ -29,6 +31,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
 			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
+			DialogMessage::SendToPlotterDialog(message) => self.send_to_plotter_dialog.process_message(message, responses, SendToPlotterDialogMessageContext { portfolio }),
 
 			DialogMessage::Dismiss => {
 				if let Some(message) = self.on_dismiss.take() {
@@ -58,6 +61,11 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::DisplayDialogError { title, description } => {
 				self.on_dismiss = None;
 				let dialog = simple_dialogs::ErrorDialog { title, description };
+				dialog.send_dialog_to_frontend(responses);
+			}
+			DialogMessage::DisplaySendToPlotterSuccess { job_name } => {
+				self.on_dismiss = None;
+				let dialog = simple_dialogs::SendToPlotterSuccessDialog { job_name };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
@@ -136,6 +144,23 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.on_dismiss = Some(PreferencesDialogMessage::Confirm.into());
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
 			}
+			DialogMessage::RequestSendToPlotterDialog => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
+				if let Some(document) = portfolio.active_document() {
+					// Switch the viewport to outline mode so the artwork previews as the pen plotter will draw it
+					responses.add(DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline });
+
+					// Kick off a render of the plotter SVG purely to measure it for the time estimate shown in the dialog
+					responses.add(PortfolioMessage::SubmitPlotterExport {
+						job_name: document.name.clone(),
+						estimate_only: true,
+					});
+
+					self.send_to_plotter_dialog.job_name = document.name.clone();
+					self.send_to_plotter_dialog.estimate = crate::messages::dialog::send_to_plotter_dialog::PlotTimeEstimate::Pending;
+					self.send_to_plotter_dialog.send_dialog_to_frontend(responses);
+				}
+			}
 			DialogMessage::RequestConfirmRestartDialog { preferences_requiring_restart } => {
 				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = ConfirmRestartDialog { preferences_requiring_restart };
@@ -149,5 +174,6 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 		RequestExportDialog,
 		RequestNewDocumentDialog,
 		RequestPreferencesDialog,
+		RequestSendToPlotterDialog,
 	);
 }

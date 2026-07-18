@@ -5,7 +5,7 @@ use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
+use crate::messages::frontend::utility_types::{DocumentInfo, ExportBounds, FileType, PersistedState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -1459,6 +1459,32 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						title: "Unable to export document".to_string(),
 						description,
 					});
+				}
+			}
+			PortfolioMessage::SubmitPlotterExport { job_name, estimate_only } => {
+				let document_id = self.active_document_id.expect("Tried to render non-existent document");
+				let document = self.documents.get_mut(&document_id).expect("Tried to render non-existent document");
+				let export_config = ExportConfig {
+					name: job_name,
+					file_type: FileType::Svg,
+					scale_factor: 1.,
+					bounds: ExportBounds::AllArtwork,
+					for_plotter: true,
+					plotter_estimate_only: estimate_only,
+					..Default::default()
+				};
+				let result = self.executor.submit_document_export(document, document_id, export_config);
+
+				if let Err(description) = result {
+					// A failed estimate render (e.g. an empty document) just marks the estimate as unavailable
+					if estimate_only {
+						responses.add(DialogMessage::SendToPlotterDialog(SendToPlotterDialogMessage::UpdateTimeEstimate { seconds: None }));
+					} else {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to send to the plotter".to_string(),
+							description,
+						});
+					}
 				}
 			}
 			PortfolioMessage::SubmitActiveGraphRender => {

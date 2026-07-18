@@ -91,6 +91,10 @@ pub struct ExportConfig {
 	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
+	/// Send the exported SVG to the pen plotter print server instead of saving it as a file.
+	pub for_plotter: bool,
+	/// Only measure the plotter SVG for a time estimate instead of sending it to the print server.
+	pub plotter_estimate_only: bool,
 }
 
 #[derive(Clone)]

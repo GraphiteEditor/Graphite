@@ -14,6 +14,7 @@ pub use crate::messages::defer::{DeferMessage, DeferMessageDiscriminant, DeferMe
 pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageContext, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
 pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
 pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageContext, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
+pub use crate::messages::dialog::send_to_plotter_dialog::{SendToPlotterDialogMessage, SendToPlotterDialogMessageContext, SendToPlotterDialogMessageDiscriminant, SendToPlotterDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageContext, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 pub use crate::messages::future::{FutureMessage, FutureMessageContext, FutureMessageDiscriminant, FutureMessageHandler, MessageFuture, MessageSpawner, Wake};
