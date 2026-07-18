@@ -1381,7 +1381,7 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: Item<Gradient>) -> Item<G
 #[node_macro::node(category("Color"))]
 fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vector_types::GradientType>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_TYPE, *gradient_type.element());
+	gradient.set_attr::<vector_types::attr::GradientType>(*gradient_type.element());
 	gradient
 }
 
@@ -1389,7 +1389,7 @@ fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vect
 #[node_macro::node(category("Color"))]
 fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
+	gradient.set_attr::<vector_types::attr::SpreadMethod>(*spread_method.element());
 	gradient
 }
 

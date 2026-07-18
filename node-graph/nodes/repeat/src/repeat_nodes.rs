@@ -1,8 +1,9 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
+use core_types::attr;
 use core_types::list::{Item, List};
 use core_types::registry::types::{Angle, PixelSize};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
+use core_types::{CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -102,10 +103,10 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 		for row_index in 0..generated_content.len() {
 			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
 
-			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let local_transform = row.attr_cloned_or_default::<attr::Transform>();
 			let local_translation = DAffine2::from_translation(local_transform.translation);
 			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
-			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
+			*row.attr_mut_or_insert_default::<attr::Transform>() = local_translation * transform * local_matrix;
 
 			result_list.push(row);
 		}
@@ -158,10 +159,10 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 		for row_index in 0..generated_content.len() {
 			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
 
-			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let local_transform = row.attr_cloned_or_default::<attr::Transform>();
 			let local_translation = DAffine2::from_translation(local_transform.translation);
 			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
-			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
+			*row.attr_mut_or_insert_default::<attr::Transform>() = local_translation * transform * local_matrix;
 
 			result_list.push(row);
 		}
@@ -200,7 +201,7 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 
 	for points_index in 0..points.len() {
 		let Some(points_element) = points.element(points_index) else { continue };
-		let transform: DAffine2 = points.attribute_cloned_or_default(ATTR_TRANSFORM, points_index);
+		let transform = points.attr_cloned_or_default::<attr::Transform>(points_index);
 
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
@@ -209,7 +210,7 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 			let generated_content = content.eval(new_ctx.into_context()).await;
 
 			for mut generated_row in generated_content.into_iter() {
-				generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = transformed_point;
+				generated_row.attr_mut_or_insert_default::<attr::Transform>().translation = transformed_point;
 				result_list.push(generated_row);
 			}
 		};
@@ -301,7 +302,7 @@ mod test {
 			let bounds = generated
 				.element(index)
 				.unwrap()
-				.bounding_box_with_transform(generated.attribute_cloned_or_default(ATTR_TRANSFORM, index))
+				.bounding_box_with_transform(generated.attr_cloned_or_default::<attr::Transform>(index))
 				.unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);

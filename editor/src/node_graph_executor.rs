@@ -15,7 +15,7 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, graphic_types};
-use graphene_std::{ATTR_TRANSFORM, Context, Graphic, NodeInputDecleration};
+use graphene_std::{Context, Graphic, NodeInputDecleration, attr};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -870,7 +870,7 @@ fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId]) -> boo
 fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2, DAffine2)> {
 	if let Some(list) = introspected_output::<List<Vector>>(data) {
 		let vector = list.element(0)?;
-		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		let item_transform = list.attr_cloned_or_default::<attr::Transform>(0);
 		let bounds = vector.nonzero_bounding_box();
 		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		return Some((bounding_box_affine, item_transform));

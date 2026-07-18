@@ -1,9 +1,10 @@
+use core_types::Color;
+use core_types::attr::{self, Attr};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{Item, ItemAttributeValues, List};
 use core_types::ops::FromAnchorPosition;
 use core_types::render_complexity::RenderComplexity;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
@@ -119,32 +120,32 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
 			// Flattening composes a parent attribute onto its children only when the parent has it,
 			// so an absent parent attribute never invents a column the children didn't already have.
-			let parent_has_transform = current_graphic_item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
-			let parent_has_opacity = current_graphic_item.attribute::<f64>(ATTR_OPACITY).is_some();
-			let parent_has_fill = current_graphic_item.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
-			let parent_has_layer_path = current_graphic_item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).is_some();
+			let parent_has_transform = current_graphic_item.attr::<attr::Transform>().is_some();
+			let parent_has_opacity = current_graphic_item.attr::<attr::Opacity>().is_some();
+			let parent_has_fill = current_graphic_item.attr::<attr::OpacityFill>().is_some();
+			let parent_has_layer_path = current_graphic_item.attr::<attr::editor::LayerPath>().is_some();
 
-			let layer_path: NodeIdPath = current_graphic_item.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
-			let current_transform: DAffine2 = current_graphic_item.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let current_opacity: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY, 1.);
-			let current_fill: f64 = current_graphic_item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+			let layer_path = current_graphic_item.attr_cloned_or_default::<attr::editor::LayerPath>();
+			let current_transform = current_graphic_item.attr_cloned_or_default::<attr::Transform>();
+			let current_opacity = current_graphic_item.attr_cloned_or_default::<attr::Opacity>();
+			let current_fill = current_graphic_item.attr_cloned_or_default::<attr::OpacityFill>();
 
 			match current_graphic_item.into_element() {
 				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
 				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
 				Graphic::Graphic(mut sub_list) => {
 					if parent_has_transform {
-						for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+						for v in sub_list.iter_attr_values_mut_or_default::<attr::Transform>() {
 							*v = current_transform * *v;
 						}
 					}
 					if parent_has_opacity {
-						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
+						for v in sub_list.iter_attr_values_mut_or_default::<attr::Opacity>() {
 							*v *= current_opacity;
 						}
 					}
 					if parent_has_fill {
-						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
+						for v in sub_list.iter_attr_values_mut_or_default::<attr::OpacityFill>() {
 							*v *= current_fill;
 						}
 					}
@@ -155,22 +156,22 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 				other => {
 					if let Some(typed_list) = extract_variant(other) {
 						for mut item in typed_list.into_iter() {
-							// Each `|| item.attribute(...)` keeps an attribute the item itself carries
+							// Each `|| item.attr::<...>()` keeps an attribute the item itself carries
 							// (recomposed with the parent's identity value) even when the parent lacks it
-							if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
-								let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-								item.set_attribute(ATTR_TRANSFORM, current_transform * item_transform);
+							if parent_has_transform || item.attr::<attr::Transform>().is_some() {
+								let item_transform = item.attr_cloned_or_default::<attr::Transform>();
+								item.set_attr::<attr::Transform>(current_transform * item_transform);
 							}
-							if parent_has_opacity || item.attribute::<f64>(ATTR_OPACITY).is_some() {
-								let item_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-								item.set_attribute(ATTR_OPACITY, current_opacity * item_opacity);
+							if parent_has_opacity || item.attr::<attr::Opacity>().is_some() {
+								let item_opacity = item.attr_cloned_or_default::<attr::Opacity>();
+								item.set_attr::<attr::Opacity>(current_opacity * item_opacity);
 							}
-							if parent_has_fill || item.attribute::<f64>(ATTR_OPACITY_FILL).is_some() {
-								let item_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-								item.set_attribute(ATTR_OPACITY_FILL, current_fill * item_fill);
+							if parent_has_fill || item.attr::<attr::OpacityFill>().is_some() {
+								let item_fill = item.attr_cloned_or_default::<attr::OpacityFill>();
+								item.set_attr::<attr::OpacityFill>(current_fill * item_fill);
 							}
 							if parent_has_layer_path {
-								item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+								item.set_attr::<attr::editor::LayerPath>(layer_path.clone());
 							}
 
 							output.push(item);
@@ -192,9 +193,9 @@ pub fn is_paint_present(graphic_list: &List<Graphic>) -> bool {
 	graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 }
 
-/// Look up the paint graphics stored under attribute for a vector item, in the canonical `List<Graphic>` form.
-pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str) -> Option<Cow<'a, List<Graphic>>> {
-	list.attribute::<List<Graphic>>(attribute, index)
+/// Look up the paint graphics stored under the typed attribute for a vector item, in the canonical `List<Graphic>` form.
+pub fn graphic_list_at<A: Attr<Value = List<Graphic>>>(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
+	list.attr::<A>(index)
 		.map(Cow::Borrowed)
 		// Treat a blank paint attribute as absent so an empty attribute doesn't count as painted
 		.filter(|graphic_list| is_paint_present(graphic_list))
@@ -202,25 +203,25 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 
 /// Whether the item carries a non-blank canonical `List<Graphic>` paint attribute,
 /// checked by borrowing without cloning the renderable list.
-pub fn has_paint_at(list: &List<Vector>, index: usize, attribute: &str) -> bool {
-	list.attribute::<List<Graphic>>(attribute, index).is_some_and(is_paint_present)
+pub fn has_paint_at<A: Attr<Value = List<Graphic>>>(list: &List<Vector>, index: usize) -> bool {
+	list.attr::<A>(index).is_some_and(is_paint_present)
 }
 
 /// Stores a paint attribute in its canonical `List<Graphic>` form, the only representation paint readers accept.
-pub fn set_paint_attribute(attributes: &mut ItemAttributeValues, key: &str, paint: impl IntoGraphicList) {
-	attributes.insert(key, paint.into_graphic_list());
+pub fn set_paint_attribute<A: Attr<Value = List<Graphic>>>(attributes: &mut ItemAttributeValues, paint: impl IntoGraphicList) {
+	attributes.set_attr::<A>(paint.into_graphic_list());
 }
 
 /// Stores a paint attribute at a list index in its canonical `List<Graphic>` form, the only representation paint readers accept.
-pub fn set_paint_attribute_at<T>(list: &mut List<T>, index: usize, key: &str, paint: impl IntoGraphicList) {
-	list.set_attribute(key, index, paint.into_graphic_list());
+pub fn set_paint_attribute_at<A: Attr<Value = List<Graphic>>, T>(list: &mut List<T>, index: usize, paint: impl IntoGraphicList) {
+	list.set_attr::<A>(index, paint.into_graphic_list());
 }
 
 /// Bake the provided transform into the per-item transforms of the paint graphics stored under the
 /// canonical `List<Graphic>` fill and stroke attributes.
 pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DAffine2) {
 	fn bake_list_transform<T>(list: &mut List<T>, transform: DAffine2) {
-		for item_transform in list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+		for item_transform in list.iter_attr_values_mut_or_default::<attr::Transform>() {
 			*item_transform = transform * *item_transform;
 		}
 	}
@@ -240,7 +241,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 		}
 	}
 
-	for paint_key in [ATTR_FILL, ATTR_STROKE] {
+	for paint_key in [crate::attr::Fill::name(), crate::attr::Stroke::name()] {
 		if let Some(graphics) = attributes.get_mut::<List<Graphic>>(paint_key) {
 			bake_graphic_paint_transform(graphics, transform);
 		}
@@ -306,10 +307,10 @@ impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		// Propagate the `editor:layer_path` column (if present) from item 0 onto the wrapper Graphic item so a
 		// subsequent `flatten_graphic_list` doesn't drop the inner Vector's layer stamp
-		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
+		let layer_path = self.attr::<attr::editor::LayerPath>(0).cloned();
 		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
 		if let Some(layer_path) = layer_path {
-			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+			graphic_list.set_attr::<attr::editor::LayerPath>(0, layer_path);
 		}
 		graphic_list
 	}
@@ -341,10 +342,10 @@ impl IntoGraphicList for List<Gradient> {
 
 impl IntoGraphicList for List<String> {
 	fn into_graphic_list(self) -> List<Graphic> {
-		let layer_path = self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).cloned();
+		let layer_path = self.attr::<attr::editor::LayerPath>(0).cloned();
 		let mut graphic_list = List::new_from_element(Graphic::Text(self));
 		if let Some(layer_path) = layer_path {
-			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+			graphic_list.set_attr::<attr::editor::LayerPath>(0, layer_path);
 		}
 		graphic_list
 	}
@@ -416,7 +417,7 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		fn all_clipped<T>(list: &List<T>) -> bool {
-			list.iter_attribute_values_or_default::<bool>(ATTR_CLIPPING_MASK).all(|clip| clip)
+			list.iter_attr_values_or_default::<attr::ClippingMask>().all(|clip| clip)
 		}
 
 		match self {
@@ -435,12 +436,12 @@ impl Graphic {
 		match self {
 			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
 				let Some(element) = vector.element(index) else { return false };
-				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+				let opacity = vector.attr_cloned_or_default::<attr::Opacity>(index);
 
-				let fill_opaque_or_absent = graphic_list_at(vector, index, ATTR_FILL).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
+				let fill_opaque_or_absent = graphic_list_at::<crate::attr::Fill>(vector, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()));
 
 				let stroke_invisible_or_transparent = element.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke())
-					|| graphic_list_at(vector, index, ATTR_STROKE).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+					|| graphic_list_at::<crate::attr::Stroke>(vector, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
 
 				opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 			}),
@@ -453,15 +454,17 @@ impl Graphic {
 			Graphic::None => false,
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			Graphic::Vector(list) => {
-				let is_paint_opaque_at = |key: &str, index: usize| graphic_list_at(list, index, key).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()));
+				fn is_paint_opaque_at<A: Attr<Value = List<Graphic>>>(list: &List<Vector>, index: usize) -> bool {
+					graphic_list_at::<A>(list, index).is_some_and(|graphic_list| graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque()))
+				}
 
 				!list.is_empty()
 					&& (0..list.len()).all(|i| {
 						let Some(vector) = list.element(i) else { return false };
-						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
-						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_paint_opaque_at(ATTR_FILL, i);
-						let stroke_opaque_or_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_opaque_at(ATTR_STROKE, i);
+						let opacity = list.attr_cloned_or_default::<attr::Opacity>(i);
+						let opacity_fill = list.attr_cloned_or_default::<attr::OpacityFill>(i);
+						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_paint_opaque_at::<crate::attr::Fill>(list, i);
+						let stroke_opaque_or_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_opaque_at::<crate::attr::Stroke>(list, i);
 						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
 					})
 			}
@@ -477,16 +480,17 @@ impl Graphic {
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			Graphic::Vector(list) => (0..list.len()).all(|i| {
 				let Some(vector) = list.element(i) else { return false };
-				let is_paint_fully_transparent_at =
-					|key: &str, index: usize| graphic_list_at(list, index, key).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()));
+				fn is_paint_fully_transparent_at<A: Attr<Value = List<Graphic>>>(list: &List<Vector>, index: usize) -> bool {
+					graphic_list_at::<A>(list, index).is_none_or(|graphic_list| graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent()))
+				}
 
-				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+				let opacity = list.attr_cloned_or_default::<attr::Opacity>(i);
 				if opacity <= f64::EPSILON {
 					return true;
 				}
-				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
-				let fill_invisible = opacity_fill <= f64::EPSILON || is_paint_fully_transparent_at(ATTR_FILL, i);
-				let stroke_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_fully_transparent_at(ATTR_STROKE, i);
+				let opacity_fill = list.attr_cloned_or_default::<attr::OpacityFill>(i);
+				let fill_invisible = opacity_fill <= f64::EPSILON || is_paint_fully_transparent_at::<crate::attr::Fill>(list, i);
+				let stroke_invisible = vector.stroke.as_ref().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_paint_fully_transparent_at::<crate::attr::Stroke>(list, i);
 				fill_invisible && stroke_invisible
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
@@ -644,7 +648,7 @@ mod tests {
 	fn flatten_does_not_invent_attributes() {
 		let graphics = List::new_from_element(vector_graphic());
 		let flattened: List<Vector> = graphics.into_flattened_list();
-		for key in [ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, ATTR_EDITOR_LAYER_PATH] {
+		for key in [attr::Opacity::name(), attr::OpacityFill::name(), attr::Transform::name(), attr::editor::LayerPath::name()] {
 			assert!(!flattened.attribute_keys().any(|k| k == key), "flatten invented the `{key}` attribute");
 		}
 	}
@@ -653,20 +657,19 @@ mod tests {
 	#[test]
 	fn flatten_propagates_present_attributes() {
 		let mut graphics = List::new_from_element(vector_graphic());
-		graphics.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		graphics.set_attr::<attr::Opacity>(0, 0.5);
 		let flattened: List<Vector> = graphics.into_flattened_list();
-		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+		assert_eq!(flattened.attr_cloned_or_default::<attr::Opacity>(0), 0.5);
 
 		let mut group = List::new_from_element(Graphic::Graphic(List::new_from_element(vector_graphic())));
-		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		group.set_attr::<attr::Opacity>(0, 0.5);
 		let flattened: List<Vector> = group.into_flattened_list();
-		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+		assert_eq!(flattened.attr_cloned_or_default::<attr::Opacity>(0), 0.5);
 	}
 }
 
 #[cfg(test)]
 mod graphic_is_opaque_tests {
-	use core_types::ATTR_SPREAD_METHOD;
 	use vector_types::{GradientSpreadMethod, GradientStop};
 
 	use super::*;
@@ -678,7 +681,7 @@ mod graphic_is_opaque_tests {
 
 	fn gradient_graphic(gradient: Gradient) -> Graphic {
 		let mut gradient_list = List::new_from_element(gradient);
-		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
+		gradient_list.set_attr::<vector_types::attr::SpreadMethod>(0, GradientSpreadMethod::Pad);
 		Graphic::Gradient(gradient_list)
 	}
 

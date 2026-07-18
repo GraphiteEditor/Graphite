@@ -3,7 +3,7 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{Color, attr};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
@@ -93,9 +93,9 @@ impl RenderExt for List<Gradient> {
 		let mut stop = String::new();
 
 		let Some(stops) = self.element(0) else { return 0 };
-		let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
-		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+		let gradient_type = self.attr_cloned_or_default::<vector_types::attr::GradientType>(0);
+		let local_gradient_transform = self.attr_cloned_or_default::<attr::Transform>(0);
+		let spread_method = self.attr_cloned_or_default::<vector_types::attr::SpreadMethod>(0);
 
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
 			stop.push_str("<stop");

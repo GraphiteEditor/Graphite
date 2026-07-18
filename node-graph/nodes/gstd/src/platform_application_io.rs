@@ -10,9 +10,9 @@ use core_types::list::List;
 use core_types::math::bbox::Bbox;
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
-#[cfg(target_family = "wasm")]
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx};
+#[cfg(target_family = "wasm")]
+use core_types::{WasmNotSend, attr};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
@@ -243,7 +243,7 @@ where
 		..Default::default()
 	};
 
-	for transform in data.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+	for transform in data.iter_attr_values_mut_or_default::<attr::Transform>() {
 		*transform = DAffine2::from_translation(-aabb.start) * *transform;
 	}
 	data.render_svg(&mut render, &render_params);
@@ -270,8 +270,8 @@ where
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	List::new_from_item(
 		Item::new_from_element(Raster::new_cpu(image))
-			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
+			.with_attr::<attr::Transform>(footprint.transform)
+			.with_attr::<graphic_types::attr::editor::MergedLayers>(upstream_graphic_list),
 	)
 }
 

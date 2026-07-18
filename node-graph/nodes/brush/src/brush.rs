@@ -1,6 +1,6 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStyle, BrushTrace};
-use core_types::ATTR_TRANSFORM;
+use core_types::attr;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
@@ -91,7 +91,7 @@ where
 		return target;
 	}
 
-	let (elements, transforms) = target.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
+	let (elements, transforms) = target.element_and_attr_slices_mut::<attr::Transform>();
 	for (element, transform_attribute) in elements.iter_mut().zip(transforms.iter()) {
 		let target_width = element.width;
 		let target_height = element.height;
@@ -281,7 +281,7 @@ async fn brush(
 	let has_erase_or_restore_strokes = trace.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = Item::new_from_element(Raster::new_cpu(opaque_image)).with_attribute(ATTR_TRANSFORM, background_bounds);
+		let mut erase_restore_mask = Item::new_from_element(Raster::new_cpu(opaque_image)).with_attr::<attr::Transform>(background_bounds);
 
 		for stroke in trace.into_iter().map(|row| row.into_element()) {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -315,10 +315,10 @@ async fn brush(
 
 	// The paint operation changes only the raster and its bounds, so set just the resulting transform; blending, opacity,
 	// clipping, and layer-path attributes carry through from the input `background` rather than being invented here.
-	let transform: DAffine2 = actual_image.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform = actual_image.attr_cloned_or_default::<attr::Transform>();
 
 	*result_item.element_mut() = actual_image.into_element();
-	result_item.set_attribute(ATTR_TRANSFORM, transform);
+	result_item.set_attr::<attr::Transform>(transform);
 
 	result_item
 }
@@ -328,8 +328,8 @@ pub fn blend_image_closure(foreground: Item<Raster<CPU>>, mut background: Item<R
 	let background_size = DVec2::new(background.element().width as f64, background.element().height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let foreground_transform: DAffine2 = foreground.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let background_transform: DAffine2 = background.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let foreground_transform = foreground.attr_cloned_or_default::<attr::Transform>();
+	let background_transform = background.attr_cloned_or_default::<attr::Transform>();
 	let background_to_foreground = DAffine2::from_scale(foreground_size) * foreground_transform.inverse() * background_transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
@@ -360,7 +360,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 	let background_size = DVec2::new(background.element().width as f64, background.element().height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let background_transform: DAffine2 = background.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let background_transform = background.attr_cloned_or_default::<attr::Transform>();
 	let background_to_foreground = background_transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space

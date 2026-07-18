@@ -1,6 +1,7 @@
+use core_types::attr;
 use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
-use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -53,8 +54,8 @@ pub async fn create_artboard<T: IntoGraphicList>(
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
 	Item::new_from_element(Artboard::new(content))
-		.with_attribute(ATTR_LOCATION, normalized_location)
-		.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
-		.with_attribute(ATTR_BACKGROUND, background)
-		.with_attribute(ATTR_CLIP, clip)
+		.with_attr::<attr::Location>(normalized_location)
+		.with_attr::<attr::Dimensions>(normalized_dimensions)
+		.with_attr::<attr::Background>(background)
+		.with_attr::<attr::Clip>(clip)
 }

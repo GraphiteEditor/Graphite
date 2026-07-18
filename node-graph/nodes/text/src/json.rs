@@ -1,5 +1,5 @@
 use core_types::list::{Item, List};
-use core_types::{ATTR_TYPE, Ctx};
+use core_types::{Ctx, attr};
 use serde_json::Value;
 
 use crate::unescape_string;
@@ -265,7 +265,7 @@ fn query_json_all(
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !*unquote_strings.element(), &mut results);
 
-	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
+	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attr::<attr::Type>(ty.to_string())).collect()
 }
 
 /// A parsed segment of a JSON access path.

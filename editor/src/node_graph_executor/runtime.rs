@@ -9,6 +9,7 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
+use graphene_std::attr;
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
@@ -536,8 +537,8 @@ impl NodeRuntime {
 fn artboard_clip_bounds(artboards: &List<Artboard>) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
 	for index in 0..artboards.len() {
-		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
-		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+		let location = artboards.attr_cloned_or_default::<attr::Location>(index);
+		let dimensions = artboards.attr_cloned_or_default::<attr::Dimensions>(index);
 		let bounds = [location, location + dimensions];
 		combined = Some(match combined {
 			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],

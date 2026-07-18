@@ -41,10 +41,10 @@ pub struct DocumentMetadata {
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
-	/// Per-layer `ATTR_FILL` attribute, exposed so message handlers can read paint
+	/// Per-layer `graphic_types::attr::Fill` attribute, exposed so message handlers can read paint
 	/// information that lives on the list.
 	pub layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE` attribute, exposed so message handlers can read
+	/// Per-layer `graphic_types::attr::Stroke` attribute, exposed so message handlers can read
 	/// stroke paint information that lives on the list.
 	pub layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
 	/// Transform from document space to viewport space.

@@ -1,6 +1,7 @@
+use core_types::attr;
 use core_types::list::Item;
 use core_types::registry::types::Percentage;
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
+use core_types::{BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -19,7 +20,7 @@ fn blend_mode<T>(
 	let mut content = content;
 	let blend_mode = *blend_mode.element();
 
-	content.set_attribute(ATTR_BLEND_MODE, blend_mode);
+	content.set_attr::<attr::BlendMode>(blend_mode);
 	content
 }
 
@@ -54,13 +55,13 @@ fn opacity<T>(
 	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());
 
 	if has_opacity {
-		let multiplied = content.attribute_cloned_or(ATTR_OPACITY, 1.) * (opacity / 100.);
-		content.set_attribute(ATTR_OPACITY, multiplied);
+		let multiplied = content.attr_cloned_or_default::<attr::Opacity>() * (opacity / 100.);
+		content.set_attr::<attr::Opacity>(multiplied);
 	}
 
 	if has_fill {
-		let multiplied = content.attribute_cloned_or(ATTR_OPACITY_FILL, 1.) * (fill / 100.);
-		content.set_attribute(ATTR_OPACITY_FILL, multiplied);
+		let multiplied = content.attr_cloned_or_default::<attr::OpacityFill>() * (fill / 100.);
+		content.set_attr::<attr::OpacityFill>(multiplied);
 	}
 
 	content
@@ -79,6 +80,6 @@ fn clipping_mask<T>(
 	let mut content = content;
 	let clip = *clip.element();
 
-	content.set_attribute(ATTR_CLIPPING_MASK, clip);
+	content.set_attr::<attr::ClippingMask>(clip);
 	content
 }

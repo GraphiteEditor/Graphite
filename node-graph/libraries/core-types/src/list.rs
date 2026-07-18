@@ -512,6 +512,14 @@ impl ListDyn {
 			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<U>() } else { None })
 	}
 
+	/// Returns a reference to the attribute value at the given runtime key and item index, downcast to `U`, if present and matching.
+	/// For keys known at compile time use [`Self::attr`]; this variant is for keys only known at runtime (e.g. the attribute nodes).
+	pub fn attribute_dyn<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
+		self.attributes
+			.iter()
+			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<U>() } else { None })
+	}
+
 	/// Returns a reference to the value of the typed attribute at the given item index, if present.
 	pub fn attr<A: Attr>(&self, index: usize) -> Option<&A::Value> {
 		self.attribute(A::name(), index)

@@ -572,6 +572,7 @@ impl Fsm for ArtboardToolFsmState {
 mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
 	use graphene_std::Artboard;
+	use graphene_std::attr;
 	use graphene_std::list::List;
 
 	async fn get_artboards(editor: &mut EditorTestUtils) -> List<Artboard> {
@@ -601,8 +602,8 @@ mod test_artboard {
 		let artboards = get_artboards(editor).await;
 		let artboards = (0..artboards.len())
 			.map(|index| {
-				let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
-				let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+				let location = artboards.attr_cloned_or_default::<attr::Location>(index);
+				let dimensions = artboards.attr_cloned_or_default::<attr::Dimensions>(index);
 				ArtboardLayoutDocument::new(location, dimensions)
 			})
 			.collect::<Vec<_>>();
