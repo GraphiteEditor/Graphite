@@ -232,9 +232,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				match self.transform_operation {
 					TransformOperation::None => (),
 					TransformOperation::Grabbing(translation) => {
-						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation.to_dvec(&self.state, document);
+						let translation_local = translation.to_dvec(&self.state, document);
+						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation_local;
 						let pivot = document_to_viewport.transform_point2(self.grab_target);
-						let quad = Quad::from_box([pivot, pivot + translation_viewport]);
 
 						responses.add(SelectToolMessage::PivotShift {
 							offset: Some(translation_viewport),
@@ -242,7 +242,18 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						});
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
+
+						// When constrained to a single axis in local space, the translation lies along the layer's tilted local
+						// axis, so build the measurement quad in that local frame. That way the box drawn by `translation_box`
+						// is a single line along the axis, instead of incorrectly showing both X and Y screen-space components.
+						if self.state.constraint_axis(axis_constraint).is_some() && self.state.is_transforming_in_local_space {
+							let quad = DAffine2::from_translation(pivot) * self.state.local_to_viewport_transform() * Quad::from_box([DVec2::ZERO, translation_local]);
+							let translation_document = document_to_viewport.inverse().transform_vector2(translation_viewport);
+							overlay_context.translation_box(translation_local.normalize_or_zero() * translation_document.length(), quad, typed_string);
+						} else {
+							let quad = Quad::from_box([pivot, pivot + translation_viewport]);
+							overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
+						}
 					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.state.is_rounded_to_intervals);
