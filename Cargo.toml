@@ -160,7 +160,7 @@ web-sys = { version = "=0.3.98", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = { git = "https://github.com/rust-windowing/winit.git" }
+winit = "0.31.0-beta.2"
 keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
@@ -258,8 +258,6 @@ lto = "thin"
 debug = true
 
 [patch.crates-io]
-# Force cargo to use only one version of the dpi crate (vendoring breaks without this)
-dpi = { git = "https://github.com/rust-windowing/winit.git" }
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
 cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }
 cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-149" }

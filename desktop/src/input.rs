@@ -90,19 +90,19 @@ impl InputState {
 
 				let mouse_button = button.clone().mouse_button();
 				let keys = match mouse_button {
-					MouseButton::Left => MouseKeys::LEFT,
-					MouseButton::Right => MouseKeys::RIGHT,
-					MouseButton::Middle => MouseKeys::MIDDLE,
-					MouseButton::Back => MouseKeys::BACK,
-					MouseButton::Forward => MouseKeys::FORWARD,
-					MouseButton::Other(_) => MouseKeys::NONE,
+					Some(MouseButton::Left) => MouseKeys::LEFT,
+					Some(MouseButton::Right) => MouseKeys::RIGHT,
+					Some(MouseButton::Middle) => MouseKeys::MIDDLE,
+					Some(MouseButton::Back) => MouseKeys::BACK,
+					Some(MouseButton::Forward) => MouseKeys::FORWARD,
+					_ => MouseKeys::NONE,
 				};
 				match state {
 					ElementState::Pressed => self.pointer_keys.insert(keys),
 					ElementState::Released => self.pointer_keys.remove(keys),
 				}
 
-				let back_or_forward = matches!(mouse_button, MouseButton::Back | MouseButton::Forward);
+				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
 				if self.pointer_locked || !(back_or_forward || (tablet && !self.ui_capture)) {
 					return vec![InputAction::Ui(event.clone())];
 				}
@@ -116,7 +116,9 @@ impl InputState {
 					ElementState::Pressed => vec![InputAction::editor(InputMessage::PointerDown { editor_mouse_state, modifier_keys })],
 					ElementState::Released => {
 						let mut actions = vec![InputAction::editor(InputMessage::PointerUp { editor_mouse_state, modifier_keys })];
-						if self.track_multiclick(mouse_button, *position) {
+						if let Some(mouse_button) = mouse_button
+							&& self.track_multiclick(mouse_button, *position)
+						{
 							actions.push(InputAction::editor(InputMessage::DoubleClick {
 								editor_mouse_state: PointerState {
 									mouse_keys: keys,
