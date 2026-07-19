@@ -4,7 +4,7 @@ use crate::editor_wrapper::EditorWrapper;
 use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER};
 #[cfg(not(feature = "native"))]
 use editor::application::Editor;
-use editor::messages::input_mapper::utility_types::input_keyboard::Key;
+use editor::messages::input_mapper::utility_types::keyboard::Key;
 use editor::messages::prelude::*;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
