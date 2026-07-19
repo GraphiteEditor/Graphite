@@ -2003,7 +2003,6 @@ enum GradientDragHintState {
 #[cfg(test)]
 mod test_gradient {
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
-	use crate::messages::input_mapper::utility_types::pointer::ScrollDelta;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
@@ -2397,7 +2396,7 @@ mod test_gradient {
 				EditorPointerState {
 					editor_position: end_pos,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2451,7 +2450,7 @@ mod test_gradient {
 				EditorPointerState {
 					editor_position: click_position,
 					mouse_keys: MouseKeys::LEFT,
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2465,7 +2464,7 @@ mod test_gradient {
 				EditorPointerState {
 					editor_position: drag_position,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2530,7 +2529,7 @@ mod test_gradient {
 				EditorPointerState {
 					editor_position: position2,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2695,7 +2694,7 @@ mod test_gradient {
 				EditorPointerState {
 					editor_position: new_viewport_end,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -2772,7 +2771,7 @@ mod test_gradient {
 				EditorPointerState {
 					editor_position: new_viewport_end,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)

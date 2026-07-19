@@ -186,7 +186,7 @@ impl InputPreprocessorMessageHandler {
 #[cfg(test)]
 mod test {
 	use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
-	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ScrollDelta};
+	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::prelude::*;
 
 	#[test]
@@ -195,8 +195,7 @@ mod test {
 
 		let editor_mouse_state = EditorPointerState {
 			editor_position: (4., 809.).into(),
-			mouse_keys: MouseKeys::default(),
-			scroll_delta: ScrollDelta::default(),
+			..Default::default()
 		};
 		let modifier_keys = ModifierKeys::ALT;
 		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };

@@ -420,7 +420,7 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 
 #[cfg(test)]
 mod test_freehand {
-	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ScrollDelta};
+	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 	use crate::messages::tool::common_functionality::stroke_options::StrokeOptionsUpdate;
@@ -531,7 +531,7 @@ mod test_freehand {
 				EditorPointerState {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -590,7 +590,7 @@ mod test_freehand {
 				EditorPointerState {
 					editor_position: last_extension_point,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -644,7 +644,7 @@ mod test_freehand {
 				EditorPointerState {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
@@ -679,7 +679,7 @@ mod test_freehand {
 				EditorPointerState {
 					editor_position: first_second_point,
 					mouse_keys: MouseKeys::LEFT,
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::SHIFT,
 			)
@@ -695,7 +695,7 @@ mod test_freehand {
 				EditorPointerState {
 					editor_position: last_second_point,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::SHIFT,
 			)
@@ -768,7 +768,7 @@ mod test_freehand {
 				EditorPointerState {
 					editor_position: last_point,
 					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
+					..Default::default()
 				},
 				ModifierKeys::empty(),
 			)
