@@ -30,6 +30,8 @@ petgraph = { workspace = true }
 rustc-hash = { workspace = true }
 polycool = { workspace = true }
 tinyvec = { workspace = true }
+vtracer = { workspace = true }
+visioncortex = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

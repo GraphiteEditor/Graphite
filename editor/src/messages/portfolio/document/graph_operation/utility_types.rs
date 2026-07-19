@@ -1,4 +1,5 @@
 use super::transform_utils;
+use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
@@ -13,6 +14,7 @@ use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
+use graphene_std::renderer::usvg_utils::{ParsedSvgNode, ParsedSvgPath, extract_usvg_node};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
@@ -871,5 +873,233 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
+	}
+}
+
+/// Import a usvg node as the root of an SVG import operation.
+///
+/// Phase 1: Parse the usvg tree into a `ParsedSvgNode` tree (pure data, no graphite dependencies).
+/// Phase 2: Walk the parsed tree and build graphite layers.
+///
+/// The root layer uses the full `move_layer_to_stack` (with push/collision logic) to correctly
+/// interact with any existing layers in the parent stack. All descendant layers use a lightweight
+/// O(n) import path that skips collision detection and instead calculates positions directly from
+/// the known tree structure.
+pub fn import_usvg_node(
+	modify_inputs: &mut ModifyInputsContext,
+	node: &usvg::Node,
+	id: NodeId,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+) {
+	// Phase 1: parse usvg tree into intermediate representation (pure, no ModifyInputsContext)
+	let parsed = extract_usvg_node(node, graphite_gradient_stops);
+
+	// Phase 2: build graphite layers from parsed tree
+	import_parsed_svg_root(modify_inputs, parsed, id, parent, insert_index);
+}
+
+/// Handle a leaf parsed SVG node (Path, Image, Text). Returns 0 (no subtree extent).
+fn import_parsed_svg_leaf(modify_inputs: &mut ModifyInputsContext, node: ParsedSvgNode, layer: LayerNodeIdentifier) -> u32 {
+	match node {
+		ParsedSvgNode::Path(path) => {
+			import_parsed_svg_path(modify_inputs, *path, layer);
+			0
+		}
+		ParsedSvgNode::Image { .. } => {
+			warn!("Skip SVG image node");
+			0
+		}
+		ParsedSvgNode::Text(text) => {
+			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
+			modify_inputs.insert_text(text.text, font, TypesettingConfig::default(), layer);
+			modify_inputs.fill_color_set(Some(Color::BLACK));
+			0
+		}
+		ParsedSvgNode::Group(_) => unreachable!("import_parsed_svg_leaf called on Group"),
+	}
+}
+
+/// Phase 2 root handler: build graphite layers for a parsed SVG root node.
+fn import_parsed_svg_root(modify_inputs: &mut ModifyInputsContext, node: ParsedSvgNode, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize) {
+	let layer = modify_inputs.create_layer(id);
+
+	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+	modify_inputs.layer_node = Some(layer);
+	if let Some(upstream_layer) = layer.next_sibling(modify_inputs.network_interface.document_metadata()) {
+		modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, STACK_VERTICAL_GAP), &[]);
+	}
+
+	match node {
+		ParsedSvgNode::Group(group) => {
+			// Collect child extents for O(n) position calculation
+			let mut child_extents_svg_order: Vec<u32> = Vec::new();
+			let mut group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>> = HashMap::new();
+
+			// Enable import mode: skips expensive is_acyclic checks and per-node cache invalidation
+			// during wiring since we're building a known tree structure where cycles are impossible
+			modify_inputs.import = true;
+
+			for child in group.children {
+				let extent = import_parsed_svg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, &mut group_extents_map);
+				child_extents_svg_order.push(extent);
+			}
+
+			modify_inputs.import = false;
+			modify_inputs.layer_node = Some(layer);
+
+			// Rebuild the layer tree once now that all wiring is complete
+			modify_inputs.network_interface.load_structure();
+
+			// Set positions for all imported descendants in a single O(n) pass
+			let parent_pos = modify_inputs.network_interface.position(&layer.to_node(), &[]).unwrap_or(IVec2::ZERO);
+			set_import_child_positions(modify_inputs.network_interface, layer, parent_pos, &child_extents_svg_order, &group_extents_map);
+
+			// Invalidate caches once after all positions are set
+			modify_inputs.network_interface.unload_all_nodes_click_targets(&[]);
+			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
+		}
+		_ => {
+			import_parsed_svg_leaf(modify_inputs, node, layer);
+		}
+	}
+}
+
+/// Recursively build graphite layers for a parsed SVG node as a descendant of the root import layer.
+/// Uses lightweight wiring (no push/collision) and returns the subtree extent for position calculation.
+///
+/// The subtree extent represents the additional vertical grid units that this node's descendants
+/// occupy below the node's position. This is used to calculate correct y_offsets between siblings.
+fn import_parsed_svg_node_inner(
+	modify_inputs: &mut ModifyInputsContext,
+	node: ParsedSvgNode,
+	id: NodeId,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+) -> u32 {
+	let layer = modify_inputs.create_layer(id);
+	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
+	modify_inputs.layer_node = Some(layer);
+
+	match node {
+		ParsedSvgNode::Group(group) => {
+			let mut child_extents: Vec<u32> = Vec::new();
+			for child in group.children {
+				let extent = import_parsed_svg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, group_extents_map);
+				child_extents.push(extent);
+			}
+			modify_inputs.layer_node = Some(layer);
+
+			let n = child_extents.len();
+			let total_extent = if n == 0 {
+				0
+			} else {
+				(2 * STACK_VERTICAL_GAP as u32) * n as u32 - STACK_VERTICAL_GAP as u32 + child_extents.iter().sum::<u32>()
+			};
+			group_extents_map.insert(layer, child_extents);
+			total_extent
+		}
+		_ => import_parsed_svg_leaf(modify_inputs, node, layer),
+	}
+}
+
+/// Apply a parsed SVG path to a graphite layer: insert vector geometry, transform, fill, stroke.
+fn import_parsed_svg_path(modify_inputs: &mut ModifyInputsContext, path: ParsedSvgPath, layer: LayerNodeIdentifier) {
+	let has_transform = path.transform != DAffine2::IDENTITY;
+	modify_inputs.insert_vector(path.subpaths, layer, has_transform, path.fill_paint.is_some(), path.stroke.is_some());
+
+	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
+		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, path.transform);
+	}
+
+	if let Some(fill_paint) = path.fill_paint {
+		let fill_paint = fill_paint.element(0).expect("failed to access the first Graphic in List<Graphic>");
+		match fill_paint {
+			Graphic::Color(color) => {
+				let color = color.clone_item(0).expect("failed to access the first color in List<Color>");
+				modify_inputs.fill_color_set(Some(*color.element()));
+			}
+			Graphic::Gradient(gradient) => {
+				let gradient = gradient.clone_item(0).expect("failed to access the first gradient in List<GradientStops>");
+				let gradient_type: &GradientType = gradient.attribute(graphene_std::ATTR_GRADIENT_TYPE).expect("failed to access GradientType of the first gradient");
+				let spread_method: &GradientSpreadMethod = gradient
+					.attribute(graphene_std::ATTR_SPREAD_METHOD)
+					.expect("failed to access GradientSpreadMethod of the first gradient");
+				let transform: &DAffine2 = gradient.attribute(graphene_std::ATTR_TRANSFORM).expect("failed to access DAffine2 of the first gradient");
+				modify_inputs.fill_gradient_set(gradient.element().clone(), *gradient_type, *spread_method, *transform);
+			}
+			_ => {}
+		}
+	}
+	if let Some(stroke) = path.stroke {
+		let stroke_paint = path.stroke_paint.unwrap();
+		let stroke_paint = stroke_paint.element(0).unwrap();
+		match stroke_paint {
+			Graphic::Color(color) => {
+				let color = color.element(0).unwrap();
+				modify_inputs.stroke_set(Some(*color), stroke);
+			}
+			_ => {}
+		}
+	}
+}
+
+/// Set correct positions for all imported layers in a single top-down O(n) pass.
+///
+/// For each group's child stack:
+/// - The top-of-stack child (last SVG child) gets an `Absolute` position at `(parent_x - LAYER_INDENT_OFFSET, parent_y + STACK_VERTICAL_GAP)`
+/// - All other children get `Stack(y_offset)` where `y_offset` accounts for the subtree extent of the sibling above them in the stack, ensuring no overlap.
+pub fn set_import_child_positions(
+	network_interface: &mut NodeNetworkInterface,
+	group: LayerNodeIdentifier,
+	group_pos: IVec2,
+	child_extents_svg_order: &[u32],
+	group_extents_map: &HashMap<LayerNodeIdentifier, Vec<u32>>,
+) {
+	use crate::messages::portfolio::document::utility_types::network_interface::LayerPosition;
+
+	let layer_children: Vec<_> = group.children(network_interface.document_metadata()).collect();
+	let n = child_extents_svg_order.len();
+
+	if n == 0 || layer_children.is_empty() {
+		return;
+	}
+
+	// Children in the layer tree are in stack order (top to bottom), which is the REVERSE of SVG order.
+	// SVG order:   [s_0,     s_1,     ..., s_{n-1}] with extents [e_0, e_1, ..., e_{n-1}]
+	// Stack order: [s_{n-1}, s_{n-2}, ..., s_0    ] (top to bottom)
+	//
+	// For stack child at index i:
+	//   - SVG index = n - 1 - i
+	//   - Previous stack sibling's SVG index = n - i
+	//   - y_offset = extent_of_previous_sibling + STACK_VERTICAL_GAP
+
+	let child_x = group_pos.x - LAYER_INDENT_OFFSET;
+	let mut current_y = group_pos.y + STACK_VERTICAL_GAP;
+
+	for (i, child_layer) in layer_children.iter().enumerate() {
+		let child_pos = IVec2::new(child_x, current_y);
+
+		if i == 0 {
+			// Top of stack: set to `Absolute` position
+			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Absolute(child_pos), &[]);
+		} else {
+			// Below top: set `Stack` with `y_offset` based on previous sibling's subtree extent
+			let prev_sibling_svg_index = n - i;
+			let y_offset = child_extents_svg_order[prev_sibling_svg_index] + STACK_VERTICAL_GAP as u32;
+			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Stack(y_offset), &[]);
+		}
+
+		// Recurse into group children to set their descendants' positions
+		if let Some(grandchild_extents) = group_extents_map.get(child_layer) {
+			set_import_child_positions(network_interface, *child_layer, child_pos, grandchild_extents, group_extents_map);
+		}
+
+		// Advance `current_y` for the next child: node height (STACK_VERTICAL_GAP) + gap (STACK_VERTICAL_GAP) + subtree extent
+		let child_svg_index = n - 1 - i;
+		let child_extent = child_extents_svg_order[child_svg_index];
+		current_y += 2 * STACK_VERTICAL_GAP + child_extent as i32;
 	}
 }

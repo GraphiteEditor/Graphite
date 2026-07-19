@@ -19,6 +19,7 @@ vector-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
 repeat-nodes = { workspace = true }
+rendering = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }
@@ -29,6 +30,9 @@ rand = { workspace = true }
 rustc-hash = { workspace = true }
 log = { workspace = true }
 qrcodegen = { workspace = true }
+usvg = {workspace = true }
+vtracer = { workspace = true }
+visioncortex = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

@@ -38,7 +38,12 @@ use graphene_std::vector::misc::{
 use graphene_std::vector::style::{
 	DashPattern, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
+use graphene_std::vector::vectorize::{
+	ColorModeInput, ColorPrecisionInput, CornerThresholdInput, FilterSpeckleInput, HierarchicalInput, LayerDifferenceInput, LengthThresholdInput, MaxIterationsInput, PathPrecisionInput,
+	PathSimplifyModeInput, SpliceThresholdInput, VectorizeModeInput,
+};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
+use graphene_std::vector_types::vectorize_config;
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -2893,6 +2898,48 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		LayoutGroup::row(expression).with_tooltip_description(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"."#),
 		LayoutGroup::row(operand_b).with_tooltip_description(r#"The value of "B" when calculating the expression."#),
 		LayoutGroup::row(operand_a_hint).with_tooltip_description(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected."#),
+	]
+}
+
+pub fn vectorize_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let vector_mode = enum_choice::<vectorize_config::VectorizeMode>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, VectorizeModeInput::INDEX, true, context))
+		.property_row();
+	let color_mode = enum_choice::<vectorize_config::ColorMode>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ColorModeInput::INDEX, true, context))
+		.property_row();
+	let hierarchical = enum_choice::<vectorize_config::Hierarchical>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, HierarchicalInput::INDEX, true, context))
+		.property_row();
+	let filter_speckle = number_widget(ParameterWidgetsInfo::new(node_id, FilterSpeckleInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	let color_precision = number_widget(
+		ParameterWidgetsInfo::new(node_id, ColorPrecisionInput::INDEX, true, context),
+		NumberInput::default().int().min(0.).max(8.),
+	);
+	let layer_difference = number_widget(ParameterWidgetsInfo::new(node_id, LayerDifferenceInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	let path_simplify_mode = enum_choice::<vectorize_config::PathSimplifyMode>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, PathSimplifyModeInput::INDEX, true, context))
+		.property_row();
+	let corner_threshold = number_widget(ParameterWidgetsInfo::new(node_id, CornerThresholdInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	let length_threshold = number_widget(ParameterWidgetsInfo::new(node_id, LengthThresholdInput::INDEX, true, context), NumberInput::default().min(0.));
+	let max_iterations = number_widget(ParameterWidgetsInfo::new(node_id, MaxIterationsInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	let splice_threshold = number_widget(ParameterWidgetsInfo::new(node_id, SpliceThresholdInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	let path_precision = number_widget(ParameterWidgetsInfo::new(node_id, PathPrecisionInput::INDEX, true, context), NumberInput::default().int().min(0.));
+	// let separate_layers = bool_widget(ParameterWidgetsInfo::new(node_id, SeparateLayersInput::INDEX, true, context), CheckboxInput::default());
+	vec![
+		vector_mode,
+		color_mode,
+		hierarchical,
+		LayoutGroup::row(filter_speckle),
+		LayoutGroup::row(color_precision),
+		LayoutGroup::row(layer_difference),
+		path_simplify_mode,
+		// LayoutGroup::row(separate_layers),
+		LayoutGroup::row(corner_threshold),
+		LayoutGroup::row(length_threshold),
+		LayoutGroup::row(max_iterations),
+		LayoutGroup::row(splice_threshold),
+		LayoutGroup::row(path_precision),
 	]
 }
 

@@ -19,6 +19,8 @@ use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
+use rendering::usvg_utils::{extract_all_paths, extract_usvg_node};
+use repeat_nodes::raster_types::Bitmap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
@@ -34,7 +36,9 @@ use vector_types::vector::misc::{
 use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
+use vector_types::vectorize_config;
 use vector_types::{GradientSpreadMethod, GradientType};
+use vtracer::{ColorImage, Config, convert};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
 /// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
@@ -968,6 +972,97 @@ where
 	}
 
 	result
+}
+
+#[node_macro::node(category("Vector"), path(core_types::vector), properties("vectorize_properties"), memoize)]
+pub fn vectorize(
+	_ctx: impl Ctx,
+	image: List<Raster<CPU>>,
+	vectorize_mode: Item<vectorize_config::VectorizeMode>,
+	color_mode: Item<vectorize_config::ColorMode>,
+	hierarchical: Item<vectorize_config::Hierarchical>,
+	#[default(10.)] filter_speckle: Item<f64>,
+	#[default(8.)] color_precision: Item<f64>,
+	#[default(48.)] layer_difference: Item<f64>,
+	path_simplify_mode: Item<vectorize_config::PathSimplifyMode>,
+	#[default(60.)] corner_threshold: Item<f64>,
+	#[default(4.)] length_threshold: Item<f64>,
+	#[default(10.)] max_iterations: Item<f64>,
+	#[default(45.)] splice_threshold: Item<f64>,
+	#[default(2.)] path_precision: Item<f64>,
+) -> List<Vector> {
+	let (
+		vectorize_mode,
+		color_mode,
+		hierarchical,
+		filter_speckle,
+		color_precision,
+		layer_difference,
+		path_simplify_mode,
+		corner_threshold,
+		length_threshold,
+		max_iterations,
+		splice_threshold,
+		path_precision,
+	) = (
+		vectorize_mode.into_element(),
+		color_mode.into_element(),
+		hierarchical.into_element(),
+		filter_speckle.into_element(),
+		color_precision.into_element(),
+		layer_difference.into_element(),
+		path_simplify_mode.into_element(),
+		corner_threshold.into_element(),
+		length_threshold.into_element(),
+		max_iterations.into_element(),
+		splice_threshold.into_element(),
+		path_precision.into_element(),
+	);
+
+	image.into_iter().fold(List::new(), |mut vectors, row| {
+		let image_data = row.element();
+		let color_image = ColorImage {
+			width: image_data.width() as usize,
+			height: image_data.height() as usize,
+			pixels: image_data.to_flat_u8().0,
+		};
+		let config: Config = Config {
+			color_mode: color_mode.to_vtracer(),
+			hierarchical: hierarchical.to_vtracer(),
+			filter_speckle: filter_speckle as usize,
+			color_precision: color_precision as i32,
+			layer_difference: layer_difference as i32,
+			mode: path_simplify_mode.to_vtracer(),
+			corner_threshold: corner_threshold as i32,
+			length_threshold,
+			max_iterations: max_iterations as usize,
+			splice_threshold: splice_threshold as i32,
+			path_precision: Some(path_precision as u32),
+		};
+		let vectorized_image = match convert(color_image, config) {
+			Ok(image) => image,
+			Err(e) => {
+				log::error!("Vectorization failed for image:\n{e}");
+				return vectors;
+			}
+		};
+		let image_svg = vectorized_image.to_string();
+		let svg_tree = match usvg::Tree::from_str(&image_svg, &usvg::Options::default()) {
+			Ok(t) => t,
+			Err(e) => {
+				log::error!("Failed to create a usvg tree:\n{e}");
+				return vectors;
+			}
+		};
+		// log::debug!("vectorized_image: {}", image_svg);
+
+		let graphite_gradient_stops = HashMap::new();
+		let parsed_root = extract_usvg_node(&usvg::Node::Group(Box::new(svg_tree.root().clone())), &graphite_gradient_stops);
+		// let mut i = 1;
+		extract_all_paths(parsed_root, &mut vectors, vectorize_mode);
+
+		vectors
+	})
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.

@@ -533,6 +533,10 @@ tagged_value! {
 	// Legacy
 	#[serde(alias = "Fill")]
 	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
+	ColorMode(vector_types::vectorize_config::ColorMode),
+	Hierarchical(vector_types::vectorize_config::Hierarchical),
+	PathSimplifyMode(vector_types::vectorize_config::PathSimplifyMode),
+	VectorizeMode(vector_types::vectorize_config::VectorizeMode)
 }
 
 impl TaggedValue {
