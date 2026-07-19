@@ -10,10 +10,7 @@ use graph_craft::descriptor;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Artboard;
 use graphene_std::list::List;
-use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
-use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{Artboard, Color};
+use graphene_std::renderer::usvg_utils::extract_graphite_gradient_stops;
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {

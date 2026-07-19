@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 
 use core_types::{
-	Color,
-	list::{Item, List},
-	math::quad::Quad,
+	ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, Color,
+	list::{ATTR_FILL, ATTR_STROKE, ATTR_TRANSFORM, Item, List},
 };
 use glam::{DAffine2, DVec2};
+use graphic_types::graphic::set_paint_attribute_at;
+use graphic_types::{Graphic, IntoGraphicList};
 use log::warn;
 use vector_types::{
 	Vector,
 	subpath::{ManipulatorGroup, Subpath},
 	vector::{
-		PathStyle, PointId,
-		style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
+		PointId,
+		style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
 	},
 	vectorize_config,
 };
@@ -168,8 +169,9 @@ pub struct ParsedSvgGroup {
 
 pub struct ParsedSvgPath {
 	pub subpaths: Vec<Subpath<PointId>>,
-	pub fill: Option<Fill>,
+	pub fill_paint: Option<List<Graphic>>,
 	pub stroke: Option<Stroke>,
+	pub stroke_paint: Option<List<Graphic>>,
 	pub transform: DAffine2,
 }
 
@@ -178,18 +180,23 @@ pub struct ParsedSvgText {
 	pub transform: DAffine2,
 }
 
-pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) -> Option<Fill> {
+/// Extract fill paint from a usvg fill. Only solid colors are supported for now.
+pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<String, GradientStops>) -> Option<List<Graphic>> {
 	match &fill.paint() {
-		usvg::Paint::Color(color) => Some(Fill::solid(usvg_color(*color, fill.opacity().get()))),
+		usvg::Paint::Color(color) => {
+			let color = usvg_color(*color, fill.opacity().get());
+			Some(List::new_from_element(color).into_graphic_list())
+		}
 		usvg::Paint::LinearGradient(linear) => {
 			let gradient_transform = usvg_transform(linear.transform());
 			let (start, end) = (DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64));
 			let (start, end) = (gradient_transform.transform_point2(start), gradient_transform.transform_point2(end));
-			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
+			let direction = end - start;
+			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
 			let gradient_type = GradientType::Linear;
 
-			let stops = match graphite_gradient_stops.get(linear.id()) {
+			let gradient_stops = match graphite_gradient_stops.get(linear.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = linear.stops().iter().map(|stop| GradientStop {
@@ -202,27 +209,23 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite
 			};
 			let spread_method = convert_spread_method(linear.spread_method());
 
-			Some(Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type,
-				stops,
-				spread_method,
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			}))
+			let gradient = Item::new_from_element(gradient_stops)
+				.with_attribute(ATTR_GRADIENT_TYPE, gradient_type)
+				.with_attribute(ATTR_SPREAD_METHOD, spread_method)
+				.with_attribute(ATTR_TRANSFORM, transform);
+			Some(List::new_from_item(gradient).into_graphic_list())
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
 			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
 			let edge = center + DVec2::X * radial.r().get() as f64;
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
-			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
+			let direction = end - start;
+			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
 			let gradient_type = GradientType::Radial;
 
-			let stops = match graphite_gradient_stops.get(radial.id()) {
+			let gradient_stops = match graphite_gradient_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
 				None => {
 					let stops = radial.stops().iter().map(|stop| GradientStop {
@@ -235,16 +238,11 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite
 			};
 			let spread_method = convert_spread_method(radial.spread_method());
 
-			Some(Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type,
-				stops,
-				spread_method,
-				// TODO: Eventually remove this document upgrade code
-				absolute: true,
-				transform: DAffine2::IDENTITY,
-			}))
+			let gradient = Item::new_from_element(gradient_stops)
+				.with_attribute(ATTR_GRADIENT_TYPE, gradient_type)
+				.with_attribute(ATTR_SPREAD_METHOD, spread_method)
+				.with_attribute(ATTR_TRANSFORM, transform);
+			Some(List::new_from_item(gradient).into_graphic_list())
 		}
 		usvg::Paint::Pattern(_) => {
 			warn!("SVG patterns are not currently supported");
@@ -253,45 +251,54 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, bounds_transform: DAffine2, graphite
 	}
 }
 
-pub fn extract_usvg_stroke(stroke: &usvg::Stroke, transform: DAffine2) -> Option<Stroke> {
-	if let usvg::Paint::Color(color) = &stroke.paint() {
-		Some(Stroke {
-			color: Some(usvg_color(*color, stroke.opacity().get())),
-			weight: stroke.width().get() as f64,
-			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
-			dash_offset: stroke.dashoffset() as f64,
-			cap: match stroke.linecap() {
-				usvg::LineCap::Butt => StrokeCap::Butt,
-				usvg::LineCap::Round => StrokeCap::Round,
-				usvg::LineCap::Square => StrokeCap::Square,
-			},
-			join: match stroke.linejoin() {
-				usvg::LineJoin::Miter => StrokeJoin::Miter,
-				usvg::LineJoin::MiterClip => StrokeJoin::Miter,
-				usvg::LineJoin::Round => StrokeJoin::Round,
-				usvg::LineJoin::Bevel => StrokeJoin::Bevel,
-			},
-			join_miter_limit: stroke.miterlimit().get() as f64,
-			align: StrokeAlign::Center,
-			paint_order: PaintOrder::StrokeAbove,
-			transform,
-		})
-	} else {
-		None
+/// Extract stroke and stroke paint from a usvg stroke.
+/// Returns (stroke, stroke_paint).
+pub fn extract_usvg_stroke(stroke: &usvg::Stroke, transform: DAffine2) -> (Option<Stroke>, Option<List<Graphic>>) {
+	let graphite_color = match &stroke.paint() {
+		usvg::Paint::Color(color) => Some(usvg_color(*color, stroke.opacity().get())),
+		_ => None,
+	};
+
+	let weight = stroke.width().get() as f64;
+	if weight <= 0. {
+		return (None, None);
 	}
+
+	let stroke = Stroke {
+		weight,
+		dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
+		dash_offset: stroke.dashoffset() as f64,
+		cap: match stroke.linecap() {
+			usvg::LineCap::Butt => StrokeCap::Butt,
+			usvg::LineCap::Round => StrokeCap::Round,
+			usvg::LineCap::Square => StrokeCap::Square,
+		},
+		join: match stroke.linejoin() {
+			usvg::LineJoin::Miter | usvg::LineJoin::MiterClip => StrokeJoin::Miter,
+			usvg::LineJoin::Round => StrokeJoin::Round,
+			usvg::LineJoin::Bevel => StrokeJoin::Bevel,
+		},
+		join_miter_limit: stroke.miterlimit().get() as f64,
+		align: StrokeAlign::Center,
+		paint_order: PaintOrder::StrokeAbove,
+		transform,
+	};
+
+	let paint = graphite_color.map(|c| List::new_from_element(c).into_graphic_list());
+	(Some(stroke), paint)
 }
 
 pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient_stops: &HashMap<String, GradientStops>) -> ParsedSvgPath {
 	let subpaths = convert_usvg_path(path);
-
 	let transform = usvg_transform(node.abs_transform());
-	let bounds = subpaths.iter().filter_map(|s| s.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
-	let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+	let (stroke, stroke_paint) = path.stroke().map(|s| extract_usvg_stroke(s, transform)).unwrap_or((None, None));
 
 	ParsedSvgPath {
 		subpaths,
-		fill: path.fill().and_then(|fill| extract_usvg_fill(fill, bounds_transform, graphite_gradient_stops)),
-		stroke: path.stroke().and_then(|stroke| extract_usvg_stroke(stroke, transform)),
+		fill_paint: path.fill().and_then(|fill| extract_usvg_fill(fill, graphite_gradient_stops)),
+		stroke,
+		stroke_paint,
 		transform,
 	}
 }
@@ -307,7 +314,6 @@ pub fn extract_usvg_node(node: &usvg::Node, graphite_gradient_stops: &HashMap<St
 			ParsedSvgNode::Group(group)
 		}
 		usvg::Node::Path(path) => ParsedSvgNode::Path(Box::new(extract_usvg_path(node, path, graphite_gradient_stops))),
-		// No support for SVG image node
 		usvg::Node::Image(_) => ParsedSvgNode::Image { msg: String::from("Not supported") },
 		usvg::Node::Text(text) => {
 			let text = ParsedSvgText {
@@ -339,14 +345,21 @@ pub fn extract_all_paths(
 			let mut child_subpaths = path.subpaths.clone();
 			child_subpaths.iter_mut().for_each(|s| s.apply_transform(path.transform));
 			let mut vector = Vector::from_subpaths(child_subpaths, false);
+
 			if let vectorize_config::VectorizeMode::FullImage = vectorize_mode {
-				vector.style = PathStyle {
-					fill: path.fill.unwrap_or(Fill::None),
-					stroke: path.stroke,
-				};
+				vector.stroke = path.stroke;
 			}
 
+			let index = vectors.len();
 			vectors.push(Item::new_from_element(vector));
+			if let vectorize_config::VectorizeMode::FullImage = vectorize_mode {
+				if let Some(fill_paint) = path.fill_paint {
+					set_paint_attribute_at(vectors, index, ATTR_FILL, fill_paint);
+				}
+				if let Some(stroke_paint) = path.stroke_paint {
+					set_paint_attribute_at(vectors, index, ATTR_STROKE, stroke_paint);
+				}
+			}
 			// log::debug!("Reading path {} from a total of {}.", i, svg_tree.root().children().len());
 			// i += 1;
 		}

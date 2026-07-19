@@ -905,7 +905,7 @@ fn import_parsed_svg_leaf(modify_inputs: &mut ModifyInputsContext, node: ParsedS
 		ParsedSvgNode::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.text, font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			modify_inputs.fill_color_set(Some(Color::BLACK));
 			0
 		}
 		ParsedSvgNode::Group(_) => unreachable!("import_parsed_svg_leaf called on Group"),
@@ -999,17 +999,41 @@ fn import_parsed_svg_node_inner(
 /// Apply a parsed SVG path to a graphite layer: insert vector geometry, transform, fill, stroke.
 fn import_parsed_svg_path(modify_inputs: &mut ModifyInputsContext, path: ParsedSvgPath, layer: LayerNodeIdentifier) {
 	let has_transform = path.transform != DAffine2::IDENTITY;
-	modify_inputs.insert_vector(path.subpaths, layer, has_transform, path.fill.is_some(), path.stroke.is_some());
+	modify_inputs.insert_vector(path.subpaths, layer, has_transform, path.fill_paint.is_some(), path.stroke.is_some());
 
 	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
 		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, path.transform);
 	}
 
-	if let Some(fill) = path.fill {
-		modify_inputs.fill_set(fill);
+	if let Some(fill_paint) = path.fill_paint {
+		let fill_paint = fill_paint.element(0).expect("failed to access the first Graphic in List<Graphic>");
+		match fill_paint {
+			Graphic::Color(color) => {
+				let color = color.clone_item(0).expect("failed to access the first color in List<Color>");
+				modify_inputs.fill_color_set(Some(*color.element()));
+			}
+			Graphic::Gradient(gradient) => {
+				let gradient = gradient.clone_item(0).expect("failed to access the first gradient in List<GradientStops>");
+				let gradient_type: &GradientType = gradient.attribute(graphene_std::ATTR_GRADIENT_TYPE).expect("failed to access GradientType of the first gradient");
+				let spread_method: &GradientSpreadMethod = gradient
+					.attribute(graphene_std::ATTR_SPREAD_METHOD)
+					.expect("failed to access GradientSpreadMethod of the first gradient");
+				let transform: &DAffine2 = gradient.attribute(graphene_std::ATTR_TRANSFORM).expect("failed to access DAffine2 of the first gradient");
+				modify_inputs.fill_gradient_set(gradient.element().clone(), *gradient_type, *spread_method, *transform);
+			}
+			_ => {}
+		}
 	}
 	if let Some(stroke) = path.stroke {
-		modify_inputs.stroke_set(stroke);
+		let stroke_paint = path.stroke_paint.unwrap();
+		let stroke_paint = stroke_paint.element(0).unwrap();
+		match stroke_paint {
+			Graphic::Color(color) => {
+				let color = color.element(0).unwrap();
+				modify_inputs.stroke_set(Some(*color), stroke);
+			}
+			_ => {}
+		}
 	}
 }
 
@@ -1068,42 +1092,5 @@ pub fn set_import_child_positions(
 		let child_svg_index = n - 1 - i;
 		let child_extent = child_extents_svg_order[child_svg_index];
 		current_y += 2 * STACK_VERTICAL_GAP + child_extent as i32;
-	}
-}
-
-/// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
-/// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
-/// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
-/// Falls back to a +90° rotation of `new_x` when `old_x` is degenerate.
-fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec2 {
-	let old_x_length = old_x.length();
-	if old_x_length < 1e-9 {
-		return DVec2::new(-new_x.y, new_x.x);
-	}
-	let ex_old = old_x / old_x_length;
-	let ey_old = DVec2::new(-ex_old.y, ex_old.x);
-
-	let new_x_length = new_x.length();
-	if new_x_length < 1e-9 {
-		return DVec2::ZERO;
-	}
-	let ex_new = new_x / new_x_length;
-	let ey_new = DVec2::new(-ex_new.y, ex_new.x);
-
-	let parallel = old_y.dot(ex_old);
-	let perpendicular = old_y.dot(ey_old);
-	let scale = new_x_length / old_x_length;
-
-	scale * (parallel * ex_new + perpendicular * ey_new)
-}
-
-/// Build a new affine that maps canonical (0,0) -> (1,0) to (new_start, new_end), preserving the y-axis
-/// shape of `old` proportionally to the x-axis length change.
-fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end: DVec2) -> DAffine2 {
-	let new_x_axis = new_end - new_start;
-	let preserved_y_axis = scale_y_axis_to_match_new_x(old.matrix2.x_axis, old.matrix2.y_axis, new_x_axis);
-	DAffine2 {
-		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
-		translation: new_start,
 	}
 }

@@ -638,7 +638,7 @@ dependencies = [
  "anyhow",
  "cargo_metadata 0.23.1",
  "cef-dll-sys",
- "clap",
+ "clap 4.5.46",
  "libloading 0.9.0",
  "objc2 0.6.3",
  "plist",
@@ -1955,6 +1955,16 @@ dependencies = [
 
 [[package]]
 name = "gif"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3edd93c6756b4dfaf2709eafcc345ba2636565295c198a9cfbf75fa5e3e00b06"
+dependencies = [
+ "color_quant",
+ "weezl",
+]
+
+[[package]]
+name = "gif"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ae047235e33e2829703574b54fdec96bfbad892062d97fed2f76022287de61b"
@@ -2281,7 +2291,7 @@ name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "clap",
+ "clap 4.5.46",
  "ctrlc",
  "derivative",
  "dirs",
