@@ -49,7 +49,7 @@ impl ContextBuilder {
 		let mut adapters = enumerate_sorted(&instance, self.backends).await;
 
 		if let Some(index) = self.selection
-			&& index >= adapters.len()
+			&& index < adapters.len()
 		{
 			let selected_adapter = adapters.remove(index);
 			adapters.insert(0, selected_adapter);
