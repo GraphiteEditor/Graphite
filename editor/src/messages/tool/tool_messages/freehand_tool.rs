@@ -420,7 +420,7 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 
 #[cfg(test)]
 mod test_freehand {
-	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ScrollDelta};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 	use crate::messages::tool::common_functionality::stroke_options::StrokeOptionsUpdate;
@@ -528,7 +528,7 @@ mod test_freehand {
 		let last_initial_point = initial_points[initial_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
@@ -587,7 +587,7 @@ mod test_freehand {
 		let last_extension_point = extension_points[extension_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_extension_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
@@ -641,7 +641,7 @@ mod test_freehand {
 		let last_initial_point = initial_points[initial_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
@@ -676,7 +676,7 @@ mod test_freehand {
 
 		editor
 			.mousedown(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: first_second_point,
 					mouse_keys: MouseKeys::LEFT,
 					scroll_delta: ScrollDelta::default(),
@@ -692,7 +692,7 @@ mod test_freehand {
 		let last_second_point = second_path_points[second_path_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_second_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
@@ -765,7 +765,7 @@ mod test_freehand {
 		let last_point = points[points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),

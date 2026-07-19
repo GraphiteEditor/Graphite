@@ -21,7 +21,7 @@ use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::ui::{UiCommand, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, PointerState, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -624,7 +624,7 @@ impl ApplicationHandler for App {
 				};
 				if let Some(mouse_keys) = mouse_keys {
 					let message = DesktopWrapperMessage::Input(InputMessage::PointerDown {
-						editor_mouse_state: MouseState { mouse_keys, ..Default::default() },
+						editor_mouse_state: PointerState { mouse_keys, ..Default::default() },
 						modifier_keys: Default::default(),
 					});
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
