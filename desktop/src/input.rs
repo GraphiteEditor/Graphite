@@ -7,6 +7,7 @@ use crate::ui::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED,
 use crate::wrapper::messages::{DesktopWrapperMessage, InputMessage, ModifierKeys, MouseKeys, PointerState, ScrollDelta};
 
 pub(crate) struct InputState {
+	start: Instant,
 	viewport_info: Option<ViewportInfo>,
 	pointer_locked: bool,
 	modifier_keys: ModifierKeys,
@@ -30,6 +31,7 @@ impl InputAction {
 impl InputState {
 	pub(crate) fn new() -> Self {
 		Self {
+			start: Instant::now(),
 			viewport_info: None,
 			pointer_locked: false,
 			modifier_keys: ModifierKeys::empty(),
@@ -192,6 +194,7 @@ impl InputState {
 		PointerState {
 			editor_position: (self.pointer_position.x / self.scale(), self.pointer_position.y / self.scale()).into(),
 			mouse_keys: self.pointer_keys,
+			time: Some(self.start.elapsed().as_secs_f64() * 1000.),
 			..Default::default()
 		}
 	}

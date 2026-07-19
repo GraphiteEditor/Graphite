@@ -56,6 +56,8 @@ pub struct PointerState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	/// Event time in milliseconds from an arbitrary monotonic origin.
+	pub time: Option<f64>,
 	/// Force against the surface, 0 through 1.
 	pub pressure: Option<f64>,
 	/// Angle from the surface normal, in degrees per axis.
@@ -81,6 +83,8 @@ pub struct EditorPointerState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	/// Event time in milliseconds from an arbitrary monotonic origin.
+	pub time: Option<f64>,
 	/// Force against the surface, 0 through 1.
 	pub pressure: Option<f64>,
 	/// Angle from the surface normal, in degrees per axis.
@@ -109,6 +113,7 @@ impl EditorPointerState {
 			position: (viewport.logical(self.editor_position) - viewport.offset()).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
+			time: self.time,
 			pressure: self.pressure,
 			tilt: self.tilt,
 			twist: self.twist,
