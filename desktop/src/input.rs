@@ -1,8 +1,9 @@
+use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, TabletToolData, TabletToolKind, WindowEvent};
 use winit::keyboard::ModifiersState;
 
-use crate::ui::{PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
+use crate::ui::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 use crate::wrapper::messages::{DesktopWrapperMessage, InputMessage, ModifierKeys, MouseKeys, PointerState, ScrollDelta};
 
 pub(crate) struct InputState {
@@ -12,6 +13,7 @@ pub(crate) struct InputState {
 	pointer_position: PhysicalPosition<f64>,
 	pointer_keys: MouseKeys,
 	ui_capture: bool,
+	multiclick: Option<Multiclick>,
 }
 
 pub(crate) enum InputAction {
@@ -34,6 +36,7 @@ impl InputState {
 			pointer_position: PhysicalPosition::default(),
 			pointer_keys: MouseKeys::empty(),
 			ui_capture: true,
+			multiclick: None,
 		}
 	}
 
@@ -109,10 +112,22 @@ impl InputState {
 					_ => self.pointer_state(),
 				};
 				let modifier_keys = self.modifier_keys;
-				vec![InputAction::editor(match state {
-					ElementState::Pressed => InputMessage::PointerDown { editor_mouse_state, modifier_keys },
-					ElementState::Released => InputMessage::PointerUp { editor_mouse_state, modifier_keys },
-				})]
+				match state {
+					ElementState::Pressed => vec![InputAction::editor(InputMessage::PointerDown { editor_mouse_state, modifier_keys })],
+					ElementState::Released => {
+						let mut actions = vec![InputAction::editor(InputMessage::PointerUp { editor_mouse_state, modifier_keys })];
+						if self.track_multiclick(mouse_button, *position) {
+							actions.push(InputAction::editor(InputMessage::DoubleClick {
+								editor_mouse_state: PointerState {
+									mouse_keys: keys,
+									..editor_mouse_state
+								},
+								modifier_keys,
+							}));
+						}
+						actions
+					}
+				}
 			}
 			WindowEvent::MouseWheel { delta, .. } => {
 				if self.pointer_locked || !self.in_viewport(self.pointer_position) {
@@ -151,6 +166,18 @@ impl InputState {
 		}
 	}
 
+	fn track_multiclick(&mut self, button: MouseButton, position: PhysicalPosition<f64>) -> bool {
+		let now = Instant::now();
+		let travel = MULTICLICK_ALLOWED_TRAVEL as f64;
+		let double = self.multiclick.take().is_some_and(|click| {
+			click.button == button && now.duration_since(click.time) <= MULTICLICK_TIMEOUT && (position.x - click.position.x).abs() <= travel && (position.y - click.position.y).abs() <= travel
+		});
+		if !double {
+			self.multiclick = Some(Multiclick { button, time: now, position });
+		}
+		double
+	}
+
 	fn scale(&self) -> f64 {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
@@ -177,6 +204,12 @@ impl InputState {
 			..self.pointer_state()
 		}
 	}
+}
+
+struct Multiclick {
+	button: MouseButton,
+	time: Instant,
+	position: PhysicalPosition<f64>,
 }
 
 struct ViewportInfo {

@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+pub const MULTICLICK_TIMEOUT: Duration = Duration::from_millis(500);
+pub const MULTICLICK_ALLOWED_TRAVEL: usize = 4;
+
 pub const SCROLL_LINE_HEIGHT: f64 = 40.;
 pub const SCROLL_LINE_WIDTH: f64 = 40.;
 
@@ -32,6 +35,3 @@ pub(crate) const HOST_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(target_os = "macos")]
 pub(crate) const IPC_BOOTSTRAP_PREFIX: &str = "art.graphite.Graphite.ipc.";
-
-pub(crate) const MULTICLICK_TIMEOUT: Duration = Duration::from_millis(500);
-pub(crate) const MULTICLICK_ALLOWED_TRAVEL: usize = 4;
