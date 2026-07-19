@@ -82,14 +82,15 @@ pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Ve
 		}
 		WindowEvent::PointerButton { state, button, position, .. } => {
 			let mouse_button = match button {
-				ButtonSource::Mouse(mouse_button) => mouse_button,
+				ButtonSource::Mouse(mouse_button) => *mouse_button,
+				ButtonSource::TabletTool { button, .. } => (*button).into(),
 				_ => {
 					return Vec::new(); // TODO: Handle touch input
 				}
 			};
 
 			let _ = input_state.cursor_move(position);
-			let click_count = input_state.mouse_input(mouse_button, state).into();
+			let click_count = input_state.mouse_input(&mouse_button, state).into();
 			let up = matches!(state, ElementState::Released);
 			let button = match mouse_button {
 				MouseButton::Left => MouseButtonKind::Left,
