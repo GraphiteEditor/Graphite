@@ -538,9 +538,10 @@ impl ApplicationHandler for App {
 		if let Some(pointer_lock_position) = self.pointer_lock_position
 			&& let WindowEvent::PointerButton {
 				state: ElementState::Released,
-				button: ButtonSource::Mouse(MouseButton::Left),
+				button,
 				..
-			} = event
+			} = &event
+			&& button.clone().mouse_button() == MouseButton::Left
 		{
 			self.pointer_lock_position = None;
 			if let Some(window) = &self.window {
@@ -651,10 +652,10 @@ impl ApplicationHandler for App {
 			}
 
 			WindowEvent::PointerButton {
-				button: ButtonSource::Mouse(MouseButton::Left),
+				button,
 				state: ElementState::Released,
 				..
-			} => {
+			} if button.clone().mouse_button() == MouseButton::Left => {
 				self.window_pending_drag = false;
 			}
 
