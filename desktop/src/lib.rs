@@ -17,6 +17,7 @@ mod cli;
 mod dirs;
 mod event;
 mod gpu_context;
+mod input;
 mod persist;
 mod preferences;
 mod render;
