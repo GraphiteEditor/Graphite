@@ -111,8 +111,8 @@ pub(crate) fn translate(input_state: &mut InputState, event: &WindowEvent) -> Ve
 				MouseScrollDelta::LineDelta(x, y) => (x * SCROLL_LINE_WIDTH as f32, y * SCROLL_LINE_HEIGHT as f32),
 				MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
 			};
-			delta_x *= SCROLL_SPEED_X;
-			delta_y *= SCROLL_SPEED_Y;
+			delta_x *= SCROLL_SPEED_X as f32;
+			delta_y *= SCROLL_SPEED_Y as f32;
 
 			vec![InputEvent::MouseWheel {
 				data: input_state.mouse_data(),
