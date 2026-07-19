@@ -56,6 +56,15 @@ pub struct PointerState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	/// Force against the surface, 0 through 1.
+	pub pressure: Option<f64>,
+	/// Angle from the surface normal, in degrees per axis.
+	pub tilt: Option<DVec2>,
+	/// Clockwise rotation around the pen's own axis, in degrees.
+	pub twist: Option<f64>,
+	/// Barrel wheel (tangential) pressure, -1 through 1.
+	pub wheel: Option<f64>,
+	pub eraser: bool,
 }
 
 impl PointerState {
@@ -72,6 +81,15 @@ pub struct EditorPointerState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	/// Force against the surface, 0 through 1.
+	pub pressure: Option<f64>,
+	/// Angle from the surface normal, in degrees per axis.
+	pub tilt: Option<DVec2>,
+	/// Clockwise rotation around the pen's own axis, in degrees.
+	pub twist: Option<f64>,
+	/// Barrel wheel (tangential) pressure, -1 through 1.
+	pub wheel: Option<f64>,
+	pub eraser: bool,
 }
 
 impl EditorPointerState {
@@ -82,7 +100,7 @@ impl EditorPointerState {
 		Self {
 			editor_position,
 			mouse_keys,
-			scroll_delta: ScrollDelta::default(),
+			..Default::default()
 		}
 	}
 
@@ -91,6 +109,11 @@ impl EditorPointerState {
 			position: (viewport.logical(self.editor_position) - viewport.offset()).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
+			pressure: self.pressure,
+			tilt: self.tilt,
+			twist: self.twist,
+			wheel: self.wheel,
+			eraser: self.eraser,
 		}
 	}
 }

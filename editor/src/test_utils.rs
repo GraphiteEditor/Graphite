@@ -1,6 +1,6 @@
 use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
-use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ScrollDelta, ViewportPosition};
+use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -135,7 +135,7 @@ impl EditorTestUtils {
 			EditorPointerState {
 				editor_position: (x2, y2).into(),
 				mouse_keys: MouseKeys::empty(),
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -155,7 +155,7 @@ impl EditorTestUtils {
 			EditorPointerState {
 				editor_position: (100., 100.).into(),
 				mouse_keys: MouseKeys::LEFT | MouseKeys::RIGHT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			ModifierKeys::default(),
 		)
@@ -208,7 +208,7 @@ impl EditorTestUtils {
 			EditorPointerState {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::LEFT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -220,7 +220,7 @@ impl EditorTestUtils {
 			EditorPointerState {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::empty(),
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
@@ -276,7 +276,7 @@ impl EditorTestUtils {
 			editor_mouse_state: EditorPointerState {
 				editor_position: position,
 				mouse_keys: MouseKeys::LEFT,
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys: ModifierKeys::empty(),
 		})
@@ -300,7 +300,7 @@ impl EditorTestUtils {
 			EditorPointerState {
 				editor_position: points[points.len() - 1],
 				mouse_keys: MouseKeys::empty(),
-				scroll_delta: ScrollDelta::default(),
+				..Default::default()
 			},
 			modifier_keys,
 		)
