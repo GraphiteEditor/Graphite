@@ -3,12 +3,13 @@ use crate::cli::Cli;
 use crate::consts::APP_LOCK_FILE_NAME;
 use crate::event::{AppEvent, CreateAppEventSchedulerEventLoopExt};
 use clap::Parser;
-use graphite_desktop_ui::{Acceleration, UiConfig, UiContext, UiEvent, UiSetupResult};
 use std::io::Write;
 use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;
+use ui::{Acceleration, UiConfig, UiContext, UiEvent, UiSetupResult};
 use winit::event_loop::EventLoop;
 
+pub(crate) use graphite_desktop_ui as ui;
 pub(crate) use graphite_desktop_wrapper as wrapper;
 
 mod app;

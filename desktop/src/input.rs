@@ -1,8 +1,9 @@
 use winit::dpi::PhysicalPosition;
-use winit::event::{ButtonSource, ElementState, MouseButton, PointerSource, TabletToolData, TabletToolKind, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, TabletToolData, TabletToolKind, WindowEvent};
 use winit::keyboard::ModifiersState;
 
-use crate::wrapper::messages::{DesktopWrapperMessage, InputMessage, ModifierKeys, MouseKeys, PointerState};
+use crate::ui::{PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
+use crate::wrapper::messages::{DesktopWrapperMessage, InputMessage, ModifierKeys, MouseKeys, PointerState, ScrollDelta};
 
 pub(crate) struct InputState {
 	viewport_info: Option<ViewportInfo>,
@@ -111,6 +112,35 @@ impl InputState {
 				vec![InputAction::editor(match state {
 					ElementState::Pressed => InputMessage::PointerDown { editor_mouse_state, modifier_keys },
 					ElementState::Released => InputMessage::PointerUp { editor_mouse_state, modifier_keys },
+				})]
+			}
+			WindowEvent::MouseWheel { delta, .. } => {
+				if self.pointer_locked || !self.in_viewport(self.pointer_position) {
+					return vec![InputAction::Ui(event.clone())];
+				}
+
+				let (x, y) = match delta {
+					MouseScrollDelta::LineDelta(x, y) => (f64::from(*x) * SCROLL_LINE_WIDTH, f64::from(*y) * SCROLL_LINE_HEIGHT),
+					MouseScrollDelta::PixelDelta(position) => (position.x, position.y),
+				};
+
+				let scroll_delta = ScrollDelta::new(-x * SCROLL_SPEED_X, -y * SCROLL_SPEED_Y, 0.);
+
+				vec![InputAction::editor(InputMessage::WheelScroll {
+					editor_mouse_state: PointerState { scroll_delta, ..self.pointer_state() },
+					modifier_keys: self.modifier_keys,
+				})]
+			}
+			WindowEvent::PinchGesture { delta, .. } => {
+				if self.pointer_locked || !self.in_viewport(self.pointer_position) || !delta.is_normal() {
+					return vec![InputAction::Ui(event.clone())];
+				}
+
+				// TODO: This is a temporary solution to handle pinch gestures, we should handle pinch gestures editor-side instead.
+				let scroll_delta = ScrollDelta::new(0., -delta * PINCH_ZOOM_SPEED, 0.);
+				vec![InputAction::editor(InputMessage::WheelScroll {
+					editor_mouse_state: PointerState { scroll_delta, ..self.pointer_state() },
+					modifier_keys: self.modifier_keys | ModifierKeys::CONTROL,
 				})]
 			}
 			WindowEvent::ModifiersChanged(modifiers) => {
