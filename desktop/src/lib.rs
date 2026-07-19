@@ -3,12 +3,13 @@ use crate::cli::Cli;
 use crate::consts::APP_LOCK_FILE_NAME;
 use crate::event::{AppEvent, CreateAppEventSchedulerEventLoopExt};
 use clap::Parser;
-use graphite_desktop_ui::{Acceleration, UiConfig, UiContext, UiEvent, UiSetupResult};
 use std::io::Write;
 use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;
+use ui::{Acceleration, UiConfig, UiContext, UiEvent, UiSetupResult};
 use winit::event_loop::EventLoop;
 
+pub(crate) use graphite_desktop_ui as ui;
 pub(crate) use graphite_desktop_wrapper as wrapper;
 
 mod app;
@@ -69,7 +70,7 @@ pub fn start() -> ExitCode {
 		}
 	};
 
-	dirs::clear_dir(&graphite_desktop_ui::temp_dir_root());
+	dirs::clear_dir(&ui::temp_dir_root());
 
 	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
 	dirs::delete_old_cef_browser_directory();

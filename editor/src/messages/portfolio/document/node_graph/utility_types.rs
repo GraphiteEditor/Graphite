@@ -1,10 +1,5 @@
 use graph_craft::document::NodeId;
-use graph_craft::document::value::TaggedValue;
-use graphene_std::Type;
-use graphene_std::list::List;
-use graphene_std::raster_types::{CPU, Raster};
-use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Graphic};
+use graphene_std::{Type, simplify_identifier_name};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -24,20 +19,22 @@ pub enum FrontendGraphDataType {
 
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
-		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::LegacyGradient(_) | TaggedValue::Gradient(_) => Self::Gradient,
-			TaggedValue::String(_) => Self::Typography,
-			// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
-			TaggedValue::TypeDefault(td) => match td.name.as_ref() {
-				n if n == std::any::type_name::<List<Graphic>>() => Self::Graphic,
-				n if n == std::any::type_name::<List<Artboard>>() => Self::Artboard,
-				n if n == std::any::type_name::<List<Raster<CPU>>>() => Self::Raster,
-				n if n == std::any::type_name::<List<Vector>>() => Self::Vector,
-				n if n == std::any::type_name::<List<String>>() => Self::Typography,
-				_ => Self::General,
-			},
+		// Color a wire by its element type, peeling a rank-0 `Item` or rank-1 `List` wrapper (and a whole-list `Bundle` cell) so all ranks share the element's color
+		let nested_type = input.nested_type();
+		let element = match nested_type.bundle_element_name() {
+			Some(bundle_element) => simplify_identifier_name(bundle_element),
+			None => nested_type.list_element().unwrap_or(nested_type).identifier_name(),
+		};
+
+		match element.as_str() {
+			"Vector" => Self::Vector,
+			"Graphic" => Self::Graphic,
+			"Artboard" => Self::Artboard,
+			"Color" => Self::Color,
+			"Gradient" => Self::Gradient,
+			"String" => Self::Typography,
+			"f64" | "f32" | "u32" | "u64" | "bool" | "DVec2" | "DAffine2" => Self::Number,
+			raster if raster.starts_with("Raster") => Self::Raster,
 			_ => Self::General,
 		}
 	}

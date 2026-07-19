@@ -4,7 +4,7 @@
 
 use std::fmt::Write;
 
-pub(crate) fn diff_registries(stored: &graph_storage::Registry, target: &graph_storage::Registry) -> String {
+pub(crate) fn diff_registries(stored: &document_graph_storage::Registry, target: &document_graph_storage::Registry) -> String {
 	let mut out = String::new();
 
 	let stored_node_ids: std::collections::BTreeSet<_> = stored.node_instances.keys().copied().collect();
@@ -91,7 +91,7 @@ pub(crate) fn diff_registries(stored: &graph_storage::Registry, target: &graph_s
 	out
 }
 
-fn diff_node(out: &mut String, stored: &graph_storage::Node, target: &graph_storage::Node) {
+fn diff_node(out: &mut String, stored: &document_graph_storage::Node, target: &document_graph_storage::Node) {
 	if stored.implementation() != target.implementation() {
 		let _ = writeln!(out, "        implementation: stored={:?} target={:?}", stored.implementation(), target.implementation());
 	}
@@ -123,7 +123,7 @@ fn diff_node(out: &mut String, stored: &graph_storage::Node, target: &graph_stor
 	}
 }
 
-fn diff_network(out: &mut String, stored: &graph_storage::Network, target: &graph_storage::Network) {
+fn diff_network(out: &mut String, stored: &document_graph_storage::Network, target: &document_graph_storage::Network) {
 	if stored.exports.len() != target.exports.len() {
 		let _ = writeln!(out, "        exports.len: stored={} target={}", stored.exports.len(), target.exports.len());
 	}
@@ -144,13 +144,13 @@ fn diff_network(out: &mut String, stored: &graph_storage::Network, target: &grap
 }
 
 /// Value-level resource comparison (same resolved hash, same source bodies keyed by `SourceKey`),
-/// ignoring LWW timestamps. Mirrors `graph_storage`'s internal `resources_value_equal` for a single
+/// ignoring LWW timestamps. Mirrors `document_graph_storage`'s internal `resources_value_equal` for a single
 /// entry, since that helper is crate-private and only operates over a whole store.
-fn resource_value_equal(stored: &graph_storage::ResourceEntry, target: &graph_storage::ResourceEntry) -> bool {
+fn resource_value_equal(stored: &document_graph_storage::ResourceEntry, target: &document_graph_storage::ResourceEntry) -> bool {
 	stored.hash == target.hash && stored.sources.len() == target.sources.len() && stored.sources.iter().all(|(key, value)| target.source(key).is_some_and(|other| value.source == other.source))
 }
 
-fn diff_resource(out: &mut String, stored: &graph_storage::ResourceEntry, target: &graph_storage::ResourceEntry) {
+fn diff_resource(out: &mut String, stored: &document_graph_storage::ResourceEntry, target: &document_graph_storage::ResourceEntry) {
 	if stored.hash != target.hash {
 		let _ = writeln!(out, "        hash: stored={:?} target={:?}", stored.hash, target.hash);
 	}
@@ -177,7 +177,7 @@ fn diff_resource(out: &mut String, stored: &graph_storage::ResourceEntry, target
 	}
 }
 
-fn diff_attributes(out: &mut String, label: &str, stored: &graph_storage::Attributes, target: &graph_storage::Attributes) {
+fn diff_attributes(out: &mut String, label: &str, stored: &document_graph_storage::Attributes, target: &document_graph_storage::Attributes) {
 	let stored_keys: std::collections::BTreeSet<_> = stored.keys().collect();
 	let target_keys: std::collections::BTreeSet<_> = target.keys().collect();
 	let missing: Vec<_> = target_keys.difference(&stored_keys).collect();

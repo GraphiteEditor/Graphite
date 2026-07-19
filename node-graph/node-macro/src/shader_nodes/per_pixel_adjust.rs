@@ -31,21 +31,26 @@ impl ShaderCodegen for PerPixelAdjust {
 				.iter()
 				.map(|f| {
 					let ident = &f.pat_ident;
-					match &f.ty {
-						ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
-						ParsedFieldType::Regular(RegularParsedField { gpu_image: false, ty, .. }) => Ok(Param {
+					if let ParsedFieldType::Node { .. } = &f.ty {
+						return Err(syn::Error::new_spanned(ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics"));
+					}
+					let regular = f.ty.regular().expect("a non-node shader field is a value field");
+					// Ranked connectors carry their bare element type in the uniform buffer and get rewrapped in the entry point
+					let element_ty = f.ty.item_element();
+					if regular.gpu_image {
+						Ok(Param {
+							ident: Cow::Owned(format_ident!("image_{}", &ident.ident)),
+							ty: quote!(Image2d),
+							item_wrapped: element_ty.is_some(),
+							param_type: ParamType::Image { binding: 0 },
+						})
+					} else {
+						Ok(Param {
 							ident: Cow::Borrowed(&ident.ident),
-							ty: ty.to_token_stream(),
+							item_wrapped: element_ty.is_some(),
+							ty: element_ty.map(|element_ty| element_ty.to_token_stream()).unwrap_or_else(|| regular.ty.to_token_stream()),
 							param_type: ParamType::Uniform,
-						}),
-						ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. }) => {
-							let param = Param {
-								ident: Cow::Owned(format_ident!("image_{}", &ident.ident)),
-								ty: quote!(Image2d),
-								param_type: ParamType::Image { binding: 0 },
-							};
-							Ok(param)
-						}
+						})
 					}
 				})
 				.collect::<syn::Result<Vec<_>>>()?;
@@ -115,7 +120,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let uniform_members = self
 			.params
 			.iter()
-			.filter_map(|Param { ident, ty, param_type }| match param_type {
+			.filter_map(|Param { ident, ty, param_type, .. }| match param_type {
 				ParamType::Image { .. } => None,
 				ParamType::Uniform => Some(quote! {#ident: #ty}),
 			})
@@ -133,19 +138,24 @@ impl PerPixelAdjustCodegen<'_> {
 		let image_params = self
 			.params
 			.iter()
-			.filter_map(|Param { ident, ty, param_type }| match param_type {
+			.filter_map(|Param { ident, ty, param_type, .. }| match param_type {
 				ParamType::Image { binding } => Some(quote! {#[spirv(descriptor_set = 0, binding = #binding)] #ident: &#ty}),
 				ParamType::Uniform => None,
 			})
 			.collect::<Vec<_>>();
+		// Ranked connectors compile against the no_std `Item` stand-in on the GPU, so wrapping and unwrapping here is free
 		let call_args = self
 			.params
 			.iter()
-			.map(|Param { ident, param_type, .. }| match param_type {
-				ParamType::Image { .. } => quote!(Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)))),
-				ParamType::Uniform => quote!(uniform.#ident),
+			.map(|Param { ident, param_type, item_wrapped, .. }| {
+				let bare_value = match param_type {
+					ParamType::Image { .. } => quote!(Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)))),
+					ParamType::Uniform => quote!(uniform.#ident),
+				};
+				if *item_wrapped { quote!(Item::new_from_element(#bare_value)) } else { bare_value }
 			})
 			.collect::<Vec<_>>();
+		let unwrap_result = self.parsed.output_element.as_ref().map(|_| quote!(.into_element()));
 		let context = quote!(());
 
 		let entry_point_mod = &self.entry_point_mod;
@@ -173,7 +183,7 @@ impl PerPixelAdjustCodegen<'_> {
 				) {
 					let uniform = <Uniform as #gcore_shaders::shaders::buffer_struct::BufferStruct>::read(*uniform);
 					let texel_coord = frag_coord.xy().as_uvec2();
-					let color: Color = #fn_name(#context, #(#call_args),*);
+					let color: Color = #fn_name(#context, #(#call_args),*)#unwrap_result;
 					*color_out = color.to_vec4();
 				}
 			}
@@ -191,29 +201,27 @@ impl PerPixelAdjustCodegen<'_> {
 			.parsed
 			.fields
 			.iter()
-			.map(|f| match &f.ty {
-				ParsedFieldType::Regular(reg @ RegularParsedField { gpu_image: true, .. }) => Ok(ParsedField {
-					pat_ident: PatIdent {
-						mutability: None,
-						by_ref: None,
-						..f.pat_ident.clone()
-					},
-					ty: ParsedFieldType::Regular(RegularParsedField {
+			.map(|f| {
+				if let ParsedFieldType::Node { .. } = &f.ty {
+					return Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics"));
+				}
+				let regular = f.ty.regular().expect("a non-node shader field is a value field");
+				let pat_ident = PatIdent {
+					mutability: None,
+					by_ref: None,
+					..f.pat_ident.clone()
+				};
+				// A gpu_image parameter is fed the whole GPU raster list, so its wire is re-typed and re-classified
+				let ty = if regular.gpu_image {
+					ParsedFieldType::classify(RegularParsedField {
 						ty: raster_gpu.clone(),
 						implementations: Punctuated::default(),
-						..reg.clone()
-					}),
-					..f.clone()
-				}),
-				ParsedFieldType::Regular(RegularParsedField { gpu_image: false, .. }) => Ok(ParsedField {
-					pat_ident: PatIdent {
-						mutability: None,
-						by_ref: None,
-						..f.pat_ident.clone()
-					},
-					..f.clone()
-				}),
-				ParsedFieldType::Node { .. } => Err(syn::Error::new_spanned(&f.pat_ident, "PerPixelAdjust shader nodes cannot accept other nodes as generics")),
+						..regular.clone()
+					})
+				} else {
+					f.ty.clone()
+				};
+				Ok(ParsedField { pat_ident, ty, ..f.clone() })
 			})
 			.collect::<syn::Result<Vec<_>>>()?;
 
@@ -230,8 +238,8 @@ impl PerPixelAdjustCodegen<'_> {
 			name: None,
 			description: "".to_string(),
 			widget_override: Default::default(),
-			ty: ParsedFieldType::Regular(RegularParsedField {
-				ty: parse_quote!(&'a WgpuExecutor),
+			ty: ParsedFieldType::classify(RegularParsedField {
+				ty: parse_quote!(#gcore::list::Item<&'a WgpuExecutor>),
 				exposed: true,
 				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode")),
 				number_soft_min: None,
@@ -250,7 +258,7 @@ impl PerPixelAdjustCodegen<'_> {
 
 		// find exactly one gpu_image field, runtime doesn't support more than 1 atm
 		let gpu_image_field = {
-			let mut iter = fields.iter().filter(|f| matches!(f.ty, ParsedFieldType::Regular(RegularParsedField { gpu_image: true, .. })));
+			let mut iter = fields.iter().filter(|f| f.ty.regular().is_some_and(|regular| regular.gpu_image));
 			match (iter.next(), iter.next()) {
 				(Some(v), None) => Ok(v),
 				(Some(_), Some(more)) => Err(syn::Error::new_spanned(&more.pat_ident, "No more than one parameter must be annotated with `#[gpu_image]`")),
@@ -268,7 +276,10 @@ impl PerPixelAdjustCodegen<'_> {
 				.iter()
 				.filter_map(|p| match p.param_type {
 					ParamType::Image { .. } => None,
-					ParamType::Uniform => Some(p.ident.as_ref()),
+					ParamType::Uniform => {
+						let ident = p.ident.as_ref();
+						Some(if p.item_wrapped { quote!(#ident: #ident.into_element()) } else { quote!(#ident) })
+					}
 				})
 				.collect::<Vec<_>>();
 			quote!(Some(&super::#uniform_struct {
@@ -283,7 +294,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let entry_point_name = &self.entry_point_name;
 		let body = quote! {
 			{
-				#executor.shader_runtime().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
+				#executor.into_element().shader_runtime().run_per_pixel_adjust(&::wgpu_executor::shader_runtime::per_pixel_adjust_runtime::Shaders {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
@@ -314,6 +325,7 @@ impl PerPixelAdjustCodegen<'_> {
 				context_features: self.parsed.input.context_features.clone(),
 			},
 			output_type: raster_gpu,
+			output_element: None,
 			is_async: true,
 			fields,
 			body,
@@ -339,6 +351,7 @@ impl PerPixelAdjustCodegen<'_> {
 struct Param<'a> {
 	ident: Cow<'a, Ident>,
 	ty: TokenStream,
+	item_wrapped: bool,
 	param_type: ParamType,
 }
 

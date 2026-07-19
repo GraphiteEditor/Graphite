@@ -4,6 +4,7 @@ pub mod blending;
 pub mod choice_type;
 pub mod color;
 pub mod context;
+pub mod list;
 pub mod registry;
 pub mod shaders;
 

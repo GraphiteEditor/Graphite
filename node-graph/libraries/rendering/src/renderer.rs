@@ -7,7 +7,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -23,7 +23,7 @@ use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{GradientStops, GradientType};
+use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -213,8 +213,6 @@ pub enum RenderOutputType {
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
-	/// Ratio of physical pixels to logical pixels. `scale := physical_pixels / logical_pixels`
-	/// Ignored when rendering to SVG.
 	#[cache_hash(skip)]
 	pub scale: f64,
 	pub render_output_type: RenderOutputType,
@@ -396,7 +394,7 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
@@ -548,6 +546,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
 			Graphic::Vector(list) => list.render_svg(render, render_params),
 			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
@@ -560,6 +559,7 @@ impl Render for Graphic {
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
@@ -573,6 +573,7 @@ impl Render for Graphic {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
+				Graphic::None => {}
 				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
@@ -580,7 +581,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !list.is_empty() {
-						let layer_path: List<NodeId> = list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+						let layer_path: List<NodeId> = list.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, 0).0;
 						let layer = layer_path.iter_element_values().next_back().copied();
 						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
@@ -632,6 +633,7 @@ impl Render for Graphic {
 		}
 
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id),
@@ -644,6 +646,7 @@ impl Render for Graphic {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets),
@@ -656,6 +659,7 @@ impl Render for Graphic {
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines),
@@ -668,6 +672,7 @@ impl Render for Graphic {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
+			Graphic::None => false,
 			Graphic::Graphic(list) => list.contains_artboard(),
 			Graphic::Vector(list) => list.contains_artboard(),
 			Graphic::RasterCPU(list) => list.contains_artboard(),
@@ -680,6 +685,7 @@ impl Render for Graphic {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
@@ -794,7 +800,7 @@ impl Render for List<Artboard> {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
@@ -966,7 +972,7 @@ impl Render for List<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -1048,9 +1054,9 @@ impl Render for List<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
-			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
+			element.new_ids_from_hash(layer.0.iter_element_values().next_back().copied());
 		}
 	}
 }
@@ -1350,6 +1356,7 @@ impl Render for List<Vector> {
 				for paint_index in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
 					match paint {
+						Graphic::None => continue,
 						Graphic::Color(list) => {
 							let Some(color) = list.element(0) else { continue };
 
@@ -1432,6 +1439,7 @@ impl Render for List<Vector> {
 					};
 
 					match stroke_graphic {
+						Graphic::None => continue,
 						Graphic::Color(list) => {
 							let Some(color) = list.element(0) else { continue };
 							let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
@@ -1548,7 +1556,7 @@ impl Render for List<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
+		// Aggregate all items' targets per element_id so multi-item lists (e.g. the "Text to Vector Glyphs" node) produce hit areas for every glyph.
 		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
 		let item_zero_transform: DAffine2 = if !self.is_empty() {
 			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
@@ -1567,7 +1575,7 @@ impl Render for List<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -1615,7 +1623,7 @@ impl Render for List<Vector> {
 			}
 
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
-			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+			// Combine Paths, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
 			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
@@ -2049,7 +2057,7 @@ impl Render for List<Color> {
 	}
 }
 
-impl Render for List<GradientStops> {
+impl Render for List<Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
 		// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
@@ -2564,7 +2572,7 @@ impl Render for List<String> {
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
 		for index in 0..self.len() {
-			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let Some(element_id) = caller_element_id.or(layer) else { continue };
 

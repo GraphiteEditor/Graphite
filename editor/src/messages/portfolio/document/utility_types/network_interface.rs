@@ -15,7 +15,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
-use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
+use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_thick_wire_center_line, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
@@ -2499,14 +2499,20 @@ impl NodeNetworkInterface {
 		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
+		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end);
 
 		let path_string = vector_wire.to_svg();
-		let data_type = self.input_type(&input, network_path).displayed_type();
+		let center_path_string = center_line.to_svg();
+		let input_type = self.input_type(&input, network_path);
+		let data_type = input_type.displayed_type();
+		let is_list = input_type.is_list();
 		let wire_path_update = Some(WirePath {
 			path_string,
 			data_type,
 			thick,
 			dashed: false,
+			is_list,
+			center_path_string,
 		});
 
 		Some(WirePathUpdate {
@@ -2516,15 +2522,15 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	/// Returns the vector subpath and a boolean of whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
+	/// Returns the wire subpath, its thick center-line subpath, and whether the wire should be thick.
+	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {input:?}");
 			return None;
 		};
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
 		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return Some((BezPath::new(), false));
+			return Some((BezPath::new(), BezPath::new(), false));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
 			log::error!("Could not get output port for wire start: {:?}", upstream_output);
@@ -2533,21 +2539,29 @@ impl NodeNetworkInterface {
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
-		Some((build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), thick))
+		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style);
+		let center_line = build_thick_wire_center_line(output_position, input_position, vertical_start, vertical_end);
+		Some((vector_wire, center_line, thick))
 	}
 
 	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
-		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
+		let (vector_wire, center_line, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let path_string = vector_wire.to_svg();
-		let data_type = self
+		let center_path_string = center_line.to_svg();
+		let (data_type, is_list) = self
 			.upstream_output_connector(input, network_path)
-			.map(|output| self.output_type(&output, network_path).displayed_type())
-			.unwrap_or(FrontendGraphDataType::General);
+			.map(|output| {
+				let output_type = self.output_type(&output, network_path);
+				(output_type.displayed_type(), output_type.is_list())
+			})
+			.unwrap_or((FrontendGraphDataType::General, false));
 		Some(WirePath {
 			path_string,
 			data_type,
 			thick,
 			dashed,
+			is_list,
+			center_path_string,
 		})
 	}
 
@@ -6105,6 +6119,19 @@ impl NodeNetworkInterface {
 
 		// Chain is empty: wire the node as the first (and only) entry in the chain
 		if matches!(current_input, NodeInput::Value { .. }) {
+			// A node whose exposed primary defaults to no value inherits the layer's content value, so the chain keeps producing the layer's content type
+			let node_primary = InputConnector::node(*node_id, 0);
+			let default_is_valueless = self
+				.input_from_connector(&node_primary, network_path)
+				.is_some_and(|input| matches!(input, NodeInput::Value { tagged_value, exposed: true } if matches!(**tagged_value, TaggedValue::None)));
+			if default_is_valueless {
+				if import {
+					self.set_input_for_import(&node_primary, current_input.clone(), network_path);
+				} else {
+					self.set_input(&node_primary, current_input.clone(), network_path);
+				}
+			}
+
 			// Wire: [parent] -> [new node]
 			if import {
 				self.set_input_for_import(&parent_input, NodeInput::node(*node_id, 0), network_path);

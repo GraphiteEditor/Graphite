@@ -7,18 +7,22 @@ use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
 fn regex_contains(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to search for.
-	pattern: String,
+	pattern: Item<String>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
+	multiline: Item<bool>,
 	/// Only match if the pattern appears at the start of the string.
-	at_start: bool,
+	at_start: Item<bool>,
 	/// Only match if the pattern appears at the end of the string.
-	at_end: bool,
-) -> bool {
+	at_end: Item<bool>,
+) -> Item<bool> {
+	let (string, attributes) = string.into_parts();
+	let pattern = pattern.element();
+	let (case_insensitive, multiline, at_start, at_end) = (*case_insensitive.element(), *multiline.element(), *at_start.element(), *at_end.element());
+
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
 		(true, false) => "(?i)",
@@ -34,29 +38,34 @@ fn regex_contains(
 
 	let Ok(regex) = fancy_regex::Regex::new(&anchored_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return false;
+		return Item::from_parts(false, attributes);
 	};
 
-	regex.is_match(&string).unwrap_or(false)
+	Item::from_parts(regex.is_match(&string).unwrap_or(false), attributes)
 }
 
 /// Replaces matches of a regular expression pattern in the string. The replacement string can reference captures: `$0` for the whole match and `$1`, `$2`, etc. for capture groups.
 #[node_macro::node(category("Text: Regex"))]
 fn regex_replace(
 	_: impl Ctx,
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to search for.
-	pattern: String,
+	pattern: Item<String>,
 	/// The replacement string. Use `$0` for the whole match and `$1`, `$2`, etc. for capture groups.
-	replacement: String,
+	replacement: Item<String>,
 	/// Replace all matches. When disabled, only the first match is replaced.
 	#[default(true)]
-	replace_all: bool,
+	replace_all: Item<bool>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
-) -> String {
+	multiline: Item<bool>,
+) -> Item<String> {
+	let mut string = string;
+	let pattern = pattern.element().clone();
+	let replacement = replacement.element().clone();
+	let (replace_all, case_insensitive, multiline) = (*replace_all.element(), *case_insensitive.element(), *multiline.element());
+
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
 		(true, false) => "(?i)",
@@ -70,11 +79,14 @@ fn regex_replace(
 		return string;
 	};
 
-	if replace_all {
-		regex.replace_all(&string, replacement.as_str()).into_owned()
+	let result = if replace_all {
+		regex.replace_all(string.element(), replacement.as_str()).into_owned()
 	} else {
-		regex.replace(&string, replacement.as_str()).into_owned()
-	}
+		regex.replace(string.element(), replacement.as_str()).into_owned()
+	};
+
+	*string.element_mut() = result;
+	string
 }
 
 /// Finds a regex match in the string and returns its components. The result is a list where the first item is the whole match (`$0`) and subsequent items are the capture groups (`$1`, `$2`, etc., if any).
@@ -87,16 +99,20 @@ fn regex_replace(
 fn regex_find(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to search for.
-	pattern: String,
+	pattern: Item<String>,
 	/// Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.
-	match_index: SignedInteger,
+	match_index: Item<SignedInteger>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
+	multiline: Item<bool>,
 ) -> List<String> {
+	let string = string.element();
+	let pattern = pattern.element();
+	let (match_index, case_insensitive, multiline) = (*match_index.element(), *case_insensitive.element(), *multiline.element());
+
 	if pattern.is_empty() {
 		return List::new();
 	}
@@ -118,7 +134,7 @@ fn regex_find(
 	let capture_names: Vec<Option<String>> = regex.capture_names().map(|name| name.map(str::to_string)).collect();
 
 	// Collect all matches since we need to support negative indexing
-	let matches: Vec<_> = regex.captures_iter(&string).filter_map(|c| c.ok()).collect();
+	let matches: Vec<_> = regex.captures_iter(string).filter_map(|c| c.ok()).collect();
 
 	let match_index = match_index as i32;
 	let resolved_index = if match_index < 0 {
@@ -158,14 +174,18 @@ fn regex_find(
 fn regex_find_all(
 	_: impl Ctx,
 	/// The string to search within.
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to search for.
-	pattern: String,
+	pattern: Item<String>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
+	multiline: Item<bool>,
 ) -> List<String> {
+	let string = string.element();
+	let pattern = pattern.element();
+	let (case_insensitive, multiline) = (*case_insensitive.element(), *multiline.element());
+
 	if pattern.is_empty() {
 		return List::new();
 	}
@@ -184,7 +204,7 @@ fn regex_find_all(
 	};
 
 	regex
-		.find_iter(&string)
+		.find_iter(string)
 		.filter_map(|m| m.ok())
 		.map(|m| {
 			Item::new_from_element(m.as_str().to_string())
@@ -201,16 +221,19 @@ fn regex_find_all(
 fn regex_split(
 	_: impl Ctx,
 	/// The string to split into substrings.
-	string: String,
+	string: Item<String>,
 	/// The regular expression pattern to split on. Matches are consumed and not included in the output.
-	pattern: String,
+	pattern: Item<String>,
 	/// Match letters regardless of case.
-	case_insensitive: bool,
+	case_insensitive: Item<bool>,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
-	multiline: bool,
+	multiline: Item<bool>,
 ) -> List<String> {
+	let pattern = pattern.element().clone();
+	let (case_insensitive, multiline) = (*case_insensitive.element(), *multiline.element());
+
 	if pattern.is_empty() {
-		return List::new_from_element(string);
+		return List::new_from_item(string);
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -223,8 +246,8 @@ fn regex_split(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return List::new_from_element(string);
+		return List::new_from_item(string);
 	};
 
-	regex.split(&string).filter_map(|s| s.ok()).map(|s| s.to_string()).map(Item::new_from_element).collect()
+	regex.split(string.element()).filter_map(|s| s.ok()).map(|s| s.to_string()).map(Item::new_from_element).collect()
 }

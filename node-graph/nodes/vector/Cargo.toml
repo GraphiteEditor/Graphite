@@ -25,6 +25,7 @@ rendering = { workspace = true }
 dyn-any = { workspace = true }
 glam = { workspace = true }
 kurbo = { workspace = true }
+delaunator = { workspace = true }
 rand = { workspace = true }
 rustc-hash = { workspace = true }
 log = { workspace = true }

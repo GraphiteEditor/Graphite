@@ -1205,6 +1205,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "delaunator"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e1ee323c1275374f7e612d3724d12707079fb6a2117349fe144def656f5a880"
+dependencies = [
+ "robust",
+]
+
+[[package]]
 name = "deranged"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1361,15 +1370,30 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "document-container",
+ "document-graph-storage",
  "futures",
  "graph-craft",
- "graph-storage",
  "graphene-resource",
  "log",
  "rmp-serde",
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "document-graph-storage"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "core-types",
+ "graph-craft",
+ "graphene-resource",
+ "rmp-serde",
+ "rustc-hash 2.1.1",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -2101,21 +2125,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-storage"
-version = "0.0.0"
-dependencies = [
- "blake3",
- "core-types",
- "graph-craft",
- "graphene-resource",
- "rmp-serde",
- "rustc-hash 2.1.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "graphene-application-io"
 version = "0.1.0"
 dependencies = [
@@ -2123,6 +2132,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "graphene-resource",
  "log",
  "raster-types",
@@ -2265,6 +2275,7 @@ dependencies = [
  "glam",
  "graphic-types",
  "node-macro",
+ "rand",
  "raster-types",
  "serde",
  "vector-types",
@@ -2397,9 +2408,9 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "graphite-wasm-wrapper",
  "image 0.25.6",
  "keyboard-types",
- "ron",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -2419,12 +2430,12 @@ dependencies = [
  "derivative",
  "document-container",
  "document-format",
+ "document-graph-storage",
  "dyn-any",
  "env_logger",
  "futures",
  "glam",
  "graph-craft",
- "graph-storage",
  "graphene-hash",
  "graphene-std",
  "graphite-proc-macros",
@@ -2459,6 +2470,7 @@ dependencies = [
 name = "graphite-proc-macros"
 version = "0.0.0"
 dependencies = [
+ "convert_case",
  "graphite-editor",
  "proc-macro2",
  "quote",
@@ -2470,17 +2482,18 @@ dependencies = [
 name = "graphite-wasm-wrapper"
 version = "0.0.0"
 dependencies = [
- "bytemuck",
  "graph-craft",
  "graphene-std",
  "graphite-editor",
+ "graphite-proc-macros",
  "js-sys",
  "log",
  "node-macro",
- "ron",
  "serde",
  "serde-wasm-bindgen",
+ "serde_bytes",
  "serde_json",
+ "tsify",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -5176,6 +5189,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "robust"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839"
+
+[[package]]
 name = "ron"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6808,6 +6827,7 @@ name = "vector-nodes"
 version = "0.1.0"
 dependencies = [
  "core-types",
+ "delaunator",
  "dyn-any",
  "futures",
  "glam",

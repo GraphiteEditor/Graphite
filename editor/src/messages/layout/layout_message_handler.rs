@@ -1,5 +1,6 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use graphene_std::color::SRGBA8;
 use graphene_std::vector::style::FillChoiceUI;
@@ -291,7 +292,11 @@ impl LayoutMessageHandler {
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let callback_message = (node_type_input.on_update.callback)(&value.into());
+					let Value::String(ref node_type) = value else {
+						error!("NodeCatalog update was not of type: String, found {value:?}");
+						return;
+					};
+					let callback_message = (node_type_input.on_update.callback)(&DefinitionIdentifier::from_serialized(node_type));
 					responses.add(callback_message);
 				}
 			},

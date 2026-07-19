@@ -2,15 +2,15 @@
 members = [
 	"desktop",
 	"desktop/wrapper",
+	"desktop/ui",
 	"desktop/embedded-resources",
 	"desktop/bundle",
 	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
-	"desktop/ui",
+	"document/format",
 	"document/graph-storage",
 	"document/container",
-	"document/document-format",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -92,8 +92,8 @@ repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-graph-storage = { path = "document/graph-storage", default-features = false }
-document-format = { path = "document/document-format" }
+document-format = { path = "document/format" }
+document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
@@ -209,6 +209,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"proc-macro",
 ] }
 lyon_geom = "1.0"
+delaunator = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }

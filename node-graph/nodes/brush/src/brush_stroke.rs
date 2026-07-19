@@ -1,6 +1,7 @@
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
+use core_types::list::{Item, List};
 use core_types::math::bbox::AxisAlignedBbox;
 use dyn_any::DynAny;
 use glam::DVec2;
@@ -55,6 +56,22 @@ pub struct BrushInputSample {
 pub struct BrushStroke {
 	pub style: BrushStyle,
 	pub trace: Vec<BrushInputSample>,
+}
+
+/// One Brush layer's full sequence of strokes, treated as a single rank-0 value rather than a frame of independent strokes.
+#[derive(Default, Debug, Clone, PartialEq, CacheHash, DynAny)]
+pub struct BrushTrace(pub List<BrushStroke>);
+
+impl From<List<BrushStroke>> for BrushTrace {
+	fn from(strokes: List<BrushStroke>) -> Self {
+		Self(strokes)
+	}
+}
+
+impl From<Vec<BrushStroke>> for BrushTrace {
+	fn from(strokes: Vec<BrushStroke>) -> Self {
+		Self(strokes.into_iter().map(Item::new_from_element).collect())
+	}
 }
 
 impl BrushStroke {

@@ -14,16 +14,14 @@ use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::{concrete, descriptor};
+use graph_craft::{concrete, list};
 use graphene_std::extract_xy::XY;
-use graphene_std::list::List;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::*;
-use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
@@ -89,12 +87,8 @@ impl DefinitionIdentifier {
 			DefinitionIdentifier::Network(data) => format!("NETWORK:{}", data),
 		}
 	}
-}
 
-impl From<Value> for DefinitionIdentifier {
-	fn from(value: Value) -> Self {
-		let s = value.as_str().expect("DefinitionIdentifier value must be a string");
-
+	pub fn from_serialized(s: &str) -> Self {
 		match s.split_once(':') {
 			Some(("PROTONODE", data)) => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
 			Some(("NETWORK", data)) => DefinitionIdentifier::Network(data.to_string()),
@@ -207,7 +201,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Graphic>), true), NodeInput::type_default(descriptor!(List<Graphic>), true)],
+					inputs: vec![NodeInput::type_default(list!(Graphic), true), NodeInput::type_default(list!(Graphic), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -292,11 +286,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
 								inputs: vec![
-									NodeInput::import(concrete!(TaggedValue), 1),
-									NodeInput::import(concrete!(TaggedValue), 2),
-									NodeInput::import(concrete!(TaggedValue), 3),
-									NodeInput::import(concrete!(TaggedValue), 4),
-									NodeInput::import(concrete!(TaggedValue), 5),
+									NodeInput::import(Type::Fn(concrete!(Context).into(), generic!(T).into()), 1),
+									NodeInput::import(item!(TaggedValue), 2),
+									NodeInput::import(item!(TaggedValue), 3),
+									NodeInput::import(item!(TaggedValue), 4),
+									NodeInput::import(item!(TaggedValue), 5),
 								],
 								..Default::default()
 							},
@@ -327,7 +321,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(List<Artboard>))), 0),
+									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
 									NodeInput::node(NodeId(3), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
@@ -341,11 +335,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Artboard>), true),
-						NodeInput::type_default(descriptor!(List<Graphic>), true),
+						NodeInput::type_default(list!(Artboard), true),
+						NodeInput::type_default(list!(Graphic), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
-						NodeInput::value(TaggedValue::Color(Some(Color::WHITE)), false),
+						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
 						NodeInput::value(TaggedValue::Bool(true), false),
 					],
 					..Default::default()
@@ -453,9 +447,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::import(generic!(T), 4)],
 								..Default::default()
 							},
-							// 1: Count Elements (number of subpaths)
+							// 1: List Length (number of subpaths)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::count_elements::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::list_length::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								..Default::default()
 							},
@@ -468,7 +462,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// 3: Floor (integer count per subpath)
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-								inputs: vec![NodeInput::import(concrete!(f64), 1)],
+								inputs: vec![NodeInput::import(item!(f64), 1)],
 								..Default::default()
 							},
 							// 4: Multiply (total_instances = count × subpath_count)
@@ -544,8 +538,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::import(generic!(T), 0),
 									NodeInput::node(NodeId(14), 0),
 									NodeInput::value(TaggedValue::Bool(false), false),
-									NodeInput::import(concrete!(vector::misc::InterpolationDistribution), 3),
-									NodeInput::import(generic!(T), 4),
+									NodeInput::import(item!(vector::misc::InterpolationDistribution), 3),
+									NodeInput::import(item!(Vector), 4),
 								],
 								..Default::default()
 							},
@@ -575,11 +569,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(list!(Vector), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::Bool(Default::default()), false),
 						NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-						NodeInput::type_default(descriptor!(List<Vector>), false),
+						NodeInput::type_default(list!(Vector), false),
 					],
 					..Default::default()
 				},
@@ -604,7 +598,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 1: Count Elements
+								// 1: List Length
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
@@ -807,9 +801,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
-							// 6: Flatten Path
+							// 6: Combine Paths
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector::flatten_path::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector::combine_paths::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(5), 0)],
 								..Default::default()
 							},
@@ -826,7 +820,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Vector>), true)],
+					inputs: vec![NodeInput::type_default(list!(Vector), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -884,7 +878,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 6: Flatten Path
+								// 6: Combine Paths
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(35, 0)),
@@ -924,7 +918,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(concrete!(String), 1)],
+								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(item!(String), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
 								..Default::default()
 							},
@@ -999,7 +993,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(item!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
 								..Default::default()
 							},
@@ -1011,7 +1005,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(list!(Vector), true),
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
 								transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
@@ -1081,7 +1075,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1090,7 +1084,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1099,7 +1093,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1108,7 +1102,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
+									NodeInput::import(list!(Raster<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1122,7 +1116,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
+					inputs: vec![NodeInput::type_default(list!(Raster<CPU>), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1183,13 +1177,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+								inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
 								call_argument: generic!(T),
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+								inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
 								call_argument: generic!(T),
 								..Default::default()
@@ -1240,80 +1234,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed(
 				"Decomposes the X and Y components of a vec2.\n\
 				\n\
-				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
+				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
 			),
-			properties: None,
-		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "Upload Texture",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::scope(platform_application_io::wgpu_executor::IDENTIFIER)],
-								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					output_names: vec!["Texture".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -1322,7 +1244,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Extract,
-					inputs: vec![NodeInput::type_default(descriptor!(DocumentNode), true)],
+					inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1350,25 +1272,25 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// Node 0: regex_find proto node — returns List<String> of [whole_match, ...capture_groups]
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(String), 0),
-									NodeInput::import(concrete!(String), 1),
-									NodeInput::import(concrete!(f64), 2),
-									NodeInput::import(concrete!(bool), 3),
-									NodeInput::import(concrete!(bool), 4),
+									NodeInput::import(item!(String), 0),
+									NodeInput::import(item!(String), 1),
+									NodeInput::import(item!(f64), 2),
+									NodeInput::import(item!(bool), 3),
+									NodeInput::import(item!(bool), 4),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
+							// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::extract_element::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 2: omit_element at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
+							// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -1450,7 +1372,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(List<Vector>), 0)],
+								inputs: vec![NodeInput::import(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
@@ -1474,7 +1396,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(item!(Vector), true),
 						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 					],
 					..Default::default()
@@ -2206,5 +2128,35 @@ impl DocumentNodeDefinition {
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
 		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(Some))
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::resolve_network_node_type;
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::NodeId;
+
+	// Guards the embedded Map body chain (Read Vector -> Extract Transform -> Decompose Translation -> As Vector) against registry drift
+	#[tokio::test]
+	async fn origins_to_polyline_resolves_and_evaluates() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().expect("drawing a rectangle should create a layer");
+		let node_id = NodeId::new();
+		let node_template = resolve_network_node_type("Origins to Polyline")
+			.expect("the Origins to Polyline definition should exist")
+			.default_node_template();
+		editor
+			.handle_message(NodeGraphMessage::InsertNode {
+				node_id,
+				node_template: Box::new(node_template),
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+
+		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
 	}
 }

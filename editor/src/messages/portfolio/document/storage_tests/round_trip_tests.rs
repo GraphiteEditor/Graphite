@@ -7,8 +7,8 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
+use document_graph_storage::{NodeMetadataSource, PeerId};
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_storage::{NodeMetadataSource, PeerId};
 
 use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
@@ -125,7 +125,7 @@ async fn recommit_after_open_is_stable() {
 	// that same peer for deterministic node-ID derivation.
 	let rebuilt_network = round_trip.rebuilt.document_network().clone();
 	let view = StorageMetadataView::new(&round_trip.rebuilt);
-	let reconverted = graph_storage::Registry::convert_from_runtime(&rebuilt_network, &view, &Default::default(), PeerId(1)).expect("re-convert from_runtime");
+	let reconverted = document_graph_storage::Registry::convert_from_runtime(&rebuilt_network, &view, &Default::default(), PeerId(1)).expect("re-convert from_runtime");
 
 	assert!(
 		round_trip.registry.value_equal(&reconverted.registry),
@@ -351,7 +351,7 @@ async fn live_undo_shadows_storage_cursor() {
 
 #[tokio::test]
 async fn round_trip_document_settings() {
-	use graph_storage::attr::session::doc;
+	use document_graph_storage::attr::session::doc;
 
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -382,7 +382,7 @@ async fn round_trip_document_settings() {
 /// and reopens via `open_from_archive`, asserting the PTZ round-trips.
 #[tokio::test]
 async fn gdd_archive_round_trips_view_settings() {
-	use graph_storage::attr::session::doc;
+	use document_graph_storage::attr::session::doc;
 
 	let byte_store = HashMapResourceStorage::new();
 	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
@@ -420,7 +420,7 @@ async fn gdd_archive_round_trips_view_settings() {
 #[tokio::test]
 async fn per_network_navigation_round_trips_via_session_not_registry() {
 	use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{apply_network_view_settings, collect_network_view_settings, network_ids_from_entries};
-	use graph_storage::attr::session::network;
+	use document_graph_storage::attr::session::network;
 
 	let byte_store = HashMapResourceStorage::new();
 
@@ -449,7 +449,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	gdd.set_network_view_settings(network_view_settings).expect("set_network_view_settings");
 
 	// The registry must NOT carry the node-graph nav (it's per-peer, not document content).
-	let root_network = gdd.registry().networks.get(&graph_storage::ROOT_NETWORK).expect("root network in registry");
+	let root_network = gdd.registry().networks.get(&document_graph_storage::ROOT_NETWORK).expect("root network in registry");
 	assert!(!root_network.attributes.contains_key(network::NAV_PTZ), "node-graph nav must not be stored in the registry attributes");
 
 	// Reopen, rebuild the interface, and apply the persisted per-network view state.
@@ -632,7 +632,7 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);
-	let target = graph_storage::Registry::convert_from_runtime(&network, &view, &document.resources.registry, peer).expect("from_runtime");
+	let target = document_graph_storage::Registry::convert_from_runtime(&network, &view, &document.resources.registry, peer).expect("from_runtime");
 
 	let stored = storage.registry();
 
@@ -707,4 +707,104 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+}
+
+/// The document's single Fill node, as `(network_path, node_id)`.
+fn find_fill_node(document: &DocumentMessageHandler) -> (Vec<graph_craft::document::NodeId>, graph_craft::document::NodeId) {
+	node_paths(&document.network_interface)
+		.into_iter()
+		.find(|(network_path, node_id)| {
+			let Some(network) = document.network_interface.nested_network(network_path) else { return false };
+			network.nodes[node_id].implementation == graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER)
+		})
+		.expect("the document should contain a Fill node")
+}
+
+/// The stored paint value of the document's single Fill node.
+fn fill_paint_value(document: &DocumentMessageHandler) -> graph_craft::document::value::TaggedValue {
+	use graphene_std::NodeInputDecleration as _;
+
+	let (network_path, node_id) = find_fill_node(document);
+	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
+	let input = network.nodes[&node_id]
+		.inputs
+		.get(graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX)
+		.expect("Fill should have a paint input");
+	input.as_value().expect("the paint input should hold a value").clone()
+}
+
+#[tokio::test]
+async fn none_fill_survives_document_reopen() {
+	use graphene_std::NodeInputDecleration as _;
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+	// Pick the red-slash "none" paint, stored the same way as the Fill widget's None choice
+	let (_, fill_node_id) = find_fill_node(editor.active_document());
+	editor
+		.handle_message(NodeGraphMessage::SetInputValue {
+			node_id: fill_node_id,
+			input_index: graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX,
+			value: graph_craft::document::value::TaggedValue::no_paint(),
+		})
+		.await;
+	assert!(fill_paint_value(editor.active_document()).is_no_paint(), "the None pick should store as no_paint");
+
+	// Reopen through the editor's real open path, which runs the document migrations
+	let serialized = editor.active_document().serialize_document();
+	editor
+		.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: None,
+			document_path: None,
+			document_serialized_content: serialized,
+		})
+		.await;
+
+	let reopened_paint = fill_paint_value(editor.active_document());
+	assert!(reopened_paint.is_no_paint(), "a none fill should survive reopening, but the stored paint became {reopened_paint:?}");
+}
+
+#[tokio::test]
+async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
+	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeInputDecleration as _;
+
+	// A minimal master-era document: a 4-input Fill (content, fill: wired, backup color, backup gradient) fed by another node
+	const LEGACY_DOCUMENT: &str = r#"{"network_interface":{"network":{"exports":[{"Node":{"node_id":1,"output_index":0,"lambda":false}}],"nodes":[[1,{"inputs":[{"Value":{"tagged_value":{"GraphicGroup":{"instance":[],"transform":[],"alpha_blending":[],"source_node_id":[]}},"exposed":true}},{"Node":{"node_id":2,"output_index":0,"lambda":false}},{"Value":{"tagged_value":{"OptionalColor":null},"exposed":false}},{"Value":{"tagged_value":{"Gradient":{"stops":[[0.0,{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0}],[1.0,{"red":1.0,"green":1.0,"blue":1.0,"alpha":1.0}]],"gradient_type":"Linear","start":[0.0,0.5],"end":[1.0,0.5],"transform":[1.0,0.0,0.0,1.0,0.0,0.0]}},"exposed":false}}],"manual_composition":{"Concrete":{"name":"core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>","alias":null}},"implementation":{"ProtoNode":{"name":"graphene_core::vector::FillNode"}},"visible":true,"skip_deduplication":false}],[2,{"inputs":[{"Value":{"tagged_value":"None","exposed":false}},{"Value":{"tagged_value":{"GradientStops":[[0.0,{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0}],[1.0,{"red":1.0,"green":1.0,"blue":1.0,"alpha":1.0}]]},"exposed":false}},{"Value":{"tagged_value":{"F64":0.5},"exposed":false}}],"manual_composition":{"Concrete":{"name":"core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>","alias":null}},"implementation":{"ProtoNode":{"name":"graphene_core::ops::SampleGradientNode"}},"visible":true,"skip_deduplication":false}]],"scope_injections":[]},"network_metadata":{"persistent_metadata":{"node_metadata":[[1,{"persistent_metadata":{"reference":"Fill","display_name":"","input_properties":[{"input_data":{"input_name":"Vector Data"},"widget_override":null},{"input_data":{"input_name":"Fill"},"widget_override":null},{"input_data":{"input_name":"Backup Color"},"widget_override":null},{"input_data":{"input_name":"Backup Gradient"},"widget_override":null}],"output_names":["Future<Instances<VectorData>>"],"has_primary_output":true,"locked":false,"pinned":false,"node_type_metadata":{"Node":{"position":{"Absolute":[0,0]}}},"network_metadata":null}}],[2,{"persistent_metadata":{"reference":"Sample Gradient","display_name":"","input_properties":[{"input_data":{"input_name":"Primary"},"widget_override":null},{"input_data":{"input_name":"Gradient"},"widget_override":null},{"input_data":{"input_name":"Position"},"widget_override":null}],"output_names":["Future<Color>"],"has_primary_output":true,"locked":false,"pinned":false,"node_type_metadata":{"Node":{"position":{"Absolute":[-20,0]}}},"network_metadata":null}}]],"previewing":"No","navigation_metadata":{"node_graph_ptz":{"pan":[0.0,0.0],"tilt":0.0,"zoom":1.0,"flip":false},"node_graph_to_viewport":[1.0,0.0,0.0,1.0,0.0,0.0],"node_graph_top_right":[0.0,0.0]},"selection_undo_history":[],"selection_redo_history":[]}}},"collapsed":[],"name":"legacy_fill.graphite","commit_hash":"0000000000000000000000000000000000000000","document_ptz":{"pan":[0.0,0.0],"tilt":0.0,"zoom":1.0,"flip":false},"document_mode":"DesignMode","view_mode":"Normal","overlays_visibility_settings":{"all":true,"artboard_name":true,"compass_rose":true,"quick_measurement":true,"transform_measurement":true,"transform_cage":true,"hover_outline":true,"selection_outline":true,"pivot":true,"path":true,"anchors":true,"handles":true},"rulers_visible":true,"snapping_state":{"snapping_enabled":true,"grid_snapping":false,"artboards":true,"tolerance":8.0,"bounding_box":{"center_point":true,"corner_point":true,"edge_midpoint":true,"align_with_edges":true,"distribute_evenly":true},"path":{"anchor_point":true,"line_midpoint":true,"along_path":true,"normal_to_path":true,"tangent_to_path":true,"path_intersection_point":true,"align_with_anchor_point":true,"perpendicular_from_endpoint":true},"grid":{"origin":[0.0,0.0],"grid_type":{"Rectangular":{"spacing":[1.0,1.0]}},"grid_color":{"red":0.6,"green":0.6,"blue":0.6,"alpha":1.0},"dot_display":false}},"graph_view_overlay_open":false,"graph_fade_artwork_percentage":80.0}"#;
+
+	// Deserializing alone must succeed, so a failure below is attributable to the migrations
+	DocumentMessageHandler::deserialize_document(LEGACY_DOCUMENT).expect("the legacy document should deserialize");
+
+	let mut editor = EditorTestUtils::create();
+	editor
+		.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: None,
+			document_path: None,
+			document_serialized_content: LEGACY_DOCUMENT.to_string(),
+		})
+		.await;
+
+	let document = editor.active_document();
+	let (network_path, node_id) = find_fill_node(document);
+	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
+	let inputs = &network.nodes[&node_id].inputs;
+
+	assert_eq!(inputs.len(), 8, "the legacy Fill should upgrade to the 8-input shape");
+	let paint = &inputs[graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX];
+	assert!(
+		matches!(paint, graph_craft::document::NodeInput::Node { .. }),
+		"the wired legacy fill should keep its connection, but became {paint:?}"
+	);
+	let has_transform = inputs[graphene_std::vector::fill::HasTransformInput::INDEX].as_value();
+	assert!(
+		matches!(has_transform, Some(TaggedValue::Bool(_))),
+		"the has-transform input should hold a bool, but became {has_transform:?}"
+	);
+	let transform = inputs[graphene_std::vector::fill::TransformInput::INDEX].as_value();
+	assert!(
+		matches!(transform, Some(TaggedValue::DAffine2(_))),
+		"the transform input should hold a matrix, but became {transform:?}"
+	);
 }

@@ -13,7 +13,7 @@ use vector_types::{
 	subpath::{ManipulatorGroup, Subpath},
 	vector::{
 		PointId,
-		style::{GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
+		style::{Gradient, GradientSpreadMethod, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin},
 	},
 	vectorize_config,
 };
@@ -84,8 +84,8 @@ const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
 // Pre-parses the raw SVG XML to extract gradient stops that have `graphite:midpoint` attributes.
 // Graphite exports gradients with midpoint curve data by writing interpolated approximation stops
 // alongside the real stops. Real stops are tagged with `graphite:midpoint` attributes.
-// Returns a map from gradient element `id` to `GradientStops` containing only the real stops.
-pub fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> {
+// Returns a map from gradient element `id` to `Gradient` containing only the real stops.
+pub fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, Gradient> {
 	let mut result = HashMap::new();
 
 	// Quick check: if the SVG doesn't reference `graphite:midpoint` at all, skip parsing
@@ -131,7 +131,7 @@ pub fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientSto
 		}
 
 		if has_any_midpoint && !real_stops.is_empty() {
-			result.insert(gradient_id, GradientStops::new(real_stops));
+			result.insert(gradient_id, Gradient::new(real_stops));
 		}
 	}
 
@@ -181,7 +181,7 @@ pub struct ParsedSvgText {
 }
 
 /// Extract fill paint from a usvg fill. Only solid colors are supported for now.
-pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<String, GradientStops>) -> Option<List<Graphic>> {
+pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<String, Gradient>) -> Option<List<Graphic>> {
 	match &fill.paint() {
 		usvg::Paint::Color(color) => {
 			let color = usvg_color(*color, fill.opacity().get());
@@ -204,7 +204,7 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<St
 						midpoint: 0.5,
 						color: usvg_color(stop.color(), stop.opacity().get()),
 					});
-					GradientStops::new(stops)
+					Gradient::new(stops)
 				}
 			};
 			let spread_method = convert_spread_method(linear.spread_method());
@@ -233,7 +233,7 @@ pub fn extract_usvg_fill(fill: &usvg::Fill, graphite_gradient_stops: &HashMap<St
 						midpoint: 0.5,
 						color: usvg_color(stop.color(), stop.opacity().get()),
 					});
-					GradientStops::new(stops)
+					Gradient::new(stops)
 				}
 			};
 			let spread_method = convert_spread_method(radial.spread_method());
@@ -288,7 +288,7 @@ pub fn extract_usvg_stroke(stroke: &usvg::Stroke, transform: DAffine2) -> (Optio
 	(Some(stroke), paint)
 }
 
-pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient_stops: &HashMap<String, GradientStops>) -> ParsedSvgPath {
+pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient_stops: &HashMap<String, Gradient>) -> ParsedSvgPath {
 	let subpaths = convert_usvg_path(path);
 	let transform = usvg_transform(node.abs_transform());
 
@@ -303,7 +303,7 @@ pub fn extract_usvg_path(node: &usvg::Node, path: &usvg::Path, graphite_gradient
 	}
 }
 
-pub fn extract_usvg_node(node: &usvg::Node, graphite_gradient_stops: &HashMap<String, GradientStops>) -> ParsedSvgNode {
+pub fn extract_usvg_node(node: &usvg::Node, graphite_gradient_stops: &HashMap<String, Gradient>) -> ParsedSvgNode {
 	match node {
 		usvg::Node::Group(group) => {
 			let group = Box::new(ParsedSvgGroup {
