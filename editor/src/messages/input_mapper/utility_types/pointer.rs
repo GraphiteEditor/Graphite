@@ -56,6 +56,11 @@ pub struct PointerState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	pub pressure: Option<f64>,
+	pub tilt: Option<DVec2>,
+	pub twist: Option<f64>,
+	pub wheel: Option<f64>,
+	pub eraser: bool,
 }
 
 impl PointerState {
@@ -72,6 +77,11 @@ pub struct EditorPointerState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	pub pressure: Option<f64>,
+	pub tilt: Option<DVec2>,
+	pub twist: Option<f64>,
+	pub wheel: Option<f64>,
+	pub eraser: bool,
 }
 
 impl EditorPointerState {
@@ -82,7 +92,7 @@ impl EditorPointerState {
 		Self {
 			editor_position,
 			mouse_keys,
-			scroll_delta: ScrollDelta::default(),
+			..Default::default()
 		}
 	}
 
@@ -91,6 +101,11 @@ impl EditorPointerState {
 			position: (viewport.logical(self.editor_position) - viewport.offset()).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
+			pressure: self.pressure,
+			tilt: self.tilt,
+			twist: self.twist,
+			wheel: self.wheel,
+			eraser: self.eraser,
 		}
 	}
 }
