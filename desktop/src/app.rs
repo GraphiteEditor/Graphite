@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
+use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
@@ -125,8 +126,8 @@ impl App {
 		}
 	}
 
-	pub(crate) fn run(mut self, event_loop: EventLoop) -> ExitReason {
-		event_loop.run_app(&mut self).unwrap();
+	pub(crate) fn run(mut self, mut event_loop: EventLoop) -> ExitReason {
+		event_loop.run_app_on_demand(&mut self).unwrap();
 		self.exit_reason
 	}
 
@@ -541,7 +542,7 @@ impl ApplicationHandler for App {
 			state: ElementState::Released,
 			button,
 			..
-		} = &event && button.clone().mouse_button() == MouseButton::Left
+		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
 			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
 		{
 			if let Some(window) = &self.window {
@@ -630,7 +631,7 @@ impl ApplicationHandler for App {
 				button,
 				state: ElementState::Released,
 				..
-			} if button.clone().mouse_button() == MouseButton::Left => {
+			} if button.clone().mouse_button() == Some(MouseButton::Left) => {
 				self.window_pending_drag = false;
 			}
 
