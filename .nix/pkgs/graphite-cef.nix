@@ -12,7 +12,7 @@ let
   src = selectSystem {
     x86_64-linux = pkgs.fetchurl {
       url = "https://github.com/timon-schelling/graphite-cef/releases/download/v${version}/graphite_cef_x86-64_linux.tar.xz";
-      hash = "sha256-lrxAALouHjQlw5lSSZka/BNpa5PVjjcncbofgKruOWk=";
+      hash = "sha256-CtvS/+NUh5ilnunt4AsWaZfWPiCsdEtz6+TLADT1Gqk=";
     };
     aarch64-linux = pkgs.fetchurl {
       url = "https://cef-builds.spotifycdn.com/cef_binary_${upstream}_linuxarm64_minimal.tar.bz2";
