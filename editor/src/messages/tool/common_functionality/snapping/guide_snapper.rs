@@ -54,7 +54,7 @@ impl GuideLineSnapper {
 		}
 
 		let document = snap_data.document;
-		if document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Intersection)) {
+		if document.guide_lines_message_handler.guide_lines_visible && document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Intersection)) {
 			let tolerance = snap_tolerance(document);
 			let mut guide_lines: Vec<SnappedLine> = Vec::new();
 

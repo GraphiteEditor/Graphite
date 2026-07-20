@@ -662,10 +662,10 @@ mod editor_commands {
 	fn create_guide_line(id: u64, direction: String, mouse_x: f64, mouse_y: f64) -> Message {
 		use editor::messages::portfolio::document::guide_message::GuideLineMessage;
 		use editor::messages::portfolio::document::utility_types::guide::{GuideLineDirection, GuideLineId};
-		let direction = if direction == "Horizontal" {
-			GuideLineDirection::Horizontal
-		} else {
-			GuideLineDirection::Vertical
+		let direction = match direction.as_str() {
+			"Horizontal" => GuideLineDirection::Horizontal,
+			"Vertical" => GuideLineDirection::Vertical,
+			other => panic!("Invalid guide line direction: {other:?}"),
 		};
 		GuideLineMessage::CreateGuideLine {
 			id: GuideLineId::from_raw(id),

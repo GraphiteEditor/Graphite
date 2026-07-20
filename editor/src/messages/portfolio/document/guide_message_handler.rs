@@ -21,6 +21,9 @@ fn default_guide_lines_visible() -> bool {
 
 impl GuideLinesMessageHandler {
 	pub fn hit_test(&self, viewport_position: DVec2, document_to_viewport: DAffine2) -> Option<(GuideLineId, GuideLineDirection)> {
+		if !self.guide_lines_visible {
+			return None;
+		}
 		let viewport_to_document = document_to_viewport.inverse();
 		let document_position = viewport_to_document.transform_point2(viewport_position);
 		let document_scale = viewport_to_document.matrix2.determinant().abs().sqrt();
