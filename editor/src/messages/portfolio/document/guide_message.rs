@@ -5,10 +5,25 @@ use crate::messages::prelude::*;
 #[impl_message(Message, DocumentMessage, GuideLine)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GuideLineMessage {
-	CreateGuideLine { id: GuideLineId, direction: GuideLineDirection, mouse_x: f64, mouse_y: f64 },
-	MoveGuideLine { id: GuideLineId, mouse_x: f64, mouse_y: f64 },
-	DeleteGuideLine { id: GuideLineId },
-	GuideLinesOverlays { context: OverlayContext },
+	CreateGuideLine {
+		id: GuideLineId,
+		direction: GuideLineDirection,
+		mouse_x: f64,
+		mouse_y: f64,
+	},
+	MoveGuideLine {
+		id: GuideLineId,
+		mouse_x: f64,
+		mouse_y: f64,
+	},
+	DeleteGuideLine {
+		id: GuideLineId,
+	},
+	GuideLinesOverlays {
+		context: OverlayContext,
+	},
 	ToggleGuideLinesVisibility,
-	SetHoveredGuideLine { id: Option<GuideLineId> },
+	SetHoveredGuideLine {
+		id: Option<GuideLineId>,
+	},
 }
