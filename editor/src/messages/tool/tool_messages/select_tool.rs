@@ -5,7 +5,6 @@ use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::guide_message::GuideLineMessage;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::guide::{GuideLineDirection, GuideLineId};
@@ -522,7 +521,6 @@ struct SelectToolData {
 	dragging_guide_line_id: Option<GuideLineId>,
 	dragging_guide_line_direction: Option<GuideLineDirection>,
 	guide_line_drag_start_position: Option<f64>,
-	drag_start_center: ViewportPosition,
 }
 
 impl SelectToolData {
