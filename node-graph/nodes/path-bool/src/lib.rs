@@ -376,6 +376,7 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 		let reach = inherited.for_lane(&columns, index);
 		let composed = transform * level.attr::<TransformAttr>(index);
 		match element {
+			Graphic::None => continue,
 			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, transform, reach),
 			Graphic::Graphic(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach.nested())),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),

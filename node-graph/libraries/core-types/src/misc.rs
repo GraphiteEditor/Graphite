@@ -69,7 +69,7 @@ struct LegacyTable<T> {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<no_std_types::color::Color>, D::Error> {
+pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<no_std_types::color::Color, D::Error> {
 	use no_std_types::color::Color;
 	use serde::Deserialize;
 
@@ -81,8 +81,8 @@ pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer:
 	}
 
 	Ok(match ColorFormat::deserialize(deserializer)? {
-		ColorFormat::OptionalColor(color) => color,
-		ColorFormat::List(list) => list.element.into_iter().next(),
+		ColorFormat::OptionalColor(color) => color.unwrap_or(Color::TRANSPARENT),
+		ColorFormat::List(list) => list.element.into_iter().next().unwrap_or(Color::TRANSPARENT),
 	})
 }
 

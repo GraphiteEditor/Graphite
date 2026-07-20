@@ -31,8 +31,11 @@ pub use vector_types::Vector;
 /// A leaf holds its element directly; its attributes ride the containing
 /// lane. Multi-element content is a [`core_types::record::Group`] run, or
 /// transitionally the legacy `Graphic` list.
-#[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
 pub enum Graphic<'e> {
+	/// The absence of graphical content, like CSS's `none` keyword: painting it produces nothing.
+	#[default]
+	None,
 	Graphic(List<Graphic<'e>>),
 	Vector(Vector),
 	RasterCPU(Raster<CPU>),
@@ -41,12 +44,6 @@ pub enum Graphic<'e> {
 	Gradient(Gradient),
 	Text(String),
 	Group(core_types::record::Group<'e>),
-}
-
-impl Default for Graphic<'_> {
-	fn default() -> Self {
-		Self::Graphic(List::new())
-	}
 }
 
 /// A typed legacy list as a legacy graphic list: each item de-tables to a
@@ -382,6 +379,7 @@ impl<'e> Graphic<'e> {
 		}
 
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => all_clipped(list),
 			Graphic::Group(group) => group_all_clipped(group),
 			_ => false,
@@ -397,6 +395,7 @@ impl<'e> Graphic<'e> {
 
 	pub fn is_opaque(&self) -> bool {
 		match self {
+			Graphic::None => false,
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			// A bare leaf carries no paint attribute, which rides its lane, so
 			// nothing here claims opacity.
@@ -410,6 +409,7 @@ impl<'e> Graphic<'e> {
 
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			// A bare leaf carries no paint attribute, so only an unstroked
 			// vector is invisible on its own.
@@ -430,6 +430,7 @@ impl<'e> Graphic<'e> {
 	/// Whether the graphic holds no content: a leaf always holds its element.
 	pub fn is_empty(&self) -> bool {
 		match self {
+			Graphic::None => true,
 			Graphic::Graphic(list) => list.is_empty(),
 			Graphic::Group(group) => group_is_empty(group),
 			_ => false,
@@ -440,6 +441,7 @@ impl<'e> Graphic<'e> {
 impl BoundingBox for Graphic<'_> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
+			Graphic::None => RenderBoundingBox::None,
 			Graphic::Vector(vector) => BoundingBox::bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
@@ -453,6 +455,7 @@ impl BoundingBox for Graphic<'_> {
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
+			Graphic::None => RenderBoundingBox::None,
 			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
@@ -484,6 +487,7 @@ impl<'e> ListConvert<Graphic<'e>> for Raster<GPU> {
 impl RenderComplexity for Graphic<'_> {
 	fn render_complexity(&self) -> usize {
 		match self {
+			Self::None => 0,
 			Self::Graphic(list) => list.render_complexity(),
 			Self::Vector(list) => list.render_complexity(),
 			Self::RasterCPU(list) => list.render_complexity(),

@@ -552,6 +552,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic<'_> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_svg(render, render_params),
 			Graphic::Vector(vector) => render_vector_svg(&Single(vector), render, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
@@ -565,6 +566,7 @@ impl Render for Graphic<'_> {
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Vector(vector) => render_vector_vello(&Single(vector), scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
@@ -590,6 +592,7 @@ impl Render for Graphic<'_> {
 
 	fn contains_artboard(&self) -> bool {
 		match self {
+			Graphic::None => false,
 			Graphic::Graphic(list) => list.contains_artboard(),
 			_ => false,
 		}
@@ -597,6 +600,7 @@ impl Render for Graphic<'_> {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
+			Graphic::None => (),
 			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
 			Graphic::Vector(vector) => vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
 			_ => (),
@@ -660,6 +664,7 @@ fn collect_element_metadata<'a>(
 	}
 
 	match element {
+		Graphic::None => {}
 		Graphic::Graphic(list) => collect_graphic_metadata_with(list, reach.nested(), metadata, footprint, element_id),
 		Graphic::Vector(vector) if reach.applies() => collect_vector_metadata(&PaintOverlay::new(&Single(vector), reach.paint), metadata, footprint, element_id),
 		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), metadata, footprint, element_id),
@@ -703,6 +708,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 
 fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, click_targets: &mut Vec<ClickTarget>) {
 	match element {
+		Graphic::None => (),
 		Graphic::Graphic(list) => add_graphic_upstream_click_targets_with(list, reach.nested(), click_targets),
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(&Single(vector), reach.paint), click_targets),
 		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), click_targets),
@@ -715,6 +721,7 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 
 fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintReach<'a>, outlines: &mut Vec<ClickTarget>) {
 	match element {
+		Graphic::None => (),
 		Graphic::Graphic(list) => add_graphic_upstream_outline_targets_with(list, reach.nested(), outlines),
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(&Single(vector), reach.paint), outlines),
 		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), outlines),
@@ -1563,6 +1570,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 			for paint_index in 0..fill_graphic.len() {
 				let Some(paint) = fill_graphic.element(paint_index) else { continue };
 				match paint {
+					Graphic::None => continue,
 					Graphic::Color(color) => {
 						let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 						scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
@@ -1643,6 +1651,7 @@ fn render_vector_vello<S: LaneSource<Element = Vector>>(source: &S, scene: &mut 
 				};
 
 				match stroke_graphic {
+					Graphic::None => continue,
 					Graphic::Color(color) => {
 						let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 
