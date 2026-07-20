@@ -8,7 +8,7 @@ use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
-use graphene_std::gradient::GradientStops;
+use graphene_std::gradient::Gradient;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -188,7 +188,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 		List<f64>,
 		List<u8>,
@@ -197,7 +197,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<BlendMode>,
 		List<GradientType>,
 		List<GradientSpreadMethod>,
-		GradientStops,
+		Gradient,
 		f64,
 		u32,
 		u64,
@@ -537,7 +537,7 @@ impl TableItemLayout for Color {
 	}
 }
 
-impl TableItemLayout for GradientStops {
+impl TableItemLayout for Gradient {
 	fn type_name() -> &'static str {
 		"Gradient"
 	}
@@ -905,12 +905,12 @@ macro_rules! known_item_types {
 			List<Raster<CPU>>,
 			List<Raster<GPU>>,
 			List<Color>,
-			List<GradientStops>,
+			List<Gradient>,
 			List<String>,
 			List<NodeId>,
 			List<f64>,
 			List<u8>,
-			GradientStops,
+			Gradient,
 			Color,
 			NodeId,
 			DAffine2,

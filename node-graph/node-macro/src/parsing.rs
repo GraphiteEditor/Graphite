@@ -1629,10 +1629,10 @@ mod tests {
 				#[implementations(
 					() -> List<Raster<CPU>>,
 					() -> List<Color>,
-					() -> List<GradientStops>,
+					() -> List<Gradient>,
 					Footprint -> List<Raster<CPU>>,
 					Footprint -> List<Color>,
-					Footprint -> List<GradientStops>,
+					Footprint -> List<Gradient>,
 				)]
 				image: impl Node<F, Output = T>,
 			) -> T {

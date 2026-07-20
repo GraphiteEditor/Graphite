@@ -9,7 +9,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 use std::borrow::Cow;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
@@ -20,7 +20,7 @@ pub enum Graphic {
 	RasterCPU(List<Raster<CPU>>),
 	RasterGPU(List<Raster<GPU>>),
 	Color(List<Color>),
-	Gradient(List<GradientStops>),
+	Gradient(List<Gradient>),
 	Text(List<String>),
 }
 
@@ -91,14 +91,14 @@ impl From<List<Color>> for Graphic {
 // Note: List conversions handled by blanket impl in gcore
 // Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
-// GradientStops
-impl From<GradientStops> for Graphic {
-	fn from(gradient: GradientStops) -> Self {
+// Gradient
+impl From<Gradient> for Graphic {
+	fn from(gradient: Gradient) -> Self {
 		Graphic::Gradient(List::new_from_element(gradient))
 	}
 }
-impl From<List<GradientStops>> for Graphic {
-	fn from(gradient: List<GradientStops>) -> Self {
+impl From<List<Gradient>> for Graphic {
+	fn from(gradient: List<Gradient>) -> Self {
 		Graphic::Gradient(gradient)
 	}
 }
@@ -274,7 +274,7 @@ impl TryFromGraphic for Color {
 	}
 }
 
-impl TryFromGraphic for GradientStops {
+impl TryFromGraphic for Gradient {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Gradient(t) = graphic { Some(t) } else { None }
 	}
@@ -336,7 +336,7 @@ impl IntoGraphicList for List<Color> {
 	}
 }
 
-impl IntoGraphicList for List<GradientStops> {
+impl IntoGraphicList for List<Gradient> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::Gradient(self))
 	}
@@ -688,7 +688,7 @@ mod graphic_is_opaque_tests {
 		Graphic::Color(List::new_from_element(color))
 	}
 
-	fn gradient_graphic(gradient: GradientStops) -> Graphic {
+	fn gradient_graphic(gradient: Gradient) -> Graphic {
 		let mut gradient_list = List::new_from_element(gradient);
 		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
 		Graphic::Gradient(gradient_list)
@@ -716,7 +716,7 @@ mod graphic_is_opaque_tests {
 	fn gradient_with_all_opaque_stops_is_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -736,7 +736,7 @@ mod graphic_is_opaque_tests {
 	fn gradient_with_transparent_stop_is_not_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 0.5).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,

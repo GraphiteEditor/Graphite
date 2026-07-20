@@ -34,7 +34,7 @@ use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{
-	FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, FillChoiceUI, GradientSpreadMethod, Gradient, GradientUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -250,7 +250,7 @@ pub(crate) fn property_from_type(
 						// ==========
 						Some(x) if x == TypeId::of::<List<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<List<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<List<Gradient>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<List<BrushStroke>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
@@ -1181,7 +1181,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 			color_button
 				.value(FillChoiceUI::from(&FillChoice::Gradient(stops.clone())))
 				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().map(GradientStops::from).unwrap_or_default()),
+					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_default()),
 					node_id,
 					index,
 				))
@@ -1258,8 +1258,8 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 }
 
 /// 2-stop black-to-white gradient track for spectrum sliders that map a value to a grayscale axis.
-fn bw_track() -> GradientStops {
-	GradientStops {
+fn bw_track() -> Gradient {
+	Gradient {
 		position: vec![0., 1.],
 		midpoint: vec![0.5, 0.5],
 		color: vec![Color::BLACK, Color::WHITE],
@@ -1267,8 +1267,8 @@ fn bw_track() -> GradientStops {
 }
 
 /// 3-stop black-to-color-to-white gradient track for spectrum sliders that map a value to a hue's full luminance range.
-fn color_track(color: Color) -> GradientStops {
-	GradientStops {
+fn color_track(color: Color) -> Gradient {
+	Gradient {
 		position: vec![0., 0.5, 1.],
 		midpoint: vec![0.5; 3],
 		color: vec![Color::BLACK, color, Color::WHITE],
@@ -1303,7 +1303,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 
 	let contrast_min = if use_classic_value { -100. } else { -50. };
 	let zero_position = -contrast_min / (100. - contrast_min);
-	let contrast_track = GradientStops {
+	let contrast_track = Gradient {
 		position: vec![0., zero_position, 1.],
 		midpoint: vec![0.5; 3],
 		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::BLACK, Color::from_rgbf32_unchecked(0.5, 0.5, 0.5)],
@@ -1400,7 +1400,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(GradientStopsUI::from(&bw_track()))
+		SpectrumInput::new(GradientUI::from(&bw_track()))
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1493,13 +1493,13 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	let saturated_current_hue = Color::from_hsva(marker_hue, 1., 1., 1.);
 
 	// Hue: cyclic rainbow
-	let hue_track = GradientStops {
+	let hue_track = Gradient {
 		position: vec![0., 1. / 6., 2. / 6., 3. / 6., 4. / 6., 5. / 6., 1.],
 		midpoint: vec![0.5; 7],
 		color: vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED],
 	};
 	// Saturation: gray to the fully saturated current hue
-	let saturation_track = GradientStops {
+	let saturation_track = Gradient {
 		position: vec![0., 1.],
 		midpoint: vec![0.5, 0.5],
 		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), saturated_current_hue],
@@ -1549,7 +1549,7 @@ fn spectrum_slider_row(
 	node_id: NodeId,
 	context: &mut NodePropertiesContext,
 	input_index: usize,
-	track: GradientStops,
+	track: Gradient,
 	handle_color: Color,
 	value_min: f64,
 	value_max: f64,
@@ -1574,7 +1574,7 @@ fn spectrum_slider_row(
 
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
-			SpectrumInput::new(GradientStopsUI::from(&track))
+			SpectrumInput::new(GradientUI::from(&track))
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)
@@ -1634,7 +1634,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::vibrance::*;
 
-	let track = GradientStops {
+	let track = Gradient {
 		position: vec![0., 1.],
 		midpoint: vec![0.5, 0.5],
 		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::RED],
@@ -2442,7 +2442,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	enum ResolvedFill {
 		Solid(Option<Color>),
 		Gradient {
-			gradient: GradientStops,
+			gradient: Gradient,
 			gradient_type: GradientType,
 			spread_method: GradientSpreadMethod,
 			transform: DAffine2,
@@ -2478,7 +2478,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				ResolvedFill::Other
 			}
 		}
-		Some(ty) if ty == &concrete!(List<GradientStops>) => {
+		Some(ty) if ty == &concrete!(List<Gradient>) => {
 			// Read this node's own inputs rather than the layer's nearest Fill, which may be a different node when Fills are chained
 			if let Ok(document_node) = get_document_node(node_id, context)
 				&& let Some(gradient) = graph_modification_utils::read_fill_node_gradient(document_node, || {
@@ -2506,11 +2506,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			};
 			let backup_stops = match document_node.inputs[BackupGradientInput::INDEX].as_value() {
 				Some(TaggedValue::Gradient(stops)) => stops.clone(),
-				_ => GradientStops::default(),
+				_ => Gradient::default(),
 			};
 			(backup_color, backup_stops)
 		}
-		Err(_) => (None, GradientStops::default()),
+		Err(_) => (None, Gradient::default()),
 	};
 
 	match &fill {
@@ -2536,7 +2536,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoiceUI::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, .. } => FillChoiceUI::Gradient(GradientStopsUI::from(stops)),
+		ResolvedFill::Gradient { gradient: stops, .. } => FillChoiceUI::Gradient(GradientUI::from(stops)),
 		ResolvedFill::Other => FillChoiceUI::None,
 	};
 
@@ -2557,7 +2557,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		]),
 	};
 
-	let gradient_set_messages = move |gradient: GradientStops| Message::Batched {
+	let gradient_set_messages = move |gradient: Gradient| Message::Batched {
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
@@ -2585,7 +2585,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					solid_set_messages(color)
 				}
 				FillChoiceUI::Gradient(gradient_stops_ui) => {
-					let gradient = GradientStops::from(gradient_stops_ui);
+					let gradient = Gradient::from(gradient_stops_ui);
 					gradient_set_messages(gradient)
 				}
 			})

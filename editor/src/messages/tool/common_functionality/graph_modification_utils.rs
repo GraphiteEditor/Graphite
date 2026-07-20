@@ -15,7 +15,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{GradientSpreadMethod, GradientStops, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{GradientSpreadMethod, Gradient, GradientType, PointId, SegmentId, VectorModificationType};
 use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
 
@@ -310,7 +310,7 @@ pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &No
 }
 
 /// Get the gradient stops of a layer, if any.
-pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
+pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	// Try to find the gradient stops value that is created by a Fill node first
 	if let Some(fill_node_id) = get_fill_node_id_with_direct_fill_input(layer, network_interface) {
 		return network_interface
@@ -329,7 +329,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	Some(stops.clone())
 }
 
-/// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<GradientStops>`
+/// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<Gradient>`
 /// layer this is the layer's incoming footprint transform; for a Fill-owned gradient value it composes the layer's viewport
 /// transform with the [0,1]² → bounding-box mapping.
 pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
@@ -626,7 +626,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 
 /// A Fill node's decoded gradient inputs, with the transform kept in its raw form (not yet baked into `start`/`end`).
 pub struct FillNodeGradient {
-	pub stops: GradientStops,
+	pub stops: Gradient,
 	pub gradient_type: GradientType,
 	pub spread_method: GradientSpreadMethod,
 	pub transform: DAffine2,

@@ -5,7 +5,7 @@ use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
@@ -36,7 +36,7 @@ async fn context_modification<T>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 		Context -> AttributeDyn,
 		Context -> AttributeValueDyn,
 		Context -> ListDyn,

@@ -10,7 +10,7 @@ use std::f64::consts::{PI, TAU};
 
 /// Describes an editable fill choice, storing color or gradient stops without gradient placement metadata.
 ///
-/// Can be None, a solid [Color], or a linear/radial [GradientStops].
+/// Can be None, a solid [Color], or a linear/radial [Gradient].
 ///
 /// In the future we'll probably also add a pattern fill.
 ///
@@ -22,11 +22,11 @@ pub enum FillChoice {
 	#[default]
 	None,
 	Solid(Color),
-	Gradient(GradientStops),
+	Gradient(Gradient),
 }
 
 // TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
-/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is [`GradientStopsUI`].
+/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is [`GradientUI`].
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Default, Debug, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -34,7 +34,7 @@ pub enum FillChoiceUI {
 	#[default]
 	None,
 	Solid(SRGBA8),
-	Gradient(GradientStopsUI),
+	Gradient(GradientUI),
 }
 
 impl From<&FillChoice> for FillChoiceUI {
@@ -42,7 +42,7 @@ impl From<&FillChoice> for FillChoiceUI {
 		match value {
 			FillChoice::None => Self::None,
 			FillChoice::Solid(color) => Self::Solid(SRGBA8::from(*color)),
-			FillChoice::Gradient(stops) => Self::Gradient(GradientStopsUI::from(stops)),
+			FillChoice::Gradient(stops) => Self::Gradient(GradientUI::from(stops)),
 		}
 	}
 }
@@ -52,7 +52,7 @@ impl From<&FillChoiceUI> for FillChoice {
 		match value {
 			FillChoiceUI::None => Self::None,
 			FillChoiceUI::Solid(srgba) => Self::Solid(Color::from(*srgba)),
-			FillChoiceUI::Gradient(stops) => Self::Gradient(GradientStops::from(stops)),
+			FillChoiceUI::Gradient(stops) => Self::Gradient(Gradient::from(stops)),
 		}
 	}
 }
@@ -63,7 +63,7 @@ impl FillChoiceUI {
 		Some(*c)
 	}
 
-	pub fn as_gradient(&self) -> Option<&GradientStopsUI> {
+	pub fn as_gradient(&self) -> Option<&GradientUI> {
 		let Self::Gradient(g) = self else { return None };
 		Some(g)
 	}
@@ -88,7 +88,7 @@ impl FillChoice {
 		Some(*color)
 	}
 
-	pub fn as_gradient(&self) -> Option<&GradientStops> {
+	pub fn as_gradient(&self) -> Option<&Gradient> {
 		let Self::Gradient(gradient) = self else { return None };
 		Some(gradient)
 	}

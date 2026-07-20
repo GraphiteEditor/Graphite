@@ -7,7 +7,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 /// Applies the specified transform to the input value, which may be a graphic type or another transform.
 #[node_macro::node(category("Math: Transform"))]
@@ -22,7 +22,7 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
@@ -62,7 +62,7 @@ fn reset_transform<T>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 	)]
 	mut content: List<T>,
 	#[default(true)] reset_translation: bool,
@@ -100,7 +100,7 @@ fn replace_transform<T>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 	)]
 	mut content: List<T>,
 	transform: DAffine2,
