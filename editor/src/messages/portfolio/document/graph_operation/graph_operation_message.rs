@@ -11,7 +11,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
-use graphene_std::vector::{GradientStops, PointId, VectorModificationType};
+use graphene_std::vector::{Gradient, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -22,7 +22,7 @@ pub enum GraphOperationMessage {
 	},
 	FillGradientSet {
 		layer: LayerNodeIdentifier,
-		gradient: GradientStops,
+		gradient: Gradient,
 		gradient_type: GradientType,
 		spread_method: GradientSpreadMethod,
 		transform: DAffine2,
@@ -33,7 +33,7 @@ pub enum GraphOperationMessage {
 	},
 	GradientStopsSet {
 		layer: LayerNodeIdentifier,
-		stops: GradientStops,
+		stops: Gradient,
 	},
 	GradientTransformSet {
 		layer: LayerNodeIdentifier,

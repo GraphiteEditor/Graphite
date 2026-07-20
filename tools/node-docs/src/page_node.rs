@@ -180,7 +180,7 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 				let render_color = |color| format!(r#"<span style="padding-right: 100px; border: 2px solid var(--color-fog); background: {color}"></span>"#);
 				let default_value = match default_value {
 					"Color::BLACK" => render_color("black"),
-					"GradientStops([(0.0, Color { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 }), (1.0, Color { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 })])" => {
+					"Gradient([(0.0, Color { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 }), (1.0, Color { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 })])" => {
 						render_color("linear-gradient(to right, black, white)")
 					}
 					_ => format!("`{default_value}{}`", field.unit.unwrap_or_default()),

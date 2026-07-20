@@ -140,7 +140,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 				"List<Raster<CPU>>",
 				"List<Raster<GPU>>",
 				"List<Color>",
-				"List<GradientStops>",
+				"List<Gradient>",
 				"List<String>",
 			])
 			.map(|(entry, target)| (ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{target}>")), entry)),
