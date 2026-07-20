@@ -1,0 +1,292 @@
+use core_types::list::{Item, List};
+use core_types::{ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
+use glam::{DAffine2, DVec2};
+use parley::GlyphRun;
+use skrifa::GlyphId;
+use skrifa::instance::{LocationRef, NormalizedCoord, Size};
+use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::FontRef as ReadFontsRef;
+use skrifa::{MetadataProvider, OutlineGlyph};
+use vector_types::ATTR_EDITOR_CLICK_TARGET;
+use vector_types::subpath::{ManipulatorGroup, Subpath};
+use vector_types::vector::{PointId, Vector};
+
+pub struct PathBuilder {
+	current_subpath: Subpath<PointId>,
+	origin: DVec2,
+	glyph_subpaths: Vec<Subpath<PointId>>,
+	pub vector_list: List<Vector>,
+	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
+	merged_click_target_bboxes: Vec<[DVec2; 2]>,
+	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
+	merged_click_target_baselines: Vec<f64>,
+	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
+	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
+	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
+	text_frame_size: DVec2,
+	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
+	/// `local_transforms` stays stable when all glyphs are clipped during a resize drag.
+	first_glyph_offset: DVec2,
+	scale: f64,
+	id: PointId,
+}
+
+impl PathBuilder {
+	pub fn new(per_glyph_items: bool, scale: f64, text_frame_size: DVec2, first_glyph_offset: DVec2) -> Self {
+		Self {
+			current_subpath: Subpath::new(Vec::new(), false),
+			glyph_subpaths: Vec::new(),
+			vector_list: if per_glyph_items { List::new() } else { List::new_from_element(Vector::default()) },
+			merged_click_target_bboxes: Vec::new(),
+			merged_click_target_baselines: Vec::new(),
+			per_glyph_bboxes: Vec::new(),
+			text_frame_size,
+			first_glyph_offset,
+			scale,
+			id: PointId::ZERO,
+			origin: DVec2::default(),
+		}
+	}
+
+	fn point(&self, x: f32, y: f32) -> DVec2 {
+		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn draw_glyph(
+		&mut self,
+		glyph: &OutlineGlyph<'_>,
+		size: f32,
+		normalized_coords: &[NormalizedCoord],
+		glyph_offset: DVec2,
+		style_skew: Option<DAffine2>,
+		skew: DAffine2,
+		per_glyph_items: bool,
+	) -> bool {
+		let location_ref = LocationRef::new(normalized_coords);
+		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
+		glyph.draw(settings, self).unwrap();
+		let has_geometry = !self.glyph_subpaths.is_empty();
+
+		// Apply transforms in correct order: style-based skew first, then user-requested skew
+		// This ensures font synthesis (italic) is applied before user transformations
+		for glyph_subpath in &mut self.glyph_subpaths {
+			if let Some(style_skew) = style_skew {
+				glyph_subpath.apply_transform(style_skew);
+			}
+
+			glyph_subpath.apply_transform(skew);
+		}
+
+		let glyph_bbox = subpaths_bounding_box(&self.glyph_subpaths);
+
+		if per_glyph_items {
+			// Frame in item-local space: top-left at `-glyph_offset` so the item transform cancels it
+			// back to the layer-local frame origin, regardless of which glyph survived
+			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
+
+			let item = Item::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
+				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+			self.vector_list.push(item);
+
+			// Defer click target creation to `finalize()` where adjacent AABBs get widened
+			self.per_glyph_bboxes.push(glyph_bbox);
+		} else {
+			for subpath in self.glyph_subpaths.drain(..) {
+				// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
+				self.vector_list.element_mut(0).unwrap().append_subpath(subpath, false);
+			}
+			if let Some(bbox) = glyph_bbox {
+				self.merged_click_target_bboxes.push(bbox);
+				self.merged_click_target_baselines.push(glyph_offset.y);
+			}
+		}
+
+		has_geometry
+	}
+
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
+		let mut run_x = glyph_run.offset() + x_offset;
+		let run_y = glyph_run.baseline();
+
+		let run = glyph_run.run();
+
+		// User-requested letter tilt applied around baseline to avoid vertical displacement
+		// Translation ensures rotation point is at the baseline, not origin
+		let skew = if per_glyph_items {
+			DAffine2::from_cols_array(&[1., 0., -letter_tilt.to_radians().tan(), 1., 0., 0.])
+		} else {
+			DAffine2::from_translation(DVec2::new(0., run_y as f64))
+				* DAffine2::from_cols_array(&[1., 0., -letter_tilt.to_radians().tan(), 1., 0., 0.])
+				* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+		};
+
+		let synthesis = run.synthesis();
+
+		// Font synthesis (e.g., synthetic italic) applied separately from user transforms
+		// This preserves the distinction between font styling and user transformations
+		let style_skew = synthesis.skew().map(|angle| {
+			if per_glyph_items {
+				DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+			} else {
+				DAffine2::from_translation(DVec2::new(0., run_y as f64))
+					* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
+					* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+			}
+		});
+
+		let font = run.font();
+		let font_size = run.font_size();
+
+		let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
+
+		// TODO: This can be cached for better performance
+		let font_collection_ref = font.data.as_ref();
+		let font_ref = ReadFontsRef::from_index(font_collection_ref, font.index).unwrap();
+		let outlines = font_ref.outline_glyphs();
+
+		for glyph in glyph_run.glyphs() {
+			let glyph_offset = DVec2::new((run_x + glyph.x) as f64, (run_y - glyph.y) as f64);
+			run_x += glyph.advance;
+
+			let glyph_id = GlyphId::from(glyph.id);
+			if let Some(glyph_outline) = outlines.get(glyph_id) {
+				if !per_glyph_items {
+					self.origin = glyph_offset;
+				}
+				let drew_geometry = self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_items);
+
+				if !drew_geometry && space_extra != 0. && glyph.advance > 0. {
+					run_x += space_extra;
+				}
+			}
+		}
+	}
+
+	pub fn finalize(mut self) -> List<Vector> {
+		// Empty list = all glyphs clipped by height. Create a placeholder with the same item-0
+		// transform a populated list would have so `local_transforms` stays stable mid-drag.
+		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
+		if self.vector_list.is_empty() {
+			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
+			let item = Item::new_from_element(Vector::default())
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
+				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+			self.vector_list.push(item);
+		}
+
+		// Widen per-glyph AABBs to close horizontal gaps, then publish as click targets
+		if !self.per_glyph_bboxes.is_empty() {
+			// Project glyph-local AABBs into layer-local for the widening pass
+			let entries: Vec<(usize, DVec2, [DVec2; 2])> = self
+				.per_glyph_bboxes
+				.iter()
+				.enumerate()
+				.filter_map(|(index, bbox)| {
+					let bbox = (*bbox)?;
+					let offset = self.vector_list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation;
+					Some((index, offset, [bbox[0] + offset, bbox[1] + offset]))
+				})
+				.collect();
+
+			let mut layer_bboxes: Vec<[DVec2; 2]> = entries.iter().map(|entry| entry.2).collect();
+			let baselines: Vec<f64> = entries.iter().map(|entry| entry.1.y).collect();
+			widen_horizontal_gaps(&mut layer_bboxes, &baselines);
+
+			// Project back to glyph-local and stamp as click targets
+			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
+				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
+				let rect = Subpath::new_rectangle(glyph_local[0], glyph_local[1]);
+				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Some(Vector::from_subpaths([rect], false)));
+			}
+		}
+
+		// "Separate Glyphs" off: widen the accumulated AABBs and bundle as one override `Vector`
+		if !self.merged_click_target_bboxes.is_empty() {
+			let mut bboxes = self.merged_click_target_bboxes;
+			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
+
+			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
+			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Some(Vector::from_subpaths(widened_subpaths, false)));
+		}
+
+		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
+		let frame = DAffine2::from_scale(self.text_frame_size);
+		for index in 0..self.vector_list.len() {
+			if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
+				self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+			}
+		}
+
+		self.vector_list
+	}
+}
+
+/// Widen AABBs horizontally so same-line neighbors fill inter-glyph gaps.
+/// The shorter glyph (higher min.y) widens toward its taller neighbor; equal heights split the gap.
+/// Assumes input is in reading order. Linear runtime.
+fn widen_horizontal_gaps(bboxes: &mut [[DVec2; 2]], baselines: &[f64]) {
+	for i in 0..bboxes.len().saturating_sub(1) {
+		// Skip cross-line pairs (loose epsilon since baselines come from layout floats)
+		if (baselines[i] - baselines[i + 1]).abs() > 1e-4 {
+			continue;
+		}
+
+		let gap = bboxes[i + 1][0].x - bboxes[i][1].x;
+		if gap <= 0. {
+			continue;
+		}
+
+		let left_top = bboxes[i][0].y;
+		let right_top = bboxes[i + 1][0].y;
+
+		if left_top > right_top {
+			bboxes[i][1].x += gap;
+		} else if right_top > left_top {
+			bboxes[i + 1][0].x -= gap;
+		} else {
+			let half = gap / 2.;
+			bboxes[i][1].x += half;
+			bboxes[i + 1][0].x -= half;
+		}
+	}
+}
+
+fn subpaths_bounding_box(subpaths: &[Subpath<PointId>]) -> Option<[DVec2; 2]> {
+	subpaths
+		.iter()
+		.filter_map(|subpath| subpath.bounding_box())
+		.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)])
+}
+
+impl OutlinePen for PathBuilder {
+	fn move_to(&mut self, x: f32, y: f32) {
+		if !self.current_subpath.is_empty() {
+			self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		}
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+	}
+
+	fn line_to(&mut self, x: f32, y: f32) {
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+	}
+
+	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
+		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, None, None, self.id.next_id()));
+	}
+
+	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
+		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
+		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle1);
+		self.current_subpath
+			.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, Some(handle2), None, self.id.next_id()));
+	}
+
+	fn close(&mut self) {
+		self.current_subpath.set_closed(true);
+		self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+	}
+}
