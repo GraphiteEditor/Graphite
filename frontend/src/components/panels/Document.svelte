@@ -184,8 +184,8 @@
 		throw new Error("Expected editor to support guide line operations.");
 	}
 
-	function isInRulerArea(event: PointerEvent, viewportRect: DOMRect, direction: GuideDirection): boolean {
-		return direction === "Horizontal" ? event.clientY < viewportRect.top : event.clientX < viewportRect.left;
+	function isInRulerArea(event: PointerEvent, viewportRect: DOMRect, _direction: GuideDirection): boolean {
+		return event.clientX < viewportRect.left || event.clientX > viewportRect.right || event.clientY < viewportRect.top || event.clientY > viewportRect.bottom;
 	}
 
 	function createGuideDragHandlers(options: { deleteOnCancel: boolean }) {
@@ -222,16 +222,23 @@
 			cleanup();
 		};
 
+		const onCancel = () => {
+			if (draggingGuideId === undefined) return;
+			if (options.deleteOnCancel) getEditorHandle().deleteGuideLine(draggingGuideId);
+			cleanup();
+		};
+
 		const cleanup = () => {
 			draggingGuideId = undefined;
 			draggingGuideDirection = undefined;
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onRelease);
+			window.removeEventListener("pointercancel", onCancel);
 			window.removeEventListener("keydown", onEscape);
 			window.removeEventListener("contextmenu", onRightClick);
 		};
 
-		return { onMove, onRelease, onEscape, onRightClick };
+		return { onMove, onRelease, onCancel, onEscape, onRightClick };
 	}
 
 	function startGuideDrag(options: { deleteOnCancel: boolean }) {
@@ -240,6 +247,7 @@
 
 		window.addEventListener("pointermove", handlers.onMove);
 		window.addEventListener("pointerup", handlers.onRelease);
+		window.addEventListener("pointercancel", handlers.onCancel);
 		window.addEventListener("keydown", handlers.onEscape);
 		window.addEventListener("contextmenu", handlers.onRightClick);
 	}

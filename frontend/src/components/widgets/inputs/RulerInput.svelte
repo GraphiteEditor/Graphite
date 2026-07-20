@@ -235,6 +235,15 @@
 		}
 	}
 
+	function handlePointerCancel(e: PointerEvent) {
+		if (!isDragging) return;
+		isDragging = false;
+
+		if (e.currentTarget instanceof HTMLElement) {
+			e.currentTarget.releasePointerCapture(e.pointerId);
+		}
+	}
+
 	onMount(resize);
 </script>
 
@@ -244,6 +253,7 @@
 		bind:this={rulerInput}
 		on:pointerdown={handlePointerDown}
 		on:pointerup={handlePointerUp}
+		on:pointercancel={handlePointerCancel}
 		style:cursor={direction === "Horizontal" ? "row-resize" : "col-resize"}
 	>
 		<svg style:width={svgBounds.width} style:height={svgBounds.height}>
