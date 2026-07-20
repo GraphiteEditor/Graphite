@@ -11,7 +11,7 @@ use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Div, Mul, Rem, Sub};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 use vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod as SpreadMethodAttr};
 
 /// The struct that stores the context for the maths parser.
@@ -819,25 +819,25 @@ fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: Str
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
+fn gradient_value(_: impl Ctx, _primary: (), gradient: Gradient) -> Gradient {
 	gradient
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, gradient: GradientStops, gradient_type: vector_types::GradientType) -> (GradientStops, Attr<GradientTypeAttr>) {
+fn gradient_type(_: impl Ctx, gradient: Gradient, gradient_type: vector_types::GradientType) -> (Gradient, Attr<GradientTypeAttr>) {
 	(gradient, Attr(gradient_type))
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, gradient: GradientStops, spread_method: vector_types::GradientSpreadMethod) -> (GradientStops, Attr<SpreadMethodAttr>) {
+fn spread_method(_: impl Ctx, gradient: Gradient, spread_method: vector_types::GradientSpreadMethod) -> (Gradient, Attr<SpreadMethodAttr>) {
 	(gradient, Attr(spread_method))
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
+fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<Gradient>, position: Fraction) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
 	if gradient.is_empty() || ctx.index() != 0 {
 		return Err(GraphError::past_end().into());

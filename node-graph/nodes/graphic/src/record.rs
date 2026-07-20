@@ -11,7 +11,7 @@ use glam::DAffine2;
 use graphic_types::Vector;
 use graphic_types::graphic::Graphic;
 use raster_types::{CPU, Raster};
-use vector_types::{GradientStop, GradientStops};
+use vector_types::{GradientStop, Gradient};
 
 /// Whether the walk can descend into a group: the run holds `Graphic`
 /// elements.
@@ -113,12 +113,12 @@ fn wrap_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> 
 /// Rank-model colors-to-gradient: the color level folds into one gradient
 /// with evenly spaced stops.
 #[node_macro::node(category("Test"))]
-fn to_gradient(_: impl Ctx, colors: IList<Color>) -> GradientStops {
+fn to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
 	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
 	match colors.len() {
-		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => GradientStops::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
-		total => GradientStops::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
+		0 => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
+		1 => Gradient::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
+		total => Gradient::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
 	}
 }
 
@@ -135,7 +135,7 @@ pub(crate) fn vararg_row<Row: Clone + Send + Sync + 'static>(content: core_types
 #[node_macro::node(category("Test"))]
 fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<IList<T>>, Interrupt> {
 	let mut remaining = ctx.index();
@@ -159,7 +159,7 @@ fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 #[node_macro::node(category("Test"))]
 fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
 	let mut remaining = ctx.index();
@@ -819,14 +819,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let layout = Layout::default().with_writes(1, record::element_write_hashed::<Color>(), &[]);
-		let out = Layout::default().with_writes(0, record::element_write_hashed::<GradientStops>(), &[]);
+		let out = Layout::default().with_writes(0, record::element_write_hashed::<Gradient>(), &[]);
 		let build = |colors: Vec<Color>| install_flip(ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout), &out);
 		let stops_of = |colors: Vec<Color>| {
 			let node = build(colors);
 			let GPoll::Final(record) = record::capture(&node, &ctx, &frames) else {
 				panic!("expected a final record");
 			};
-			record.element::<GradientStops>()
+			record.element::<Gradient>()
 		};
 
 		let three = stops_of(vec![Color::BLACK, Color::WHITE, Color::BLACK]);

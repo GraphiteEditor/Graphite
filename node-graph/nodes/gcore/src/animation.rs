@@ -3,7 +3,7 @@ use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Color, Context, Ctx, DeriveCtx, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
@@ -80,7 +80,7 @@ fn quantize_real_time<T>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 		Context -> List<String>,
 		Context -> List<f64>,
 		Context -> (),
@@ -120,7 +120,7 @@ fn quantize_animation_time<T>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 		Context -> List<String>,
 		Context -> List<f64>,
 		Context -> (),
