@@ -2,6 +2,7 @@ use super::PointId;
 use super::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::subpath::{BezierHandles, ManipulatorGroup};
 use crate::vector::{SegmentId, Vector};
+use core_types::list::{Item, List};
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, QuadBez};
@@ -47,6 +48,77 @@ pub enum RowsOrColumns {
 	#[default]
 	Rows = 0,
 	Columns,
+}
+
+/// A box's four corner values, such as a rectangle's corner radii, expanded on read from any number of stored
+/// values by the CSS `border-radius` shorthand rules.
+///
+/// Wraps a `List<f64>` so the Data panel can introspect its values, mirroring how `DashPattern` wraps its lengths,
+/// while remaining a single rank-0 value on the wire.
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+pub struct BoxCorners(pub List<f64>);
+
+impl BoxCorners {
+	/// Expands the stored values to the four corners, clockwise from the top-left, by the CSS `border-radius` shorthand rules.
+	/// - `[]` → `[0, 0, 0, 0]`
+	/// - `[a]` → `[a, a, a, a]`
+	/// - `[a, b]` → `[a, b, a, b]`
+	/// - `[a, b, c]` → `[a, b, c, b]`
+	/// - `[a, b, c, d, …]` → `[a, b, c, d]`
+	pub fn to_corner_values(&self) -> [f64; 4] {
+		let values: Vec<f64> = self.0.iter_element_values().copied().collect();
+		match values.as_slice() {
+			[] => [0., 0., 0., 0.],
+			&[a] => [a, a, a, a],
+			&[a, b] => [a, b, a, b],
+			&[a, b, c] => [a, b, c, b],
+			&[a, b, c, d, ..] => [a, b, c, d],
+		}
+	}
+}
+
+// `List<f64>` is a runtime-only wire type, so serialize the corners as their bare values to keep documents stable
+#[cfg(feature = "serde")]
+impl serde::Serialize for BoxCorners {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.collect_seq(self.0.iter_element_values())
+	}
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BoxCorners {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		Ok(Self::from(<Vec<f64> as serde::Deserialize>::deserialize(deserializer)?))
+	}
+}
+
+impl From<f64> for BoxCorners {
+	fn from(value: f64) -> Self {
+		Self(List::new_from_element(value))
+	}
+}
+
+impl From<Vec<f64>> for BoxCorners {
+	fn from(values: Vec<f64>) -> Self {
+		Self(values.into_iter().map(Item::new_from_element).collect())
+	}
+}
+
+impl From<&str> for BoxCorners {
+	fn from(text: &str) -> Self {
+		Self::from(
+			text.split([',', ' '])
+				.filter(|piece| !piece.is_empty())
+				.filter_map(|piece| piece.parse::<f64>().ok())
+				.collect::<Vec<f64>>(),
+		)
+	}
+}
+
+impl From<String> for BoxCorners {
+	fn from(text: String) -> Self {
+		Self::from(text.as_str())
+	}
 }
 
 pub trait AsU64 {

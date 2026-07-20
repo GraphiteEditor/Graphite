@@ -58,7 +58,7 @@ pub mod subpath {
 }
 
 pub mod gradient {
-	pub use vector_types::{GradientStop, Gradient};
+	pub use vector_types::{Gradient, GradientStop};
 }
 
 pub mod transform {

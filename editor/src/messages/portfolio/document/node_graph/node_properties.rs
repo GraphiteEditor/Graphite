@@ -32,9 +32,11 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
-use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
+use graphene_std::vector::misc::{
+	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+};
 use graphene_std::vector::style::{
-	FillChoiceUI, GradientSpreadMethod, Gradient, GradientUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	DashPattern, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
@@ -848,6 +850,32 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			text_input
 				.value(values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
+				.widget_instance(),
+		])
+	}
+	widgets
+}
+
+pub fn dash_pattern_widget(parameter_widgets_info: ParameterWidgetsInfo, text_input: TextInput) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return Vec::new() };
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(TaggedValue::DashPattern(pattern)) = &input.as_non_exposed_value() {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			text_input
+				.value(pattern.0.iter_element_values().map(|length| length.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(
+					move |input: &TextInput| Some(TaggedValue::DashPattern(DashPattern::from(input.value.as_str()))),
+					node_id,
+					index,
+				))
 				.widget_instance(),
 		])
 	}
@@ -2174,7 +2202,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
 	// Corner Radius
-	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::<f64>::INDEX, true, context));
+	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::INDEX, true, context));
 	corner_radius_row_1.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
@@ -2194,20 +2222,15 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(CornerRadiusInput::<f64>::INDEX) else {
+		let Some(input) = document_node.inputs.get(CornerRadiusInput::INDEX) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
-		let uniform_val = match input.as_non_exposed_value() {
-			Some(TaggedValue::F64(x)) => *x,
-			Some(TaggedValue::F64Array(values)) => values.first().copied().unwrap_or(0.),
-			_ => 0.,
+		let corner_values = match input.as_non_exposed_value() {
+			Some(TaggedValue::BoxCorners(corners)) => corners.to_corner_values(),
+			_ => [0.; 4],
 		};
-		let individual_val = match input.as_non_exposed_value() {
-			Some(&TaggedValue::F64(x)) => vec![x; 4],
-			Some(TaggedValue::F64Array(values)) => values.clone(),
-			_ => vec![0.; 4],
-		};
+		let uniform_val = corner_values[0];
 
 		// Uniform/individual radio input widget
 		let uniform = RadioEntryData::new("Uniform")
@@ -2222,14 +2245,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64(uniform_val),
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(uniform_val)),
 					}
 					.into(),
 				]),
 			})
 			.on_commit(commit_value);
-		let individual_val_for_switch = individual_val.clone();
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
 			.on_update(move |_| Message::Batched {
@@ -2242,8 +2264,8 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64Array(individual_val_for_switch.clone()),
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec())),
 					}
 					.into(),
 				]),
@@ -2254,24 +2276,23 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 		// Radius value input widget
 		let input_widget = if is_individual {
-			let from_string = |string: &str| {
-				string
-					.split(&[',', ' '])
-					.filter(|x| !x.is_empty())
-					.map(str::parse::<f64>)
-					.collect::<Result<Vec<f64>, _>>()
-					.ok()
-					.map(|values| TaggedValue::F64Array(values.into_iter().take(4).collect()))
-			};
 			TextInput::default()
-				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, CornerRadiusInput::<f64>::INDEX))
+				.value(corner_values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(
+					move |x: &TextInput| Some(TaggedValue::BoxCorners(BoxCorners::from(x.value.as_str()))),
+					node_id,
+					CornerRadiusInput::INDEX,
+				))
 				.widget_instance()
 		} else {
 			NumberInput::default()
 				.value(Some(uniform_val))
 				.unit(" px")
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::<f64>::INDEX))
+				.on_update(update_value(
+					move |x: &NumberInput| TaggedValue::BoxCorners(BoxCorners::from(x.value.unwrap())),
+					node_id,
+					CornerRadiusInput::INDEX,
+				))
 				.on_commit(commit_value)
 				.widget_instance()
 		};
@@ -2672,7 +2693,22 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				} else {
 					"Swap the start and end points of the gradient line."
 				})
-				.on_update(update_value(move |_| TaggedValue::OptionalDAffine2(Some(new_transform)), node_id, TransformInput::INDEX))
+				.on_update(move |_| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: HasTransformInput::INDEX,
+							value: TaggedValue::Bool(true),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: TransformInput::INDEX,
+							value: TaggedValue::DAffine2(new_transform),
+						}
+						.into(),
+					]),
+				})
 				.widget_instance();
 			spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			spread_methods_row.push(reverse_direction_button);
@@ -2716,8 +2752,8 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<List<f64>>::INDEX].as_value() {
-		Some(TaggedValue::F64Array(values)) => values.is_empty(),
+	let has_dash_lengths = match &document_node.inputs[DashPatternInput::INDEX].as_value() {
+		Some(TaggedValue::DashPattern(pattern)) => pattern.0.is_empty(),
 		_ => true,
 	};
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
@@ -2743,10 +2779,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
-	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<List<f64>>::INDEX, true, context),
-		TextInput::default().centered(true),
-	);
+	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput::INDEX, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
 	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
 

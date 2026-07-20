@@ -15,7 +15,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{GradientSpreadMethod, Gradient, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientSpreadMethod, GradientType, PointId, SegmentId, VectorModificationType};
 use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
 
@@ -570,8 +570,8 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		Some(TaggedValue::PaintOrder(value)) => *value,
 		_ => PaintOrder::default(),
 	};
-	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::<List<f64>>::INDEX) {
-		Some(TaggedValue::F64Array(value)) => value.clone(),
+	let dash_lengths = match read(graphene_std::vector::stroke::DashPatternInput::INDEX) {
+		Some(TaggedValue::DashPattern(value)) => value.0.iter_element_values().copied().collect(),
 		_ => Vec::new(),
 	};
 	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX) {
@@ -649,9 +649,11 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 		_ => GradientSpreadMethod::default(),
 	};
+	let has_transform = matches!(fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
 	let transform_input = fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value());
-	let transform = match transform_input {
-		Some(&TaggedValue::OptionalDAffine2(value)) => value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(bounding_box())),
+	let transform = match (has_transform, transform_input) {
+		(true, Some(&TaggedValue::DAffine2(value))) => value,
+		(false, _) => initial_gradient_transform_for_bounding_box(bounding_box()),
 		_ => DAffine2::IDENTITY,
 	};
 
@@ -804,10 +806,10 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
 					_ => GradientSpreadMethod::default(),
 				};
-				let transform = match read(graphene_std::vector::fill::TransformInput::INDEX) {
-					Some(TaggedValue::OptionalDAffine2(value)) => {
-						value.unwrap_or_else(|| initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)))
-					}
+				let has_transform = matches!(read(graphene_std::vector::fill::HasTransformInput::INDEX), Some(TaggedValue::Bool(true)));
+				let transform = match (has_transform, read(graphene_std::vector::fill::TransformInput::INDEX)) {
+					(true, Some(TaggedValue::DAffine2(value))) => *value,
+					(false, _) => initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)),
 					_ => DAffine2::IDENTITY,
 				};
 

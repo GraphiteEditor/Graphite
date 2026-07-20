@@ -5,54 +5,9 @@ use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
 use vector_types::subpath;
-use vector_types::vector::misc::{ArcType, AsU64, GridType};
+use vector_types::vector::misc::{ArcType, AsU64, BoxCorners, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId, StrokeId};
-
-trait CornerRadius {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector>;
-}
-impl CornerRadius for f64 {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector> {
-		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4])))
-	}
-}
-impl CornerRadius for List<f64> {
-	fn generate(self, size: DVec2, clamped: bool) -> List<Vector> {
-		// Expand to four corners using the CSS `border-radius` shorthand rules.
-		// - `[a]` → `[a, a, a, a]`
-		// - `[a, b]` → `[a, b, a, b]`
-		// - `[a, b, c]` → `[a, b, c, b]`
-		// - `[a, b, c, d, …]` → `[a, b, c, d]`
-		// - `[]` → `[0, 0, 0, 0]`
-		let values: Vec<f64> = self.iter_element_values().copied().collect();
-		let radii: [f64; 4] = match values.as_slice() {
-			[] => [0., 0., 0., 0.],
-			&[a] => [a, a, a, a],
-			&[a, b] => [a, b, a, b],
-			&[a, b, c] => [a, b, c, b],
-			&[a, b, c, d, ..] => [a, b, c, d],
-		};
-
-		let clamped_radius = if clamped {
-			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
-
-			let mut scale_factor: f64 = 1.;
-			for i in 0..4 {
-				let side_length = if i % 2 == 0 { size.x } else { size.y };
-				let adjacent_corner_radius_sum = radii[i] + radii[(i + 1) % 4];
-				if side_length < adjacent_corner_radius_sum {
-					scale_factor = scale_factor.min(side_length / adjacent_corner_radius_sum);
-				}
-			}
-			radii.map(|x| x * scale_factor)
-		} else {
-			radii
-		};
-		List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius)))
-	}
-}
 
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"))]
@@ -146,7 +101,7 @@ fn ellipse(
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
-fn rectangle<T: CornerRadius>(
+fn rectangle(
 	_: impl Ctx,
 	_primary: (),
 	#[unit(" px")]
@@ -155,11 +110,43 @@ fn rectangle<T: CornerRadius>(
 	#[unit(" px")]
 	#[default(100)]
 	height: f64,
-	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
-	#[implementations(f64, List<f64>)] corner_radius: T,
+	corner_radius: BoxCorners,
 	#[default(true)] clamped: bool,
+	_individual_corner_radii: bool,
 ) -> List<Vector> {
-	corner_radius.generate(DVec2::new(width, height), clamped)
+	let size = DVec2::new(width, height);
+	let radii = corner_radius.to_corner_values();
+
+	// Scale down overlapping adjacent radii to fit, following the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
+	let radii = if clamped {
+		let radii = radii.map(|radius| radius.max(0.));
+
+		let mut scale_factor: f64 = 1.;
+		for i in 0..4 {
+			let side_length = if i % 2 == 0 { size.x } else { size.y };
+			let adjacent_corner_radius_sum = radii[i] + radii[(i + 1) % 4];
+			if side_length < adjacent_corner_radius_sum {
+				scale_factor = scale_factor.min((side_length / adjacent_corner_radius_sum).max(0.));
+			}
+		}
+
+		radii.map(|radius| radius * scale_factor)
+	} else {
+		radii
+	};
+
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., radii)))
+}
+
+/// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
+#[node_macro::node(category("Vector: Shape"))]
+fn box_corners(
+	_: impl Ctx,
+	/// The corner values, filling the four corners clockwise from the top-left. Give one value for all corners, two for opposite pairs, three for top-left, the two sides, then bottom-right, or four for each corner.
+	values: List<f64>,
+) -> BoxCorners {
+	let values: Vec<f64> = values.iter_element_values().copied().collect();
+	BoxCorners::from(values)
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.

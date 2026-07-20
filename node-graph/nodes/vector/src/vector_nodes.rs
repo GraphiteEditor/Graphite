@@ -31,7 +31,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{GradientSpreadMethod, GradientType};
 
@@ -175,7 +175,8 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	_backup_gradient: List<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
+	_has_transform: bool,
+	_transform: DAffine2,
 ) -> V {
 	if let Some(gradient) = (&mut fill as &mut dyn std::any::Any).downcast_mut::<List<Gradient>>() {
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
@@ -191,8 +192,10 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 		}
 
 		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
-			let transform = _transform.unwrap_or_else(|| {
-				// Construct a transform that covers the bounding box of the paint target
+			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
+			let transform = if _has_transform {
+				_transform
+			} else {
 				let mut bounds: Option<[DVec2; 2]> = None;
 				content.for_each_vector_mut(|vector, _| {
 					if let Some([min, max]) = vector.bounding_box() {
@@ -212,7 +215,7 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 					max.y = min.y + 1.;
 				}
 				initial_gradient_transform_for_bounding_box([min, max])
-			});
+			};
 
 			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 				*value = transform;
@@ -230,60 +233,21 @@ async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send +
 	content
 }
 
-trait IntoF64Vec {
-	fn into_vec(self) -> Vec<f64>;
-}
-impl IntoF64Vec for f64 {
-	fn into_vec(self) -> Vec<f64> {
-		vec![self]
-	}
-}
-impl IntoF64Vec for List<f64> {
-	fn into_vec(self) -> Vec<f64> {
-		self.into_iter().map(|row| row.into_element()).collect()
-	}
-}
-impl IntoF64Vec for String {
-	fn into_vec(self) -> Vec<f64> {
-		self.split(&[',', ' ']).filter(|s| !s.is_empty()).filter_map(|s| s.parse::<f64>().ok()).collect()
-	}
-}
-
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
+async fn stroke<V, P: IntoGraphicList + 'n + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
+		List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>, List<Vector>,
+		List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>, List<Graphic>,
 	)]
 	mut content: List<V>,
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	#[implementations(
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Color>, List<Color>, List<Color>,
-		List<Gradient>, List<Gradient>, List<Gradient>,
-		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
-		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
-		List<Graphic>, List<Graphic>, List<Graphic>,
-		List<Vector>, List<Vector>, List<Vector>,
-		List<Color>, List<Color>, List<Color>,
-		List<Gradient>, List<Gradient>, List<Gradient>,
-		List<Raster<CPU>>, List<Raster<CPU>>, List<Raster<CPU>>,
-		List<Raster<GPU>>, List<Raster<GPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
+		List<Graphic>, List<Vector>, List<Color>, List<Gradient>, List<Raster<CPU>>, List<Raster<GPU>>,
 	)]
 	paint: P,
 	/// The stroke thickness.
@@ -302,22 +266,8 @@ async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
-	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-		List<f64>, f64, String,
-	)]
-	dash_lengths: L,
+	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
+	dash_pattern: DashPattern,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
@@ -325,7 +275,7 @@ async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 where
 	List<V>: VectorListIterMut + 'n + Send,
 {
-	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
+	let dash_lengths = dash_pattern.clamped_lengths();
 
 	let stroke = Stroke {
 		weight,
@@ -353,6 +303,17 @@ where
 		}
 	});
 	content
+}
+
+/// Builds a stroke dash pattern from a list of lengths that alternate between dash and gap, starting with a dash.
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+fn dash_pattern(
+	_: impl Ctx,
+	/// The dash and gap lengths, alternating and starting with a dash.
+	lengths: List<f64>,
+) -> DashPattern {
+	let lengths: Vec<f64> = lengths.iter_element_values().copied().collect();
+	DashPattern::from(lengths)
 }
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]

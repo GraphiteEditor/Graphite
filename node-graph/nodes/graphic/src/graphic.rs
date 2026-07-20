@@ -8,7 +8,7 @@ use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
-use vector_types::{GradientStop, Gradient, ReferencePoint};
+use vector_types::{Gradient, GradientStop, ReferencePoint};
 
 /// Returns the value at the specified index in the list.
 /// If no value exists at that index, the type's default value is returned.

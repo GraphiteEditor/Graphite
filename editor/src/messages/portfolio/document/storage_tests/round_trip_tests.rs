@@ -765,3 +765,46 @@ async fn none_fill_survives_document_reopen() {
 	let reopened_paint = fill_paint_value(editor.active_document());
 	assert!(reopened_paint.is_no_paint(), "a none fill should survive reopening, but the stored paint became {reopened_paint:?}");
 }
+
+#[tokio::test]
+async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
+	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeInputDecleration as _;
+
+	// A minimal master-era document: a 4-input Fill (content, fill: wired, backup color, backup gradient) fed by another node
+	const LEGACY_DOCUMENT: &str = r#"{"network_interface":{"network":{"exports":[{"Node":{"node_id":1,"output_index":0,"lambda":false}}],"nodes":[[1,{"inputs":[{"Value":{"tagged_value":{"GraphicGroup":{"instance":[],"transform":[],"alpha_blending":[],"source_node_id":[]}},"exposed":true}},{"Node":{"node_id":2,"output_index":0,"lambda":false}},{"Value":{"tagged_value":{"OptionalColor":null},"exposed":false}},{"Value":{"tagged_value":{"Gradient":{"stops":[[0.0,{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0}],[1.0,{"red":1.0,"green":1.0,"blue":1.0,"alpha":1.0}]],"gradient_type":"Linear","start":[0.0,0.5],"end":[1.0,0.5],"transform":[1.0,0.0,0.0,1.0,0.0,0.0]}},"exposed":false}}],"manual_composition":{"Concrete":{"name":"core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>","alias":null}},"implementation":{"ProtoNode":{"name":"graphene_core::vector::FillNode"}},"visible":true,"skip_deduplication":false}],[2,{"inputs":[{"Value":{"tagged_value":"None","exposed":false}},{"Value":{"tagged_value":{"GradientStops":[[0.0,{"red":0.0,"green":0.0,"blue":0.0,"alpha":1.0}],[1.0,{"red":1.0,"green":1.0,"blue":1.0,"alpha":1.0}]]},"exposed":false}},{"Value":{"tagged_value":{"F64":0.5},"exposed":false}}],"manual_composition":{"Concrete":{"name":"core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>","alias":null}},"implementation":{"ProtoNode":{"name":"graphene_core::ops::SampleGradientNode"}},"visible":true,"skip_deduplication":false}]],"scope_injections":[]},"network_metadata":{"persistent_metadata":{"node_metadata":[[1,{"persistent_metadata":{"reference":"Fill","display_name":"","input_properties":[{"input_data":{"input_name":"Vector Data"},"widget_override":null},{"input_data":{"input_name":"Fill"},"widget_override":null},{"input_data":{"input_name":"Backup Color"},"widget_override":null},{"input_data":{"input_name":"Backup Gradient"},"widget_override":null}],"output_names":["Future<Instances<VectorData>>"],"has_primary_output":true,"locked":false,"pinned":false,"node_type_metadata":{"Node":{"position":{"Absolute":[0,0]}}},"network_metadata":null}}],[2,{"persistent_metadata":{"reference":"Sample Gradient","display_name":"","input_properties":[{"input_data":{"input_name":"Primary"},"widget_override":null},{"input_data":{"input_name":"Gradient"},"widget_override":null},{"input_data":{"input_name":"Position"},"widget_override":null}],"output_names":["Future<Color>"],"has_primary_output":true,"locked":false,"pinned":false,"node_type_metadata":{"Node":{"position":{"Absolute":[-20,0]}}},"network_metadata":null}}]],"previewing":"No","navigation_metadata":{"node_graph_ptz":{"pan":[0.0,0.0],"tilt":0.0,"zoom":1.0,"flip":false},"node_graph_to_viewport":[1.0,0.0,0.0,1.0,0.0,0.0],"node_graph_top_right":[0.0,0.0]},"selection_undo_history":[],"selection_redo_history":[]}}},"collapsed":[],"name":"legacy_fill.graphite","commit_hash":"0000000000000000000000000000000000000000","document_ptz":{"pan":[0.0,0.0],"tilt":0.0,"zoom":1.0,"flip":false},"document_mode":"DesignMode","view_mode":"Normal","overlays_visibility_settings":{"all":true,"artboard_name":true,"compass_rose":true,"quick_measurement":true,"transform_measurement":true,"transform_cage":true,"hover_outline":true,"selection_outline":true,"pivot":true,"path":true,"anchors":true,"handles":true},"rulers_visible":true,"snapping_state":{"snapping_enabled":true,"grid_snapping":false,"artboards":true,"tolerance":8.0,"bounding_box":{"center_point":true,"corner_point":true,"edge_midpoint":true,"align_with_edges":true,"distribute_evenly":true},"path":{"anchor_point":true,"line_midpoint":true,"along_path":true,"normal_to_path":true,"tangent_to_path":true,"path_intersection_point":true,"align_with_anchor_point":true,"perpendicular_from_endpoint":true},"grid":{"origin":[0.0,0.0],"grid_type":{"Rectangular":{"spacing":[1.0,1.0]}},"grid_color":{"red":0.6,"green":0.6,"blue":0.6,"alpha":1.0},"dot_display":false}},"graph_view_overlay_open":false,"graph_fade_artwork_percentage":80.0}"#;
+
+	// Deserializing alone must succeed, so a failure below is attributable to the migrations
+	DocumentMessageHandler::deserialize_document(LEGACY_DOCUMENT).expect("the legacy document should deserialize");
+
+	let mut editor = EditorTestUtils::create();
+	editor
+		.handle_message(PortfolioMessage::OpenDocumentFile {
+			document_name: None,
+			document_path: None,
+			document_serialized_content: LEGACY_DOCUMENT.to_string(),
+		})
+		.await;
+
+	let document = editor.active_document();
+	let (network_path, node_id) = find_fill_node(document);
+	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
+	let inputs = &network.nodes[&node_id].inputs;
+
+	assert_eq!(inputs.len(), 8, "the legacy Fill should upgrade to the 8-input shape");
+	let paint = &inputs[graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX];
+	assert!(
+		matches!(paint, graph_craft::document::NodeInput::Node { .. }),
+		"the wired legacy fill should keep its connection, but became {paint:?}"
+	);
+	let has_transform = inputs[graphene_std::vector::fill::HasTransformInput::INDEX].as_value();
+	assert!(
+		matches!(has_transform, Some(TaggedValue::Bool(_))),
+		"the has-transform input should hold a bool, but became {has_transform:?}"
+	);
+	let transform = inputs[graphene_std::vector::fill::TransformInput::INDEX].as_value();
+	assert!(
+		matches!(transform, Some(TaggedValue::DAffine2(_))),
+		"the transform input should hold a matrix, but became {transform:?}"
+	);
+}

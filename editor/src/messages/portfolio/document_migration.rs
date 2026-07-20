@@ -17,7 +17,8 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{PaintOrder, StrokeAlign};
+use graphene_std::vector::misc::BoxCorners;
+use graphene_std::vector::style::{DashPattern, PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1376,6 +1377,29 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 }
 
+/// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
+fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
+	let NodeInput::Value { tagged_value, exposed } = input else { return None };
+	let pattern = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(lengths) => DashPattern::from(lengths.clone()),
+		TaggedValue::F64(length) => DashPattern::from(*length),
+		TaggedValue::String(text) => DashPattern::from(text.as_str()),
+		_ => return None,
+	};
+	Some(NodeInput::value(TaggedValue::DashPattern(pattern), *exposed))
+}
+
+/// Converts a legacy rectangle corner radius input (a single `f64` or a `List<f64>` of up to four values) to the `BoxCorners` value type.
+fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
+	let NodeInput::Value { tagged_value, exposed } = input else { return None };
+	let corners = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(values) => BoxCorners::from(values.clone()),
+		TaggedValue::F64(value) => BoxCorners::from(*value),
+		_ => return None,
+	};
+	Some(NodeInput::value(TaggedValue::BoxCorners(corners), *exposed))
+}
+
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
 	// Must run before the reset block below: a node referencing a removed catalog entry would otherwise abort
 	// `migrate_node` via the `?` on `resolve_document_node_type`, preventing subsequent migration blocks from running.
@@ -1600,7 +1624,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					.network_interface
 					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(fill_value, exposed), network_path);
 
-				// Gradient metadata (4, 5, 6): applies only to a literal gradient, solids/none keep the template defaults
+				// Gradient metadata (4, 5, 6, 7): applies only to a literal gradient, solids/none keep the template defaults
 				if let graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
 						&InputConnector::node(*node_id, 4),
@@ -1613,16 +1637,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 						network_path,
 					);
 
-					let transform = if gradient.absolute {
-						Some(gradient.transform * gradient.to_transform())
+					if gradient.absolute {
+						let transform = gradient.transform * gradient.to_transform();
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 					} else {
-						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint target's bounds
+						// Baking a legacy bounding-box-relative gradient is deferred until the measurement pre-pass can supply the paint
+						// target's bounds, so the template's unbaked `_has_transform = false` stands until the bake lands
 						document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, gradient.clone()));
-						None
-					};
-					document
-						.network_interface
-						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+					}
 				}
 			}
 			// Wired/exposed fill keeps the connection.
@@ -1657,19 +1684,54 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					network_path,
 				);
 
-				let transform = if g.absolute {
-					Some(g.transform * g.to_transform())
+				if g.absolute {
+					let transform = g.transform * g.to_transform();
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					document
+						.network_interface
+						.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
 				} else {
 					document.pending_gradient_bbox_bake.push((network_path.to_vec(), *node_id, g.clone()));
-					None
-				};
-				document
-					.network_interface
-					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalDAffine2(transform), false), network_path);
+				}
 			}
 		}
 
-		inputs_count = 7;
+		inputs_count = 8;
+	}
+
+	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && inputs_count == 7 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.iter().enumerate().take(6) {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+
+		match old_inputs.get(6).and_then(|input| input.as_value()) {
+			Some(TaggedValue::LegacyOptionalDAffine2(value)) => {
+				let has_transform = value.is_some();
+				let transform = value.unwrap_or(glam::DAffine2::IDENTITY);
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(has_transform), false), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 7), NodeInput::value(TaggedValue::DAffine2(transform), false), network_path);
+			}
+			// A wired (or otherwise non-value) transform keeps its connection and is treated as present
+			_ => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+				let transform_input = old_inputs.get(6).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::DAffine2(glam::DAffine2::IDENTITY), false));
+				document.network_interface.set_input(&InputConnector::node(*node_id, 7), transform_input, network_path);
+			}
+		}
+
+		inputs_count = 8;
 	}
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
@@ -1688,7 +1750,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[6].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[7].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 8), old_inputs[3].clone(), network_path);
+		let dash_input = migrate_dash_input(&old_inputs[3]).unwrap_or_else(|| old_inputs[3].clone());
+		document.network_interface.set_input(&InputConnector::node(*node_id, 8), dash_input, network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
@@ -1741,6 +1804,36 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				document.network_interface.set_input(&InputConnector::node(*node_id, index), migrated, network_path);
 			}
 		}
+	}
+
+	// The stroke dash sequence became the `DashPattern` value type; convert any already-shaped stroke that still stores a legacy dash input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER)
+		&& let Some(dash_input) = node.inputs.get(graphene_std::vector::stroke::DashPatternInput::INDEX)
+		&& let Some(migrated) = migrate_dash_input(dash_input)
+	{
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput::INDEX), migrated, network_path);
+	}
+
+	// The rectangle's corner radius became the `BoxCorners` value type and its hidden individual-radii toggle moved after the
+	// user-visible inputs. A legacy rectangle stores that toggle (a plain `bool`) at index 3, where the new shape stores the corner
+	// radius, so a `bool` value there identifies the old input order: [width, height, individual, corner_radius, clamped].
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+		&& let Some(toggle_input) = node.inputs.get(3)
+		&& matches!(toggle_input.as_value(), Some(TaggedValue::Bool(_)))
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let corner_radius = migrate_corner_radius_input(&old_inputs[4]).unwrap_or_else(|| old_inputs[4].clone());
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), corner_radius, network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016

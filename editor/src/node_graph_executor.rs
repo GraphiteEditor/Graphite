@@ -610,10 +610,14 @@ impl NodeGraphExecutor {
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
 					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-					let input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					let has_transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX);
+					let transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
 					document
 						.network_interface
-						.set_input(&input, NodeInput::value(TaggedValue::OptionalDAffine2(Some(gradient_transform)), false), &network_path);
+						.set_input(&has_transform_input, NodeInput::value(TaggedValue::Bool(true), false), &network_path);
+					document
+						.network_interface
+						.set_input(&transform_input, NodeInput::value(TaggedValue::DAffine2(gradient_transform), false), &network_path);
 				}
 
 				// The transform is settled, so its entry no longer needs to persist for a retry on the next open
@@ -829,8 +833,8 @@ fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[Nod
 	};
 	let Some(node) = network.nodes.get(&fill_node_id) else { return false };
 	matches!(
-		node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()),
-		Some(TaggedValue::OptionalDAffine2(None))
+		node.inputs.get(graphene_std::vector::fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
+		Some(TaggedValue::Bool(false))
 	)
 }
 
