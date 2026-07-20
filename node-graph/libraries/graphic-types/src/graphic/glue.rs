@@ -11,6 +11,7 @@ use vector_types::Vector;
 /// [`map_groups_to_resident`] re-parks it into a serving arena.
 pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
+		Graphic::None => Graphic::None,
 		Graphic::Group(group) => Graphic::Group(group.copy_out()),
 		Graphic::Graphic(children) => {
 			let mut out = List::new();
@@ -78,6 +79,7 @@ unsafe fn deep_repark_graphic(value: &(dyn std::any::Any + Send + Sync), dst: *m
 /// what this level newly produced. `None` reports arena exhaustion.
 pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_types::record::Promotion<'p>) -> Option<Graphic<'p>> {
 	match graphic {
+		Graphic::None => Some(Graphic::None),
 		Graphic::Group(group) => group.to_persistent(promotion).map(Graphic::Group),
 		Graphic::Graphic(children) => {
 			let mut out = List::new();
@@ -196,7 +198,7 @@ fn graphic_retained_heap(graphic: &Graphic<'_>) -> usize {
 		Graphic::Text(text) => text.len(),
 		Graphic::Gradient(gradient) => gradient.len() * size_of::<(f64, Color)>(),
 		Graphic::Graphic(children) => (0..children.len()).filter_map(|index| children.element(index)).map(graphic_retained_heap).sum(),
-		Graphic::Group(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
+		Graphic::None | Graphic::Group(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
 	}
 }
 
