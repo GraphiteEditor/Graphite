@@ -90,15 +90,24 @@ fn text(
 	list
 }
 
-/// Converts a styled `String[]` into vector geometry.
+/// Converts styled text into vector compound paths.
 #[node_macro::node(category("Text"), name("Text to Vector"))]
 fn text_to_vector(
 	_: impl Ctx,
 	/// A styled list of text strings produced by the **Text** node (or any other `String[]` source).
 	#[implementations(List<String>)]
 	strings: List<String>,
-	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
-	separate_glyphs: bool,
 ) -> List<Vector> {
-	shape_text_list(&strings, separate_glyphs)
+	shape_text_list(&strings, false)
+}
+
+/// Splits styled text into a separate vector item for each of its glyphs (letterforms).
+#[node_macro::node(category("Text"), name("Text to Vector Glyphs"))]
+fn text_to_vector_glyphs(
+	_: impl Ctx,
+	/// A styled list of text strings produced by the **Text** node (or any other `String[]` source).
+	#[implementations(List<String>)]
+	strings: List<String>,
+) -> List<Vector> {
+	shape_text_list(&strings, true)
 }

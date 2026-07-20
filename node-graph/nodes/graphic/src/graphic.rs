@@ -1,5 +1,5 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
@@ -10,41 +10,10 @@ use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
 use vector_types::{Gradient, GradientStop, ReferencePoint};
 
-/// Returns the value at the specified index in the list.
-/// If no value exists at that index, the type's default value is returned.
-#[node_macro::node(category("General"))]
-pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
-	_: impl Ctx,
-	/// The list of data.
-	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<String>,
-		List<f64>,
-		List<u8>,
-		List<NodeId>,
-	)]
-	list: T,
-	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: SignedInteger,
-) -> T::Output
-where
-	T::Output: Clone + Default,
-{
-	let index = index as i32;
-
-	if index < 0 { list.at_index_from_end(-index as usize) } else { list.at_index(index as usize) }.unwrap_or_default()
-}
-
-/// Returns the list with the element at the specified index removed.
+/// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"))]
-pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
+#[node_macro::node(category("General"), name("Remove at Index"))]
+pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
@@ -73,8 +42,8 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 /// Returns the bare element (without the item's attributes) at the specified index in a `List`.
 /// Use this when downstream nodes want just the inner value rather than a `List` containing a single item.
 /// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("General"))]
-pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
+#[node_macro::node(category("General"), name("Item at Index"))]
+pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The `List` of data to extract from.
 	#[implementations(
@@ -260,41 +229,6 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		let v = value.eval(owned_ctx.into_context()).await;
 		content.set_attribute_value_dyn(&name, index, v);
 	}
-	content
-}
-
-/// Sets a named attribute on the primary list, with each value taken from the corresponding item's element in the source list (paired by index, wrapping if the source has fewer items).
-/// The source is type-erased into an `AttributeDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
-#[node_macro::node(category("Attributes: Write"))]
-fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
-	_: impl Ctx,
-	/// The `List` to attach the new attribute to.
-	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<f64>,
-		List<bool>,
-		List<String>,
-		List<DAffine2>,
-		List<BlendMode>,
-		List<GradientType>,
-		List<GradientSpreadMethod>,
-	)]
-	mut content: List<T>,
-	/// The source values to attach.
-	#[expose]
-	source: AttributeDyn,
-	/// The name to assign to the new destination attribute.
-	name: String,
-) -> List<T> {
-	if source.is_empty() {
-		return content;
-	}
-	content.set_attribute_dyn(name, source);
 	content
 }
 

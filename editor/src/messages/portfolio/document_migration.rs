@@ -94,10 +94,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::animation::AnimationTimeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::debug::clone::IDENTIFIER,
-		aliases: &["graphene_core::ops::CloneNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::extract_xy::extract_xy::IDENTIFIER,
 		aliases: &["graphene_core::ops::ExtractXyNode"],
 	},
@@ -112,6 +108,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform_nodes::FreezeRealTimeNode",
 			"graphene_core::vector::SubpathSegmentLengthsNode",
 			"core_types::vector::SubpathSegmentLengthsNode",
+			// The deleted debug Option trio degrades to a passthrough of its single input (audit resolution 8)
+			"graphene_core::ops::SizeOfNode",
+			"graphene_core::debug::SizeOfNode",
+			"graphene_core::ops::SomeNode",
+			"graphene_core::debug::SomeNode",
+			"graphene_core::ops::UnwrapNode",
+			"graphene_core::debug::UnwrapNode",
+			"graphene_core::debug::UnwrapOptionNode",
 		],
 	},
 	NodeReplacement {
@@ -125,18 +129,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::animation::real_time::IDENTIFIER,
 		aliases: &["graphene_core::animation::RealTimeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::debug::size_of::IDENTIFIER,
-		aliases: &["graphene_core::ops::SizeOfNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::debug::some::IDENTIFIER,
-		aliases: &["graphene_core::ops::SomeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::debug::unwrap_option::IDENTIFIER,
-		aliases: &["graphene_core::ops::UnwrapNode", "graphene_core::debug::UnwrapNode"],
 	},
 	// ================================
 	// graphic
@@ -167,12 +159,18 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::graphic::FlattenVectorNode", "graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::index_elements::IDENTIFIER,
+		node: graphene_std::graphic::item_at_index::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::IndexNode",
 			"graphene_core::graphic::IndexNode",
 			"graphene_core::graphic::IndexElementsNode",
+			"graphic_nodes::graphic::IndexElementsNode",
+			"graphic_nodes::graphic::ExtractElementNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::OmitElementNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
@@ -777,7 +775,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::ClosePathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::count_elements::IDENTIFIER,
+		node: graphene_std::vector::list_length::IDENTIFIER,
 		aliases: &["graphene_core::vector::CountElementsNode"],
 	},
 	NodeReplacement {
@@ -1836,6 +1834,25 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 	}
 
+	// The Text to Vector node's runtime `separate_glyphs` toggle became the dedicated "Text to Vector Glyphs" node, leaving Text to Vector as a plain
+	// string-to-compound-path converter. A 2-input Text to Vector is the old toggled shape: a `true` toggle routes to Text to Vector Glyphs, otherwise
+	// the node stays Text to Vector; either way the toggle input is dropped and the string wire is preserved.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text_to_vector::IDENTIFIER) && inputs_count == 2 {
+		let separate_glyphs = matches!(node.inputs.get(1).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
+		let target = if separate_glyphs {
+			graphene_std::text::text_to_vector_glyphs::IDENTIFIER
+		} else {
+			graphene_std::text::text_to_vector::IDENTIFIER
+		};
+
+		let mut node_template = resolve_proto_node_type(target)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(string_input) = node.inputs.first() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), string_input.clone(), network_path);
+		}
+	}
+
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode")) && inputs_count == 8 {
 		let mut template: NodeTemplate = legacy_text_node_template()?;
@@ -2366,14 +2383,14 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Create Count Elements node: counts content `List` items → N
-		let Some(count_elements_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
-			log::error!("Could not get count_elements node from definition when upgrading morph");
+		// Create List Length node: counts content `List` items → N
+		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
+			log::error!("Could not get list_length node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
-		let count_elements_template = count_elements_def.default_node_template();
-		let count_elements_id = NodeId::new();
+		let list_length_template = list_length_def.default_node_template();
+		let list_length_id = NodeId::new();
 
 		// Create Subtract node: N → N-1
 		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
@@ -2395,10 +2412,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let divide_id = NodeId::new();
 
 		// Insert and position nodes
-		document.network_interface.insert_node(count_elements_id, count_elements_template, network_path);
+		document.network_interface.insert_node(list_length_id, list_length_template, network_path);
 		document
 			.network_interface
-			.shift_absolute_node_position(&count_elements_id, morph_position + IVec2::new(-21, 2), network_path);
+			.shift_absolute_node_position(&list_length_id, morph_position + IVec2::new(-21, 2), network_path);
 
 		document.network_interface.insert_node(subtract_id, subtract_template, network_path);
 		document.network_interface.shift_absolute_node_position(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
@@ -2407,12 +2424,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
 
 		// Wire: content source → Count Elements input 0
-		document.network_interface.set_input(&InputConnector::node(count_elements_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(list_length_id, 0), old_inputs[0].clone(), network_path);
 
 		// Wire: Count Elements output → Subtract input 0 (minuend)
 		document
 			.network_interface
-			.set_input(&InputConnector::node(subtract_id, 0), NodeInput::node(count_elements_id, 0), network_path);
+			.set_input(&InputConnector::node(subtract_id, 0), NodeInput::node(list_length_id, 0), network_path);
 
 		// Wire: old progression → Divide input 0 (numerator)
 		document.network_interface.set_input(&InputConnector::node(divide_id, 0), old_inputs[1].clone(), network_path);
@@ -2714,12 +2731,44 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
+	// The removed Attach Attribute node (merged into Write Attribute per audit resolution 6) degrades to a passthrough of its
+	// content: its eager whole-list source input cannot be mechanically rewired as Write Attribute's lazy per-item value producer.
+	if let Some(DefinitionIdentifier::ProtoNode(identifier)) = document.network_interface.reference(node_id, network_path)
+		&& identifier.as_str().ends_with("::AttachAttributeNode")
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(content) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), content.clone(), network_path);
+		}
+	}
+
+	// The Upload Texture node's old wrapper-network form maps onto its proto node form, which draws the executor from scope
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Upload Texture"
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		if let Some(content) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), content.clone(), network_path);
+		}
+	}
+
 	Some(())
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	// The removed-definition blocks above abort silently via `?` if their swap target ever leaves the catalog
+	#[test]
+	fn removed_definition_swap_targets_resolve() {
+		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
+		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+	}
 
 	#[test]
 	fn test_no_duplicate_node_replacements() {
