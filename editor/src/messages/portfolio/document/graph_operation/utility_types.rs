@@ -16,7 +16,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
-use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
+use graphene_std::vector::{Gradient, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -464,7 +464,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: GradientStops, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
@@ -563,7 +563,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
-	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
+	pub fn gradient_stops_set(&mut self, stops: Gradient) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
 		let gradient_value_id = match get_upstream_gradient_value_node_id(output_layer, self.network_interface) {

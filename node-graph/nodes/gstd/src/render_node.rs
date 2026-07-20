@@ -8,7 +8,7 @@ use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 use wgpu_executor::RenderContext;
 
 #[derive(Clone, dyn_any::DynAny)]
@@ -60,7 +60,7 @@ fn render_intermediate<T: dyn_any::StaticTypeSized + 'static + Render + WasmNotS
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 		Context -> List<String>,
 	)]
 	data: impl Node<Context<'_>, Output = T>,
@@ -80,7 +80,7 @@ fn render_intermediate<T: dyn_any::StaticTypeSized + 'static + Render + WasmNotS
 #[node_macro::node(category(""))]
 fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + dyn_any::StaticTypeSized + 'static>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] data: IList<T>,
+	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, Gradient, String)] data: IList<T>,
 ) -> Result<RenderIntermediate, Interrupt>
 where
 	for<'a> core_types::record::RunView<'a, T>: Render,

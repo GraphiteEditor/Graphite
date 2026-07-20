@@ -11,7 +11,7 @@ use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 use vector_types::gradient::GradientSpreadMethod;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -83,7 +83,7 @@ impl RenderExt for List<Color> {
 	}
 }
 
-impl RenderExt for List<GradientStops> {
+impl RenderExt for List<Gradient> {
 	type Output = u64;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
@@ -103,7 +103,7 @@ impl RenderExt for List<GradientStops> {
 
 /// Adds the gradient def through mutating `svg_defs`, returning the gradient
 /// ID, over any gradient lane source.
-pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = GradientStops>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
+pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>>(source: &S, svg_defs: &mut String, item_transform: DAffine2, element_transform: DAffine2) -> u64 {
 	let mut stop = String::new();
 
 	{

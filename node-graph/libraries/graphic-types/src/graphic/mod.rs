@@ -24,7 +24,7 @@ use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
@@ -38,7 +38,7 @@ pub enum Graphic<'e> {
 	RasterCPU(Raster<CPU>),
 	RasterGPU(Raster<GPU>),
 	Color(Color),
-	Gradient(GradientStops),
+	Gradient(Gradient),
 	Text(String),
 	Group(core_types::record::Group<'e>),
 }
@@ -101,7 +101,7 @@ into_graphic_element! {
 	RasterCPU: Raster<CPU>;
 	RasterGPU: Raster<GPU>;
 	Color: Color;
-	Gradient: GradientStops;
+	Gradient: Gradient;
 	Text: String;
 }
 
@@ -146,9 +146,9 @@ impl From<Color> for Graphic<'_> {
 }
 // Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
-// GradientStops
-impl From<GradientStops> for Graphic<'_> {
-	fn from(gradient: GradientStops) -> Self {
+// Gradient
+impl From<Gradient> for Graphic<'_> {
+	fn from(gradient: Gradient) -> Self {
 		Graphic::Gradient(gradient)
 	}
 }
@@ -251,7 +251,7 @@ impl TryFromGraphic for Color {
 	}
 }
 
-impl TryFromGraphic for GradientStops {
+impl TryFromGraphic for Gradient {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Gradient(t) = graphic { Some(List::new_from_element(t)) } else { None }
 	}
@@ -306,7 +306,7 @@ impl IntoGraphicList for List<Color> {
 	}
 }
 
-impl IntoGraphicList for List<GradientStops> {
+impl IntoGraphicList for List<Gradient> {
 	fn into_graphic_list(self) -> List<Graphic<'static>> {
 		detable_items(self, Graphic::Gradient)
 	}
@@ -612,7 +612,7 @@ mod graphic_is_opaque_tests {
 		Graphic::Color(color)
 	}
 
-	fn gradient_graphic(gradient: GradientStops) -> Graphic<'static> {
+	fn gradient_graphic(gradient: Gradient) -> Graphic<'static> {
 		Graphic::Gradient(gradient)
 	}
 
@@ -638,7 +638,7 @@ mod graphic_is_opaque_tests {
 	fn gradient_with_all_opaque_stops_is_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -658,7 +658,7 @@ mod graphic_is_opaque_tests {
 	fn gradient_with_transparent_stop_is_not_opaque() {
 		let color_1 = Color::from_rgbaf32(1., 0., 0., 0.5).unwrap();
 		let color_2 = Color::from_rgbaf32(1., 0., 0., 1.).unwrap();
-		let gradient = GradientStops::new(vec![
+		let gradient = Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,

@@ -14,7 +14,7 @@ use num_traits::float::Float;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 // TODO: Implement the following:
 // Color Balance
@@ -53,7 +53,7 @@ fn luminance<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cac
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -78,7 +78,7 @@ fn gamma_correction<T: Adjust<Color> + Clone + Send + Sync + no_std_types::conte
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -100,7 +100,7 @@ fn extract_channel<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -124,7 +124,7 @@ fn make_opaque<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::C
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -146,7 +146,7 @@ fn brightness_contrast_classic<T: Adjust<Color> + Clone + Send + Sync + no_std_t
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -177,7 +177,7 @@ fn brightness_contrast<T: Adjust<Color> + Clone + Send + Sync + no_std_types::co
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -258,7 +258,7 @@ fn levels<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheH
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -337,7 +337,7 @@ fn black_and_white<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -420,7 +420,7 @@ fn hue_saturation<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -452,7 +452,7 @@ fn invert<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheH
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -473,7 +473,7 @@ fn threshold<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cac
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -519,7 +519,7 @@ fn vibrance<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cach
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -721,7 +721,7 @@ fn channel_mixer<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context:
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -853,7 +853,7 @@ fn selective_color<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -999,7 +999,7 @@ fn posterize<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cac
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -1028,7 +1028,7 @@ fn exposure<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cach
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	#[gpu_image]
 	mut input: T,

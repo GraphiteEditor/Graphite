@@ -125,7 +125,7 @@ pub struct DocumentMessageHandler {
 	/// network path, the node itself, and its original relative gradient. The deferred migration removes each entry as its bake lands.
 	/// Transient migration state, but persisted in the saved document so unfinished bakes retry on the next open instead of losing placement.
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::Gradient)>,
+	pub(crate) pending_gradient_bbox_bake: Vec<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -4007,7 +4007,7 @@ mod document_message_handler_tests {
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
 		let document = DocumentMessageHandler {
-			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::Gradient::default())],
+			pending_gradient_bbox_bake: vec![(vec![NodeId(7)], NodeId(42), graphic_types::migrations::legacy::LegacyGradient::default())],
 			..Default::default()
 		};
 

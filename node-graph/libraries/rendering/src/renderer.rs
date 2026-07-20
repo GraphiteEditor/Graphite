@@ -26,7 +26,7 @@ use graphene_resource::Resource;
 use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{GradientStops, GradientType};
+use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
@@ -400,7 +400,7 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientTyp
 	}
 }
 
-fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
+fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
@@ -694,7 +694,7 @@ fn collect_group_row_metadata(group: &Group, metadata: &mut RenderMetadata, elem
 		.or_else(|| lane_zero_transform::<Raster<CPU>>(item))
 		.or_else(|| lane_zero_transform::<Raster<GPU>>(item))
 		.or_else(|| lane_zero_transform::<Color>(item))
-		.or_else(|| lane_zero_transform::<GradientStops>(item))
+		.or_else(|| lane_zero_transform::<Gradient>(item))
 		.or_else(|| lane_zero_transform::<String>(item));
 	if let Some(transform) = transform {
 		metadata.local_transforms.insert(element_id, transform);
@@ -741,7 +741,7 @@ fn render_group_svg<'a>(group: &'a Group, reach: PaintReach<'a>, render: &mut Sv
 	} else if item.typed_lanes::<Raster<GPU>>().is_some() {
 	} else if let Some(run) = RunView::<Color>::new(item) {
 		render_color_svg(&run, render, render_params)
-	} else if let Some(run) = RunView::<GradientStops>::new(item) {
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
 		render_gradient_svg(&run, render, render_params)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		render_text_svg(&run, render, render_params)
@@ -763,7 +763,7 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 		render_raster_gpu_vello(&run, scene, transform, context, render_params)
 	} else if let Some(run) = RunView::<Color>::new(item) {
 		render_color_vello(&run, scene, render_params)
-	} else if let Some(run) = RunView::<GradientStops>::new(item) {
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
 		render_gradient_vello(&run, scene, transform, render_params)
 	} else if let Some(run) = RunView::<String>::new(item) {
 		render_text_vello(&run, scene, transform, render_params)
@@ -786,7 +786,7 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 		collect_raster_metadata(&run, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
 		collect_raster_metadata(&run, metadata, footprint, element_id)
-	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<GradientStops>().is_some() {
+	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<Gradient>().is_some() {
 	} else if let Some(run) = RunView::<String>::new(item) {
 		collect_text_metadata(&run, metadata, footprint, element_id)
 	}
@@ -2282,7 +2282,7 @@ impl Render for List<Color> {
 	}
 }
 
-fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &mut SvgRender, render_params: &RenderParams) {
 	// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
 	// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
 	let thumbnail_rect = if render_params.thumbnail {
@@ -2374,7 +2374,7 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 	}
 }
 
-fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, scene: &mut Scene, parent_transform: DAffine2, render_params: &RenderParams) {
+fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &mut Scene, parent_transform: DAffine2, render_params: &RenderParams) {
 	use vello::peniko;
 
 	if let RenderMode::Outline = render_params.render_mode {
@@ -2458,7 +2458,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 	}
 }
 
-impl Render for List<GradientStops> {
+impl Render for List<Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_gradient_svg(self, render, render_params)
 	}
@@ -2926,7 +2926,7 @@ impl Render for RunView<'_, Color> {
 	}
 }
 
-impl Render for RunView<'_, GradientStops> {
+impl Render for RunView<'_, Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_gradient_svg(self, render, render_params)
 	}
