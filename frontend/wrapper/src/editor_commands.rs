@@ -690,10 +690,7 @@ mod editor_commands {
 	fn delete_guide_line(id: u64) -> Message {
 		use editor::messages::portfolio::document::guide_message::GuideLineMessage;
 		use editor::messages::portfolio::document::utility_types::guide::GuideLineId;
-		GuideLineMessage::DeleteGuideLine {
-			id: GuideLineId::from_raw(id),
-		}
-		.into()
+		GuideLineMessage::DeleteGuideLine { id: GuideLineId::from_raw(id) }.into()
 	}
 }
 
