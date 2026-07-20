@@ -60,10 +60,11 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
-			/// Stored compactly as an `Option<Color>`, materializes as `List<Color>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "core_types::misc::migrate_to_optional_color")] // TODO: Eventually remove this migration document upgrade code
+			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
+			/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
+			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
-			Color(Option<Color>),
+			Color(Color),
 			/// Stored compactly as a `Gradient`, materializes as a single-row `List<Gradient>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
@@ -153,10 +154,7 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
-					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
+					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
 					Self::Gradient(stops) => Box::new(List::<Gradient>::new_from_element(stops)),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -203,10 +201,7 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
-					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
+					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
 					Self::Gradient(stops) => Arc::new(List::<Gradient>::new_from_element(stops)),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -315,7 +310,7 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						// List-wrapped types need a single-item default with the element's default, not an empty list
-						if name == std::any::type_name::<List<Color>>() { return Some(TaggedValue::Color(Some(Color::default()))) }
+						if name == std::any::type_name::<List<Color>>() { return Some(TaggedValue::Color(Color::default())) }
 						if name == std::any::type_name::<List<Gradient>>() { return Some(TaggedValue::Gradient(Gradient::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
@@ -584,10 +579,10 @@ impl TaggedValue {
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					// `Color` (not in a `List`) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
-					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
-					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
+					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<List<Color>>() => to_color(string).map(TaggedValue::Color)?,
 					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
-					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
+					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
@@ -605,6 +600,16 @@ impl TaggedValue {
 			_ => panic!("Passed value is not of type u32"),
 		}
 	}
+
+	/// The stored form of a paint input's red-slash "no paint" choice: the `List<Graphic>` type default, materializing as an empty paint list.
+	pub fn no_paint() -> Self {
+		TaggedValue::TypeDefault(descriptor!(List<Graphic>))
+	}
+
+	/// Whether this is the `List<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
+	pub fn is_no_paint(&self) -> bool {
+		matches!(self, TaggedValue::TypeDefault(td) if *td == descriptor!(List<Graphic>))
+	}
 }
 
 /// Custom deserializer hooked onto `NodeInput::Value::tagged_value` that intercepts removed-variant tags before delegating to `TaggedValue`'s standard derive.
@@ -620,6 +625,7 @@ impl TaggedValue {
 /// - `Vector` (or alias `VectorData`):
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
 ///     - empty → `TaggedValue::TypeDefault(descriptor!(List<Vector>))`
+/// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::Gradient` (gradient), or `TaggedValue::no_paint()` (none)
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
 // TODO: Eventually remove this migration document upgrade code
@@ -655,6 +661,31 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Vector>))));
+			}
+			// The `Color` tag used to carry `Option<Color>`, where a `null` payload (or an empty legacy color table) was the red-slash "no paint" choice
+			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable"
+				if content.is_null()
+					|| content
+						.as_object()
+						.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
+						.and_then(|e| e.as_array())
+						.is_some_and(|colors| colors.is_empty()) =>
+			{
+				return Ok(MemoHash::new(TaggedValue::no_paint()));
+			}
+			// The removed `FillChoice` variant decomposes into the plain paint values
+			"FillChoice" => {
+				if let Some(payload) = content.as_object() {
+					if let Some(solid) = payload.get("Solid") {
+						let color: Color = serde_json::from_value(solid.clone()).map_err(serde::de::Error::custom)?;
+						return Ok(MemoHash::new(TaggedValue::Color(color)));
+					}
+					if let Some(gradient) = payload.get("Gradient") {
+						let gradient: Gradient = serde_json::from_value(gradient.clone()).map_err(serde::de::Error::custom)?;
+						return Ok(MemoHash::new(TaggedValue::Gradient(gradient)));
+					}
+				}
+				return Ok(MemoHash::new(TaggedValue::no_paint()));
 			}
 			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<Gradient>`.
 			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `Gradient` has none of those (it has `position`/`midpoint`/`color`).
@@ -807,5 +838,21 @@ mod typedefault_dispatch {
 			}};
 		}
 		for_each_type_default!(check);
+	}
+}
+
+#[cfg(test)]
+mod paint_default_parsing {
+	use super::*;
+
+	/// Table-era documents stored the red-slash "no paint" fill as an empty color table, which must keep
+	/// deserializing to [`TaggedValue::no_paint`] rather than collapsing to a transparent color.
+	#[test]
+	fn empty_legacy_color_table_deserializes_to_no_paint() {
+		for payload in [r#"{"ColorTable": {"instances": []}}"#, r#"{"ColorTable": {"element": []}}"#, r#"{"Color": null}"#] {
+			let mut deserializer = serde_json::Deserializer::from_str(payload);
+			let value = deserialize_tagged_value_with_legacy_migration(&mut deserializer).expect("The legacy payload should deserialize");
+			assert!(value.is_no_paint(), "The legacy payload `{payload}` should migrate to the no-paint choice");
+		}
 	}
 }

@@ -10,6 +10,8 @@ use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, 
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graphene_std::Color;
+use graphene_std::NodeInputDecleration;
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
@@ -1590,8 +1592,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			Some(TaggedValue::LegacyFill(old_fill)) => {
 				let exposed = old_inputs[1].is_exposed();
 				let fill_value = match old_fill {
-					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::Color(None),
-					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(Some(*color)),
+					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
+					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
 					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
 				};
 				document
@@ -1688,6 +1690,57 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 8), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
+	}
+
+	// TODO: Eventually remove this migration document upgrade code
+	// A legacy "no color" on a plain color connector (`TaggedValue::no_paint()` restored by the deserializer) becomes a color,
+	// since only paint connectors keep the no-paint choice
+	{
+		let migrate_color_input = |input: &NodeInput, fallback: Color| -> Option<NodeInput> {
+			let NodeInput::Value { tagged_value, exposed } = input else { return None };
+			if !tagged_value.is_no_paint() {
+				return None;
+			}
+			Some(NodeInput::value(TaggedValue::Color(fallback), *exposed))
+		};
+
+		let conversions: &[(ProtoNodeIdentifier, usize, Color)] = &[
+			(graphene_std::vector::fill::IDENTIFIER, graphene_std::vector::fill::BackupColorInput::INDEX, Color::BLACK),
+			(
+				graphene_std::artboard::create_artboard::IDENTIFIER,
+				graphene_std::artboard::create_artboard::BackgroundInput::INDEX,
+				Color::WHITE,
+			),
+			(
+				graphene_std::math_nodes::color_value::IDENTIFIER,
+				graphene_std::math_nodes::color_value::ColorInput::INDEX,
+				Color::TRANSPARENT,
+			),
+			(
+				graphene_std::raster_nodes::adjustments::black_and_white::IDENTIFIER,
+				graphene_std::raster_nodes::adjustments::black_and_white::TintInput::INDEX,
+				Color::BLACK,
+			),
+			(
+				graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+				graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput::INDEX,
+				Color::BLACK,
+			),
+			(
+				graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
+				graphene_std::raster_nodes::std_nodes::empty_image::ColorInput::INDEX,
+				Color::WHITE,
+			),
+		];
+		for &(ref identifier, index, fallback) in conversions {
+			if reference != DefinitionIdentifier::ProtoNode(identifier.clone()) {
+				continue;
+			}
+			let Some(input) = node.inputs.get(index) else { continue };
+			if let Some(migrated) = migrate_color_input(input, fallback) {
+				document.network_interface.set_input(&InputConnector::node(*node_id, index), migrated, network_path);
+			}
+		}
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016

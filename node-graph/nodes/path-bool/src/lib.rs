@@ -183,6 +183,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 		.flat_map(|index| {
 			let graphic = graphic_list.element(index).unwrap();
 			match graphic.clone() {
+				Graphic::None => Vec::new(),
 				Graphic::Vector(vector) => {
 					// Apply the parent graphic's transform to each element of the `List<Vector>`
 					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
