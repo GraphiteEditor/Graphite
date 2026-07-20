@@ -37,7 +37,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::{GradientSpreadMethod, GradientType};
@@ -325,10 +325,11 @@ fn fill<'e>(
 	_backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
+	_has_transform: bool,
+	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _transform);
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -345,14 +346,15 @@ fn fill_graphic_leveled<'e>(
 	_backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
-	_transform: Option<DAffine2>,
+	_has_transform: bool,
+	_transform: DAffine2,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
 	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _transform);
+	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -381,13 +383,13 @@ fn stroke<'e>(
 	miter_limit: f64,
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
-	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: IList<f64>,
+	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
+	dash_pattern: DashPattern,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
 ) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
+	let dash_lengths = dash_pattern.clamped_lengths();
 	let mut stroke = Stroke {
 		weight,
 		dash_lengths,
@@ -442,10 +444,10 @@ fn stroke_graphic_leveled<'e>(
 	join: StrokeJoin,
 	#[default(4.)] miter_limit: f64,
 	paint_order: PaintOrder,
-	dash_lengths: IList<f64>,
+	dash_pattern: DashPattern,
 	#[unit(" px")] dash_offset: f64,
 ) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, StrokeAttr>), Interrupt> {
-	let dash_lengths = (0..dash_lengths.len()).map(|index| dash_lengths.get(index).max(0.)).collect();
+	let dash_lengths = dash_pattern.clamped_lengths();
 	let stroke = Stroke {
 		weight,
 		dash_lengths,
