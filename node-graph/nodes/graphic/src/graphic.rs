@@ -25,43 +25,10 @@ fn resolve_index(index: f64, total: u64) -> Option<u64> {
 	}
 }
 
-/// Returns a one-lane level holding the item at the specified index with its
-/// attributes, or an empty level when the index is out of range.
-#[node_macro::node(category("General"), extent(index_elements_extent))]
-pub fn index_elements<T>(
-	ctx: impl Ctx + ModifyIndex + Copy,
-	/// The list of data.
-	list: impl Node<Context<'_>, Output = T>,
-	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: SignedInteger,
-) -> Result<T, Interrupt> {
-	let total = match list.extent(ctx, Level::Total) {
-		GPoll::Final(Extent::Exactly(count)) => count as u64,
-		GPoll::Pending => return Err(Interrupt::Pending),
-		_ => return Err(GraphError::new("index elements over a non-exact extent").into()),
-	};
-	let Some(source) = resolve_index(index, total) else {
-		return Err(GraphError::new("index elements addressed its empty selection").into());
-	};
-	let mut shifted = *ctx;
-	shifted.set_index(source);
-	list.eval(&shifted)
-}
-
-fn index_elements_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: LevelIn) -> GPoll<Extent> {
-	match level.top() {
-		true => index.get().zip(list.at(level)).map(|(index, extent)| match extent {
-			Extent::Exactly(count) => Extent::Exactly(resolve_index(index, count as u64).is_some() as usize),
-			_ => Extent::Exactly(1),
-		}),
-		false => list.at(level),
-	}
-}
-
-/// Returns the list with the element at the specified index removed.
+/// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"), extent(omit_element_extent))]
-pub fn omit_element<T>(
+#[node_macro::node(category("General"), name("Remove at Index"), extent(omit_element_extent))]
+pub fn remove_at_index<T>(
 	ctx: impl Ctx + ModifyIndex + Copy,
 	/// The list of data.
 	list: impl Node<Context<'_>, Output = T>,
@@ -96,8 +63,8 @@ fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Level
 /// Returns the bare element (without the item's attributes) at the specified index in a `List`.
 /// Use this when downstream nodes want just the inner value rather than a `List` containing a single item.
 /// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("General"))]
-pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
+#[node_macro::node(category("General"), name("Item at Index"))]
+pub fn item_at_index<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 	_: impl Ctx,
 	/// The `List` of data to extract from.
 	#[implementations(String, f64, NodeId, Color, Gradient, Vector, Raster<CPU>, Graphic, Artboard)]
