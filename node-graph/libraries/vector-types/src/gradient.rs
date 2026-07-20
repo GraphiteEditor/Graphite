@@ -17,10 +17,10 @@ pub enum GradientType {
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 /// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
 ///
-/// Not exposed via Tsify; use [`GradientStopsUI`] at the JS boundary.
+/// Not exposed via Tsify; use [`GradientUI`] at the JS boundary.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub struct GradientStops {
+pub struct Gradient {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
 	/// The midpoint to the right of this stop, a factor from 0-1 along the distance to the next stop. The final stop's midpoint is ignored.
@@ -29,18 +29,18 @@ pub struct GradientStops {
 	pub color: Vec<Color>,
 }
 
-/// JS-boundary version of [`GradientStops`] where stop colors are [`SRGBA8`] byte triples instead of linear-light [`Color`].
+/// JS-boundary version of [`Gradient`] where stop colors are [`SRGBA8`] byte triples instead of linear-light [`Color`].
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Debug, Clone, PartialEq, Default, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GradientStopsUI {
+pub struct GradientUI {
 	pub position: Vec<f64>,
 	pub midpoint: Vec<f64>,
 	pub color: Vec<SRGBA8>,
 }
 
-impl From<&GradientStops> for GradientStopsUI {
-	fn from(s: &GradientStops) -> Self {
+impl From<&Gradient> for GradientUI {
+	fn from(s: &Gradient) -> Self {
 		Self {
 			position: s.position.clone(),
 			midpoint: s.midpoint.clone(),
@@ -49,8 +49,8 @@ impl From<&GradientStops> for GradientStopsUI {
 	}
 }
 
-impl From<&GradientStopsUI> for GradientStops {
-	fn from(s: &GradientStopsUI) -> Self {
+impl From<&GradientUI> for Gradient {
+	fn from(s: &GradientUI) -> Self {
 		Self {
 			position: s.position.clone(),
 			midpoint: s.midpoint.clone(),
@@ -59,7 +59,7 @@ impl From<&GradientStopsUI> for GradientStops {
 	}
 }
 
-impl GradientStopsUI {
+impl GradientUI {
 	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
 	pub fn to_css_linear_gradient(&self) -> String {
 		if self.position.len() <= 1 {
@@ -67,7 +67,7 @@ impl GradientStopsUI {
 			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
 		}
 		// Sample via the midpoint-aware subdivision used for SVG/Vello stops so browser interpolation matches
-		let stops: GradientStops = self.into();
+		let stops: Gradient = self.into();
 		let pieces = stops
 			.interpolated_samples()
 			.into_iter()
@@ -83,7 +83,7 @@ impl GradientStopsUI {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-impl<'de> serde::Deserialize<'de> for GradientStops {
+impl<'de> serde::Deserialize<'de> for Gradient {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		#[derive(serde::Deserialize)]
 		struct NewFormat {
@@ -117,7 +117,7 @@ impl<'de> serde::Deserialize<'de> for GradientStops {
 	}
 }
 
-impl Default for GradientStops {
+impl Default for Gradient {
 	fn default() -> Self {
 		Self {
 			position: vec![0., 1.],
@@ -127,7 +127,7 @@ impl Default for GradientStops {
 	}
 }
 
-impl RenderComplexity for GradientStops {
+impl RenderComplexity for Gradient {
 	fn render_complexity(&self) -> usize {
 		1
 	}
@@ -158,7 +158,7 @@ pub struct GradientStop {
 }
 
 pub struct GradientStopsIter<'a> {
-	stops: &'a GradientStops,
+	stops: &'a Gradient,
 	index: usize,
 }
 
@@ -187,7 +187,7 @@ impl<'a> Iterator for GradientStopsIter<'a> {
 
 impl ExactSizeIterator for GradientStopsIter<'_> {}
 
-impl<'a> IntoIterator for &'a GradientStops {
+impl<'a> IntoIterator for &'a Gradient {
 	type Item = GradientStop;
 	type IntoIter = GradientStopsIter<'a>;
 
@@ -196,7 +196,7 @@ impl<'a> IntoIterator for &'a GradientStops {
 	}
 }
 
-impl IntoIterator for GradientStops {
+impl IntoIterator for Gradient {
 	type Item = GradientStop;
 	type IntoIter = std::vec::IntoIter<GradientStop>;
 
@@ -211,7 +211,7 @@ impl IntoIterator for GradientStops {
 	}
 }
 
-impl GradientStops {
+impl Gradient {
 	pub fn new(stops: impl IntoIterator<Item = GradientStop>) -> Self {
 		let mut position = Vec::new();
 		let mut midpoint = Vec::new();
@@ -465,7 +465,7 @@ impl GradientStops {
 			let color = a.color.lerp(&b.color, time as f32);
 			GradientStop { position, midpoint: 0.5, color }
 		});
-		GradientStops::new(stops)
+		Gradient::new(stops)
 	}
 }
 
@@ -540,19 +540,19 @@ pub fn initial_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffin
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_to_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientStops, D::Error> {
+pub fn migrate_to_gradient<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Gradient, D::Error> {
 	use serde::Deserialize;
 
 	#[derive(serde::Deserialize)]
 	struct LegacyTable {
 		#[serde(alias = "instances", alias = "instance")]
-		element: Vec<GradientStops>,
+		element: Vec<Gradient>,
 	}
 
 	#[derive(serde::Deserialize)]
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GradientStopsFormat {
-		Stops(GradientStops),
+		Stops(Gradient),
 		List(LegacyTable),
 	}
 
@@ -562,7 +562,7 @@ pub fn migrate_to_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer:
 	})
 }
 
-impl core_types::bounds::BoundingBox for GradientStops {
+impl core_types::bounds::BoundingBox for Gradient {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		core_types::bounds::RenderBoundingBox::Infinite
 	}

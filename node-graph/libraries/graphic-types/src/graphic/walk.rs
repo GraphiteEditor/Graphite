@@ -13,7 +13,7 @@ use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::{GradientStops, Vector};
+use vector_types::{Gradient, Vector};
 
 /// One run's attribute tokens, minted once so the lane loops read at an offset.
 struct RunAttrs {
@@ -117,7 +117,7 @@ pub(in crate::graphic) fn group_bounding_box(group: &core_types::record::Group, 
 			.or_else(|| typed_run::<Raster<CPU>>(item, transform, include_stroke, thumbnail))
 			.or_else(|| typed_run::<Raster<GPU>>(item, transform, include_stroke, thumbnail))
 			.or_else(|| typed_run::<Color>(item, transform, include_stroke, thumbnail))
-			.or_else(|| typed_run::<GradientStops>(item, transform, include_stroke, thumbnail))
+			.or_else(|| typed_run::<Gradient>(item, transform, include_stroke, thumbnail))
 			.or_else(|| typed_run::<String>(item, transform, include_stroke, thumbnail))
 			.unwrap_or(RenderBoundingBox::Infinite)
 	}
@@ -497,7 +497,7 @@ pub(in crate::graphic) fn group_render_complexity(group: &core_types::record::Gr
 		.or_else(|| typed_run::<Raster<CPU>>(item))
 		.or_else(|| typed_run::<Raster<GPU>>(item))
 		.or_else(|| typed_run::<Color>(item))
-		.or_else(|| typed_run::<GradientStops>(item))
+		.or_else(|| typed_run::<Gradient>(item))
 		.or_else(|| typed_run::<String>(item))
 		.unwrap_or(item.len())
 }

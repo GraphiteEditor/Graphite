@@ -13,7 +13,7 @@ use core_types::node::Node;
 use core_types::record::{Group, GroupItem, LevelStatus, materialize_level};
 use core_types::uuid::NodeId;
 use glam::{DAffine2, DVec2};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 /// The outcome of materializing a leveled wire into a group.
 // The group is the render path's success payload; boxing it would add a heap allocation per materialized level.
@@ -93,7 +93,7 @@ pub fn batch_to_legacy(layout: &core_types::record::Layout, batch: core_types::n
 		.or_else(|| typed::<Raster<CPU>>(&item))
 		.or_else(|| typed::<Raster<GPU>>(&item))
 		.or_else(|| typed::<Color>(&item))
-		.or_else(|| typed::<GradientStops>(&item))
+		.or_else(|| typed::<Gradient>(&item))
 		.or_else(|| typed::<String>(&item))
 		.or_else(|| typed::<f64>(&item))
 		.or_else(|| typed::<u64>(&item))

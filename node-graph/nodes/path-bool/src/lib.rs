@@ -7,7 +7,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, set_paint_attribute, set_paint_attribute_at};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::vector_types::gradient::{GradientSpreadMethod, GradientType};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -283,7 +283,7 @@ fn color_paint_row(color: Color, mut attributes: core_types::list::ItemAttribute
 
 /// A gradient row: an empty vector carrying the stops as its fill paint, the
 /// gradient keys moved onto the paint.
-fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
+fn gradient_paint_row(stops: Gradient, mut attributes: core_types::list::ItemAttributeValues) -> Item<Vector> {
 	let mut gradient_paint = List::new_from_element(Graphic::Gradient(stops));
 	if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
 		gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
@@ -409,7 +409,7 @@ fn flatten_group(out: &mut List<Vector>, group: &core_types::record::Group, comp
 			out,
 			(0..color.len()).filter_map(|i| Some(color_paint_row(*color.element(i)?, color.clone_item_attributes(i)))).collect(),
 		);
-	} else if let Some(gradient) = graphic_types::graphic::run_to_list::<GradientStops>(item) {
+	} else if let Some(gradient) = graphic_types::graphic::run_to_list::<Gradient>(item) {
 		push_rows(
 			out,
 			(0..gradient.len())

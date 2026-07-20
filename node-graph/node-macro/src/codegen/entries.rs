@@ -590,7 +590,7 @@ mod tests {
 				async fn rasterize<T: Send + Clone>(
 					_: impl Ctx,
 					_: (),
-					#[implementations(List<Vector>, List<Raster<CPU>>, List<Graphic>, List<Color>, List<GradientStops>)] data: List<T>,
+					#[implementations(List<Vector>, List<Raster<CPU>>, List<Graphic>, List<Color>, List<Gradient>)] data: List<T>,
 					footprint: Footprint,
 					canvas: CanvasHandle,
 				) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>) {
@@ -599,7 +599,7 @@ mod tests {
 			),
 		);
 		assert!(entries.contains("fn rasterize_entries"), "a registrable record-io source must emit its entries fn");
-		for element in ["Vector", "Raster < CPU >", "Graphic", "Color", "GradientStops"] {
+		for element in ["Vector", "Raster < CPU >", "Graphic", "Color", "Gradient"] {
 			let row = format!("record_source_type :: < List < {element} > > ()");
 			assert!(entries.contains(&row), "the implementations row {element} is missing: {entries}");
 		}

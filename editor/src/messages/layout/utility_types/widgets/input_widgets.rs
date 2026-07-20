@@ -6,7 +6,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoiceUI, GradientStopsUI};
+use graphene_std::vector::style::{FillChoiceUI, GradientUI};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -531,7 +531,7 @@ pub struct SpectrumInput {
 	// Content
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
-	pub track: GradientStopsUI,
+	pub track: GradientUI,
 	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]

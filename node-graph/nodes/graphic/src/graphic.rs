@@ -13,7 +13,7 @@ use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
-use vector_types::{GradientStop, GradientStops, ReferencePoint};
+use vector_types::{Gradient, GradientStop, ReferencePoint};
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
 /// out of range resolves to nothing.
@@ -100,7 +100,7 @@ fn omit_element_extent(list: ExtentIn<'_>, index: ValueIn<'_, f64>, level: Level
 pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 	_: impl Ctx,
 	/// The `List` of data to extract from.
-	#[implementations(String, f64, NodeId, Color, GradientStops, Vector, Raster<CPU>, Graphic, Artboard)]
+	#[implementations(String, f64, NodeId, Color, Gradient, Vector, Raster<CPU>, Graphic, Artboard)]
 	list: IList<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
@@ -114,7 +114,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 #[node_macro::node(category("General"))]
 fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<Row>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<T>, Interrupt> {
 	let mut remaining = ctx.index();
@@ -429,9 +429,9 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 #[node_macro::node(category(""))]
 pub fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
 	nested_node_path: List<NodeId>,
 ) -> List<T> {
@@ -458,7 +458,7 @@ pub fn legacy_layer_extend<T: Send + Clone>(
 #[node_macro::node(category("General"), extent(wrap_graphic_extent))]
 pub fn wrap_graphic<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
@@ -483,7 +483,7 @@ pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 	)]
 	content: T,
@@ -503,14 +503,14 @@ pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 		Raster<CPU>,
 		Raster<GPU>,
 		Color,
-		GradientStops,
+		Gradient,
 		String,
 		List<Graphic>,
 		List<Vector>,
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
-		List<GradientStops>,
+		List<Gradient>,
 		List<String>,
 	)]
 	content: T,
@@ -524,7 +524,7 @@ pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 #[node_macro::node(category(""), extent(wrap_graphic_extent))]
 pub fn to_graphic_typed<'e, T: Clone + Send + Sync + core_types::CacheHash + 'static>(
 	_: impl Ctx,
-	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] content: IList<T>,
+	#[implementations(Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: IList<T>,
 ) -> Result<IList<Graphic<'e>>, Interrupt> {
 	let item = content.as_group_item();
 	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
@@ -548,7 +548,7 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 #[node_macro::node(category(""))]
 pub fn level_to_list<T: Clone + Send + Sync + CacheHash + dyn_any::StaticTypeSized>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, GradientStops, String)] value: IList<T>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] value: IList<T>,
 	_converter: (),
 ) -> List<T> {
 	let item = value.as_group_item();
@@ -650,19 +650,19 @@ pub fn flatten_color<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gra
 	content.into_flattened_list()
 }
 
-/// Converts a `Graphic[]` into a `GradientStops[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+/// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<GradientStops>)] content: T) -> List<GradientStops> {
+pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Gradient>)] content: T) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
-fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> GradientStops {
+fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
 	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
 	match colors.len() {
-		0 => GradientStops::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => GradientStops::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
-		total => GradientStops::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
+		0 => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
+		1 => Gradient::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
+		total => Gradient::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
 	}
 }

@@ -37,14 +37,14 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
 use vector_types::{GradientSpreadMethod, GradientType};
 
 /// The gradient color for one assign-colors position, replaying the
 /// randomized draws up to it.
-fn assign_color_at(gradient: &GradientStops, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
+fn assign_color_at(gradient: &Gradient, position: usize, length: usize, randomize: bool, seed: SeedValue, repeat_every: u32) -> Color {
 	let factor = match randomize {
 		true => {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -77,7 +77,7 @@ fn assign_colors<'e>(
 	stroke: bool,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: IList<GradientStops>,
+	gradient: IList<Gradient>,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -132,7 +132,7 @@ fn assign_colors_extent(
 	content: ListIn<'_, Vector>,
 	_fill: ValueIn<'_, bool>,
 	_stroke: ValueIn<'_, bool>,
-	_gradient: ListIn<'_, GradientStops>,
+	_gradient: ListIn<'_, Gradient>,
 	_reverse: ValueIn<'_, bool>,
 	_randomize: ValueIn<'_, bool>,
 	_seed: ValueIn<'_, SeedValue>,
@@ -155,7 +155,7 @@ fn assign_colors_graphic<'e>(
 	#[data] lane_offsets: std::sync::Arc<std::sync::Mutex<Option<LaneOffsets>>>,
 	#[default(true)] fill: bool,
 	stroke: bool,
-	gradient: IList<GradientStops>,
+	gradient: IList<Gradient>,
 	reverse: bool,
 	randomize: bool,
 	seed: SeedValue,
@@ -247,7 +247,7 @@ fn assign_colors_graphic_extent(
 	content: ListIn<'_, Graphic>,
 	_fill: ValueIn<'_, bool>,
 	_stroke: ValueIn<'_, bool>,
-	_gradient: ListIn<'_, GradientStops>,
+	_gradient: ListIn<'_, Gradient>,
 	_reverse: ValueIn<'_, bool>,
 	_randomize: ValueIn<'_, bool>,
 	_seed: ValueIn<'_, SeedValue>,
@@ -322,7 +322,7 @@ fn fill<'e>(
 	#[default(Color::BLACK)]
 	fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	_backup_gradient: IList<GradientStops>,
+	_backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
@@ -342,7 +342,7 @@ fn fill_graphic_leveled<'e>(
 	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
 	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	_backup_gradient: IList<GradientStops>,
+	_backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_transform: Option<DAffine2>,
@@ -2780,7 +2780,7 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		};
 
 		// This keeps the gradient metadata attributes, which ride the paint lane
-		let gradient_paint = |metadata_source: &List<Graphic>, stops: GradientStops, transform: Option<DAffine2>| -> List<Graphic> {
+		let gradient_paint = |metadata_source: &List<Graphic>, stops: Gradient, transform: Option<DAffine2>| -> List<Graphic> {
 			let mut out = List::new_from_item(Item::from_parts(Graphic::Gradient(stops), metadata_source.clone_item_attributes(0)));
 			if let Some(transform) = transform {
 				out.set_attribute(ATTR_TRANSFORM, 0, transform);
@@ -3666,7 +3666,7 @@ fn point_inside(_: impl Ctx, source: IList<Vector>, point: DVec2) -> bool {
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, GradientStops, String)] content: IList<T>) -> f64 {
+fn count_elements<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Artboard, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<T>) -> f64 {
 	content.len() as f64
 }
 

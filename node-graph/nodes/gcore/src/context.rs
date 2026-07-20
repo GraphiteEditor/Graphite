@@ -3,7 +3,7 @@ use core_types::list::List;
 use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractIndices, ExtractPosition};
 use glam::DVec2;
-use graphic_types::vector_types::GradientStops;
+use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
@@ -40,7 +40,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<GradientStops> {
+fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<Gradient> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -111,12 +111,12 @@ fn read_color_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadColorRowNode, ctx: &C,
 
 /// Rank-model vararg source: the mapped row's items as lanes, elements only.
 #[node_macro::node(category("Test"), extent_raw(read_gradient_row_extent))]
-pub fn read_gradient_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<GradientStops>, Interrupt> {
+pub fn read_gradient_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Gradient>, Interrupt> {
 	vararg_element(ctx)
 }
 
 fn read_gradient_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadGradientRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<GradientStops>(ctx, level)
+	vararg_lanes::<Gradient>(ctx, level)
 }
 
 #[node_macro::node(category("Context"), path(core_types::vector))]

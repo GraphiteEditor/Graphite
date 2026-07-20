@@ -33,7 +33,7 @@ use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 #[cfg(target_family = "wasm")]
-use graphic_types::vector_types::gradient::GradientStops;
+use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
@@ -212,7 +212,7 @@ async fn rasterize<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(
 		Raster<CPU>,
 		Graphic,
 		Color,
-		GradientStops,
+		Gradient,
 	)]
 	mut data: IList<T>,
 	footprint: Footprint,
