@@ -41,6 +41,7 @@ pub enum DocumentMessage {
 	DataPanel(DataPanelMessage),
 	#[child]
 	Resource(ResourceMessage),
+	#[child]
 	GuideLine(GuideLineMessage),
 
 	// Messages

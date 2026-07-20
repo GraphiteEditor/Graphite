@@ -18,7 +18,6 @@
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
-	import { generateGuideLineId } from "/wasm/pkg/graphite_wasm";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
@@ -247,7 +246,9 @@
 	function handleGuideDragStart(e: CustomEvent<{ direction: GuideDirection; mouseX: number; mouseY: number }>) {
 		const { direction, mouseX, mouseY } = e.detail;
 
-		const guideId = generateGuideLineId();
+		const array = new BigUint64Array(1);
+		window.crypto.getRandomValues(array);
+		const guideId = array[0];
 		draggingGuideId = guideId;
 		draggingGuideDirection = direction;
 
