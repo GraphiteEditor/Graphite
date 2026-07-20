@@ -1,6 +1,5 @@
 use core_types::Ctx;
 use glam::{DAffine2, DVec2};
-use raster_types::{CPU, Raster};
 
 /// Meant for debugging purposes, not general use. Logs the input value to the console and passes it through unchanged.
 #[node_macro::node(category("Debug"), name("Log to Console"))]
@@ -8,28 +7,4 @@ fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(bool, f64, 
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 	log::debug!("{value:#?}");
 	value
-}
-
-/// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
-#[node_macro::node(category("Debug"))]
-fn size_of(_: impl Ctx, ty: core_types::Type) -> Option<usize> {
-	ty.size()
-}
-
-/// Meant for debugging purposes, not general use. Wraps the input value in the Some variant of an Option.
-#[node_macro::node(category("Debug"))]
-fn some<T>(_: impl Ctx, #[implementations(f64, f32, u32, u64, String)] input: T) -> Option<T> {
-	Some(input)
-}
-
-/// Meant for debugging purposes, not general use. Unwraps the input value from an Option, returning the default value if the input is None.
-#[node_macro::node(category("Debug"))]
-fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<u32>, Option<u64>, Option<String>)] input: Option<T>) -> T {
-	input.unwrap_or_default()
-}
-
-/// Clones the element out of its record input.
-#[node_macro::node(category("Debug"))]
-fn clone<T: Clone>(_: impl Ctx, #[implementations(Raster<CPU>, f64)] value: &T) -> T {
-	value.clone()
 }
