@@ -1,6 +1,5 @@
 use crate::WgpuExecutorHandle;
 use core_types::Color;
-use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::ops::{Convert, ConvertAsync};
@@ -249,16 +248,4 @@ impl ConvertAsync<Raster<CPU>, WgpuExecutorHandle> for Raster<GPU> {
 
 		Box::pin(async move { converter.convert(&device).await.expect("Failed to download texture data") })
 	}
-}
-
-/// Uploads an raster texture from the CPU to the GPU. This is now deprecated and the Convert node should be used in the future.
-///
-/// Accepts either individual raster data or a `List` of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
-#[node_macro::node(category(""))]
-pub fn upload_texture<T: Convert<List<Raster<GPU>>, WgpuExecutorHandle>>(
-	_: impl Ctx,
-	#[implementations(List<Raster<CPU>>, List<Raster<GPU>>)] input: T,
-	executor: WgpuExecutorHandle,
-) -> List<Raster<GPU>> {
-	input.convert(Footprint::DEFAULT, executor)
 }

@@ -13,8 +13,8 @@ use core_types::list::List;
 use core_types::ATTR_TRANSFORM;
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
+use core_types::ops::Convert;
 use core_types::runtime::SourceFuture;
-#[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
@@ -31,7 +31,7 @@ use graphic_types::Vector;
 #[cfg(target_family = "wasm")]
 use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster};
 #[cfg(target_family = "wasm")]
 use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
@@ -307,4 +307,14 @@ pub fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: A
 #[node_macro::node(category(""), inject_scope)]
 pub fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> Option<::wgpu_executor::WgpuExecutorHandle> {
 	editor_api.application_io.as_ref()?.gpu_executor_arc().map(::wgpu_executor::WgpuExecutorHandle)
+}
+
+/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
+#[node_macro::node(category("Debug"), memoize)]
+pub async fn upload_texture<'a: 'n, T: Convert<List<Raster<GPU>>, &'a ::wgpu_executor::WgpuExecutor>>(
+	_: impl Ctx,
+	#[implementations(List<Raster<CPU>>)] content: T,
+	#[scope(wgpu_executor::IDENTIFIER)] executor: &'a ::wgpu_executor::WgpuExecutor,
+) -> List<Raster<GPU>> {
+	content.convert(Footprint::DEFAULT, executor).await
 }
