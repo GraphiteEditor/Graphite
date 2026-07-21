@@ -601,6 +601,11 @@ impl ItemAttributeValues {
 		self.0.iter().map(|(key, value)| (key.as_str(), &**value))
 	}
 
+	/// Returns a type-erased reference to the value of the attribute with the given key, if it exists.
+	pub fn get_any(&self, key: &str) -> Option<&dyn std::any::Any> {
+		self.0.iter().find_map(|(existing_key, value)| if existing_key == key { Some((**value).as_any()) } else { None })
+	}
+
 	/// Returns a debug-formatted string representation of the attribute value for the given key, if it exists.
 	/// The `overrides` function can provide custom formatting for specific type.
 	pub fn display_value(&self, key: &str, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
@@ -1324,6 +1329,10 @@ impl<T> Item<T> {
 	pub fn remove_attribute<U: 'static>(&mut self, key: &str) -> Option<U> {
 		self.attributes.remove(key)
 	}
+}
+
+unsafe impl<T: StaticTypeSized> StaticType for Item<T> {
+	type Static = Item<T::Static>;
 }
 
 // ===========

@@ -77,8 +77,7 @@ impl Convert<DVec2, ()> for DVec2 {
 }
 
 /// Constructs `Self` from a single anchor point at the given position. Implemented by the vector crate's
-/// path type so the `Convert` impl below can build a single-point path without core-types depending on
-/// that crate (mirroring how [`ListConvert`] bridges per-item list conversions).
+/// path type so a position wire can convert to a single-point path without core-types depending on that crate.
 pub trait FromAnchorPosition {
 	fn from_anchor_position(position: DVec2) -> Self;
 }

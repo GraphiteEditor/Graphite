@@ -1003,6 +1003,9 @@ impl TypingContext {
 
 	/// Returns the inferred types for a given node id.
 	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, GraphErrors> {
+		if node_id == NodeId(3480994800604782060) {
+			log::error!("PROBE {node_id:?}: identifier={:?} args={:?}", node.identifier, node.construction_args);
+		}
 		// Return the inferred type if it is already known
 		if let Some(inferred) = self.inferred.get(&node_id) {
 			return Ok(inferred.clone());
