@@ -14,7 +14,7 @@ use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::{concrete, descriptor};
+use graph_craft::{concrete, list};
 use graphene_std::extract_xy::XY;
 use graphene_std::list::List;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
@@ -207,7 +207,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Graphic>), true), NodeInput::type_default(descriptor!(List<Graphic>), true)],
+					inputs: vec![NodeInput::type_default(list!(Graphic), true), NodeInput::type_default(list!(Graphic), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -341,8 +341,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Artboard>), true),
-						NodeInput::type_default(descriptor!(List<Graphic>), true),
+						NodeInput::type_default(list!(Artboard), true),
+						NodeInput::type_default(list!(Graphic), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
@@ -575,11 +575,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(list!(Vector), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::Bool(Default::default()), false),
 						NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-						NodeInput::type_default(descriptor!(List<Vector>), false),
+						NodeInput::type_default(list!(Vector), false),
 					],
 					..Default::default()
 				},
@@ -826,7 +826,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Vector>), true)],
+					inputs: vec![NodeInput::type_default(list!(Vector), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1011,7 +1011,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(list!(Vector), true),
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
 								transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
@@ -1122,7 +1122,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
+					inputs: vec![NodeInput::type_default(list!(Raster<CPU>), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1250,7 +1250,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Extract,
-					inputs: vec![NodeInput::type_default(descriptor!(DocumentNode), true)],
+					inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1402,7 +1402,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::type_default(descriptor!(List<Vector>), true),
+						NodeInput::type_default(list!(Vector), true),
 						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 					],
 					..Default::default()

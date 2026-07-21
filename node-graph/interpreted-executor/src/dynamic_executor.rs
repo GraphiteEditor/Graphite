@@ -137,7 +137,7 @@ impl DynamicExecutor {
 
 impl<I> Executor<I, TaggedValue> for &DynamicExecutor
 where
-	I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe,
+	I: StaticType + 'static + Send + Sync,
 {
 	fn execute(&self, input: I) -> LocalFuture<'_, Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move {
@@ -413,7 +413,19 @@ impl BorrowTree {
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids = ids.to_vec();
-				let construction_nodes = self.node_deps(&ids);
+				let mut construction_nodes = self.node_deps(&ids);
+
+				// Wrap arguments the typing pass marked for rank promotion with their adapter node
+				if let Some(promotions) = typing_context.promotions(id) {
+					for (argument_index, promotion) in promotions {
+						let adapter_constructor = typing_context
+							.adapter_constructor(&promotion.adapter_identifier())
+							.ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
+						let adapter = adapter_constructor(vec![construction_nodes[*argument_index].clone()]).await;
+						construction_nodes[*argument_index] = NodeContainer::new(adapter);
+					}
+				}
+
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
@@ -437,7 +449,9 @@ mod test {
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
+
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
+
 		let context = TypingContext::default();
 		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();

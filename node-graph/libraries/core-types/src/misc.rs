@@ -61,6 +61,27 @@ impl Clampable for DVec2 {
 	}
 }
 
+// Implement for ranked wires (element-wise clamping across the frame)
+use crate::list::{Item, List};
+impl<T: Clampable> Clampable for Item<T> {
+	fn clamp_hard_min(self, min: f64) -> Self {
+		let (element, attributes) = self.into_parts();
+		Item::from_parts(element.clamp_hard_min(min), attributes)
+	}
+	fn clamp_hard_max(self, max: f64) -> Self {
+		let (element, attributes) = self.into_parts();
+		Item::from_parts(element.clamp_hard_max(max), attributes)
+	}
+}
+impl<T: Clampable> Clampable for List<T> {
+	fn clamp_hard_min(self, min: f64) -> Self {
+		self.into_iter().map(|item| item.clamp_hard_min(min)).collect()
+	}
+	fn clamp_hard_max(self, max: f64) -> Self {
+		self.into_iter().map(|item| item.clamp_hard_max(max)).collect()
+	}
+}
+
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
 struct LegacyTable<T> {

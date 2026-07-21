@@ -7,9 +7,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
-use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graph_craft::list;
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::ProtoNodeIdentifier;
@@ -1125,6 +1125,7 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
+	document.network_interface.document_network_mut().normalize_stored_types();
 
 	let network = document.network_interface.document_network().clone();
 
@@ -2610,11 +2611,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let modification = modification.clone();
 			let was_exposed = *exposed;
 
-			document.network_interface.set_input(
-				&InputConnector::node(*node_id, 0),
-				NodeInput::type_default(descriptor!(graphene_std::list::List<graphene_std::vector::Vector>), true),
-				network_path,
-			);
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::type_default(list!(graphene_std::vector::Vector), true), network_path);
 
 			if !was_exposed {
 				document

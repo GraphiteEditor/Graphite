@@ -4,7 +4,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
-use graphene_std::list::List;
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
@@ -63,13 +62,13 @@ impl TypeSource {
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
 				TaggedValue::LegacyGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
-				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
-				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
-					n if n == std::any::type_name::<List<Graphic>>() => FrontendGraphDataType::Graphic,
-					n if n == std::any::type_name::<List<Artboard>>() => FrontendGraphDataType::Artboard,
-					n if n == std::any::type_name::<List<Raster<CPU>>>() => FrontendGraphDataType::Raster,
-					n if n == std::any::type_name::<List<Vector>>() => FrontendGraphDataType::Vector,
-					n if n == std::any::type_name::<List<String>>() => FrontendGraphDataType::Typography,
+				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the stored structural type.
+				TaggedValue::TypeDefault(td) => match &td {
+					Type::List(element) if **element == concrete!(Graphic) => FrontendGraphDataType::Graphic,
+					Type::List(element) if **element == concrete!(Artboard) => FrontendGraphDataType::Artboard,
+					Type::List(element) if **element == concrete!(Raster<CPU>) => FrontendGraphDataType::Raster,
+					Type::List(element) if **element == concrete!(Vector) => FrontendGraphDataType::Vector,
+					Type::List(element) if **element == concrete!(String) => FrontendGraphDataType::Typography,
 					_ => FrontendGraphDataType::General,
 				},
 				_ => FrontendGraphDataType::General,

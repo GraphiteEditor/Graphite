@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, concrete};
+use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::NodeInputDecleration;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
@@ -984,6 +984,6 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
 
-		layer_input_type.compiled_nested_type() == Some(&concrete!(List<Raster<CPU>>)) || layer_input_type.compiled_nested_type() == Some(&concrete!(List<Raster<GPU>>))
+		layer_input_type.compiled_nested_type() == Some(&list!(Raster<CPU>)) || layer_input_type.compiled_nested_type() == Some(&list!(Raster<GPU>))
 	}
 }

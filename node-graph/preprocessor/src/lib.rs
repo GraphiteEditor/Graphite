@@ -151,8 +151,15 @@ impl Preprocessor {
 								let input_ty = input.nested_type();
 								let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
-								let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", input_ty.identifier_name()));
-								let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", input_ty.identifier_name()));
+								// Conversion rows register under the name-encoded `List<X>` spelling, so a structural list is spelled back out
+								fn conversion_name(ty: &Type) -> String {
+									match ty {
+										Type::List(element) => format!("List<{}>", conversion_name(element)),
+										other => other.identifier_name(),
+									}
+								}
+								let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", conversion_name(input_ty)));
+								let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", conversion_name(input_ty)));
 
 								let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.as_str() == into_node_identifier.as_str()) {
 									generated_nodes += 1;

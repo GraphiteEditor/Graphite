@@ -4,7 +4,7 @@ use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
@@ -31,15 +31,38 @@ use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
 
-/// List of types routed through [`TaggedValue::TypeDefault`] instead of another dedicated variant.
+/// Item-cell element types routed through [`TaggedValue::TypeDefault`] instead of another dedicated variant, stored as the concrete `Item<T>` wire type.
 /// Consumed by [`TaggedValue::from_type`] (which creates `TypeDefault` values) and [`TaggedValue::to_dynany`]/[`TaggedValue::to_any`] (which unwrap them into real default values).
-macro_rules! for_each_type_default {
+macro_rules! for_each_item_type_default {
 	($action:ident) => {
-		$action!(List<Graphic>);
-		$action!(List<Artboard>);
-		$action!(List<Raster<CPU>>);
-		$action!(List<Vector>);
-		$action!(List<String>);
+		$action!(Vector);
+		$action!(f64);
+		$action!(Raster<CPU>);
+		$action!(Graphic);
+		$action!(Color);
+		$action!(Gradient);
+		$action!(Artboard);
+		$action!(String);
+	};
+}
+
+/// List element types routed through [`TaggedValue::TypeDefault`], stored as the structural [`Type::List`] form.
+/// `List<f64>` is absent because it stores as `TaggedValue::F64Array`.
+macro_rules! for_each_list_type_default {
+	($action:ident) => {
+		$action!(Graphic);
+		$action!(Artboard);
+		$action!(Raster<CPU>);
+		$action!(Vector);
+		$action!(String);
+		$action!(Color);
+		$action!(Gradient);
+	};
+}
+
+/// Unranked types routed through [`TaggedValue::TypeDefault`], stored as their concrete type.
+macro_rules! for_each_bare_type_default {
+	($action:ident) => {
 		$action!(DocumentNode);
 		$action!(Resource);
 	};
@@ -57,8 +80,9 @@ macro_rules! tagged_value {
 			// ===============
 			None,
 			/// Stores a type, from which its `Default::default()` value can be obtained, rather than storing an actual type's value.
-			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
-			TypeDefault(TypeDescriptor),
+			/// Example: `TaggedValue::TypeDefault(concrete!(String))` stores the type `String` but no specific string value.
+			/// (Old documents stored a bare `TypeDescriptor` payload, routed to this shape by `deserialize_tagged_value_with_legacy_migration`.)
+			TypeDefault(Type),
 			/// Stored compactly as a `Vec<f64>`, materializes as `List<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
@@ -89,7 +113,7 @@ macro_rules! tagged_value {
 			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes a `List<NodeId>` at runtime via `to_dynany`/`to_any` during graph flattening.
 			#[serde(skip)]
 			NodeIdPath(Vec<NodeId>),
-			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(descriptor!(DocumentNode))`.
+			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(concrete!(DocumentNode))`.
 			#[serde(skip)]
 			DocumentNode(DocumentNode),
 			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
@@ -142,16 +166,37 @@ macro_rules! tagged_value {
 					Self::None => Box::new(()),
 					Self::TypeDefault(td) => {
 						// Construct the actual default for types without a `TaggedValue` variant directly.
-						// Recursion through `from_type_or_none` below is safe only because `for_each_type_default!`
-						// exhaustively handles every type that `from_type` would route back to `TypeDefault`.
-						let name = td.name.as_ref();
-						macro_rules! check {
-							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
-							};
+						// Recursion through `from_type_or_none` below is safe only because the type-default lists
+						// exhaustively cover every type that `from_type` would route back to `TypeDefault`.
+						match &td {
+							Type::List(element) => {
+								macro_rules! check {
+									($type_default:ty) => {
+										if **element == concrete!($type_default) { return Box::new(List::<$type_default>::default()); }
+									};
+								}
+								for_each_list_type_default!(check);
+							}
+							Type::Item(element) => {
+								macro_rules! check {
+									($type_default:ty) => {
+										if **element == concrete!($type_default) { return Box::new(Item::<$type_default>::default()); }
+									};
+								}
+								for_each_item_type_default!(check);
+							}
+							Type::Concrete(descriptor) => {
+								let name = descriptor.name.as_ref();
+								macro_rules! check_bare {
+									($type_default:ty) => {
+										if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
+									};
+								}
+								for_each_bare_type_default!(check_bare);
+							}
+							_ => {}
 						}
-						for_each_type_default!(check);
-						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
+						Self::from_type_or_none(&td).to_dynany()
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -191,14 +236,35 @@ macro_rules! tagged_value {
 					Self::None => Arc::new(()),
 					Self::TypeDefault(td) => {
 						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
-						let name = td.name.as_ref();
-						macro_rules! check {
-							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
-							};
+						match &td {
+							Type::List(element) => {
+								macro_rules! check {
+									($type_default:ty) => {
+										if **element == concrete!($type_default) { return Arc::new(List::<$type_default>::default()); }
+									};
+								}
+								for_each_list_type_default!(check);
+							}
+							Type::Item(element) => {
+								macro_rules! check {
+									($type_default:ty) => {
+										if **element == concrete!($type_default) { return Arc::new(Item::<$type_default>::default()); }
+									};
+								}
+								for_each_item_type_default!(check);
+							}
+							Type::Concrete(descriptor) => {
+								let name = descriptor.name.as_ref();
+								macro_rules! check_bare {
+									($type_default:ty) => {
+										if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
+									};
+								}
+								for_each_bare_type_default!(check_bare);
+							}
+							_ => {}
 						}
-						for_each_type_default!(check);
-						Self::from_type_or_none(&Type::Concrete(td)).to_any()
+						Self::from_type_or_none(&td).to_any()
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -229,14 +295,14 @@ macro_rules! tagged_value {
 				}
 			}
 
-			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
+			/// Creates the wire [`Type`] of the value inside the tagged value, with ranked types in their structural form.
 			pub fn ty(&self) -> Type {
-				match self {
+				let ty = match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => concrete!(()),
-					Self::TypeDefault(td) => Type::Concrete(td.clone()),
+					Self::TypeDefault(td) => td.clone(),
 					Self::F64Array(_) => concrete!(List<f64>),
 					Self::Color(_) => concrete!(List<Color>),
 					Self::Gradient(_) => concrete!(List<Gradient>),
@@ -254,7 +320,10 @@ macro_rules! tagged_value {
 					Self::ContextFeatures(_) => concrete!(ContextFeatures),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
-				}
+				};
+
+				// Defensively converges any remaining name-encoded ranked type (e.g. an opaque macro capture) to the structural form
+				ty.normalize_rank()
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -318,17 +387,40 @@ macro_rules! tagged_value {
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
-						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
-						macro_rules! check {
+						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
+						macro_rules! check_bare {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
+								if name == std::any::type_name::<$type_default>() { return Some(TaggedValue::TypeDefault(input.clone())); }
 							};
 						}
-						for_each_type_default!(check);
+						for_each_bare_type_default!(check_bare);
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
 					Type::Future(output) => TaggedValue::from_type(output),
+					// Element types with a dedicated variant use it directly (the variant's value is a rank-0 cell); the rest store the structural type
+					Type::Item(element) => TaggedValue::from_type(element).or_else(|| {
+						macro_rules! check {
+							($type_default:ty) => {
+								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
+							};
+						}
+						for_each_item_type_default!(check);
+						None
+					}),
+					// Structural lists match by element; `List<f64>` stays the dedicated `F64Array` variant
+					Type::List(element) => {
+						if **element == concrete!(f64) {
+							return Some(TaggedValue::F64Array(Vec::new()));
+						}
+						macro_rules! check {
+							($type_default:ty) => {
+								if **element == concrete!($type_default) { return Some(TaggedValue::TypeDefault(input.clone())); }
+							};
+						}
+						for_each_list_type_default!(check);
+						None
+					}
 				}
 			}
 
@@ -342,7 +434,7 @@ macro_rules! tagged_value {
 					// MANUAL VARIANTS
 					// ===============
 					Self::None => "()".to_string(),
-					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
+					Self::TypeDefault(td) => format!("TypeDefault({td})"),
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
@@ -600,6 +692,8 @@ impl TaggedValue {
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
 			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
+			Type::Item(element) => TaggedValue::from_primitive_string(string, element),
+			Type::List(element) => TaggedValue::from_primitive_string(string, element),
 		}
 	}
 
@@ -612,12 +706,12 @@ impl TaggedValue {
 
 	/// The stored form of a paint input's red-slash "no paint" choice: the `List<Graphic>` type default, materializing as an empty paint list.
 	pub fn no_paint() -> Self {
-		TaggedValue::TypeDefault(descriptor!(List<Graphic>))
+		TaggedValue::TypeDefault(list!(Graphic))
 	}
 
 	/// Whether this is the `List<Graphic>` type default created by [`Self::no_paint`] (and by disconnecting a paint wire).
 	pub fn is_no_paint(&self) -> bool {
-		matches!(self, TaggedValue::TypeDefault(td) if *td == descriptor!(List<Graphic>))
+		matches!(self, TaggedValue::TypeDefault(td) if *td == list!(Graphic))
 	}
 }
 
@@ -626,15 +720,16 @@ impl TaggedValue {
 /// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
 ///
 /// - `BrushCache` → `TaggedValue::None` (purely runtime cache; no payload to preserve)
-/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(descriptor!(List<Graphic>))`
-/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(descriptor!(List<Artboard>))`
+/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(list!(Graphic))`
+/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(list!(Artboard))`
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
 ///     - non-empty (the legacy `image` proto's input 1, where the inner `Raster<CPU>` serializes as the embedded `Image<Color>`) → `TaggedValue::ImageData(<inner Image<Color>>)`
-///     - empty → `TaggedValue::TypeDefault(descriptor!(List<Raster<CPU>>))`
+///     - empty → `TaggedValue::TypeDefault(list!(Raster<CPU>))`
 /// - `Vector` (or alias `VectorData`):
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
-///     - empty → `TaggedValue::TypeDefault(descriptor!(List<Vector>))`
+///     - empty → `TaggedValue::TypeDefault(list!(Vector))`
 /// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::Gradient` (gradient), or `TaggedValue::no_paint()` (none)
+/// - `TypeDefault` with the old bare-`TypeDescriptor` payload → the same variant wrapping a `Type` (name-encoded `List` normalized to structural)
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
 // TODO: Eventually remove this migration document upgrade code
@@ -649,8 +744,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 	{
 		match tag.as_str() {
 			"BrushCache" => return Ok(MemoHash::new(TaggedValue::None)),
-			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Graphic>)))),
-			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Artboard>)))),
+			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Graphic)))),
+			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Artboard)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
 				let first_element = content
 					.as_object()
@@ -661,7 +756,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Raster<CPU>>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Raster<CPU>))));
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
@@ -669,7 +764,12 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					let modification = Box::new(VectorModification::create_from_vector(&vector));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
-				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Vector>))));
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Vector))));
+			}
+			// The `TypeDefault` payload used to be a bare `TypeDescriptor`; it now carries a `Type`
+			"TypeDefault" if content.as_object().is_some_and(|c| c.contains_key("name")) => {
+				let descriptor: TypeDescriptor = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(Type::Concrete(descriptor).normalize_rank())));
 			}
 			// The `Color` tag used to carry `Option<Color>`, where a `null` payload (or an empty legacy color table) was the red-slash "no paint" choice
 			"Color" | "ColorTable" | "OptionalColor" | "ColorNotInTable"
@@ -818,26 +918,26 @@ impl CacheHash for RenderOutput {
 #[cfg(test)]
 mod typedefault_dispatch {
 	use super::*;
-	use core_types::descriptor;
+	use core_types::{concrete, item, list};
 
-	/// Round-trips every type listed in [`for_each_type_default`] through `TaggedValue::TypeDefault → to_dynany / to_any` and asserts the resulting concrete type matches the descriptor.
+	/// Round-trips every type in the type-default lists through `TaggedValue::TypeDefault → to_dynany / to_any` and asserts the resulting concrete type matches the stored type.
 	///
 	/// This guards against the only way to break the recursion invariant in the unwrap functions: someone hand-rolling a `TypeDefault`-yielding case in `from_type` (or the macro's expansion in one of the unwrap sites silently failing to match a name). If it fails, the message points at the specific type and the structural reason.
 	#[test]
 	fn typedefault_dispatch_terminates() {
 		macro_rules! check {
-			($type_default:ty) => {{
-				let descriptor = descriptor!($type_default);
+			($type_default:ty, $stored:expr) => {{
+				let ty: Type = $stored;
 				let expected_type_id = std::any::TypeId::of::<$type_default>();
-				let dyn_value = TaggedValue::TypeDefault(descriptor.clone()).to_dynany();
+				let dyn_value = TaggedValue::TypeDefault(ty.clone()).to_dynany();
 				assert_eq!(
 					DynAny::type_id(&*dyn_value),
 					expected_type_id,
-					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — `for_each_type_default!` lists this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
+					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — the type-default lists cover this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
 					std::any::type_name::<$type_default>(),
 				);
 
-				let arc_value = TaggedValue::TypeDefault(descriptor).to_any();
+				let arc_value = TaggedValue::TypeDefault(ty).to_any();
 				assert_eq!(
 					(*arc_value).type_id(),
 					expected_type_id,
@@ -846,7 +946,24 @@ mod typedefault_dispatch {
 				);
 			}};
 		}
-		for_each_type_default!(check);
+		macro_rules! check_item {
+			($element:ty) => {
+				check!(Item<$element>, item!($element));
+			};
+		}
+		macro_rules! check_list {
+			($element:ty) => {
+				check!(List<$element>, list!($element));
+			};
+		}
+		macro_rules! check_bare {
+			($type_default:ty) => {
+				check!($type_default, concrete!($type_default));
+			};
+		}
+		for_each_item_type_default!(check_item);
+		for_each_list_type_default!(check_list);
+		for_each_bare_type_default!(check_bare);
 	}
 }
 

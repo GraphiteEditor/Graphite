@@ -1,4 +1,4 @@
-use crate::parsing::{Implementation, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
+use crate::parsing::{Implementation, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
 use proc_macro_error2::emit_error;
 use quote::quote;
 use syn::spanned::Spanned;
@@ -11,6 +11,8 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_primary_input_expose,
 		validate_min_max,
 		validate_range_slider_bounds,
+		validate_no_item_parameters,
+		validate_element_wise,
 	];
 
 	for validator in validators {
@@ -20,20 +22,120 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	Ok(())
 }
 
+fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
+	if parsed.attributes.skip_impl {
+		return;
+	}
+
+	// An `Item` primary shares its element-wise frame with ranked parameters; a `List`/`ListDyn` aggregation primary accepts
+	// them as fixed ranked inputs; a `()` generator has no primary and draws its frame from the ranked parameters themselves.
+	let ranked = |ty: &Type| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
+	let primary = parsed.primary_input_field();
+	let primary_permits_item_params = match primary.map(|(_, field)| &field.ty) {
+		Some(ParsedFieldType::Node(NodeParsedField { output_type, implementations, .. })) => ranked(output_type) || implementations.iter().any(|implementation| ranked(&implementation.output)),
+		Some(value) => {
+			let regular = value.regular().expect("a non-node primary is a value field");
+			is_unit_type(&regular.ty) || ranked(&regular.ty) || regular.implementations.iter().any(ranked)
+		}
+		None => false,
+	};
+	let primary_index = primary.map(|(index, _)| index);
+
+	for (index, field) in parsed.fields.iter().enumerate() {
+		if Some(index) == primary_index || field.is_environment() {
+			continue;
+		}
+		let Some(RegularParsedField { ty, implementations, .. }) = field.ty.regular() else {
+			continue;
+		};
+		let pat_ident = &field.pat_ident;
+
+		// A ranked parameter requires a ranked primary: `Item<T>` (element-wise frame) or `List<T>`/`ListDyn` (aggregation)
+		if outer_wrapper_is(ty, "Item") && !primary_permits_item_params {
+			emit_error!(
+				pat_ident.span(),
+				"The `Item<T>` parameter `{}` requires the primary input to be ranked (`Item<T>`, `List<T>`, or `ListDyn`)",
+				pat_ident.ident
+			);
+		}
+
+		if outer_wrapper_is(ty, "Item")
+			&& implementations
+				.iter()
+				.any(|ty| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"))
+		{
+			emit_error!(pat_ident.span(), "The #[implementations(...)] of the ranked parameter `{}` must be bare element types", pat_ident.ident);
+		}
+	}
+}
+
+fn validate_element_wise(parsed: &ParsedNodeFn) {
+	if parsed.attributes.skip_impl {
+		return;
+	}
+
+	let Some((_, primary)) = parsed.primary_input_field() else { return };
+	let Some(RegularParsedField { ty, implementations, .. }) = primary.ty.regular() else {
+		return;
+	};
+
+	if !outer_wrapper_is(ty, "Item") {
+		// A non-`Item` primary may still emit a rank-0 `Item<T>`: a `()` generator has no input, and a `List<T>` or
+		// `ListDyn` aggregation (declared directly or via a generic primary's implementation rows) reduces a whole list down to a single item.
+		let primary_reduces_or_generates = is_unit_type(ty)
+			|| primary.ty.list_element().is_some()
+			|| outer_wrapper_is(ty, "ListDyn")
+			|| implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"));
+		if outer_wrapper_is(&parsed.output_type, "Item") && !primary_reduces_or_generates {
+			emit_error!(
+				parsed.output_type.span(),
+				"Returning `Item<T>` requires the primary input to be `Item<T>` (element-wise), `List<T>`/`ListDyn` (aggregation), or `()` (generator)"
+			);
+		}
+		return;
+	}
+
+	if implementations
+		.iter()
+		.any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "ListDyn"))
+	{
+		emit_error!(
+			primary.pat_ident.span(),
+			"The #[implementations(...)] of `{}` must be bare element types; the macro derives the Item and List wire forms",
+			primary.pat_ident.ident
+		);
+	}
+
+	if !outer_wrapper_is(&parsed.output_type, "Item") && !outer_wrapper_is(&parsed.output_type, "List") {
+		emit_error!(
+			parsed.output_type.span(),
+			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, or `List<U>` for an expander"
+		);
+	}
+}
+
+/// Returns whether the type's outermost path segment is the given wrapper name, like `Item` in `Item<T>`.
+fn outer_wrapper_is(ty: &Type, wrapper: &str) -> bool {
+	let Type::Path(type_path) = ty else { return false };
+	type_path.path.segments.last().is_some_and(|segment| segment.ident == wrapper)
+}
+
+/// Returns whether the type is the unit type `()`, which marks a generator with no primary input.
+fn is_unit_type(ty: &Type) -> bool {
+	matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
+}
+
 fn validate_min_max(parsed: &ParsedNodeFn) {
 	for field in &parsed.fields {
-		if let ParsedField {
-			ty: ParsedFieldType::Regular(RegularParsedField {
-				number_hard_max,
-				number_hard_min,
-				number_soft_max,
-				number_soft_min,
-				..
-			}),
-			pat_ident,
+		if let Some(RegularParsedField {
+			number_hard_max,
+			number_hard_min,
+			number_soft_max,
+			number_soft_min,
 			..
-		} = field
+		}) = field.ty.regular()
 		{
+			let pat_ident = &field.pat_ident;
 			if let (Some(soft_min), Some(hard_min)) = (number_soft_min, number_hard_min) {
 				let soft_min_value: f64 = soft_min.to_f64();
 				let hard_min_value: f64 = hard_min.to_f64();
@@ -85,19 +187,16 @@ fn validate_min_max(parsed: &ParsedNodeFn) {
 /// otherwise it falls back to `#[hard]`, so each end must be covered by at least one of the two attributes.
 fn validate_range_slider_bounds(parsed: &ParsedNodeFn) {
 	for field in &parsed.fields {
-		if let ParsedField {
-			ty: ParsedFieldType::Regular(RegularParsedField {
-				number_mode_range: true,
-				number_soft_min,
-				number_soft_max,
-				number_hard_min,
-				number_hard_max,
-				..
-			}),
-			pat_ident,
+		if let Some(RegularParsedField {
+			number_mode_range: true,
+			number_soft_min,
+			number_soft_max,
+			number_hard_min,
+			number_hard_max,
 			..
-		} = field
+		}) = field.ty.regular()
 		{
+			let pat_ident = &field.pat_ident;
 			let min_bounded = number_soft_min.is_some() || number_hard_min.is_some();
 			let max_bounded = number_soft_max.is_some() || number_hard_max.is_some();
 
@@ -120,12 +219,10 @@ fn validate_range_slider_bounds(parsed: &ParsedNodeFn) {
 }
 
 fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
-	if let Some(ParsedField {
-		ty: ParsedFieldType::Regular(RegularParsedField { exposed: true, .. }),
-		pat_ident,
-		..
-	}) = parsed.fields.first()
+	if let Some(field) = parsed.fields.first()
+		&& let Some(RegularParsedField { exposed: true, .. }) = field.ty.regular()
 	{
+		let pat_ident = &field.pat_ident;
 		emit_error!(
 			pat_ident.span(),
 			"Unnecessary #[expose] attribute on primary input `{}`. Primary inputs are always exposed.",
@@ -148,18 +245,6 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 
 			let pat_ident = &field.pat_ident;
 			match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {
-					if contains_generic_param(ty, &parsed.fn_generics) && implementations.is_empty() {
-						emit_error!(
-							ty.span(),
-							"Generic type `{}` in field `{}` requires an #[implementations(...)] attribute",
-							quote!(#ty),
-							pat_ident.ident;
-							help = "Add #[implementations(ConcreteType1, ConcreteType2)] to field '{}'", pat_ident.ident;
-							help = "Or use #[node_macro::node(category(...), skip_impl)] if you want to manually implement the node"
-						);
-					}
-				}
 				ParsedFieldType::Node(NodeParsedField {
 					input_type,
 					output_type,
@@ -178,6 +263,19 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 					// Additional check for Node implementations
 					for impl_ in implementations {
 						validate_node_implementation(impl_, input_type, output_type, &parsed.fn_generics);
+					}
+				}
+				value => {
+					let RegularParsedField { ty, implementations, .. } = value.regular().expect("a non-node field is a value field");
+					if contains_generic_param(ty, &parsed.fn_generics) && implementations.is_empty() {
+						emit_error!(
+							ty.span(),
+							"Generic type `{}` in field `{}` requires an #[implementations(...)] attribute",
+							quote!(#ty),
+							pat_ident.ident;
+							help = "Add #[implementations(ConcreteType1, ConcreteType2)] to field '{}'", pat_ident.ident;
+							help = "Or use #[node_macro::node(category(...), skip_impl)] if you want to manually implement the node"
+						);
 					}
 				}
 			}

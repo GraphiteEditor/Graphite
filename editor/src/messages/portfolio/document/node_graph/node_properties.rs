@@ -215,6 +215,24 @@ pub(crate) fn property_from_type(
 
 	let default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
 
+	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
+	let unsupported_widgets = |default_info: ParameterWidgetsInfo, type_label: String| {
+		let is_exposed = default_info.is_exposed();
+
+		let mut widgets = start_widgets(default_info);
+		if !is_exposed {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				TextLabel::new("-")
+					.tooltip_label(type_label)
+					.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
+					.widget_instance(),
+			]);
+		}
+
+		vec![LayoutGroup::from(widgets)]
+	};
+
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
@@ -247,12 +265,6 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						// ==========
-						// LIST TYPES
-						// ==========
-						Some(x) if x == TypeId::of::<List<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<List<Gradient>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<List<BrushStroke>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
@@ -302,26 +314,19 @@ pub(crate) fn property_from_type(
 						// =====
 						// OTHER
 						// =====
-						_ => {
-							let is_exposed = default_info.is_exposed();
-
-							let mut widgets = start_widgets(default_info);
-
-							if !is_exposed {
-								widgets.extend_from_slice(&[
-									Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-									TextLabel::new("-")
-										.tooltip_label(concrete_type.to_string())
-										.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
-										.widget_instance(),
-								]);
-							}
-							return Err(vec![widgets.into()]);
-						}
+						_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
 					}
 				}
 			}
 		}
+		Type::List(element) => match element.as_ref() {
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Color>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Gradient>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<Graphic>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
+		},
+		Type::Item(element) => return property_from_type(node_id, index, element, number_options, unit, display_decimal_places, step, context),
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
