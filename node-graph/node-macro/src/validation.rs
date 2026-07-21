@@ -13,6 +13,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_range_slider_bounds,
 		validate_no_item_parameters,
 		validate_element_wise,
+		validate_ranked_inputs,
 	];
 
 	for validator in validators {
@@ -112,6 +113,121 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, or `List<U>` for an expander"
 		);
 	}
+}
+
+/// Every input must ride a ranked wire: `Item<T>`, `List<T>`, or `ListDyn`, declared directly or substituted per
+/// implementations row when the field's type is a bare generic. The () type stays legal as the no-primary-input
+/// sentinel for generator nodes, and `#[data]` fields are exempt as internal state rather than wires.
+fn validate_ranked_inputs(parsed: &ParsedNodeFn) {
+	for (span, message) in ranked_input_violations(parsed) {
+		emit_error!(span, "{}", message);
+	}
+}
+
+fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
+	let mut violations = Vec::new();
+	if parsed.attributes.skip_impl {
+		return violations;
+	}
+
+	let ranked = |ty: &Type| outer_wrapper_is(ty, "Item") || outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn");
+	let primary_index = parsed.primary_input_field().map(|(index, _)| index);
+
+	for (index, field) in parsed.fields.iter().enumerate() {
+		if field.is_data_field {
+			continue;
+		}
+		let pat_ident = &field.pat_ident;
+
+		match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { output_type, implementations, .. }) => {
+				if ranked(output_type) {
+					continue;
+				}
+
+				if is_bare_generic(output_type, &parsed.fn_generics) {
+					for row in implementations {
+						let output = &row.output;
+						if !ranked(output) {
+							violations.push((
+								output.span(),
+								format!(
+									"Implementations row output `{ty}` of the lazy input `{name}` must be ranked: produce `Item<{ty}>` for one cell or `List<{ty}>` for a whole list",
+									name = pat_ident.ident,
+									ty = quote!(#output)
+								),
+							));
+						}
+					}
+					continue;
+				}
+
+				violations.push((
+					pat_ident.span(),
+					format!(
+						"Lazy input `{name}` with output type `{ty}` must be ranked: declare its `Output` as `Item<{ty}>` for one cell or `List<{ty}>` for a whole list",
+						name = pat_ident.ident,
+						ty = quote!(#output_type)
+					),
+				));
+			}
+			value => {
+				let RegularParsedField { ty, implementations, .. } = value.regular().expect("a non-node field is a value field");
+
+				if is_unit_type(ty) {
+					if Some(index) != primary_index {
+						violations.push((
+							pat_ident.span(),
+							format!(
+								"Parameter `{}` cannot be typed `()`: the unit type is only the no-primary-input sentinel for generator nodes",
+								pat_ident.ident
+							),
+						));
+					}
+					continue;
+				}
+
+				if ranked(ty) {
+					continue;
+				}
+
+				// A bare-generic field takes each implementations row as its whole wire type, so the rows carry the rank
+				if is_bare_generic(ty, &parsed.fn_generics) {
+					for row in implementations {
+						if !ranked(row) && !is_bare_generic(row, &parsed.fn_generics) {
+							violations.push((
+								row.span(),
+								format!(
+									"Implementations row `{row}` of `{name}` must be ranked: wrap it as `Item<{row}>` to consume one cell or `List<{row}>` to consume a whole list",
+									name = pat_ident.ident,
+									row = quote!(#row)
+								),
+							));
+						}
+					}
+					continue;
+				}
+
+				violations.push((
+					pat_ident.span(),
+					format!(
+						"Parameter `{name}` of type `{ty}` must be ranked: wrap it as `Item<{ty}>` to consume one cell or `List<{ty}>` to consume a whole list",
+						name = pat_ident.ident,
+						ty = quote!(#ty)
+					),
+				));
+			}
+		}
+	}
+
+	violations
+}
+
+/// Returns whether the type is exactly one of the function's generic parameters, like `T`.
+fn is_bare_generic(ty: &Type, fn_generics: &[GenericParam]) -> bool {
+	let Type::Path(type_path) = ty else { return false };
+	let Some(ident) = type_path.path.get_ident() else { return false };
+	fn_generics.iter().any(|param| matches!(param, GenericParam::Type(type_param) if type_param.ident == *ident))
 }
 
 /// Returns whether the type's outermost path segment is the given wrapper name, like `Item` in `Item<T>`.
@@ -315,4 +431,175 @@ fn contains_generic_param(ty: &Type, fn_generics: &[GenericParam]) -> bool {
 	let mut checker = GenericParamChecker { fn_generics, found: false };
 	syn::visit::visit_type(&mut checker, ty);
 	checker.found
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::parsing::parse_node_fn;
+	use proc_macro2::TokenStream;
+
+	fn violations(attr: TokenStream, input: TokenStream) -> Vec<String> {
+		let parsed = parse_node_fn(attr, input).expect("The test node fn should parse");
+		ranked_input_violations(&parsed).into_iter().map(|(_, message)| message).collect()
+	}
+
+	#[test]
+	fn a_bare_concrete_parameter_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn scale(_: impl Ctx, content: Item<Vector>, factor: f64) -> Item<Vector> {
+					content
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("of type `f64` must be ranked"), "{messages:?}");
+	}
+
+	#[test]
+	fn ranked_parameters_and_the_unit_primary_sentinel_pass() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn circle(_: impl Ctx, _primary: (), radius: Item<f64>, points: List<DVec2>, erased: ListDyn) -> Item<Vector> {
+					Item::default()
+				}
+			),
+		);
+		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn a_unit_typed_non_primary_parameter_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn weird(_: impl Ctx, content: Item<Vector>, marker: ()) -> Item<Vector> {
+					content
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("Parameter `marker` cannot be typed `()`"), "{messages:?}");
+	}
+
+	#[test]
+	fn a_bare_generic_parameter_with_ranked_rows_passes() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn to_thing<T>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>, ListDyn)] content: T) -> Item<Graphic> {
+					Item::default()
+				}
+			),
+		);
+		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn a_bare_generic_parameter_with_a_bare_row_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn to_thing<T>(_: impl Ctx, #[implementations(List<Graphic>, f64)] content: T) -> Item<Graphic> {
+					Item::default()
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("row `f64`"), "{messages:?}");
+	}
+
+	#[test]
+	fn an_item_declared_parameter_with_bare_element_rows_passes() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn blend<T>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<T>, mode: Item<f64>) -> Item<T> {
+					content
+				}
+			),
+		);
+		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn a_lazy_input_with_a_bare_output_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn lazy_thing(_: impl Ctx, content: Item<Vector>, source: impl Node<Context, Output = f64>) -> Item<Vector> {
+					content
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("Lazy input `source` with output type `f64` must be ranked"), "{messages:?}");
+	}
+
+	#[test]
+	fn a_lazy_generic_output_with_ranked_rows_passes() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn cache<T>(_: impl Ctx, #[implementations(Context -> Item<f64>, Context -> ListDyn)] value: impl Node<Context, Output = T>) -> T {
+					T::default()
+				}
+			),
+		);
+		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn a_lazy_unit_row_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn cache<T>(_: impl Ctx, #[implementations(Context -> (), Context -> Item<f64>)] value: impl Node<Context, Output = T>) -> T {
+					T::default()
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("row output `()` of the lazy input `value` must be ranked"), "{messages:?}");
+	}
+
+	#[test]
+	fn a_lazy_generic_output_with_a_bare_row_is_rejected() {
+		let messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn cache<T>(_: impl Ctx, #[implementations(Context -> Item<f64>, Context -> f64)] value: impl Node<Context, Output = T>) -> T {
+					T::default()
+				}
+			),
+		);
+		assert_eq!(messages.len(), 1, "{messages:?}");
+		assert!(messages[0].contains("row output `f64` of the lazy input `value` must be ranked"), "{messages:?}");
+	}
+
+	#[test]
+	fn skip_impl_nodes_and_data_fields_are_exempt() {
+		let skip_impl_messages = violations(
+			quote::quote!(category(""), skip_impl),
+			quote::quote!(
+				fn passthrough<T>(_: impl Ctx, content: T) -> T {
+					content
+				}
+			),
+		);
+		assert_eq!(skip_impl_messages, Vec::<String>::new());
+
+		let data_field_messages = violations(
+			quote::quote!(category("Test")),
+			quote::quote!(
+				fn stateful(_: impl Ctx, content: Item<Vector>, #[data] cache: f64) -> Item<Vector> {
+					content
+				}
+			),
+		);
+		assert_eq!(data_field_messages, Vec::<String>::new());
+	}
 }

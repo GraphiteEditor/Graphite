@@ -647,10 +647,6 @@ pub enum Promotion {
 	Bundle(Type),
 	/// Unbundles an `Item<Bundle<X>>` wire back into the whole `List<X>`.
 	Unbundle(Type),
-	/// Wraps a bare wire into an `Item<X>` connector.
-	WrapItem(Type),
-	/// Wraps a bare wire into a `List<X>` connector as a one-element list.
-	WrapList(Type),
 }
 
 impl Promotion {
@@ -660,18 +656,8 @@ impl Promotion {
 			Self::ItemToList(element) => ("graphene_core::ops::ItemToListNode", element),
 			Self::Bundle(element) => ("graphene_core::ops::BundleNode", element),
 			Self::Unbundle(element) => ("graphene_core::ops::UnbundleNode", element),
-			Self::WrapItem(element) => ("graphene_core::ops::WrapItemNode", element),
-			Self::WrapList(element) => ("graphene_core::ops::WrapListNode", element),
 		};
 		ProtoNodeIdentifier::with_owned_string(format!("{adapter_name}<{}>", element.identifier_name()))
-	}
-
-	/// A wrap-raise counts double since it spans two rank steps, keeping the all-Item variant ahead of the mapped one for fully bare inputs
-	fn cost(&self) -> usize {
-		match self {
-			Self::WrapList(_) => 2,
-			_ => 1,
-		}
 	}
 }
 
@@ -723,9 +709,6 @@ impl TypingContext {
 
 	/// Returns the inferred types for a given node id.
 	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, GraphErrors> {
-		if node_id == NodeId(3480994800604782060) {
-			log::error!("PROBE {node_id:?}: identifier={:?} args={:?}", node.identifier, node.construction_args);
-		}
 		// Return the inferred type if it is already known
 		if let Some(inferred) = self.inferred.get(&node_id) {
 			return Ok(inferred.clone());
@@ -848,12 +831,6 @@ impl TypingContext {
 						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
 						(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some(Promotion::ItemToList((**element).clone())),
 
-						// A bare wire may feed a `List<X>` connector via a wrap and singleton raise
-						(Type::Concrete(from_descriptor), Type::List(element)) if Some(from_descriptor.name.as_ref()) == concrete_name(element) => Some(Promotion::WrapList((**element).clone())),
-
-						// A bare wire may feed an `Item<X>` connector via a wrap
-						(Type::Concrete(from_descriptor), Type::Item(element)) if Some(from_descriptor.name.as_ref()) == concrete_name(element) => Some(Promotion::WrapItem((**element).clone())),
-
 						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
 						(Type::List(element), Type::Item(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some(Promotion::Bundle((**element).clone())),
 
@@ -881,23 +858,14 @@ impl TypingContext {
 					})
 					.collect::<Vec<_>>();
 
-				// Prefer the variant needing the cheapest promotions, so a rank-0 wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
-				fn promotion_cost(required_promotions: &[(usize, Promotion)]) -> usize {
-					required_promotions.iter().map(|(_, promotion)| promotion.cost()).sum()
-				}
-				promotable_matches.sort_by_key(|(_, required_promotions)| promotion_cost(required_promotions));
-				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| promotion_cost(required_promotions));
+				// Prefer the variant needing the fewest promotions, so an Item wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
+				promotable_matches.sort_by_key(|(_, required_promotions)| required_promotions.len());
+				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| required_promotions.len());
 				let tied_at_minimum = promotable_matches
 					.iter()
-					.take_while(|(_, required_promotions)| Some(promotion_cost(required_promotions)) == minimum_promotions)
+					.take_while(|(_, required_promotions)| Some(required_promotions.len()) == minimum_promotions)
 					.count();
 
-				if node.identifier.as_str().contains("MonitorNode") && format!("{inputs:?}").contains("Color") {
-					log::error!(
-						"MONITOR PROBE inputs={inputs:?} tied={tied_at_minimum} matches={:?}",
-						promotable_matches.iter().map(|(io, p)| (format!("{io:?}"), p.clone())).collect::<Vec<_>>()
-					);
-				}
 				if tied_at_minimum == 1 {
 					let (node_io, required_promotions) = promotable_matches.remove(0);
 					let node_io = node_io.clone();
@@ -939,7 +907,7 @@ impl TypingContext {
 							None
 						} else {
 							let number = i + convert_node_index_offset;
-							Some(format!("• Input {number}: {t} (feeds: {:?})", node.construction_args))
+							Some(format!("• Input {number}: {t}"))
 						}
 					})
 					.collect::<Vec<_>>()
