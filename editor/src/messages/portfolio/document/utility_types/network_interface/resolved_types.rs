@@ -4,11 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
-use graphene_std::list::List;
-use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Graphic};
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -56,26 +52,31 @@ impl TypeSource {
 			return FrontendGraphDataType::Invalid;
 		};
 		match self.compiled_nested_type() {
-			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
-				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => {
-					FrontendGraphDataType::Number
-				}
-				TaggedValue::Color(_) => FrontendGraphDataType::Color,
-				TaggedValue::LegacyGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
-				TaggedValue::String(_) => FrontendGraphDataType::Typography,
-				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
-				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
-					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) => FrontendGraphDataType::Graphic,
-					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) => FrontendGraphDataType::Artboard,
-					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) => FrontendGraphDataType::Raster,
-					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) => FrontendGraphDataType::Vector,
-					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<String>>()) => FrontendGraphDataType::Typography,
-					_ => FrontendGraphDataType::General,
-				},
-				_ => FrontendGraphDataType::General,
-			},
+			Some(nested_type) => FrontendGraphDataType::from_type(nested_type),
 			None => FrontendGraphDataType::General,
 		}
+	}
+
+	/// Whether the compiled type is a packed `Record` lane, as opposed to a bare rank-0 value.
+	pub fn is_list(&self) -> bool {
+		// `nested_type` peels `Record`, so the rank has to be read off the unpeeled type
+		fn is_record(ty: &Type) -> bool {
+			match ty {
+				Type::Fn(_, output) | Type::Future(output) => is_record(output),
+				Type::Record(_) => true,
+				_ => false,
+			}
+		}
+		match self {
+			TypeSource::Compiled(compiled_type) => is_record(compiled_type),
+			TypeSource::TaggedValue(value_type) => is_record(value_type),
+			_ => false,
+		}
+	}
+
+	/// The element type's identifier name, so semantic type checks can be rank-agnostic.
+	pub fn compiled_element_name(&self) -> Option<String> {
+		Some(self.compiled_nested_type()?.identifier_name())
 	}
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
@@ -206,6 +207,8 @@ impl NodeNetworkInterface {
 				concrete!(())
 			}
 		};
+
+		// `TaggedValue::from_type` recurses through `Record` to the element, so a record default already drops to rank 0
 		TaggedValue::from_type_or_none(&guaranteed_type)
 	}
 
@@ -335,12 +338,19 @@ impl NodeNetworkInterface {
 	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
+				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
+				if *output_index == 0 && !self.is_visible(node_id, network_path) {
+					return self.input_type(&InputConnector::node(*node_id, 0), network_path);
+				}
+
 				// First try iterating upstream to the first protonode and try get its compiled type
 				let Some(implementation) = self.implementation(node_id, network_path) else {
 					return TypeSource::Error("Could not get implementation");
 				};
 				match implementation {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
+					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
+					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => self.input_type(&InputConnector::node(*node_id, 0), network_path),
 					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
 						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
 						None => TypeSource::Unknown,

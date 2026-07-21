@@ -458,6 +458,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::brush_stroke::BrushStroke;
 	use core_types::transform::Transform;
 	use glam::DAffine2;
 
