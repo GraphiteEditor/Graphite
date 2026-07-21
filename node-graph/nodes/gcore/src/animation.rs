@@ -1,5 +1,4 @@
 use core_types::gpoll::GPoll;
-use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Color, Context, Ctx, DeriveCtx, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
 use glam::{DAffine2, DVec2};
@@ -74,15 +73,13 @@ fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> List<Vector>,
-		Context -> List<Graphic>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<Artboard>,
-		Context -> List<Gradient>,
-		Context -> List<String>,
-		Context -> List<f64>,
+		Context -> Vector,
+		Context -> Graphic,
+		Context -> Raster<CPU>,
+		Context -> Raster<GPU>,
+		Context -> Color,
+		Context -> Gradient,
+		Context -> Artboard,
 		Context -> (),
 	)]
 	value: impl Node<Context<'_>, Output = T>,
@@ -114,15 +111,13 @@ fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> List<Vector>,
-		Context -> List<Graphic>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<Artboard>,
-		Context -> List<Gradient>,
-		Context -> List<String>,
-		Context -> List<f64>,
+		Context -> Vector,
+		Context -> Graphic,
+		Context -> Raster<CPU>,
+		Context -> Raster<GPU>,
+		Context -> Color,
+		Context -> Gradient,
+		Context -> Artboard,
 		Context -> (),
 	)]
 	value: impl Node<Context<'_>, Output = T>,

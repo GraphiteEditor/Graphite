@@ -1,7 +1,6 @@
 use core_types::gpoll::Interrupt;
-use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractIndex, ExtractVarArgs, InjectIndex, VarArgLink, VarArgSlots, WasmNotSend};
+use core_types::{Color, Ctx, DeriveCtx, ExtractFootprint, ExtractIndex, ExtractVarArgs, InjectIndex, VarArgLink, VarArgSlots};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -51,34 +50,9 @@ fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderI
 	}
 }
 
+/// The input's records materialize into a run, which renders directly.
 #[node_macro::node(category(""))]
-fn render_intermediate<T: dyn_any::StaticTypeSized + 'static + Render + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractVarArgs + DeriveCtx,
-	#[implementations(
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Color>,
-		Context -> List<Gradient>,
-		Context -> List<String>,
-	)]
-	data: impl Node<Context<'_>, Output = T>,
-) -> Result<RenderIntermediate, Interrupt> {
-	let data = data.eval(&ctx.derived())?;
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
-
-	Ok(intermediate_of(&data, render_params))
-}
-
-/// The leveled form of `render_intermediate`: the input's records materialize
-/// into a run, which renders directly.
-#[node_macro::node(category(""))]
-fn render_intermediate_leveled<T: Clone + Send + Sync + core_types::CacheHash + dyn_any::StaticTypeSized + 'static>(
+fn render_intermediate<T: Clone + Send + Sync + core_types::CacheHash + dyn_any::StaticTypeSized + 'static>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractIndex + InjectIndex + Copy,
 	#[implementations(Artboard, Graphic, Vector, Raster<CPU>, Color, Gradient, String)] data: IList<T>,
 ) -> Result<RenderIntermediate, Interrupt>

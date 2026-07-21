@@ -6,6 +6,7 @@ use canvas_utils::{Canvas, CanvasHandle};
 use core_types::attribute::{Attr, OwnedAttr, Transform};
 use core_types::color::SRGBA8;
 use core_types::gpoll::GPoll;
+#[cfg(target_family = "wasm")]
 use core_types::list::List;
 
 #[cfg(target_family = "wasm")]
@@ -218,7 +219,7 @@ async fn rasterize<T: Clone + Send + Sync + dyn_any::StaticTypeSized>(
 	mut canvas: CanvasHandle,
 ) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
 where
-	List<T>: Render + Clone + graphic_types::IntoGraphicList,
+	List<T>: Render + Clone + IntoGraphicList,
 {
 	use glam::{DAffine2, DVec2};
 
@@ -310,10 +311,6 @@ pub fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_ap
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
 #[node_macro::node(category("Debug"), memoize)]
-pub fn upload_texture<T: Convert<List<Raster<GPU>>, ::wgpu_executor::WgpuExecutorHandle>>(
-	_: impl Ctx,
-	#[implementations(List<Raster<CPU>>)] content: T,
-	#[scope(wgpu_executor::IDENTIFIER)] executor: ::wgpu_executor::WgpuExecutorHandle,
-) -> List<Raster<GPU>> {
+pub fn upload_texture(_: impl Ctx, content: Raster<CPU>, #[scope(wgpu_executor::IDENTIFIER)] executor: ::wgpu_executor::WgpuExecutorHandle) -> Raster<GPU> {
 	content.convert(Footprint::DEFAULT, executor)
 }

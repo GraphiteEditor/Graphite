@@ -7,46 +7,6 @@ use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic<'static>> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
-
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> List<Vector> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
-
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> List<Raster<CPU>> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
-
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
-
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<Gradient> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
-
 /// The mapped row riding as vararg 0, in the production single-item shape.
 fn vararg_list<T: 'static>(ctx: &impl ExtractVarArgs) -> Option<&List<T>> {
 	let arg = ctx.vararg(0).ok()?;
@@ -69,54 +29,30 @@ fn vararg_element<T: Clone + 'static>(ctx: &(impl ExtractVarArgs + ExtractIndex)
 		.ok_or_else(|| GraphError::new("vararg row addressed past its items").into())
 }
 
-/// Rank-model vararg source: the mapped row's items as lanes, elements only.
-#[node_macro::node(category("Test"), extent_raw(read_graphic_row_extent))]
-pub fn read_graphic_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Graphic<'static>>, Interrupt> {
-	vararg_element(ctx)
+// The vararg readers: the mapped row's items as the lanes of a level, elements
+// only, one node per element type since a reader names its type.
+macro_rules! vararg_readers {
+	($($node:ident / $extent:ident / $node_type:ident: $element:ty;)*) => {
+		$(
+			#[node_macro::node(category("Context"), path(graphene_core::vector), extent_raw($extent))]
+			pub fn $node(ctx: impl Ctx + ExtractVarArgs + ExtractIndex, _primary: ()) -> Result<IList<$element>, Interrupt> {
+				vararg_element(ctx)
+			}
+
+			fn $extent<C: Ctx + ExtractVarArgs, N>(_: &$node_type<N>, ctx: &C, level: u8) -> GPoll<Extent> {
+				vararg_lanes::<$element>(ctx, level)
+			}
+		)*
+	};
 }
 
-fn read_graphic_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadGraphicRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<Graphic>(ctx, level)
-}
-
-/// Rank-model vararg source: the mapped row's items as lanes, elements only.
-#[node_macro::node(category("Test"), extent_raw(read_vector_row_extent))]
-pub fn read_vector_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Vector>, Interrupt> {
-	vararg_element(ctx)
-}
-
-fn read_vector_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadVectorRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<Vector>(ctx, level)
-}
-
-/// Rank-model vararg source: the mapped row's items as lanes, elements only.
-#[node_macro::node(category("Test"), extent_raw(read_raster_row_extent))]
-pub fn read_raster_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Raster<CPU>>, Interrupt> {
-	vararg_element(ctx)
-}
-
-fn read_raster_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadRasterRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<Raster<CPU>>(ctx, level)
-}
-
-/// Rank-model vararg source: the mapped row's items as lanes, elements only.
-#[node_macro::node(category("Test"), extent_raw(read_color_row_extent))]
-pub fn read_color_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Color>, Interrupt> {
-	vararg_element(ctx)
-}
-
-fn read_color_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadColorRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<Color>(ctx, level)
-}
-
-/// Rank-model vararg source: the mapped row's items as lanes, elements only.
-#[node_macro::node(category("Test"), extent_raw(read_gradient_row_extent))]
-pub fn read_gradient_row(ctx: impl Ctx + ExtractVarArgs + ExtractIndex) -> Result<IList<Gradient>, Interrupt> {
-	vararg_element(ctx)
-}
-
-fn read_gradient_row_extent<C: Ctx + ExtractVarArgs>(_: &ReadGradientRowNode, ctx: &C, level: u8) -> GPoll<Extent> {
-	vararg_lanes::<Gradient>(ctx, level)
+vararg_readers! {
+	read_graphic / read_graphic_extent / ReadGraphicNode: Graphic<'static>;
+	read_vector / read_vector_extent / ReadVectorNode: Vector;
+	read_raster / read_raster_extent / ReadRasterNode: Raster<CPU>;
+	read_color / read_color_extent / ReadColorNode: Color;
+	read_gradient / read_gradient_extent / ReadGradientNode: Gradient;
+	read_string / read_string_extent / ReadStringNode: String;
 }
 
 #[node_macro::node(category("Context"), path(core_types::vector))]

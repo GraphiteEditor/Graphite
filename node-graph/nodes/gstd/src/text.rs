@@ -1,16 +1,21 @@
-use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
+use core_types::attribute::{Attr, FontSize, LetterSpacing, LetterTilt, LineHeight, MaxHeight, MaxWidth, Transform as TransformAttr};
+use core_types::extent::{LevelIn, ListIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::list::List;
-use core_types::{ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, Ctx};
+use core_types::node::{Lane, RecordLane};
+use core_types::{ATTR_TRANSFORM, Ctx, ExtractIndex, InjectIndex};
+use glam::DAffine2;
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
+use text_nodes::markers::{Font as FontAttr, TextAlign as TextAlignAttr};
 pub use text_nodes::*;
 
-/// Produces a styled `String[]` carrying all typographic attributes.
+/// Produces a styled `String` carrying all typographic attributes.
 ///
 /// Use the **Text to Vector** node to convert this into vector geometry if desired.
 #[node_macro::node(category("Text"))]
-fn text(
-	_: impl Ctx,
+fn text<'e>(
+	ctx: impl Ctx + ExtractArena<'e>,
 	_primary: (),
 	/// The text content to be drawn.
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
@@ -59,55 +64,146 @@ fn text(
 	/// The horizontal alignment of each line of text within its surrounding box. To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
-) -> List<String> {
-	let mut list = List::new_from_element(text);
-
-	if font != Resource::default() {
-		list.set_attribute(ATTR_FONT, 0, font);
-	}
-	if (size - DEFAULT_FONT_SIZE).abs() > f64::EPSILON {
-		list.set_attribute(ATTR_FONT_SIZE, 0, size);
-	}
-	if (line_height - DEFAULT_LINE_HEIGHT).abs() > f64::EPSILON {
-		list.set_attribute(ATTR_LINE_HEIGHT, 0, line_height);
-	}
-	if letter_spacing != 0. {
-		list.set_attribute(ATTR_LETTER_SPACING, 0, letter_spacing);
-	}
-	if letter_tilt != 0. {
-		list.set_attribute(ATTR_LETTER_TILT, 0, letter_tilt);
-	}
-	if has_max_width {
-		list.set_attribute(ATTR_MAX_WIDTH, 0, Some(max_width));
-	}
-	if has_max_height {
-		list.set_attribute(ATTR_MAX_HEIGHT, 0, Some(max_height));
-	}
-	if align != TextAlign::default() {
-		list.set_attribute(ATTR_TEXT_ALIGN, 0, align);
-	}
-
-	list
+) -> Result<
+	(
+		String,
+		Attr<'e, FontAttr>,
+		Attr<'e, FontSize>,
+		Attr<'e, LineHeight>,
+		Attr<'e, LetterSpacing>,
+		Attr<'e, LetterTilt>,
+		Attr<'e, MaxWidth>,
+		Attr<'e, MaxHeight>,
+		Attr<'e, TextAlignAttr>,
+	),
+	Interrupt,
+> {
+	let (font, _) = ctx.arena().alloc(font).ok_or_else(|| Interrupt::from(GraphError::new("the arena is exhausted")))?;
+	Ok((
+		text,
+		Attr(font),
+		Attr(size),
+		Attr(line_height),
+		Attr(letter_spacing),
+		Attr(letter_tilt),
+		Attr(has_max_width.then_some(max_width)),
+		Attr(has_max_height.then_some(max_height)),
+		Attr(align),
+	))
 }
 
-/// Converts styled text into vector compound paths.
-#[node_macro::node(category("Text"), name("Text to Vector"))]
-fn text_to_vector(
-	_: impl Ctx,
-	/// A styled list of text strings produced by the **Text** node (or any other `String[]` source).
-	#[implementations(List<String>)]
-	strings: List<String>,
-) -> List<Vector> {
-	shape_text_list(&strings, false)
+/// Shapes one styled string lane into vector geometry, the font and
+/// typesetting read from the lane's columns. The paths keep their glyph-local
+/// transforms; the lane's own transform composes on at emit.
+fn shape_lane(lane: &RecordLane<'_>, text: &str, separate_glyphs: bool) -> List<Vector> {
+	if text.is_empty() {
+		return List::new();
+	}
+	let font = lane.attr::<FontAttr>();
+	let font = match font.is_empty() {
+		true => &FALLBACK_FONT_RESOURCE,
+		false => font,
+	};
+	let typesetting = TypesettingConfig {
+		font_size: lane.attr::<FontSize>(),
+		line_height_ratio: lane.attr::<LineHeight>(),
+		letter_spacing: lane.attr::<LetterSpacing>(),
+		letter_tilt: lane.attr::<LetterTilt>(),
+		max_width: lane.attr::<MaxWidth>(),
+		max_height: lane.attr::<MaxHeight>(),
+		align: lane.attr::<TextAlignAttr>(),
+	};
+	to_path(text, font, typesetting, separate_glyphs)
 }
 
-/// Splits styled text into a separate vector item for each of its glyphs (letterforms).
-#[node_macro::node(category("Text"), name("Text to Vector Glyphs"))]
-fn text_to_vector_glyphs(
-	_: impl Ctx,
-	/// A styled list of text strings produced by the **Text** node (or any other `String[]` source).
-	#[implementations(List<String>)]
-	strings: List<String>,
-) -> List<Vector> {
-	shape_text_list(&strings, true)
+/// The shaped paths of every string lane, valid for one key and generation,
+/// so addressing the level's lanes shapes each string once.
+#[derive(Debug, Default)]
+pub struct ShapedRows {
+	key: u64,
+	generation: u64,
+	rows: Vec<List<Vector>>,
+}
+
+type ShapedCache = std::sync::Arc<std::sync::Mutex<Option<ShapedRows>>>;
+
+/// The lane-normalized cache key and arena generation of one evaluation.
+macro_rules! eval_key {
+	($ctx:expr) => {{
+		let mut keyed = *$ctx;
+		InjectIndex::set_index(&mut keyed, 0);
+		(core_types::registry::cache_key(&keyed), $ctx.arena().generation())
+	}};
+}
+
+/// The `lane`-th path over all the strings' shaped rows, carrying its
+/// string's columns with the composed transform overriding. `key` and
+/// `generation` scope the cache to one evaluation.
+fn shaped_lane<'a, 'e>(
+	strings: core_types::node::List<'a, String>,
+	lane: usize,
+	(key, generation): (u64, u64),
+	cache: &ShapedCache,
+	separate_glyphs: bool,
+) -> Result<(Lane<'a, Vector>, Attr<'e, TransformAttr>), Interrupt> {
+	let mut cached = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+	if !matches!(cached.as_ref(), Some(entry) if entry.key == key && entry.generation == generation) {
+		let rows = (0..strings.len()).map(|row| shape_lane(&strings.lane(row), strings.element_ref(row), separate_glyphs)).collect();
+		*cached = Some(ShapedRows { key, generation, rows });
+	}
+	let rows = &cached.as_ref().expect("populated above").rows;
+
+	let mut remaining = lane;
+	for (row, shaped) in rows.iter().enumerate() {
+		if remaining >= shaped.len() {
+			remaining -= shaped.len();
+			continue;
+		}
+		let element = shaped.element(remaining).cloned().unwrap_or_default();
+		let local: DAffine2 = shaped.attribute_cloned_or_default(ATTR_TRANSFORM, remaining);
+		let carrier = strings.lane(row);
+		let transform = carrier.attr::<TransformAttr>() * local;
+		return Ok((carrier.map_element(element), Attr(transform)));
+	}
+	Err(GraphError::past_end().into())
+}
+
+/// The level holds every string's shaped paths in order.
+fn shaped_extent(strings: ListIn<'_, String>, level: LevelIn, separate_glyphs: bool) -> GPoll<Extent> {
+	match level.top() {
+		true => strings
+			.get()
+			.map(|strings| Extent::Exactly((0..strings.len()).map(|row| shape_lane(&strings.lane(row), strings.element_ref(row), separate_glyphs).len()).sum())),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+/// Converts styled text into vector compound paths, one per string.
+#[node_macro::node(category("Text"), name("Text to Vector"), extent(text_to_vector_extent))]
+fn text_to_vector<'e>(
+	ctx: impl Ctx + core_types::CacheHash + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// Styled strings produced by the **Text** node (or any other `String` source).
+	strings: IList<String>,
+	#[data] shaped: ShapedCache,
+) -> Result<IList<(Lane<Vector>, Attr<'e, TransformAttr>)>, Interrupt> {
+	shaped_lane(strings, ctx.index() as usize, eval_key!(ctx), shaped, false)
+}
+
+fn text_to_vector_extent(strings: ListIn<'_, String>, level: LevelIn) -> GPoll<Extent> {
+	shaped_extent(strings, level, false)
+}
+
+/// Splits styled text into a separate vector path for each of its glyphs (letterforms).
+#[node_macro::node(category("Text"), name("Text to Vector Glyphs"), extent(text_to_vector_glyphs_extent))]
+fn text_to_vector_glyphs<'e>(
+	ctx: impl Ctx + core_types::CacheHash + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// Styled strings produced by the **Text** node (or any other `String` source).
+	strings: IList<String>,
+	#[data] shaped: ShapedCache,
+) -> Result<IList<(Lane<Vector>, Attr<'e, TransformAttr>)>, Interrupt> {
+	shaped_lane(strings, ctx.index() as usize, eval_key!(ctx), shaped, true)
+}
+
+fn text_to_vector_glyphs_extent(strings: ListIn<'_, String>, level: LevelIn) -> GPoll<Extent> {
+	shaped_extent(strings, level, true)
 }

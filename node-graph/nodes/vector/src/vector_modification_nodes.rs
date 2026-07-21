@@ -1,5 +1,6 @@
 use core_types::attribute::{Attr, EditorLayerPath, RemoveAttr, Transform as TransformAttr};
 use core_types::gpoll::{GraphError, Interrupt};
+use core_types::transform::BakeTransform;
 use core_types::uuid::NodeId;
 use core_types::{Ctx, ExtractIndex, InjectIndex};
 use glam::DAffine2;
@@ -38,14 +39,12 @@ fn path_modify<'e>(
 	Ok((element, Attr(parked.as_slice()), RemoveAttr::new()))
 }
 
-/// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
+/// Bakes the content's transform attribute into its underlying value, resetting the attribute to the identity.
 #[node_macro::node(category("Vector"))]
-fn apply_transform(_ctx: impl Ctx, (mut vector, transform): (Vector, Attr<TransformAttr>)) -> (Vector, Attr<TransformAttr>) {
+// Monomorphic on Vector: our macro cannot yet read a record element through an open generic, so master's DAffine2 and DVec2 rows have no node here.
+fn bake_transform(_ctx: impl Ctx, (mut content, transform): (Vector, Attr<TransformAttr>)) -> (Vector, Attr<TransformAttr>) {
 	let transform: DAffine2 = *transform;
-	for (_, point) in vector.point_domain.positions_mut() {
-		*point = transform.transform_point2(*point);
-	}
-	vector.segment_domain.transform(transform);
+	content.bake_transform(&transform);
 
-	(vector, Attr(DAffine2::IDENTITY))
+	(content, Attr(DAffine2::IDENTITY))
 }

@@ -946,33 +946,6 @@ mod test {
 	}
 
 	#[test]
-	fn the_clone_node_clones_the_element_out_of_its_record_wire() {
-		let network = ProtoNetwork {
-			stack_need: 0,
-			inputs: vec![],
-			output: NodeId(1),
-			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![7.]).into()), vec![])),
-				(NodeId(1), proto_node("graphene_core::debug::CloneNode", vec![NodeId(0)])),
-			],
-		};
-
-		let executor = build_executor(network);
-		let arena = Arena::new(1 << 20).unwrap();
-		let generations = [];
-		let scope = EvalScope::new(None, None, None, &generations, &arena);
-		let ctx = ContextImpl::root(&scope);
-		let handle = executor.tree().get(NodeId(1)).unwrap();
-		let layout = handle.layout().clone();
-		let edge = handle.duplicate().downcast_record::<f64>().unwrap();
-		let frames = core_types::record::test_frames(executor.tree().stack_need());
-		let GPoll::Final(value) = core_types::record::serve_input(&edge, &ctx, &frames) else {
-			panic!("the flipped clone must evaluate over record wires, got a non-final poll");
-		};
-		assert_eq!(unsafe { core_types::record::read_element::<f64>(layout.rec(&value)) }, 7.);
-	}
-
-	#[test]
 	fn the_palette_folds_its_record_wire_to_a_color_level() {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {

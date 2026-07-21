@@ -692,7 +692,7 @@ pub struct SelectedStrokeState {
 }
 
 /// Reads the fill state across all selected non-artboard layers, including whether their enabled states or colors differ.
-/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is [`FillChoice::None`].
+/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is the no-paint choice.
 /// Unticked means there is no Fill node. Returns `None` only when no layer is selected.
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
 	let selected_nodes = document.network_interface.selected_nodes();

@@ -1,8 +1,10 @@
-use core_types::list::{Item, List};
-use core_types::{ATTR_TYPE, Ctx};
+use crate::{expanded_count, locate_expanded, unescape_string};
+use core_types::attribute::{Attr, Type};
+use core_types::extent::{LevelIn, ListIn, ValueIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
+use core_types::node::Lane;
+use core_types::{Ctx, ExtractIndex, InjectIndex};
 use serde_json::Value;
-
-use crate::unescape_string;
 
 // ===========
 // Format JSON
@@ -221,12 +223,12 @@ fn query_json(
 /// • **Index Elements**: access the `N`th query result.
 /// • **String to Number**: convert numeric query results to numbers.
 /// • **String Value** → **Equals**: convert "true", "false", or "null" query results to bools.
-#[node_macro::node(name("Query JSON All"), category("Text: JSON"))]
-fn query_json_all(
-	_: impl Ctx,
-	/// The JSON string to extract values from.
+#[node_macro::node(name("Query JSON All"), category("Text: JSON"), extent(query_json_all_extent))]
+fn query_json_all<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	/// The JSON strings to extract values from.
 	#[name("JSON")]
-	json: String,
+	json: IList<String>,
 	/// Determines which contained values to extract from within the JSON.
 	///
 	/// The path syntax is like JavaScript's accessor syntax that follows an array/object value. It also supports negative indexing to count backwards from the end. Additionally, `[]` accesses all array and object values instead of just one.
@@ -240,15 +242,33 @@ fn query_json_all(
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
 	unquote_strings: bool,
-) -> List<String> {
-	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return List::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return List::new() };
+) -> Result<IList<(Lane<String>, Attr<'e, Type>)>, Interrupt> {
+	let (row, (text, ty)) = locate_expanded(json, ctx.index() as usize, |json| query_all(json, &path, unquote_strings)).ok_or_else(|| Interrupt::from(GraphError::past_end()))?;
+	Ok((json.lane(row).map_element(text), Attr(ty)))
+}
+
+/// Every value `path` matches in `json` with its JSON type, none for invalid
+/// JSON or an invalid path.
+fn query_all(json: &str, path: &str, unquote_strings: bool) -> Vec<(String, &'static str)> {
+	let cleaned = strip_trailing_commas(json);
+	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Vec::new() };
+	let Some(segments) = parse_json_path(path.trim()) else { return Vec::new() };
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
+	results
+}
 
-	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
+/// The level holds every string's matched values in order.
+fn query_json_all_extent(json: ListIn<'_, String>, path: ValueIn<'_, String>, unquote_strings: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => json
+			.get()
+			.zip(path.get())
+			.zip(unquote_strings.get())
+			.map(|((json, path), unquote_strings)| expanded_count(json, |json| query_all(json, &path, unquote_strings).len())),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 /// A parsed segment of a JSON access path.

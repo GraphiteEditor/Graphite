@@ -8,11 +8,12 @@ mod text_context;
 mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
-use core_types::gpoll::Interrupt;
+use core_types::extent::{LevelIn, ListIn, ValueIn};
+use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{Item, List};
+use core_types::node::Lane;
 use core_types::registry::types::{SignedInteger, TextArea};
-use core_types::{Context, Ctx, DeriveCtx, ExtractVarArgs};
+use core_types::{Ctx, ExtractIndex, InjectIndex};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use unicode_segmentation::UnicodeSegmentation;
@@ -361,7 +362,7 @@ fn format_number(
 }
 
 /// Parses a string into a number. Falls back to the chosen value if the string is not a valid number.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Text"), name("String to Number"))]
 fn string_to_number(
 	_: impl Ctx,
 	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, and scientific notation (e.g. "1e-3") is supported.
@@ -727,14 +728,43 @@ fn string_length(_: impl Ctx, string: String) -> f64 {
 	string.graphemes(true).count() as f64
 }
 
-/// Splits a string into a list of substrings based on the specified delimiter. This is the inverse of the **String Join** node.
+/// The `lane`-th row of the level made by expanding every string in order,
+/// with the row of the string it came from.
+pub(crate) fn locate_expanded<R>(strings: core_types::node::List<'_, String>, lane: usize, expand: impl Fn(&str) -> Vec<R>) -> Option<(usize, R)> {
+	let mut remaining = lane;
+	for row in 0..strings.len() {
+		let mut expanded = expand(strings.element_ref(row));
+		if remaining >= expanded.len() {
+			remaining -= expanded.len();
+			continue;
+		}
+		return Some((row, expanded.swap_remove(remaining)));
+	}
+	None
+}
+
+/// The rows every string expands to, summed.
+pub(crate) fn expanded_count(strings: core_types::node::List<'_, String>, expand: impl Fn(&str) -> usize) -> Extent {
+	Extent::Exactly((0..strings.len()).map(|row| expand(strings.element_ref(row))).sum())
+}
+
+/// The parts of `string` around `delimiter`, unescaped when asked.
+fn split_parts(string: &str, delimiter: &str, delimiter_escaping: bool) -> Vec<String> {
+	let delimiter = match delimiter_escaping {
+		true => unescape_string(delimiter.to_string()),
+		false => delimiter.to_string(),
+	};
+	string.split(&delimiter).map(str::to_string).collect()
+}
+
+/// Splits each string into substrings based on the specified delimiter, producing one flat list of all the substrings. This is the inverse of the **String Join** node.
 ///
 /// For example, splitting "a, b, c" with delimiter ", " produces `["a", "b", "c"]`.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Text"), extent(string_split_extent))]
 fn string_split(
-	_: impl Ctx,
-	/// The string to split into substrings.
-	string: String,
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	/// The strings to split into substrings.
+	strings: IList<String>,
 	/// The character(s) that separate the substrings. These are not included in the outputs.
 	#[default("\\n")]
 	delimiter: String,
@@ -742,10 +772,21 @@ fn string_split(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimiter_escaping: bool,
-) -> List<String> {
-	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
+) -> Result<IList<Lane<String>>, Interrupt> {
+	let (row, part) = locate_expanded(strings, ctx.index() as usize, |string| split_parts(string, &delimiter, delimiter_escaping)).ok_or_else(|| Interrupt::from(GraphError::past_end()))?;
+	Ok(strings.lane(row).map_element(part))
+}
 
-	string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
+/// The level holds every string's parts in order.
+fn string_split_extent(strings: ListIn<'_, String>, delimiter: ValueIn<'_, String>, delimiter_escaping: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => strings
+			.get()
+			.zip(delimiter.get())
+			.zip(delimiter_escaping.get())
+			.map(|((strings, delimiter), escaping)| expanded_count(strings, |string| split_parts(string, &delimiter, escaping).len())),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
@@ -755,7 +796,7 @@ fn string_split(
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
-	strings: List<String>,
+	strings: IList<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
 	separator: String,
@@ -766,39 +807,7 @@ fn string_join(
 ) -> String {
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
-	strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator)
-}
-
-/// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
-#[node_macro::node(category("Text"))]
-fn map_string(
-	ctx: impl Ctx + DeriveCtx,
-	strings: List<String>,
-	#[expose]
-	#[implementations(Context -> String)]
-	mapped: impl Node<Context<'_>, Output = String>,
-) -> Result<List<String>, Interrupt> {
-	let spilled = ctx.index_head();
-	let mut result = List::new();
-
-	for (i, row) in strings.into_iter().enumerate() {
-		let string = row.into_element();
-		let scoped = ctx.push_vararg(&string);
-		let mapped_string = mapped.eval(&scoped.ctx().promoted(&spilled, i as u64))?;
-
-		result.push(Item::new_from_element(mapped_string));
-	}
-
-	Ok(result)
-}
-
-/// Reads the current string from within a **Map String** node's loop.
-#[node_macro::node(category("Context"))]
-fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
-	let Ok(var_arg) = ctx.vararg(0) else { return String::new() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref::<String>().cloned().unwrap_or_default()
+	(0..strings.len()).map(|row| strings.element_ref(row).as_str()).collect::<Vec<_>>().join(&separator)
 }
 
 /// Converts a value to a JSON string representation.

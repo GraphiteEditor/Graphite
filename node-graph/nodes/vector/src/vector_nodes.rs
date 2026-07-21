@@ -1278,10 +1278,10 @@ fn dimensions(_: impl Ctx, content: IList<Vector>) -> DVec2 {
 		.unwrap_or_default()
 }
 
-/// Type-asserts a value to be vector data.
+/// Type-asserts a value to be vector data. A position becomes a single-anchor vector.
 #[node_macro::node(category("Vector"), name("As Vector"), path(core_types::vector))]
-fn as_vector(_: impl Ctx, value: Vector) -> Vector {
-	value
+fn as_vector<T: Into<Vector>>(_: impl Ctx, #[implementations(Vector, DVec2)] value: T) -> Vector {
+	value.into()
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.

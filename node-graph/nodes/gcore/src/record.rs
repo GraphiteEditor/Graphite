@@ -1944,7 +1944,12 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let node = install(crate::context::ReadColorRowNode::new(), crate::context::read_color_row_layout_meta(), &[]);
+		let unit = Layout::default().with_writes(0, core_types::record::element_write::<()>(), &[]);
+		let node = install(
+			crate::context::ReadColorNode::new(ValueSource::new(()), &unit),
+			crate::context::read_color_layout_meta(),
+			&[Some(&unit)],
+		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
 		assert_eq!(out.depth, 1);
 		// No row pushed: an empty level, matching the legacy empty-list return.

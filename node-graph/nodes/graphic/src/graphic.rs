@@ -1,19 +1,29 @@
-use core_types::attribute::{Attr, EditorLayerPath, Name0, Named, Transform as TransformAttr, WireValue};
+use crate::record::Inherited;
+use core_types::arena::Arena;
+use core_types::attribute::{Attr, EditorLayerPath, Name0, Named, Opacity, OpacityFill, Transform as TransformAttr, WireValue};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
-use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt, Level};
+use core_types::gpoll::{ErrorKind, Extent, GPoll, GraphError, Interrupt, Level};
 use core_types::list::List;
 use core_types::node::Lane;
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex, ModifyIndex};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicList};
-use graphic_types::{ATTR_EDITOR_MERGED_LAYERS, Artboard, Vector};
+use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, walk_vector_rows};
+use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
+use graphic_types::{ATTR_FILL, ATTR_STROKE, Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
-
 use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
 use vector_types::{Gradient, GradientStop, ReferencePoint};
+
+fn arena_exhausted() -> Interrupt {
+	GraphError {
+		kind: ErrorKind::ArenaExhausted,
+		trace: Vec::new(),
+	}
+	.into()
+}
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
 /// out of range resolves to nothing.
@@ -79,7 +89,7 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + CacheHash + 'static>(
 /// the subgraph's lanes concatenated into one flat level. The level reports a
 /// lower bound; consumers drain to the past-end signal.
 #[node_macro::node(category("General"))]
-fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
+pub fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
@@ -181,7 +191,7 @@ where
 
 #[node_macro::node(category("General"), extent(mirror_extent))]
 fn mirror<'e>(
-	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic<'static>>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
@@ -219,7 +229,7 @@ fn mirror_extent(
 /// mirror identifier.
 #[node_macro::node(category(""), extent(mirror_vector_extent))]
 fn mirror_vector<'e>(
-	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Vector>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
@@ -251,6 +261,7 @@ fn mirror_vector_extent(
 	}
 }
 
+pub use _map_mod::map_entries;
 pub use _mirror_vector_mod::mirror_vector_entries;
 
 /// `node_path` with its trailing entry dropped: the containing network's path, which is also a unique
@@ -265,10 +276,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Vec<NodeId>) -> Vec<NodeId> {
 /// each lane, which lets editor tools trace data back to its layer.
 #[node_macro::node(category(""))]
 pub fn stamp_layer_path<'e, T>(ctx: impl Ctx + ExtractArena<'e>, element: T, path: Vec<NodeId>) -> Result<(T, Attr<'e, EditorLayerPath>), Interrupt> {
-	let (parked, _) = ctx.arena().alloc(path).ok_or(GraphError {
-		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
-		trace: Vec::new(),
-	})?;
+	let (parked, _) = ctx.arena().alloc(path).ok_or_else(arena_exhausted)?;
 	Ok((element, Attr(parked.as_slice())))
 }
 
@@ -284,10 +292,7 @@ pub fn write_attribute<'e, T, V: WireValue>(
 	name: Named<Name0>,
 	#[implementations(f64, u32, u64, bool, DVec2, DAffine2, Color, Vec<NodeId>, String)] value: V,
 ) -> Result<(T, Attr<'e, Named<Name0, V::Row>>), Interrupt> {
-	let parked = value.park(ctx.arena()).ok_or(GraphError {
-		kind: core_types::gpoll::ErrorKind::ArenaExhausted,
-		trace: Vec::new(),
-	})?;
+	let parked = value.park(ctx.arena()).ok_or_else(arena_exhausted)?;
 	Ok((content, Attr(parked)))
 }
 
@@ -390,34 +395,6 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 	}
 }
 
-// TODO: Eventually remove this document upgrade code
-/// Performs an obsolete function as part of a migration from an older document format.
-/// Users are advised to delete this node and replace it with a new one.
-#[node_macro::node(category(""))]
-pub fn legacy_layer_extend<T: Send + Clone>(
-	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
-	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
-	new: List<T>,
-	nested_node_path: List<NodeId>,
-) -> List<T> {
-	// Get the penultimate element of the node path, or None if the path is too short
-	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
-	let layer = {
-		let index = nested_node_path.len().wrapping_sub(2);
-		nested_node_path.element(index).copied()
-	};
-
-	let mut base = base;
-	for mut row in new.into_iter() {
-		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer);
-		base.push(row);
-	}
-
-	base
-}
-
 /// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
 /// The wrapped run keeps the level's element type, so the legacy boundary can
 /// lower a wrapped vector level to the bare typed graphic the pre-flip wrap made.
@@ -438,23 +415,9 @@ fn wrap_graphic_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Ext
 
 /// Converts graphical content into a `Graphic` level. A `Graphic` level passes through
 /// unchanged; a typed level nests as one graphic lane, keeping the pre-flip list
-/// collapse (`to_graphic_typed` serves those rows). The legacy list rows accept an
-/// unconverted producer's list value as one element, built as a native group.
+/// collapse (`to_graphic_typed` serves those rows).
 #[node_macro::node(category("General"))]
-pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
-	ctx: impl Ctx + core_types::context::ExtractArena<'e>,
-	#[implementations(
-		Graphic,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<String>,
-	)]
-	content: T,
-) -> Result<Graphic<'e>, Interrupt> {
+pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl Ctx + ExtractArena<'e>, #[implementations(Graphic)] content: T) -> Result<Graphic<'e>, Interrupt> {
 	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
@@ -463,24 +426,8 @@ pub fn to_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(
 /// without changing the level's shape. Registered under the convert identifier.
 #[node_macro::node(category(""))]
 pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
-	ctx: impl Ctx + core_types::context::ExtractArena<'e>,
-	#[implementations(
-		Graphic,
-		Vector,
-		Raster<CPU>,
-		Raster<GPU>,
-		Color,
-		Gradient,
-		String,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<String>,
-	)]
-	content: T,
+	ctx: impl Ctx + ExtractArena<'e>,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] content: T,
 ) -> Result<Graphic<'e>, Interrupt> {
 	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
@@ -508,21 +455,6 @@ fn to_graphic_unit_extent(_content: core_types::extent::ValueIn<'_, ()>, _level:
 	GPoll::Final(Extent::Exactly(0))
 }
 
-/// The transitional level bridge: the input's records as the legacy list an
-/// unconverted consumer expects, attributes copied through their erased
-/// reads and content kept in its native form. Registered under the legacy
-/// convert identifiers.
-#[node_macro::node(category(""))]
-pub fn level_to_list<T: Clone + Send + Sync + CacheHash + dyn_any::StaticTypeSized>(
-	_: impl Ctx,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)] value: IList<T>,
-	_converter: (),
-) -> List<T> {
-	let item = value.as_group_item();
-	graphic_types::graphic::run_to_list::<T>(&item).expect("the run holds the row's element type")
-}
-
-pub use _level_to_list_mod::level_to_list_entries;
 pub use _to_graphic_element_mod::to_graphic_element_entries;
 pub use _to_graphic_typed_mod::to_graphic_typed_entries;
 pub use _to_graphic_unit_mod::to_graphic_unit_entries;
@@ -539,7 +471,7 @@ pub use _to_graphic_unit_mod::to_graphic_unit_entries;
 /// not declare are truncated.
 #[node_macro::node(category("General"), extent(flatten_graphic_extent))]
 pub fn flatten_graphic<'e>(
-	ctx: impl Ctx + core_types::context::ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	content: IList<Graphic<'static>>,
 	fully_flatten: bool,
 ) -> Result<IList<(Lane<Graphic<'static>>, Attr<'e, TransformAttr>)>, Interrupt> {
@@ -572,64 +504,222 @@ fn flatten_graphic_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'
 	}
 }
 
-/// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
-#[node_macro::node(category("Vector"))]
-pub fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
-	let graphic_list = content.into_graphic_list();
-	let mut output: List<Vector> = graphic_list.clone().into_flattened_list();
-
-	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
-	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
-	// TODO: to populate `upstream_footprints` / `local_transforms` / `click_targets` per child layer. As a workaround
-	// TODO: we stash the pre-flattened list on the output so `List<Vector>::collect_metadata` can recurse into it,
-	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
-	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
-	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Flatten Path,
-	// TODO: Morph, Rasterize) become unnecessary.
-	if !output.is_empty() {
-		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
-		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
-		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_list = graphic_list;
-		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
-			let inverse = item_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-				*transform = inverse * *transform;
-			}
+/// The `lane`-th flattened vector row of `level` as a one-item list, with the
+/// top-level lane it descends from.
+fn locate_vector_row(level: GraphicLevel<'_>, lane: usize) -> Option<(List<Vector>, usize)> {
+	let mut remaining = lane;
+	let mut located = None;
+	walk_vector_rows(level, &mut |row| {
+		if remaining > 0 {
+			remaining -= 1;
+			return RowStep::Continue;
 		}
+		let mut one = List::new();
+		row.build_into(&mut one);
+		located = Some((one, row.top_lane()));
+		RowStep::Stop
+	});
+	located
+}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, Some(graphic_list));
+fn vector_row_count(level: GraphicLevel<'_>) -> usize {
+	let mut count = 0;
+	walk_vector_rows(level, &mut |_| {
+		count += 1;
+		RowStep::Continue
+	});
+	count
+}
+
+// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
+// TODO: Flattening erases the upstream `Graphic` hierarchy that editor metadata collection walks to populate
+// TODO: `upstream_footprints` / `local_transforms` / `click_targets` per child layer, so the pre-flattened list
+// TODO: is stashed on row 0 for `collect_metadata` to recurse into (as Boolean Operation, Solidify Stroke,
+// TODO: Flatten Path, Morph and Rasterize do). Driving each layer's metadata from its own Monitor's captured
+// TODO: `(Context, List<Graphic>)` would make this attribute unnecessary.
+/// The parked merged-layers snapshot for row 0. Row 0 carries a composed
+/// transform the snapshot's own transforms already include, so the snapshot is
+/// pre-compensated by its inverse to cancel the renderer's
+/// `upstream_footprint *= row_0_transform` recursion.
+fn merged_layers_snapshot<'e>(arena: &'e Arena, mut snapshot: List<Graphic<'static>>, row_0_transform: DAffine2) -> Result<&'e List<Graphic<'static>>, Interrupt> {
+	if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
+		let inverse = row_0_transform.inverse();
+		for transform in snapshot.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			*transform = inverse * *transform;
+		}
 	}
+	arena.alloc_sized_keyed(snapshot, 0).map(|(parked, _)| parked).ok_or_else(arena_exhausted)
+}
 
-	output
+type FlattenedVectorRow<'a, 'e> = (
+	Lane<'a, Vector>,
+	Attr<'e, TransformAttr>,
+	Attr<'e, Fill>,
+	Attr<'e, StrokeAttr>,
+	Attr<'e, Opacity>,
+	Attr<'e, OpacityFill>,
+	Attr<'e, EditorLayerPath>,
+	Attr<'e, EditorMergedLayers>,
+);
+
+/// A built vector row as the flatten's output: `carrier`'s columns with the
+/// walk's composition, paint and layer path overriding, and `snapshot` parked
+/// as the merged layers where given.
+fn emit_vector_row<'a, 'e>(arena: &'e Arena, carrier: Lane<'a, Graphic<'static>>, row: List<Vector>, snapshot: Option<List<Graphic<'static>>>) -> Result<FlattenedVectorRow<'a, 'e>, Interrupt> {
+	let park_paint = |paint: Option<&Option<List<Graphic<'static>>>>| {
+		paint
+			.and_then(|paint| paint.as_ref())
+			.map(|paint| arena.alloc_sized_keyed(paint.clone(), 0).map(|(parked, _)| parked).ok_or_else(arena_exhausted))
+			.transpose()
+	};
+	let fill = park_paint(row.attribute(ATTR_FILL, 0))?;
+	let stroke = park_paint(row.attribute(ATTR_STROKE, 0))?;
+	let layer_path: Vec<NodeId> = row.attribute(ATTR_EDITOR_LAYER_PATH, 0).cloned().unwrap_or_default();
+	let (layer_path, _) = arena.alloc(layer_path).ok_or_else(arena_exhausted)?;
+
+	let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+	let merged_layers = snapshot.map(|snapshot| merged_layers_snapshot(arena, snapshot, transform)).transpose()?;
+	let element = row.element(0).cloned().unwrap_or_default();
+
+	Ok((
+		carrier.map_element(element),
+		Attr(transform),
+		Attr(fill),
+		Attr(stroke),
+		Attr(row.attribute_cloned_or(ATTR_OPACITY, 0, 1.)),
+		Attr(row.attribute_cloned_or(ATTR_OPACITY_FILL, 0, 1.)),
+		Attr(layer_path.as_slice()),
+		Attr(merged_layers),
+	))
+}
+
+/// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
+/// Each row carries the columns of the top-level row it descends from, with the
+/// path's composed transform and opacities, the reaching paint and the layer path overriding.
+#[node_macro::node(category("Vector"), extent(flatten_vector_extent))]
+pub fn flatten_vector<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic<'static>>,
+) -> Result<
+	IList<(
+		Lane<Vector>,
+		Attr<'e, TransformAttr>,
+		Attr<'e, Fill>,
+		Attr<'e, StrokeAttr>,
+		Attr<'e, Opacity>,
+		Attr<'e, OpacityFill>,
+		Attr<'e, EditorLayerPath>,
+		Attr<'e, EditorMergedLayers>,
+	)>,
+	Interrupt,
+> {
+	let lane = ctx.index() as usize;
+	let item = content.as_group_item();
+	let Some((row, top)) = locate_vector_row(GraphicLevel::Run(&item), lane) else {
+		return Err(GraphError::past_end().into());
+	};
+	let snapshot = (lane == 0).then(|| legacy_render_list_of(content));
+	emit_vector_row(ctx.arena(), content.lane(top), row, snapshot)
+}
+
+/// The level holds one row per vector leaf of the walk.
+fn flatten_vector_extent(content: ListIn<'_, Graphic>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content.get().map(|content| Extent::Exactly(vector_row_count(GraphicLevel::Run(&content.as_group_item())))),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
+}
+
+/// The `lane`-th `T` leaf under the content, carrying the columns of the
+/// top-level row it descends from with the path's composition overriding.
+type FlattenedLeafRow<'a, 'e, T> = (Lane<'a, T>, Attr<'e, TransformAttr>, Attr<'e, Opacity>, Attr<'e, OpacityFill>);
+
+fn flatten_leaf_lane<'a, 'e, T: TryFromGraphic + dyn_any::StaticTypeSized>(content: core_types::node::List<'a, Graphic<'static>>, lane: usize) -> Result<FlattenedLeafRow<'a, 'e, T>, Interrupt> {
+	let mut remaining = lane;
+	for row in 0..content.len() {
+		let carrier = content.lane(row);
+		let mut located = None;
+		crate::record::walk_typed_leaves(content.element_ref(row), Inherited::of(&carrier), &mut |leaf: &T, inherited| {
+			if remaining > 0 {
+				remaining -= 1;
+				return RowStep::Continue;
+			}
+			located = Some((leaf.clone(), inherited));
+			RowStep::Stop
+		});
+		if let Some((leaf, inherited)) = located {
+			return Ok((carrier.map_element(leaf), Attr(inherited.transform), Attr(inherited.opacity), Attr(inherited.fill_opacity)));
+		}
+	}
+	Err(GraphError::past_end().into())
+}
+
+/// The level holds one row per `T` leaf under the content.
+fn flatten_leaves_extent<T: TryFromGraphic + dyn_any::StaticTypeSized>(content: ListIn<'_, Graphic>, level: LevelIn) -> GPoll<Extent> {
+	match level.top() {
+		true => content
+			.get()
+			.map(|content| Extent::Exactly((0..content.len()).map(|row| crate::record::typed_leaf_count::<T>(content.element_ref(row))).sum())),
+		false => GPoll::Final(Extent::Exactly(1)),
+	}
 }
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
-#[node_macro::node(category("Raster"))]
-pub fn flatten_raster<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Raster<CPU>>)] content: T) -> List<Raster<CPU>> {
-	content.into_flattened_list()
+#[node_macro::node(category("Raster"), extent(flatten_leaves_extent::<Raster<CPU>>))]
+pub fn flatten_raster<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic<'static>>,
+) -> Result<IList<(Lane<Raster<CPU>>, Attr<'e, TransformAttr>, Attr<'e, Opacity>, Attr<'e, OpacityFill>)>, Interrupt> {
+	flatten_leaf_lane(content, ctx.index() as usize)
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
-#[node_macro::node(category("General"))]
-pub fn flatten_color<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] content: T) -> List<Color> {
-	content.into_flattened_list()
+#[node_macro::node(category("General"), extent(flatten_leaves_extent::<Color>))]
+pub fn flatten_color<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic<'static>>,
+) -> Result<IList<(Lane<Color>, Attr<'e, TransformAttr>, Attr<'e, Opacity>, Attr<'e, OpacityFill>)>, Interrupt> {
+	flatten_leaf_lane(content, ctx.index() as usize)
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
-#[node_macro::node(category("General"))]
-pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Gradient>)] content: T) -> List<Gradient> {
-	content.into_flattened_list()
+#[node_macro::node(category("General"), extent(flatten_leaves_extent::<Gradient>))]
+pub fn flatten_gradient<'e>(
+	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
+	content: IList<Graphic<'static>>,
+) -> Result<IList<(Lane<Gradient>, Attr<'e, TransformAttr>, Attr<'e, Opacity>, Attr<'e, OpacityFill>)>, Interrupt> {
+	flatten_leaf_lane(content, ctx.index() as usize)
+}
+
+/// A gradient with `colors` as evenly spaced stops from 0 to 1; none makes a
+/// black gradient and one repeats at both ends.
+fn evenly_spaced_gradient(colors: &[Color]) -> Gradient {
+	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
+	match colors {
+		[] => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
+		[color] => Gradient::new(vec![stop(0., *color), stop(1., *color)]),
+		colors => Gradient::new(colors.iter().enumerate().map(|(index, color)| stop(index as f64 / (colors.len() - 1) as f64, *color))),
+	}
 }
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Color"))]
-fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
-	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
-	match colors.len() {
-		0 => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => Gradient::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
-		total => Gradient::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
-	}
+#[node_macro::node(category("Color"), name("Colors to Gradient"))]
+pub fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
+	evenly_spaced_gradient(&colors.iter().collect::<Vec<_>>())
 }
+
+/// The gradient over a graphic level's color leaves, as [`colors_to_gradient`].
+/// Registered under the colors to gradient identifier.
+#[node_macro::node(category(""))]
+pub fn colors_to_gradient_graphic(_: impl Ctx, colors: IList<Graphic<'static>>) -> Gradient {
+	let mut leaves = Vec::new();
+	for row in 0..colors.len() {
+		crate::record::walk_typed_leaves::<Color>(colors.element_ref(row), Inherited::IDENTITY, &mut |color, _| {
+			leaves.push(*color);
+			RowStep::Continue
+		});
+	}
+	evenly_spaced_gradient(&leaves)
+}
+
+pub use _colors_to_gradient_graphic_mod::colors_to_gradient_graphic_entries;

@@ -82,8 +82,7 @@ fn brush_stamp_generator(_: impl Ctx, #[unit(" px")] diameter: f64, color: Color
 }
 
 /// Used to efficiently paint brush strokes. Applies the same texture repeatedly at different positions with proper blending and boundary handling.
-#[node_macro::node(category(""), skip_impl)]
-fn blit<BlendFn: Fn(Color, Color) -> Color>(_: impl Ctx, mut target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>> {
+fn blit<BlendFn: Fn(Color, Color) -> Color>(mut target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>> {
 	if positions.is_empty() {
 		return target;
 	}
@@ -340,7 +339,7 @@ fn brush_core(list_item: Item<Raster<CPU>>, strokes: Vec<BrushStroke>, cache: &B
 				List::new_from_item(item)
 			};
 
-			let list = blit(&(), blit_target, brush_texture, positions, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
+			let list = blit(blit_target, brush_texture, positions, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 			assert_eq!(list.len(), 1);
 			list.into_iter().next().unwrap_or_default()
 		};
@@ -376,12 +375,10 @@ fn brush_core(list_item: Item<Raster<CPU>>, strokes: Vec<BrushStroke>, cache: &B
 				_ => BlendMode::Restore,
 			};
 
-			erase_restore_mask = blit(&(), List::new_from_item(erase_restore_mask), brush_texture, positions, move |a, b| {
-				blend_colors(a, b, mask_blend_mode, 1.)
-			})
-			.into_iter()
-			.next()
-			.unwrap_or_default();
+			erase_restore_mask = blit(List::new_from_item(erase_restore_mask), brush_texture, positions, move |a, b| blend_colors(a, b, mask_blend_mode, 1.))
+				.into_iter()
+				.next()
+				.unwrap_or_default();
 		}
 
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));
@@ -458,6 +455,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::brush_stroke::BrushStroke;
 	use core_types::transform::Transform;
 	use glam::DAffine2;
 

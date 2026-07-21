@@ -1,59 +1,20 @@
 use glam::{DAffine2, DVec2, IVec2};
-
-use graphene_std::list::List;
-#[cfg(feature = "gpu")]
-use graphene_std::raster::GPU;
-
-#[cfg(feature = "gpu")]
-use graphene_std::SourceId;
-use graphene_std::raster::{CPU, Raster};
 use graphene_std::registry::{ConstructionError, NodeIOTypes, RegistryEntry, SourceHandle};
-#[cfg(feature = "gpu")]
-use graphene_std::runtime::RuntimeHandle;
-
-use graphene_std::vector::Vector;
-use graphene_std::{Context, Graphic, ProtoNodeIdentifier, concrete};
-use node_registry_macros::{convert_node, into_node};
+use graphene_std::{Context, ProtoNodeIdentifier, concrete};
+use node_registry_macros::convert_node;
 use std::collections::HashMap;
-#[cfg(feature = "gpu")]
-use wgpu_executor::WgpuExecutorHandle;
 
 fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 	let mut node_types: Vec<(ProtoNodeIdentifier, RegistryEntry)> = vec![
-		// ==========
-		// INTO NODES
-		// ==========
-		into_node!(from: List<Graphic>, to: List<Graphic>),
-		into_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>),
-		#[cfg(feature = "gpu")]
-		into_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>),
-		convert_node!(from: List<Vector>, to: List<Graphic>),
-		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
-		// into_node!(from: List<Raster<CPU>>, to: List<Raster<SRGBA8>>),
+		// =============
+		// CONVERT NODES
+		// =============
 		convert_node!(from: DVec2, to: DVec2),
-		convert_node!(from: List<Vector>, to: List<Vector>),
-		convert_node!(from: DVec2, to: List<Vector>),
 		convert_node!(from: String, to: String),
 		convert_node!(from: bool, to: String),
 		convert_node!(from: DVec2, to: String),
 		convert_node!(from: IVec2, to: String),
 		convert_node!(from: DAffine2, to: String),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>, converter: WgpuExecutorHandle),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<CPU>>, to: List<Raster<GPU>>, converter: WgpuExecutorHandle),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>, converter: WgpuExecutorHandle),
-		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Raster<CPU>>, converter: WgpuExecutorHandle, async),
-		// =============
-		// MONITOR NODES
-		// =============
-		// ==========
-		// MEMO NODES
-		// ==========
 	];
 	// The transform's value-typed rows, served by `transform_value` under the
 	// leveled transform's identifier.
@@ -103,6 +64,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 			.into_iter()
 			.map(|entry| (graphene_std::graphic::mirror::IDENTIFIER.clone(), entry)),
 	);
+	// The gradient over a graphic level's color leaves, served under the colors to gradient identifier.
+	node_types.extend(
+		graphene_std::graphic::colors_to_gradient_graphic_entries()
+			.into_iter()
+			.map(|entry| (graphene_std::graphic::colors_to_gradient::IDENTIFIER.clone(), entry)),
+	);
 	// The morph's plain vector rows, served under its identifier.
 	node_types.extend(
 		graphene_std::vector::morph_vector_entries()
@@ -127,23 +94,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		graphene_std::graphic::to_graphic_unit_entries()
 			.into_iter()
 			.map(|entry| (graphene_std::graphic::to_graphic::IDENTIFIER.clone(), entry)),
-	);
-	// The transitional level bridge: a leveled input materializes into the legacy
-	// list an unconverted consumer expects. The rows are keyed under the legacy
-	// convert identifiers and die with the last legacy consumer.
-	node_types.extend(
-		graphene_std::graphic::level_to_list_entries()
-			.into_iter()
-			.zip([
-				"List<Graphic>",
-				"List<Vector>",
-				"List<Raster<CPU>>",
-				"List<Raster<GPU>>",
-				"List<Color>",
-				"List<Gradient>",
-				"List<String>",
-			])
-			.map(|(entry, target)| (ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{target}>")), entry)),
 	);
 	// =============
 	// CONVERT NODES
@@ -208,33 +158,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 pub static NODE_REGISTRY: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>> = once_cell::sync::Lazy::new(node_registry);
 
 mod node_registry_macros {
-	macro_rules! into_node {
-		(from: $from:ty, to: $to:ty) => {
-			(
-				ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
-				RegistryEntry {
-					layout_meta: Some(core_types::record::LayoutMeta::retype(core_types::record::element_write::<$to>())),
-					io: NodeIOTypes::new(
-						concrete!(Context),
-						core_types::registry::record_type::<$to>(),
-						vec![core_types::registry::record_source_type::<$from>()],
-					),
-					constructor: |inputs| {
-						if inputs.len() != 1 {
-							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-						}
-						let mut inputs = inputs.into_iter();
-						let handle = inputs.next().unwrap();
-						let layout = handle.layout().clone();
-						let node = graphene_std::ops::IntoNode::<$to, _, $from>::new(handle.downcast_record::<$from>()?, &layout);
-						Ok(SourceHandle::new_record::<$to>(
-							std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>
-						))
-					},
-				},
-			)
-		};
-	}
 	macro_rules! convert_node {
 		(from: $from:ty, to: numbers) => {{
 			let x: Vec<(ProtoNodeIdentifier, RegistryEntry)> = vec![
@@ -354,7 +277,6 @@ mod node_registry_macros {
 	}
 
 	pub(crate) use convert_node;
-	pub(crate) use into_node;
 }
 
 #[cfg(test)]

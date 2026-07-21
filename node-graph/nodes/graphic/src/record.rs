@@ -1,17 +1,21 @@
-//! Pilot record nodes over the production graphic types: element-space
-//! expanders whose ragged nesting lives inside `Graphic` values, ahead of the
-//! flip. Wiring is by hand until the compiler pass constructs layouts.
+//! The element-space walks the production flatten nodes share, plus the
+//! level-nesting pilots (`nested_map`, `flatten_levels`) that have no
+//! production counterpart yet. The tests here drive the production nodes in
+//! `graphic.rs` with hand-wired layouts.
 
-use core_types::attribute::{Attr, Transform};
+use core_types::attribute::{Opacity, OpacityFill, Transform};
 use core_types::context::{DeriveCtx, ExtractIndex, IndexLink, InjectIndex};
-use core_types::extent::{ExtentIn, LevelIn, ListIn, ValueIn};
+use core_types::extent::{ExtentIn, LevelIn};
 use core_types::gpoll::{Extent, GPoll, GraphError, Interrupt};
+use core_types::lane::LaneSource;
+use core_types::node::RecordLane;
+use core_types::record::RunView;
 use core_types::{ATTR_TRANSFORM, Color, Ctx};
 use glam::DAffine2;
 use graphic_types::Vector;
-use graphic_types::graphic::Graphic;
+use graphic_types::graphic::{Graphic, RowStep, TryFromGraphic};
 use raster_types::{CPU, Raster};
-use vector_types::{Gradient, GradientStop};
+use vector_types::Gradient;
 
 /// Whether the walk can descend into a group: the run holds `Graphic`
 /// elements.
@@ -65,61 +69,88 @@ pub(crate) fn locate<'e>(graphic: &Graphic<'e>, transform: DAffine2, fully_flatt
 	}
 }
 
-/// Rank-model Flatten: one flat level holding the content's leaves, each with
-/// the transforms along its path composed; a group beyond the walk's depth
-/// rides as a leaf with its embedded transforms untouched.
-#[node_macro::node(category("Test"), extent(flatten_extent))]
-fn flatten(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, content: IList<Graphic<'static>>, fully_flatten: bool) -> Result<IList<(Graphic<'static>, Attr<Transform>)>, Interrupt> {
-	let mut remaining = ctx.index() as usize;
-	for row in 0..content.len() {
-		let graphic = content.element_ref(row);
-		let count = leaf_count(graphic, fully_flatten, 0);
-		if remaining >= count {
-			remaining -= count;
-			continue;
+/// The ancestor composition a typed flatten's leaf inherits: transform,
+/// opacity and fill opacity multiply down the path, as the legacy flatten did.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Inherited {
+	pub transform: DAffine2,
+	pub opacity: f64,
+	pub fill_opacity: f64,
+}
+
+impl Inherited {
+	pub(crate) const IDENTITY: Self = Self {
+		transform: DAffine2::IDENTITY,
+		opacity: 1.,
+		fill_opacity: 1.,
+	};
+
+	/// The composition a top-level row starts from: the row's own columns.
+	pub(crate) fn of(lane: &RecordLane<'_>) -> Self {
+		Self {
+			transform: lane.attr::<Transform>(),
+			opacity: lane.attr::<Opacity>(),
+			fill_opacity: lane.attr::<OpacityFill>(),
 		}
-		let transform: DAffine2 = content.lane(row).attr::<Transform>();
-		if let Some((leaf, composed)) = locate(graphic, transform, fully_flatten, 0, &mut remaining) {
-			return Ok((leaf, Attr(composed)));
+	}
+
+	fn composed<S: LaneSource>(self, source: &S, lane: usize) -> Self {
+		Self {
+			transform: self.transform * source.attr::<Transform>(lane),
+			opacity: self.opacity * source.attr::<Opacity>(lane),
+			fill_opacity: self.fill_opacity * source.attr::<OpacityFill>(lane),
 		}
 	}
-	Err(GraphError::new("flatten addressed past its leaf count").into())
 }
 
-/// The level holds one row per leaf of the walk.
-fn flatten_extent(content: ListIn<'_, Graphic>, fully_flatten: ValueIn<'_, bool>, level: LevelIn) -> GPoll<Extent> {
-	match level.top() {
-		true => fully_flatten
-			.get()
-			.zip(content.get())
-			.map(|(fully_flatten, content)| Extent::Exactly((0..content.len()).map(|row| leaf_count(content.element_ref(row), fully_flatten, 0)).sum())),
-		false => GPoll::Final(Extent::Exactly(1)),
+/// Visits every `T` leaf under `graphic`, at any depth, with the composition
+/// along its path. A group run typed `T` contributes its lanes directly; runs
+/// of other element types contribute nothing.
+pub(crate) fn walk_typed_leaves<T: TryFromGraphic + dyn_any::StaticTypeSized>(graphic: &Graphic, inherited: Inherited, visit: &mut dyn FnMut(&T, Inherited) -> RowStep) -> RowStep {
+	match graphic {
+		Graphic::Graphic(children) => {
+			for index in 0..children.len() {
+				let Some(child) = children.element(index) else { continue };
+				if let RowStep::Stop = walk_typed_leaves(child, inherited.composed(children, index), visit) {
+					return RowStep::Stop;
+				}
+			}
+			RowStep::Continue
+		}
+		Graphic::Group(group) => {
+			let item = &group.content;
+			if let Some(run) = RunView::<Graphic>::new(item) {
+				for lane in 0..item.len() {
+					let Some(child) = run.element(lane) else { continue };
+					if let RowStep::Stop = walk_typed_leaves(child, inherited.composed(&run, lane), visit) {
+						return RowStep::Stop;
+					}
+				}
+			} else if let Some(run) = RunView::<T>::new(item) {
+				for lane in 0..item.len() {
+					let Some(leaf) = run.element(lane) else { continue };
+					if let RowStep::Stop = visit(leaf, inherited.composed(&run, lane)) {
+						return RowStep::Stop;
+					}
+				}
+			}
+			RowStep::Continue
+		}
+		leaf => match T::leaf_of(leaf) {
+			Some(leaf) => visit(leaf, inherited),
+			None => RowStep::Continue,
+		},
 	}
 }
 
-/// Rank-model Wrap: the content level as one group element on a one-lane
-/// level, the inverse of flatten's one-level descent.
-#[node_macro::node(category("Test"), extent(wrap_extent))]
-fn wrap<'e>(_: impl Ctx, content: IList<Graphic<'e>>) -> Result<IList<Graphic<'e>>, Interrupt> {
-	let item = content.as_group_item();
-	Ok(Graphic::Group(core_types::record::Group { row: None, content: item }))
-}
-
-/// The collected group is the level's single lane.
-fn wrap_extent(_content: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> {
-	GPoll::Final(Extent::Exactly(1))
-}
-
-/// Rank-model colors-to-gradient: the color level folds into one gradient
-/// with evenly spaced stops.
-#[node_macro::node(category("Test"))]
-fn to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
-	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
-	match colors.len() {
-		0 => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => Gradient::new(vec![stop(0., colors.get(0)), stop(1., colors.get(0))]),
-		total => Gradient::new((0..total).map(|index| stop(index as f64 / (total - 1) as f64, colors.get(index)))),
-	}
+/// The `T` leaves under `graphic`, at any depth.
+pub(crate) fn typed_leaf_count<T: TryFromGraphic + dyn_any::StaticTypeSized>(graphic: &Graphic) -> usize {
+	let mut count = 0;
+	walk_typed_leaves::<T>(graphic, Inherited::IDENTITY, &mut |_, _| {
+		count += 1;
+		RowStep::Continue
+	});
+	count
 }
 
 /// One content row as the production vararg shape: a single-item legacy list
@@ -129,39 +160,16 @@ pub(crate) fn vararg_row<Row: Clone + Send + Sync + 'static>(content: core_types
 	core_types::list::List::new_from_element(content.element_ref(row).clone())
 }
 
-/// Rank-model Map: one subgraph invocation per content row, the row riding as
-/// a vararg; the subgraph's own level nests under the content level. The
-/// levels report a lower bound; consumers drain to the past-end signal.
+/// Rank-model nested Map: one subgraph invocation per content row, the row
+/// riding as a vararg; the subgraph's own level nests under the content level.
+/// The levels report a lower bound; consumers drain to the past-end signal.
+/// The production `Map` is this walk with the levels concatenated.
 #[node_macro::node(category("Test"))]
-fn map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
+fn nested_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
 	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
 	mapped: impl Node<Context<'_>, Output = IList<T>>,
 ) -> Result<IList<IList<T>>, Interrupt> {
-	let mut remaining = ctx.index();
-	for row in 0..content.len() {
-		let item = vararg_row(content, row);
-		let scoped = ctx.push_vararg(&item);
-		let lanes = mapped.inner_extent_at(&scoped.ctx(), row as u64)?;
-		if remaining >= lanes {
-			remaining -= lanes;
-			continue;
-		}
-		let mut frame = IndexLink { index: 0, outer: None };
-		return mapped.eval(&scoped.ctx().push_level(&mut frame, row as u64, remaining));
-	}
-	Err(GraphError::past_end().into())
-}
-
-/// Rank-model flat-map (the production Map): map's walk with the subgraph's
-/// lanes concatenated into one flat level. The level reports a lower bound;
-/// consumers drain to the past-end signal.
-#[node_macro::node(category("Test"))]
-fn flat_map<Row: Clone + Send + Sync + core_types::CacheHash + 'static, T>(
-	ctx: impl Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy,
-	#[implementations(Graphic, Vector, Raster<CPU>, Color, Gradient, String)] content: IList<Row>,
-	mapped: impl Node<Context<'_>, Output = IList<T>>,
-) -> Result<IList<T>, Interrupt> {
 	let mut remaining = ctx.index();
 	for row in 0..content.len() {
 		let item = vararg_row(content, row);
@@ -215,6 +223,7 @@ fn flatten_levels_extent(content: ExtentIn<'_>, level: LevelIn) -> GPoll<Extent>
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::graphic::{ColorsToGradientNode, FlattenColorNode, FlattenGraphicNode, MapNode, WrapGraphicNode, flatten_color_layout_meta, flatten_graphic_layout_meta, wrap_graphic_layout_meta};
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::attribute::Attribute as AttributeMarker;
@@ -352,7 +361,7 @@ mod tests {
 	macro_rules! build {
 		($layout:ident, $rows:expr, $fully:expr) => {
 			install(
-				FlattenNode::new(
+				FlattenGraphicNode::new(
 					RecordSource::new(
 						GraphicSource {
 							layout: $layout.clone(),
@@ -363,7 +372,7 @@ mod tests {
 					),
 					ValueSource::new($fully),
 				),
-				flatten_layout_meta(),
+				flatten_graphic_layout_meta(),
 				&[Some(&$layout)],
 			)
 		};
@@ -453,7 +462,7 @@ mod tests {
 
 		let layout = graphic_layout();
 		let node = install(
-			MapNode::<_, _, Graphic>::new(
+			NestedMapNode::<_, _, Graphic>::new(
 				RecordSource::new(
 					GraphicSource {
 						layout: layout.clone(),
@@ -496,7 +505,7 @@ mod tests {
 
 		let layout = graphic_layout();
 		let flat = install(
-			FlatMapNode::<_, _, Graphic>::new(
+			MapNode::<_, _, Graphic>::new(
 				RecordSource::new(
 					GraphicSource {
 						layout: layout.clone(),
@@ -512,7 +521,7 @@ mod tests {
 			&[Some(&layout), Some(&layout)],
 		);
 		let mapped = install(
-			MapNode::<_, _, Graphic>::new(
+			NestedMapNode::<_, _, Graphic>::new(
 				RecordSource::new(
 					GraphicSource {
 						layout: layout.clone(),
@@ -559,7 +568,7 @@ mod tests {
 
 	#[test]
 	fn flat_map_registers_one_row_per_content_type() {
-		let entries = _flat_map_mod::flat_map_entries();
+		let entries = crate::graphic::map_entries();
 		assert_eq!(entries.len(), 6, "one registry row per content implementation");
 		let content_types: Vec<core_types::Type> = entries.iter().map(|entry| entry.io.inputs[0].clone()).collect();
 		assert_eq!(content_types[0], core_types::registry::record_source_type::<Graphic>());
@@ -580,7 +589,7 @@ mod tests {
 
 		let layout = graphic_layout();
 		let node = install(
-			FlatMapNode::<_, _, Graphic>::new(
+			MapNode::<_, _, Graphic>::new(
 				RecordSource::new(
 					GraphicSource {
 						layout: layout.clone(),
@@ -710,8 +719,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_layout_meta(),
+			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			wrap_graphic_layout_meta(),
 			&[Some(&layout)],
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
@@ -748,8 +757,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_layout_meta(),
+			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			wrap_graphic_layout_meta(),
 			&[Some(&layout)],
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
@@ -821,7 +830,12 @@ mod tests {
 
 		let layout = Layout::default().with_writes(1, record::element_write_hashed::<Color>(), &[]);
 		let out = Layout::default().with_writes(0, record::element_write_hashed::<Gradient>(), &[]);
-		let build = |colors: Vec<Color>| install_flip(ToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout), &out);
+		let build = |colors: Vec<Color>| {
+			install_flip(
+				ColorsToGradientNode::new(RecordSource::new(ColorSource { layout: layout.clone(), colors }, &layout, &layout), &layout),
+				&out,
+			)
+		};
 		let stops_of = |colors: Vec<Color>| {
 			let node = build(colors);
 			let GPoll::Final(record) = record::capture(&node, &ctx, &frames) else {
@@ -852,8 +866,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let node = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_layout_meta(),
+			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			wrap_graphic_layout_meta(),
 			&[Some(&layout)],
 		);
 		let out = Node::<ContextImpl>::layout(&node).clone();
@@ -884,8 +898,8 @@ mod tests {
 		let layout = graphic_layout();
 		let rows = vec![(text("a"), translation(1.)), (text("b"), translation(2.))];
 		let wrapped = install(
-			WrapNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
-			wrap_layout_meta(),
+			WrapGraphicNode::<_, Graphic>::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout), &layout),
+			wrap_graphic_layout_meta(),
 			&[Some(&layout)],
 		);
 		let wrap_out = Node::<ContextImpl>::layout(&wrapped).clone();
@@ -917,6 +931,45 @@ mod tests {
 			assert_eq!(text_of(&record.element::<Graphic>()), label, "lane {lane}");
 			let transform: DAffine2 = record.attr::<Transform>();
 			assert_eq!(transform.translation.x, x, "lane {lane}");
+		}
+	}
+
+	/// [Color a, G[Color b (opacity 0.5), Text], Text]: two color leaves, the
+	/// nested one composing G's transform and its own opacity; the texts drop.
+	#[test]
+	fn flatten_color_keeps_only_color_leaves_and_composes_the_path() {
+		let frames = core_types::record::test_frames(1 << 16);
+		let arena = Arena::new(1 << 16).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let nested = {
+			let Graphic::Graphic(mut children) = group(vec![(Graphic::Color(Color::WHITE), translation(20.)), (text("x"), translation(300.))]) else {
+				unreachable!("group builds a legacy graphic list");
+			};
+			children.set_attribute(core_types::ATTR_OPACITY, 0, 0.5);
+			Graphic::Graphic(children)
+		};
+		let rows = vec![(Graphic::Color(Color::BLACK), translation(1.)), (nested, translation(0.5)), (text("y"), translation(9.))];
+		let layout = graphic_layout();
+		let node = install(
+			FlattenColorNode::new(RecordSource::new(GraphicSource { layout: layout.clone(), rows }, &layout, &layout)),
+			flatten_color_layout_meta(),
+			&[Some(&layout)],
+		);
+		assert_eq!(node.extent_at(&ctx, 0, &frames.reborrow()), GPoll::Final(Extent::Exactly(2)));
+
+		let head = ctx.index_head();
+		let expected = [(Color::BLACK, 1., 1.), (Color::WHITE, 20.5, 0.5)];
+		for (lane, &(color, x, opacity)) in expected.iter().enumerate() {
+			let GPoll::Final(record) = record::capture(&node, &ctx.promoted(&head, lane as u64), &frames) else {
+				panic!("expected a final record");
+			};
+			assert_eq!(record.element::<Color>(), color, "lane {lane}");
+			let transform: DAffine2 = record.attr::<Transform>();
+			assert_eq!(transform.translation.x, x, "lane {lane}");
+			assert_eq!(record.attr::<Opacity>(), opacity, "lane {lane}");
 		}
 	}
 

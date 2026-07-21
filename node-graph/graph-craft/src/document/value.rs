@@ -125,7 +125,7 @@ macro_rules! tagged_value {
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::NodeIdPath(path) => path.hash(state),
+					Self::NodeIdPath(path) => path.cache_hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
 					Self::ContextModification(modification) => modification.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
@@ -546,8 +546,6 @@ tagged_value! {
 	LegacyOptionalDAffine2(Option<DAffine2>),
 	#[serde(alias = "FillGradient")]
 	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
-	#[serde(alias = "Fill")]
-	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 	// ==========
 	// ENUM TYPES
 	// ==========
@@ -589,6 +587,9 @@ tagged_value! {
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 	ScaleType(core_types::transform::ScaleType),
+	// Legacy
+	#[serde(alias = "Fill")]
+	LegacyFill(graphic_types::migrations::legacy::LegacyFill),
 }
 
 impl TaggedValue {
@@ -729,6 +730,9 @@ impl TaggedValue {
 					// The Fill and Stroke nodes' paint connectors default to `List<Graphic>`, their first registered implementation row
 					() if ty == TypeId::of::<List<Graphic>>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<List<Gradient>>() => to_gradient(string).map(TaggedValue::Gradient)?,
+					// A paint default also parses against the bare element forms, as a color or gradient literal
+					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
@@ -1017,6 +1021,23 @@ mod record_defaults {
 #[cfg(test)]
 mod paint_default_parsing {
 	use super::*;
+
+	/// A Fill/Stroke paint wire carries `Graphic` elements, so its `Color::BLACK` default must parse
+	/// into a `Color` for a fresh Fill node's paint to resolve.
+	#[test]
+	fn paint_wire_parses_color_default_through_its_element() {
+		let black = Some(TaggedValue::Color(Color::BLACK));
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &concrete!(List<Graphic>)),
+			black,
+			"a `List<Graphic>` paint wire should resolve its color default"
+		);
+		assert_eq!(
+			TaggedValue::from_primitive_string("Color::BLACK", &concrete!(Graphic)),
+			black,
+			"a bare `Graphic` paint element should resolve its color default"
+		);
+	}
 
 	/// Table-era documents stored the red-slash "no paint" fill as an empty color table, which must keep
 	/// deserializing to [`TaggedValue::no_paint`] rather than collapsing to a transparent color.

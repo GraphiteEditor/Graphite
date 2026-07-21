@@ -228,36 +228,33 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 /// enabling type-directed casting of typed `List`s from a `Graphic` value.
 pub trait TryFromGraphic: Clone + Sized {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>>;
+
+	/// The leaf's element, borrowed, where `graphic` is this type's variant.
+	fn leaf_of<'a>(graphic: &'a Graphic<'_>) -> Option<&'a Self>;
 }
 
-impl TryFromGraphic for Vector {
-	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Vector(t) = graphic { Some(List::new_from_element(t)) } else { None }
-	}
+macro_rules! try_from_graphic {
+	($($variant:ident: $element:ty;)*) => {
+		$(
+			impl TryFromGraphic for $element {
+				fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+					if let Graphic::$variant(t) = graphic { Some(List::new_from_element(t)) } else { None }
+				}
+
+				fn leaf_of<'a>(graphic: &'a Graphic<'_>) -> Option<&'a Self> {
+					if let Graphic::$variant(t) = graphic { Some(t) } else { None }
+				}
+			}
+		)*
+	};
 }
 
-impl TryFromGraphic for Raster<CPU> {
-	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::RasterCPU(t) = graphic { Some(List::new_from_element(t)) } else { None }
-	}
-}
-
-impl TryFromGraphic for Color {
-	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Color(t) = graphic { Some(List::new_from_element(t)) } else { None }
-	}
-}
-
-impl TryFromGraphic for Gradient {
-	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Gradient(t) = graphic { Some(List::new_from_element(t)) } else { None }
-	}
-}
-
-impl TryFromGraphic for String {
-	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
-		if let Graphic::Text(t) = graphic { Some(List::new_from_element(t)) } else { None }
-	}
+try_from_graphic! {
+	Vector: Vector;
+	RasterCPU: Raster<CPU>;
+	Color: Color;
+	Gradient: Gradient;
+	Text: String;
 }
 
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
