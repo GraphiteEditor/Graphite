@@ -751,11 +751,12 @@ impl Fsm for SelectToolFsmState {
 					{
 						draw_layer_outline(&mut overlay_context, document, layer, None);
 
-						if document.metadata().is_text_layer(layer) {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, fonts, responses);
-							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
-						}
+						// if document.metadata().is_text_layer(layer) {
+						// 	debug!("This got called");
+						// 	let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+						// 	let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, fonts, responses);
+						// 	overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
+						// }
 					}
 				}
 
@@ -1125,7 +1126,7 @@ impl Fsm for SelectToolFsmState {
 				if let Some(intersect) = document.click(input, viewport) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
-						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network_interface, responses),
+						NestedSelectionBehavior::Deepest => {}
 					}
 				}
 				self
@@ -1710,9 +1711,11 @@ impl Fsm for SelectToolFsmState {
 				let selected_nodes = document.network_interface.selected_nodes();
 				let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 
+				// this doesnt seem to get called anywhere.
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
 					if selected_layers.next().is_none() && document.metadata().is_text_layer(layer) {
+						debug!("THIS GOT CALLED");
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
