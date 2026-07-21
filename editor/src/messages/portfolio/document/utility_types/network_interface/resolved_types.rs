@@ -4,10 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
-use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::Vector;
-use graphene_std::{Artboard, Graphic};
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -55,26 +52,26 @@ impl TypeSource {
 			return FrontendGraphDataType::Invalid;
 		};
 		match self.compiled_nested_type() {
-			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
-				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => {
-					FrontendGraphDataType::Number
-				}
-				TaggedValue::Color(_) => FrontendGraphDataType::Color,
-				TaggedValue::LegacyGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
-				TaggedValue::String(_) => FrontendGraphDataType::Typography,
-				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the stored structural type.
-				TaggedValue::TypeDefault(td) => match &td {
-					Type::List(element) if **element == concrete!(Graphic) => FrontendGraphDataType::Graphic,
-					Type::List(element) if **element == concrete!(Artboard) => FrontendGraphDataType::Artboard,
-					Type::List(element) if **element == concrete!(Raster<CPU>) => FrontendGraphDataType::Raster,
-					Type::List(element) if **element == concrete!(Vector) => FrontendGraphDataType::Vector,
-					Type::List(element) if **element == concrete!(String) => FrontendGraphDataType::Typography,
-					_ => FrontendGraphDataType::General,
-				},
-				_ => FrontendGraphDataType::General,
-			},
+			Some(nested_type) => FrontendGraphDataType::from_type(nested_type),
 			None => FrontendGraphDataType::General,
 		}
+	}
+
+	/// Whether the compiled type is a rank-1 `List<T>`, as opposed to a rank-0 `Item<T>` or a bare value.
+	/// A bundled cell carrying a whole list displays as the list it carries.
+	pub fn is_list(&self) -> bool {
+		self.compiled_nested_type().is_some_and(|ty| matches!(ty, Type::List(_)) || ty.bundle_element_name().is_some())
+	}
+
+	/// The element type's identifier name with any rank-0 `Item` or rank-1 `List` wrapper peeled, so semantic type checks can be rank-agnostic.
+	pub fn compiled_element_name(&self) -> Option<String> {
+		let nested_type = self.compiled_nested_type()?;
+		// A rank-0 `Item` or rank-1 `List` peels to its element; a bare value reports itself
+		let element = match nested_type {
+			Type::Item(element) | Type::List(element) => element.as_ref(),
+			other => other,
+		};
+		Some(element.identifier_name())
 	}
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
@@ -205,6 +202,19 @@ impl NodeNetworkInterface {
 				concrete!(())
 			}
 		};
+
+		// A List-typed default drops to its Item counterpart (when that has a default value and the connector accepts rank 0),
+		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0
+		if let Some(element) = guaranteed_type.nested_type().list_element()
+			&& let Some(item_type) = self
+				.potential_valid_input_types(input_connector, network_path)
+				.into_iter()
+				.find(|ty| matches!(ty.nested_type(), Type::Item(item_element) if item_element.as_ref() == element))
+			&& let Some(item_default) = TaggedValue::from_type(&item_type)
+		{
+			return item_default;
+		}
+
 		TaggedValue::from_type_or_none(&guaranteed_type)
 	}
 
@@ -332,12 +342,19 @@ impl NodeNetworkInterface {
 	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
+				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
+				if *output_index == 0 && !self.is_visible(node_id, network_path) {
+					return self.input_type(&InputConnector::node(*node_id, 0), network_path);
+				}
+
 				// First try iterating upstream to the first protonode and try get its compiled type
 				let Some(implementation) = self.implementation(node_id, network_path) else {
 					return TypeSource::Error("Could not get implementation");
 				};
 				match implementation {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
+					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
+					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => self.input_type(&InputConnector::node(*node_id, 0), network_path),
 					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
 						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
 						None => TypeSource::Unknown,

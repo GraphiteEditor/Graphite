@@ -67,7 +67,10 @@ impl Preprocessor {
 				let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
 					let id = NodeId::new();
 					let resource_node = DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
+						inputs: vec![
+							NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
+							NodeInput::value(TaggedValue::ResourceHash(hash), false),
+						],
 						implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
 						..Default::default()
 					};
@@ -143,45 +146,82 @@ impl Preprocessor {
 				.take(input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
+					// A field registering the Item/List wire pair gets a input adapter instead of a typed conversion
+					if inputs.len() != 1
+						&& let Some(list_input) = collapse_item_list_pair(inputs)
+					{
+						let element_name = match list_input.nested_type() {
+							Type::List(element) => element.identifier_name(),
+							nested => nested.identifier_name(),
+						};
+						let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
+
+						let document_node = if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
+							generated_nodes += 1;
+							let mut original_location = OriginalLocation::default();
+							original_location.auto_convert_index = Some(i);
+							DocumentNode {
+								inputs: vec![NodeInput::import(generic!(X), i)],
+								implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
+								visible: true,
+								original_location,
+								..Default::default()
+							}
+						} else {
+							DocumentNode {
+								inputs: vec![NodeInput::import(generic!(X), i)],
+								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
+								visible: false,
+								..Default::default()
+							}
+						};
+						return (NodeId(i as u64), document_node);
+					}
+
+					let single_wire_type = match inputs.len() {
+						1 => inputs.iter().next(),
+						_ => None,
+					};
 					(
 						NodeId(i as u64),
-						match inputs.len() {
-							1 => {
-								let input = inputs.iter().next().unwrap();
+						match single_wire_type {
+							Some(input) => {
 								let input_ty = input.nested_type();
-								let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
-								// Conversion rows register under the name-encoded `List<X>` spelling, so a structural list is spelled back out
-								fn conversion_name(ty: &Type) -> String {
-									match ty {
-										Type::List(element) => format!("List<{}>", conversion_name(element)),
-										other => other.identifier_name(),
+								// A single-registered ranked field gets the input adapter, so ranked wires pass through and convertible elements cast
+								let element_name = match input_ty {
+									Type::Item(element) => Some(element.identifier_name()),
+									Type::List(element) => Some(element.identifier_name()),
+									_ => (input_ty.identifier_name() == "ListDyn").then(|| "ListDyn".to_string()),
+								};
+								if let Some(element_name) = element_name {
+									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
+									if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
+										generated_nodes += 1;
+										let mut original_location = OriginalLocation::default();
+										original_location.auto_convert_index = Some(i);
+										let document_node = DocumentNode {
+											inputs: vec![NodeInput::import(generic!(X), i)],
+											implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
+											visible: true,
+											original_location,
+											..Default::default()
+										};
+										return (NodeId(i as u64), document_node);
 									}
 								}
-								let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", conversion_name(input_ty)));
-								let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", conversion_name(input_ty)));
 
-								let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.as_str() == into_node_identifier.as_str()) {
-									generated_nodes += 1;
-									into_node_identifier
-								} else if into_node_registry.keys().any(|ident| ident.as_str() == convert_node_identifier.as_str()) {
-									generated_nodes += 1;
-									inputs.push(NodeInput::value(TaggedValue::None, false));
-									convert_node_identifier
-								} else {
-									passthrough_node.clone()
-								};
 								let mut original_location = OriginalLocation::default();
 								original_location.auto_convert_index = Some(i);
 								DocumentNode {
-									inputs,
-									implementation: DocumentNodeImplementation::ProtoNode(proto_node),
+									inputs: vec![NodeInput::import(input.clone(), i)],
+									implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 									visible: true,
 									original_location,
 									..Default::default()
 								}
 							}
-							_ => DocumentNode {
+							None => DocumentNode {
 								inputs: vec![NodeInput::import(generic!(X), i)],
 								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 								visible: false,
@@ -273,12 +313,13 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io.inputs.get(index)) else {
 				return NodeInput::value(TaggedValue::None, true);
 			};
-			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
+			let ty = ty.clone().normalize_rank();
+			let exposed = if index == 0 { ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 			match &field.value_source {
 				RegistryValueSource::None => {}
 				RegistryValueSource::Default(data) => {
-					if let Some(custom_default) = TaggedValue::from_primitive_string(data, ty) {
+					if let Some(custom_default) = TaggedValue::from_primitive_string(data, &ty) {
 						return NodeInput::value(custom_default, exposed);
 					} else {
 						// It is incredibly useful to get a warning when the default type cannot be parsed rather than defaulting to `()`.
@@ -288,9 +329,17 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
 			};
 
-			if let Some(type_default) = TaggedValue::from_type(ty) {
+			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Properties panel widgets
+			if let Type::Item(element) = &ty
+				&& let Some(type_default) = TaggedValue::from_type(element)
+			{
 				return NodeInput::value(type_default, exposed);
 			}
+
+			if let Some(type_default) = TaggedValue::from_type(&ty) {
+				return NodeInput::value(type_default, exposed);
+			}
+
 			NodeInput::value(TaggedValue::None, true)
 		})
 		.collect()
@@ -306,5 +355,66 @@ impl std::fmt::Display for PreprocessorError {
 		match self {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
 		}
+	}
+}
+
+/// Collapses an element-wise node's dual wire registration for one field, `{Item<X>, List<X>}`, to its `List<X>` document wire form.
+fn collapse_item_list_pair(types: &HashSet<Type>) -> Option<&Type> {
+	let mut types_iterator = types.iter();
+	let (first, second) = (types_iterator.next()?, types_iterator.next()?);
+	if types_iterator.next().is_some() {
+		return None;
+	}
+
+	for (item, list) in [(first, second), (second, first)] {
+		if let Type::List(list_element) = list.nested_type()
+			&& let Type::Item(item_element) = item.nested_type()
+			&& list_element == item_element
+		{
+			return Some(list);
+		}
+	}
+
+	None
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn item_list_wire_pair_collapses_to_list() {
+		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+		let implementations = registry.get(&identifier).expect("Bounding Box should be registered");
+
+		let primary_types: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.inputs[0].clone()).collect();
+		assert_eq!(primary_types.len(), 2, "An element-wise node should register Item and List wire variants for its primary input");
+
+		let collapsed = collapse_item_list_pair(&primary_types).expect("The Item/List wire pair should collapse");
+		assert!(
+			matches!(collapsed.nested_type(), Type::List(_)),
+			"The collapse should pick the structural List form, but got {}",
+			collapsed.nested_type()
+		);
+	}
+
+	#[test]
+	fn fill_paint_color_default_parses_against_its_list_wire() {
+		let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let metadata_registry = core_types::registry::NODE_METADATA.lock().unwrap();
+
+		let identifier = graphene_std::vector::fill::IDENTIFIER;
+		let implementations = node_registry.get(&identifier).expect("Fill should be registered");
+		let first_node_io = implementations.first().map(|(_, node_io)| node_io).expect("Fill should have at least one implementation");
+		let metadata = metadata_registry.get(&identifier).expect("Fill should have registered metadata");
+
+		let inputs = node_inputs(&metadata.fields, first_node_io);
+		let paint = inputs[1].as_value().expect("The paint input should hold a value");
+		assert_eq!(
+			*paint,
+			TaggedValue::Color(Color::BLACK),
+			"The paint input's `Color::BLACK` default should parse against its `List<Graphic>` wire type"
+		);
 	}
 }

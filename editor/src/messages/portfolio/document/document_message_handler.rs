@@ -2748,7 +2748,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// For each selected layer, splits its fill and stroke into two stacked layers connected
-	/// to a shared `Solidify Stroke` node via two `Index Elements` nodes (indices 0 and 1).
+	/// to a shared `Solidify Stroke` node via two `Item at Index` nodes (indices 0 and 1).
 	/// Layers with only a stroke get just a `Solidify Stroke` added.
 	/// Layers with only a fill, or neither, are left untouched.
 	fn handle_expand_fill_stroke_on_selected_layers(&mut self, responses: &mut VecDeque<Message>) {
@@ -4317,5 +4317,36 @@ mod document_message_handler_tests {
 			After:  {after_center:?}\n\
 			Dist:   {distance} (should be < 1)"
 		);
+	}
+
+	// Grouping choreography transiently disconnects the stack wire, and the stored default for that connector
+	// must stay an empty list rather than any value which materializes as a one-element phantom in the stack
+	#[tokio::test]
+	async fn grouping_adds_no_phantom_element_to_the_stack() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let instrumented = editor.eval_graph().await.unwrap();
+
+		let base_lengths: Vec<usize> = instrumented
+			.grab_all_input::<graphene_std::graphic::extend::BaseInput<graphene_std::Graphic>>(&editor.runtime)
+			.map(|base| base.len())
+			.collect();
+		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
+
+		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Graphic>>(&editor.runtime).collect();
+		let phantom_count = news
+			.iter()
+			.flat_map(|new| new.iter_element_values())
+			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None))
+			.count();
+		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}
 }

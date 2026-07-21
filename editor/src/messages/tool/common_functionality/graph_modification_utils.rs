@@ -4,13 +4,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::NodeInputDecleration;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, GPU, Image, Raster};
+use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
@@ -693,7 +693,7 @@ pub struct SelectedStrokeState {
 }
 
 /// Reads the fill state across all selected non-artboard layers, including whether their enabled states or colors differ.
-/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is [`FillChoice::None`].
+/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is the no-paint choice.
 /// Unticked means there is no Fill node. Returns `None` only when no layer is selected.
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
 	let selected_nodes = document.network_interface.selected_nodes();
@@ -984,6 +984,6 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
 
-		layer_input_type.compiled_nested_type() == Some(&list!(Raster<CPU>)) || layer_input_type.compiled_nested_type() == Some(&list!(Raster<GPU>))
+		matches!(layer_input_type.compiled_element_name().as_deref(), Some("Raster<CPU>" | "Raster<GPU>"))
 	}
 }

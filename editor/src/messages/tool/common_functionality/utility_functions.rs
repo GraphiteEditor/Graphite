@@ -12,7 +12,6 @@ use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::list;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
@@ -567,11 +566,11 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 	for _ in selected_layers {}
 
-	// Must be a layer of type List<Vector>
+	// Must be a vector layer, at either rank
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
 	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type() != Some(&list!(Vector)) {
+	if output_type.compiled_element_name().as_deref() != Some("Vector") {
 		return None;
 	}
 

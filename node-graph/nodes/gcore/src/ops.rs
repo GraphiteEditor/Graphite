@@ -1,3 +1,5 @@
+use core_types::graphene_hash::CacheHash;
+use core_types::list::{AttributeValueDyn, Bundle, Item, List};
 use core_types::{Ctx, ExtractFootprint, ops::Convert, transform::Footprint};
 use std::marker::PhantomData;
 
@@ -10,14 +12,92 @@ fn passthrough<'i, T: 'i + Send>(_: impl Ctx, content: T) -> T {
 	content
 }
 
+/// Shifts a whole wire value onto a connector's type through the std `Into` trait, serving the whole-`List` erasure onto `ListDyn` under the input adapter identifier.
 #[node_macro::node(category(""), skip_impl)]
 fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
 	value.into()
 }
 
+/// Raises an `Item` wire onto a `List` connector as its one-element list.
 #[node_macro::node(category(""), skip_impl)]
-async fn convert<'i, T: 'i + Send + Convert<O, C>, O: 'i + Send, C: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, converter: C, _out_ty: PhantomData<O>) -> O {
-	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter).await
+fn item_to_list<'i, T: 'i + Send>(_: impl Ctx, value: Item<T>) -> List<T> {
+	value.into()
+}
+
+/// Boxes a ranked wire's element into a type-erased attribute value, carrying the cell's attributes through the wire.
+#[node_macro::node(category(""), skip_impl)]
+fn item_to_attribute_value<'i, T: 'i + Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
+	_: impl Ctx,
+	value: Item<T>,
+	_element_ty: PhantomData<AttributeValueDyn>,
+) -> Item<AttributeValueDyn> {
+	let (element, attributes) = value.into_parts();
+	Item::from_parts(AttributeValueDyn(Box::new(element)), attributes)
+}
+
+/// Boxes a whole `List` wire as one type-erased attribute value, for attributes whose per-item value is itself a collection.
+#[node_macro::node(category(""), skip_impl)]
+fn list_to_attribute_value<'i, T: 'i + Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
+	_: impl Ctx,
+	value: T,
+	_element_ty: PhantomData<AttributeValueDyn>,
+) -> Item<AttributeValueDyn> {
+	Item::new_from_element(AttributeValueDyn(Box::new(value)))
+}
+
+/// Wraps a whole `List` onto the wire as one rank-0 `Item<Bundle<T>>` so an entire collection can feed a connector that carries it as one opaque cell.
+#[node_macro::node(category(""), skip_impl)]
+fn bundle<'i, T: 'i + Send>(_: impl Ctx, value: List<T>) -> Item<Bundle<T>> {
+	Item::new_from_element(Bundle(value))
+}
+
+/// Unwraps a `Bundle` wire back into the whole `List` it carries, restoring the collection after it passed through a connector as one opaque cell.
+#[node_macro::node(category(""), skip_impl)]
+fn unbundle<'i, T: 'i + Send>(_: impl Ctx, value: Item<Bundle<T>>) -> List<T> {
+	value.into_element().0
+}
+
+/// Converts an `Item` wire's element to a different element type it can produce through the std `Into` trait,
+/// letting a convertible wire feed an `Item` connector whose element type it does not match by identity.
+#[node_macro::node(category(""), skip_impl)]
+fn into_item<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+	let (value, attributes) = value.into_parts();
+	Item::from_parts(value.into(), attributes)
+}
+
+/// The `List` counterpart of `into_item`, converting every element to a different element type it can produce.
+#[node_macro::node(category(""), skip_impl)]
+fn into_list<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+	value
+		.into_iter()
+		.map(|item| {
+			let (value, attributes) = item.into_parts();
+			Item::from_parts(value.into(), attributes)
+		})
+		.collect()
+}
+
+/// The [`Convert`]-based counterpart of `into_item`, casting an `Item` wire's element to a connector's numeric element type.
+#[node_macro::node(category(""), skip_impl)]
+async fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(value.convert(footprint, ()).await, attributes)
+}
+
+/// The `List` counterpart of `convert_item`, casting every element to the connector's numeric element type.
+#[node_macro::node(category(""), skip_impl)]
+async fn convert_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
+
+	let mut result = List::default();
+	for item in value.into_iter() {
+		let (value, attributes) = item.into_parts();
+		result.push(Item::from_parts(value.convert(footprint, ()).await, attributes));
+	}
+
+	result
 }
 
 #[cfg(test)]
@@ -28,4 +108,17 @@ mod test {
 	pub fn passthrough_node() {
 		assert_eq!(passthrough((), &4), &4);
 	}
+}
+
+/// The bare-wire counterpart of `input_adapter_cast`, wrapping a value onto the ranked wire as an `Item` of the connector's element type.
+#[node_macro::node(category(""), skip_impl)]
+async fn input_adapter_cast_wrap<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, _element_ty: PhantomData<E>) -> Item<E> {
+	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
+
+	Item::new_from_element(value.convert(footprint, ()).await)
+}
+
+#[node_macro::node(category(""), skip_impl)]
+async fn convert<'i, T: 'i + Send + Convert<O, C>, O: 'i + Send, C: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, converter: C, _out_ty: PhantomData<O>) -> O {
+	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter).await
 }

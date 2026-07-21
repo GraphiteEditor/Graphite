@@ -1,7 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{AttributeValueDyn, Item, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
@@ -18,19 +17,26 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	/// The list of data.
 	#[implementations(
 		List<String>,
-		List<Artboard>,
-		List<Graphic>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
 		List<Vector>,
+		List<Graphic>,
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Artboard>,
 	)]
 	list: T,
 	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: SignedInteger,
+	index: Item<SignedInteger>,
 ) -> T {
-	let index = index as i32;
+	let index = index.into_element() as i32;
 
 	if index < 0 {
 		list.omit_index_from_end(index.unsigned_abs() as usize)
@@ -39,62 +45,83 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	}
 }
 
-/// Returns the bare element (without the item's attributes) at the specified index in a `List`.
-/// Use this when downstream nodes want just the inner value rather than a `List` containing a single item.
+/// Returns the item at the specified index in a `List`, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"), name("Item at Index"))]
 pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
-	/// The `List` of data to extract from.
+	/// The `List` of data to take the item from.
 	#[implementations(
 		List<String>,
+		List<bool>,
+		List<f32>,
 		List<f64>,
-		List<u8>,
-		List<NodeId>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Graphic>,
 		List<Artboard>,
 	)]
 	list: List<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: SignedInteger,
-) -> T {
+	index: Item<SignedInteger>,
+) -> Item<T> {
 	let len = list.len();
-	let index = index as i32;
+	let index = index.into_element() as i32;
 	let resolved = if index < 0 {
 		let from_end = index.unsigned_abs() as usize;
 		if from_end > len {
-			return T::default();
+			return Item::default();
 		}
 		len - from_end
 	} else {
 		index as usize
 	};
-	list.element(resolved).cloned().unwrap_or_default()
+	list.clone_item(resolved).unwrap_or_default()
 }
 
 #[node_macro::node(category("General"))]
 async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		List<Graphic>,
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
 		List<Vector>,
+		List<Graphic>,
 		List<Raster<CPU>>,
+		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
-		List<String>,
+		List<Artboard>,
 	)]
 	content: List<Item>,
 	#[implementations(
-		Context -> List<Graphic>,
+		Context -> List<String>,
+		Context -> List<bool>,
+		Context -> List<f32>,
+		Context -> List<f64>,
+		Context -> List<u32>,
+		Context -> List<u64>,
+		Context -> List<DVec2>,
+		Context -> List<DAffine2>,
 		Context -> List<Vector>,
+		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
-		Context -> List<String>,
+		Context -> List<Artboard>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
 ) -> List<Item> {
@@ -102,7 +129,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(List::new_from_item(row))).with_index(i);
+		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
 		let list = mapped.eval(owned_ctx.into_context()).await;
 
 		rows.extend(list);
@@ -112,33 +139,34 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 }
 
 #[node_macro::node(category("General"))]
-async fn mirror<T: 'n + Send + Clone>(
+async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<String>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<Gradient>,
+		Graphic,
+		Vector,
+		Raster<CPU>,
+		Raster<GPU>,
+		Color,
+		Gradient,
+		String,
 	)]
-	content: List<T>,
-	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	#[unit(" px")] offset: f64,
+	content: Item<T>,
+	#[default(ReferencePoint::Center)] relative_to_bounds: Item<ReferencePoint>,
+	#[unit(" px")] offset: Item<f64>,
 	#[range]
 	#[soft(-90..90)]
-	angle: Angle,
-	#[default(true)] keep_original: bool,
-) -> List<T>
-where
-	List<T>: BoundingBox,
-{
+	angle: Item<Angle>,
+	#[default(true)] keep_original: Item<bool>,
+) -> List<T> {
+	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());
+
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return content;
+	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let RenderBoundingBox::Rectangle(bounding_box) = content.element().bounding_box(item_transform, false) else {
+		return List::new_from_item(content);
 	};
 
 	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
@@ -162,19 +190,14 @@ where
 
 	let mut result_list = List::new();
 
-	// Add original items depending on the keep_original flag
 	if keep_original {
-		for item in content.clone().into_iter() {
-			result_list.push(item);
-		}
+		result_list.push(content.clone());
 	}
 
-	// Create and add mirrored items
-	for mut row in content.into_iter() {
-		let current_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-		row.set_attribute(ATTR_TRANSFORM, reflected_transform * current_transform);
-		result_list.push(row);
-	}
+	// Add the mirrored copy with the reflection composed onto its transform
+	let mut mirrored = content;
+	mirrored.set_attribute(ATTR_TRANSFORM, reflected_transform * item_transform);
+	result_list.push(mirrored);
 
 	result_list
 }
@@ -186,47 +209,56 @@ where
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
-pub fn path_of_subgraph(_: impl Ctx, node_path: List<NodeId>) -> List<NodeId> {
+pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
+	let node_path = node_path.into_element().0;
 	let len = node_path.len();
-	node_path.into_iter().take(len.saturating_sub(1)).collect()
+	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
 }
 
 /// Sets a named attribute on the input `List`, computing one value per item via the value-producing input. That input
 /// is evaluated once per item, with the item's index and the item itself (as a `List` containing only that item,
 /// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
 /// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
-/// The value is type-erased into an `AttributeValueDyn` by an auto-inserted convert node, so this node only
+/// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted input adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The `List` to set the named attribute on (one value per item).
 	#[implementations(
-		List<Artboard>,
-		List<Graphic>,
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
 		List<Vector>,
+		List<Graphic>,
 		List<Raster<CPU>>,
+		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
-		List<f64>,
-		List<bool>,
-		List<String>,
-		List<DAffine2>,
+		List<Artboard>,
 		List<BlendMode>,
 		List<GradientType>,
 		List<GradientSpreadMethod>,
 	)]
-	mut content: List<T>,
+	content: List<T>,
 	/// The attribute name (key) to write or replace.
-	name: String,
+	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	#[implementations(Context -> AttributeValueDyn)]
-	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
+	#[implementations(Context -> Item<AttributeValueDyn>)]
+	value: impl Node<'n, Context<'static>, Output = Item<AttributeValueDyn>>,
 ) -> List<T> {
+	let name = name.into_element();
+
+	let mut content = content;
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(List::new_from_item(row))).with_index(index);
-		let v = value.eval(owned_ctx.into_context()).await;
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(row)).with_index(index);
+		let v = value.eval(owned_ctx.into_context()).await.into_element();
 		content.set_attribute_value_dyn(&name, index, v);
 	}
 	content
@@ -238,8 +270,9 @@ fn read_attribute_vector(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<Vector> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
@@ -254,8 +287,9 @@ fn read_attribute_number(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<f64> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let value = content
@@ -275,8 +309,9 @@ fn read_attribute_bool(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<bool> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
@@ -291,8 +326,9 @@ fn read_attribute_string(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<String> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<String>(&name, index) else { continue };
@@ -307,8 +343,9 @@ fn read_attribute_transform(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<DAffine2> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
@@ -323,8 +360,9 @@ fn read_attribute_color(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<Color> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
@@ -339,8 +377,9 @@ fn read_attribute_blend_mode(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<BlendMode> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
@@ -355,8 +394,9 @@ fn read_attribute_gradient_type(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<GradientType> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
@@ -371,8 +411,9 @@ fn read_attribute_spread_method(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<GradientSpreadMethod> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
@@ -387,8 +428,9 @@ fn read_attribute_gradient_stops(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<Gradient> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Gradient>(&name, index) else { continue };
@@ -403,8 +445,9 @@ fn read_attribute_artboard(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<Artboard> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
@@ -419,8 +462,9 @@ fn read_attribute_raster(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
-	name: String,
+	name: Item<String>,
 ) -> List<Raster<CPU>> {
+	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
@@ -434,11 +478,43 @@ fn read_attribute_raster(
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `List` whose items will appear at the start of the extended `List`.
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
 	base: List<T>,
 	/// The `List` whose items will appear at the end of the extended `List`.
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
+	#[implementations(
+		List<String>,
+		List<bool>,
+		List<f32>,
+		List<f64>,
+		List<u32>,
+		List<u64>,
+		List<DVec2>,
+		List<DAffine2>,
+		List<Vector>,
+		List<Graphic>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<Gradient>,
+		List<Artboard>,
+	)]
 	new: List<T>,
 ) -> List<T> {
 	let mut base = base;
@@ -457,18 +533,18 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	#[expose]
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
-	nested_node_path: List<NodeId>,
+	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
-	// Get the penultimate element of the node path, or None if the path is too short
-	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
-	let layer = {
-		let index = nested_node_path.len().wrapping_sub(2);
-		nested_node_path.element(index).copied()
+	// Drop this internal node's own trailing entry so the stamped path ends at the user-facing parent layer-style node (which encapsulates it)
+	let nested_node_path = nested_node_path.into_element().0;
+	let layer_path = {
+		let len = nested_node_path.len();
+		NodeIdPath(nested_node_path.into_iter().take(len.saturating_sub(1)).collect())
 	};
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer);
+		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
 		base.push(row);
 	}
 
@@ -488,12 +564,12 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	 	List<Color>,
 		List<Gradient>,
 		List<String>,
-		DAffine2,
-		DVec2,
+		Item<DAffine2>,
+		Item<DVec2>,
 	)]
 	content: T,
-) -> List<Graphic> {
-	List::new_from_element(content.into())
+) -> Item<Graphic> {
+	Item::new_from_element(content.into())
 }
 
 /// Converts a list of graphical content into a `Graphic[]` by placing it into an element of a new wrapper `Graphic[]`.
@@ -517,7 +593,9 @@ pub async fn to_graphic<T: IntoGraphicList>(
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
-pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: bool) -> List<Graphic> {
+pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
+	let fully_flatten = fully_flatten.into_element();
+
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
 	fn flatten_list(output_graphic_list: &mut List<Graphic>, current_graphic_list: List<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for index in 0..current_graphic_list.len() {
@@ -604,13 +682,13 @@ pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations
 }
 
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Color"))]
-fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> List<Gradient> {
+#[node_macro::node(category("Color"), name("Colors to Gradient"))]
+fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
 	let colors = colors.into_flattened_list::<Color>();
 	let total_colors = colors.len();
 
 	if total_colors == 0 {
-		return List::new_from_element(Gradient::new(vec![
+		return Item::new_from_element(Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -625,7 +703,7 @@ fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 	}
 
 	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
-		return List::new_from_element(Gradient::new(vec![
+		return Item::new_from_element(Gradient::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -644,5 +722,5 @@ fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Gr
 		midpoint: 0.5,
 		color: row.into_element(),
 	});
-	List::new_from_element(Gradient::new(colors))
+	Item::new_from_element(Gradient::new(colors))
 }

@@ -1,8 +1,7 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::list::{AttributeValueDyn, List, ListDyn};
+use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::Gradient;
@@ -16,20 +15,27 @@ async fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
-		Context -> (),
-		Context -> bool,
-		Context -> u32,
-		Context -> u64,
-		Context -> f32,
-		Context -> f64,
-		Context -> String,
-		Context -> DAffine2,
-		Context -> Footprint,
-		Context -> DVec2,
+		Context -> Item<bool>,
+		Context -> Item<u32>,
+		Context -> Item<u64>,
+		Context -> Item<f32>,
+		Context -> Item<f64>,
+		Context -> Item<String>,
+		Context -> Item<DAffine2>,
+		Context -> Item<Footprint>,
+		Context -> Item<DVec2>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Artboard>,
+		Context -> Item<Gradient>,
+		Context -> Item<NodeIdPath>,
+		Context -> Item<AttributeValueDyn>,
 		Context -> List<String>,
-		Context -> List<NodeId>,
 		Context -> List<f64>,
-		Context -> List<u8>,
+		Context -> List<DVec2>,
 		Context -> List<Vector>,
 		Context -> List<Graphic>,
 		Context -> List<Raster<CPU>>,
@@ -37,14 +43,13 @@ async fn context_modification<T>(
 		Context -> List<Color>,
 		Context -> List<Artboard>,
 		Context -> List<Gradient>,
-		Context -> AttributeValueDyn,
 		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
-	features_to_keep: ContextFeatures,
+	features_to_keep: Item<ContextFeatures>,
 ) -> T {
-	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep);
+	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep.into_element());
 
 	value.eval(Some(new_context.into())).await
 }

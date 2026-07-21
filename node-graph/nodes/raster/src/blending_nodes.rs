@@ -1,9 +1,11 @@
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
-use core_types::list::List;
+use core_types::list::Item;
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
+#[cfg(not(feature = "std"))]
+use no_std_types::list::ShaderItem as Item;
 use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
@@ -23,54 +25,19 @@ impl Blend<Color> for Color {
 mod blend_std {
 	use super::*;
 	use core::cmp::Ordering;
-	use core_types::list::List;
 	use raster_types::Image;
 	use raster_types::Raster;
 
-	impl Blend<Color> for List<Raster<CPU>> {
+	impl Blend<Color> for Raster<CPU> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut result_list = self.clone();
-			let pair_count = result_list.len().min(under.len());
-			for index in 0..pair_count {
-				let Some(over) = result_list.element(index) else { break };
-				let Some(under_element) = under.element(index) else { break };
-				let data = over.data.iter().zip(under_element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
-				let (width, height) = (over.width, over.height);
+			let data = self.data.iter().zip(under.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-				*result_list.element_mut(index).unwrap() = Raster::new_cpu(Image {
-					data,
-					width,
-					height,
-					base64_string: None,
-				});
-			}
-			result_list
-		}
-	}
-	impl Blend<Color> for List<Color> {
-		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut result_list = self.clone();
-			let pair_count = result_list.len().min(under.len());
-			for index in 0..pair_count {
-				let Some(over) = result_list.element(index) else { break };
-				let Some(under_element) = under.element(index) else { break };
-				let new_val = blend_fn(*over, *under_element);
-				*result_list.element_mut(index).unwrap() = new_val;
-			}
-			result_list
-		}
-	}
-	impl Blend<Color> for List<Gradient> {
-		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut result_list = self.clone();
-			let pair_count = result_list.len().min(under.len());
-			for index in 0..pair_count {
-				let Some(over) = result_list.element(index) else { break };
-				let Some(under_element) = under.element(index) else { break };
-				let new_val = over.blend(under_element, &blend_fn);
-				*result_list.element_mut(index).unwrap() = new_val;
-			}
-			result_list
+			Raster::new_cpu(Image {
+				data,
+				width: self.width,
+				height: self.height,
+				base64_string: None,
+			})
 		}
 	}
 	impl Blend<Color> for Gradient {
@@ -145,43 +112,54 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<Gradient>,
+		Raster<CPU>,
+		Color,
+		Gradient,
 	)]
 	#[gpu_image]
-	over: T,
+	over: Item<T>,
 	#[expose]
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<Gradient>,
+		Raster<CPU>,
+		Color,
+		Gradient,
 	)]
 	#[gpu_image]
-	under: T,
-	blend_mode: BlendMode,
-	#[default(100.)] opacity: PercentageF32,
-) -> T {
-	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
+	under: Item<T>,
+	blend_mode: Item<BlendMode>,
+	#[default(100.)] opacity: Item<PercentageF32>,
+) -> Item<T> {
+	let mut over = over;
+	let blend_mode = blend_mode.into_element();
+	let opacity = opacity.into_element();
+
+	let blended = over.element().blend(under.element(), |a, b| blend_colors(a, b, blend_mode, opacity / 100.));
+	*over.element_mut() = blended;
+	over
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<Gradient>,
+		Raster<CPU>,
+		Color,
+		Gradient,
 	)]
 	#[gpu_image]
-	mut image: T,
-	#[default(Color::BLACK)] color: Color,
-	blend_mode: BlendMode,
-	#[default(100.)] opacity: PercentageF32,
-) -> T {
+	image: Item<T>,
+	#[default(Color::BLACK)] color: Item<Color>,
+	blend_mode: Item<BlendMode>,
+	#[default(100.)] opacity: Item<PercentageF32>,
+) -> Item<T> {
+	let mut image = image;
+	let color = color.into_element();
+	let blend_mode = blend_mode.into_element();
+	let opacity = opacity.into_element();
+
 	let opacity = (opacity / 100.).clamp(0., 1.);
 
-	image.adjust(|pixel| {
+	image.element_mut().adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
 
 		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
@@ -197,7 +175,7 @@ fn color_overlay<T: Adjust<Color>>(
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;
-	use core_types::list::List;
+	use core_types::list::Item;
 	use raster_types::Image;
 	use raster_types::Raster;
 
@@ -212,8 +190,14 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100.;
 
-		let result = super::color_overlay((), List::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.element(0).unwrap().clone();
+		let result = super::color_overlay(
+			(),
+			Item::new_from_element(Raster::new_cpu(image.clone())),
+			overlay_color.into(),
+			BlendMode::Multiply.into(),
+			opacity.into(),
+		);
+		let result = result.into_element();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

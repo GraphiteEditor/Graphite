@@ -19,7 +19,7 @@ fn upload_to_texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Raster<
 	device.create_texture_with_data(
 		queue,
 		&TextureDescriptor {
-			label: Some("upload_texture node texture"),
+			label: Some("upload_to_texture staging texture"),
 			size: Extent3d {
 				width: image.width,
 				height: image.height,
