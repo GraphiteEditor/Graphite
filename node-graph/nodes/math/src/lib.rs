@@ -41,7 +41,7 @@ fn math<T: num_traits::float::Float>(
 	#[implementations(f64, f32)]
 	operand_a: T,
 	/// A math expression that may incorporate "A" and/or "B", such as `sqrt(A + B) - B^2`.
-	#[default(A + B)]
+	#[default("A + B")]
 	expression: String,
 	/// The value of "B" when calculating the expression.
 	#[implementations(f64, f32)]
@@ -517,10 +517,10 @@ fn absolute_value<T: AbsoluteValue>(
 fn min<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	value: T,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	other_value: T,
 ) -> T {
 	if value < other_value { value } else { other_value }
@@ -531,10 +531,10 @@ fn min<T: std::cmp::PartialOrd>(
 fn max<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	value: T,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	other_value: T,
 ) -> T {
 	if value > other_value { value } else { other_value }
@@ -545,13 +545,13 @@ fn max<T: std::cmp::PartialOrd>(
 fn clamp<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	value: T,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	min: T,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, f32, u32, &str)]
+	#[implementations(f64, f32, u32, String)]
 	#[default(1)]
 	max: T,
 ) -> T {
@@ -678,10 +678,10 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str, String)]
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	value: T,
 	/// The other of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str, String)]
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	other_value: T,
 ) -> bool {
 	other_value == value
@@ -692,10 +692,10 @@ fn equals<T: std::cmp::PartialEq<T>>(
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str)]
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	value: T,
 	/// The other of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, &str)]
+	#[implementations(f64, f32, u32, DVec2, bool, String)]
 	other_value: T,
 ) -> bool {
 	other_value != value
@@ -767,7 +767,7 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
 
-/// Constructs a color value which may be set to any color, or no color.
+/// Constructs a color value which may be set to any color.
 #[node_macro::node(category("Value"))]
 fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Color) -> Color {
 	color
