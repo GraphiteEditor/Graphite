@@ -8,7 +8,7 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 fn run_once(c: &mut Criterion) {
 	let mut group = c.benchmark_group("Run Once");
-	let context = RenderConfig::default();
+	let context = RenderConfig::default().into_context();
 	bench_for_each_demo(&mut group, |name, g| {
 		let (_, network) = setup_network(name);
 		g.bench_function(name, |b| {

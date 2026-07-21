@@ -16,7 +16,7 @@ fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> List<Graphic<'static>> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> List<Vector> {
+fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Item<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -24,7 +24,7 @@ fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> List<Vector> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> List<Raster<CPU>> {
+fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Item<Raster<CPU>> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -32,7 +32,7 @@ fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> List<Raster<CPU>> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
+fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Item<Color> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -40,7 +40,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> List<Color> {
 }
 
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
-fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> List<Gradient> {
+fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Item<Gradient> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
@@ -126,9 +126,10 @@ fn read_position(
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the position from. The most upstream loop is level 0, and downstream loops add levels.
 	///
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
-	loop_level: u32,
-) -> DVec2 {
-	ctx.try_position().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(DVec2::ZERO)
+	loop_level: Item<u32>,
+) -> Item<DVec2> {
+	let loop_level = *loop_level.element();
+	Item::new_from_element(ctx.try_position().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(DVec2::ZERO))
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.

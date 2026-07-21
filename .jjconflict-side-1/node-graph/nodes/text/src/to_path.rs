@@ -2,8 +2,7 @@ use super::TypesettingConfig;
 use super::text_context::TextContext;
 use crate::markers::{ATTR_FONT, ATTR_TEXT_ALIGN};
 use core_types::blending::BlendMode;
-use core_types::list::{Item, List};
-use core_types::uuid::NodeId;
+use core_types::list::{Item, List, NodeIdPath};
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM,
 };

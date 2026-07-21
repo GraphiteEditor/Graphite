@@ -465,7 +465,6 @@ impl NodeGraphExecutor {
 								resolved_types: incomplete_delta,
 								node_graph_errors,
 							});
-							responses.add(NodeGraphMessage::SendGraph);
 
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -476,7 +475,6 @@ impl NodeGraphExecutor {
 						resolved_types: type_delta,
 						node_graph_errors,
 					});
-					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
@@ -836,8 +834,8 @@ impl NodeGraphExecutor {
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Whether the fill node's transform input is still the unset `OptionalDAffine2(None)` placeholder that the migration leaves
-/// behind, meaning its gradient placement has not yet been baked (or set by the user), so a measured bake may safely be written.
+/// Whether the fill node's `_has_transform` is still `false`, meaning its gradient placement has not yet been baked
+/// (or set by the user), so a measured bake may safely be written.
 fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[NodeId], fill_node_id: NodeId) -> bool {
 	let Some(network) = document.network_interface.document_network().nested_network(network_path) else {
 		return false;
@@ -946,11 +944,17 @@ mod test {
 				let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
 				for input in &mut node.inputs {
 					let node_id = NodeId::new();
-					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
-					monitor_nodes.push((old_input, node_id));
 					path.push(node_id);
 					monitor_node_ids.push(path.clone());
 					path.pop();
+
+					// A None value is a unit wire with nothing to record and no Monitor row, so its slot stays a dead path that introspects as absent
+					if matches!(input, NodeInput::Value { tagged_value, .. } if matches!(&**tagged_value, graph_craft::document::value::TaggedValue::None)) {
+						continue;
+					}
+
+					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+					monitor_nodes.push((old_input, node_id));
 				}
 				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
 					path.push(*id);
@@ -982,11 +986,16 @@ mod test {
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
-			let element = dynamic.downcast_ref::<Input::Result>().cloned();
+			let element = Self::downcast_record::<Input::Result>(dynamic);
 			if element.is_none() {
 				warn!("cannot downcast type for introspection");
 			}
 			element
+		}
+
+		/// Our monitor introspects as the recorded value itself, not as an `IORecord` wrapper.
+		fn downcast_record<Output: Send + Sync + Clone + 'static>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Output> {
+			dynamic.downcast_ref::<Output>().cloned()
 		}
 
 		/// Grab all of the values of a LEVELED input, which introspects as its
@@ -1003,6 +1012,18 @@ mod test {
 				.filter_map(|dynamic| dynamic.downcast_ref::<List<T>>().cloned())
 		}
 
+		/// Like [`Self::grab_all_input`], but downcasting the recorded values to `Output` instead of the marker's `Result`.
+		/// Useful when a stored value's wire form (e.g. `Item<Color>`) differs from the declared row types the marker's generic accepts.
+		pub fn grab_all_input_as<'a, Input: NodeInputDecleration + 'a, Output: Send + Sync + Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
+			self.protonodes_by_name
+				.get(&Input::identifier())
+				.map_or([].as_slice(), |x| x.as_slice())
+				.iter()
+				.filter_map(|inputs| inputs.get(Input::INDEX))
+				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
+				.filter_map(Instrumented::downcast_record::<Output>)
+		}
+
 		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
 		where
 			Input::Result: Send + Sync + Clone + 'static,
@@ -1012,6 +1033,14 @@ mod test {
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
 			Self::downcast::<Input>(dynamic)
+		}
+
+		/// Grabs a ranked input's recorded value as its bare element; our monitor serves a rank-0 input as the element itself.
+		pub fn grab_ranked_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
+		where
+			Input::Result: Send + Sync + Clone + 'static,
+		{
+			self.grab_protonode_input::<Input>(path, runtime)
 		}
 
 		pub fn grab_input_from_layer<Input: NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>

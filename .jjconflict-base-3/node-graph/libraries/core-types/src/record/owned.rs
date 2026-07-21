@@ -1,0 +1,233 @@
+//! The owned crossing: deep copies that outlive the evaluation their content borrowed.
+
+use super::access::Rec;
+use super::layout::Layout;
+use super::serve::FrameClaim;
+
+/// Deep-copy overrides for element types whose plain clone borrows the
+/// evaluation's arena (a `Graphic` holding a group interior). The generic
+/// element glue consults this registry, so every layout carrying such an
+/// element deep-copies at memo and capture seams regardless of which
+/// constructor built the glue. The clone-out must produce a value of the
+/// element's own type that owns all of its content; the re-park restores that
+/// value's arena-resident form before parking it.
+#[derive(Clone, Copy)]
+pub(in crate::record) struct DeepElementGlue {
+	pub(in crate::record) clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
+	pub(in crate::record) repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
+}
+
+static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepElementGlue>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the deep copy-out and re-park pair for elements of `T`. Called
+/// at startup from the crate that owns the type.
+pub fn register_deep_element_clone<T: dyn_any::StaticTypeSized>(
+	clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
+	repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
+) {
+	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), DeepElementGlue { clone_out, repark });
+}
+
+pub(in crate::record) fn deep_element_glue(type_id: std::any::TypeId) -> Option<DeepElementGlue> {
+	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
+}
+
+/// Whether elements of a type registered deep glue. The shallow clone path is
+/// only sound for types that did not need to, so a host that drives the
+/// registration itself checks the types it owes before it evaluates anything.
+pub fn has_deep_element_glue(type_id: std::any::TypeId) -> bool {
+	DEEP_ELEMENT_CLONES.lock().unwrap().contains_key(&type_id)
+}
+
+/// Deep-copy overrides for field values whose content borrows the
+/// evaluation's arena (a graphic list holding native groups), keyed by the
+/// field's owned value form. Consulted at the persistence seams only:
+/// `read_erased` itself stays shallow, since introspection reads captures in
+/// generation. Both halves decline when the value already owns all of its
+/// content, so group-free values pay no extra clone: `copy_out` returns
+/// `None` for unchanged, `replay` returns `Some(None)` for unchanged and
+/// `None` for arena exhaustion.
+#[derive(Clone, Copy)]
+pub(in crate::record) struct DeepFieldGlue {
+	pub(in crate::record) copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>,
+	pub(in crate::record) replay: crate::list::FieldReplayFn,
+}
+
+static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepFieldGlue>>> = std::sync::LazyLock::new(Default::default);
+
+/// Registers the deep copy-out and replay pair for field values of `T`.
+/// Called at startup from the crate that owns the type.
+pub fn register_deep_field_value<T: 'static>(copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>, replay: crate::list::FieldReplayFn) {
+	DEEP_FIELD_VALUES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepFieldGlue { copy_out, replay });
+}
+
+pub(in crate::record) fn deep_field_glue(type_id: std::any::TypeId) -> Option<DeepFieldGlue> {
+	DEEP_FIELD_VALUES.lock().unwrap().get(&type_id).copied()
+}
+
+/// The copy-out half over an erased field value: the owned form a value takes
+/// when it crosses out of the evaluation whose arena its content borrows. A
+/// value with no registered glue already owns everything and passes through.
+pub fn deepen_field_value(value: Box<dyn crate::list::AnyAttributeValue>) -> Box<dyn crate::list::AnyAttributeValue> {
+	match deep_field_glue(value.as_any().type_id()) {
+		Some(glue) => (glue.copy_out)(&*value).unwrap_or(value),
+		None => value,
+	}
+}
+
+/// The replay half over an erased field value: `Some(None)` where the value
+/// already owns its content, `None` on arena exhaustion.
+pub fn replay_field_value(value: &dyn crate::list::AnyAttributeValue, arena: &crate::arena::Arena) -> Option<Option<Box<dyn crate::list::AnyAttributeValue>>> {
+	match deep_field_glue(value.as_any().type_id()) {
+		Some(glue) => (glue.replay)(value, arena),
+		None => Some(None),
+	}
+}
+
+/// A record deep-copied out of its evaluation: the packed bytes plus owned
+/// clones of every parked payload, replayable into a later evaluation's
+/// storage through the layout's erased glue. The layout stays with the
+/// holder, which proved it at wiring.
+pub struct OwnedRecord {
+	pub(in crate::record) bytes: Box<[u8]>,
+	pub(in crate::record) element: Option<Box<dyn std::any::Any + Send + Sync>>,
+	/// Each copied field's index in the copy's layout, that field's declared
+	/// value type, and the owned value. The type rides along so a replay can
+	/// re-check the field it resolves rather than trusting the caller's claim.
+	fields: Vec<(usize, std::any::TypeId, Box<dyn crate::list::AnyAttributeValue>)>,
+}
+
+impl std::fmt::Debug for OwnedRecord {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("OwnedRecord(..)")
+	}
+}
+
+impl OwnedRecord {
+	/// # Safety
+	/// `rec` must be a live record of `layout`.
+	pub unsafe fn copy_out(layout: &Layout, rec: Rec<'_>) -> OwnedRecord {
+		// The element-to-field seam is never written, so the copy stays untyped:
+		// a `&[u8]` over the frame would read those bytes.
+		let mut staged = Vec::<u8>::with_capacity(layout.size);
+		// SAFETY: the caller's contract sizes the record at `layout.size`, which
+		// is the capacity just reserved, so the copy fills exactly the staging.
+		let bytes = unsafe {
+			std::ptr::copy_nonoverlapping(rec.ptr(), staged.as_mut_ptr(), layout.size);
+			staged.set_len(layout.size);
+			staged.into_boxed_slice()
+		};
+		// SAFETY: the caller's contract; a parked element sits at offset 0.
+		let element = layout.element.parked.then(|| unsafe { (layout.element.clone_out)(rec.ptr()) });
+		let fields = layout
+			.fields
+			.iter()
+			.enumerate()
+			.filter(|(_, field)| field.repark.is_some())
+			// SAFETY: the caller's contract; each field reads its own descriptor's offset.
+			.map(|(index, field)| (index, field.type_id, deepen_field_value(unsafe { (field.read_erased)(rec.ptr().add(field.offset)) })))
+			.collect();
+		OwnedRecord { bytes, element, fields }
+	}
+
+	/// Replays the copy into a caller's claim, re-parking droppable payloads
+	/// against `arena`; `None` reports arena exhaustion. The claim's layout must
+	/// be the one the copy was taken at, which the checks below establish rather
+	/// than assume: the copy carries no layout of its own, so a mismatched claim
+	/// would otherwise write past the frame or re-park a field through another
+	/// field's glue.
+	pub fn replay_into(&self, slot: &mut FrameClaim<'_, '_>, arena: &crate::arena::Arena) -> Option<()> {
+		let layout = slot.layout;
+		assert_eq!(self.bytes.len(), layout.size, "a replay lands in the layout the copy was taken at");
+		assert_eq!(self.element.is_some(), layout.element.parked, "a replay lands in the layout the copy was taken at");
+		for &(index, type_id, _) in &self.fields {
+			let field = layout.fields.get(index).expect("a replay lands in the layout the copy was taken at");
+			assert_eq!(field.type_id, type_id, "a replay lands in the layout the copy was taken at");
+		}
+		self.write_into(layout, slot.dst(), arena)
+	}
+
+	/// `dst` is a claimed frame of `layout`, and `replay_into`'s asserts have
+	/// established that `layout` is the one the copy was taken at.
+	fn write_into(&self, layout: &Layout, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+		// SAFETY: the copy is `layout.size` bytes and the claim is a frame of it.
+		unsafe { std::ptr::copy_nonoverlapping(self.bytes.as_ptr(), dst, self.bytes.len()) };
+		if let Some(element) = &self.element {
+			// SAFETY: the element was cloned out of this layout's own slot at offset 0.
+			unsafe { (layout.element.repark)(&**element, dst, arena) }?;
+		}
+		for (index, _, value) in &self.fields {
+			let field = &layout.fields[*index];
+			let repark = field.repark.expect("copied fields carry re-park glue");
+			let resident = replay_field_value(&**value, arena)?;
+			// SAFETY: the asserts matched this index's field type, so the glue and
+			// the value agree; the write lands in that field's own region.
+			unsafe { repark(resident.as_deref().unwrap_or(&**value), dst.add(field.offset), arena) }?;
+		}
+		Some(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::record::access::{read_element, write_element, write_field};
+	use crate::record::frames::FrameArena;
+	use crate::record::layout::{FieldWrite, element_write};
+
+	#[test]
+	fn a_padded_layout_copies_out_without_reading_its_seam() {
+		// A 4-byte element before an 8-aligned field leaves [4, 8) unwritten.
+		let layout = Layout::default().with_writes(0, element_write::<u32>(), &[FieldWrite::of::<crate::attribute::Opacity>(0)]);
+		let offset = layout.offset_of("opacity", 0).unwrap();
+		assert_eq!((layout.element.size, offset), (4, 8), "the fixture needs the element-to-field seam");
+
+		let arena = crate::arena::Arena::new(1024).unwrap();
+		let scratch = arena.alloc_scratch::<u64>(layout.frame_bytes().div_ceil(8)).unwrap();
+		let base: *mut u8 = scratch.as_mut_ptr().cast();
+		unsafe { write_element(base, 7u32, &arena) }.unwrap();
+		unsafe { write_field::<f64>(base, offset, 0.5) };
+
+		let copy = unsafe { OwnedRecord::copy_out(&layout, Rec::new(base.cast_const())) };
+
+		let replay_arena = crate::arena::Arena::new(1024).unwrap();
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(layout.frame_bytes());
+		let frames = frame_arena.frames();
+		let mut slot = frames.claim(&layout);
+		copy.replay_into(&mut slot, &replay_arena).unwrap();
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { read_element::<u32>(rec) }, 7);
+		assert_eq!(unsafe { rec.read::<f64>(offset) }, 0.5);
+	}
+
+	#[test]
+	fn owned_records_replay_re_parked_payloads_after_the_source_dies() {
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<crate::attribute::Name>(0)]);
+		let mut buffer = vec![0u64; layout.size.div_ceil(8)];
+		let base: *mut u8 = buffer.as_mut_ptr().cast();
+
+		let copy = {
+			let arena = crate::arena::Arena::new(1024).unwrap();
+			unsafe { write_element(base, String::from("element"), &arena) }.unwrap();
+			let (name, _) = arena.alloc(String::from("field")).unwrap();
+			unsafe { write_field::<&str>(base, layout.offset_of("name", 0).unwrap(), name.as_str()) };
+			unsafe { OwnedRecord::copy_out(&layout, Rec::new(base)) }
+		};
+		buffer.fill(u64::MAX);
+
+		let replay_arena = crate::arena::Arena::new(1024).unwrap();
+		let mut frame_arena = FrameArena::new();
+		frame_arena.reserve(layout.frame_bytes());
+		let frames = frame_arena.frames();
+		let mut slot = frames.claim(&layout);
+		copy.replay_into(&mut slot, &replay_arena).unwrap();
+		// SAFETY: the replay completes the record in the claimed frame.
+		let value = unsafe { slot.finish() };
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
+		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "field");
+	}
+}

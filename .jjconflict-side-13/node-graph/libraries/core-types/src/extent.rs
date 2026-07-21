@@ -1,0 +1,93 @@
+//! The typed surface handed to an `extent(fn)` helper: the node's inputs in
+//! declaration order, then the queried level. Values read without unsafe or
+//! internal fields, upstream extents query per level, and the one blessed
+//! context modification is per-copy derived promotion. Anything beyond this
+//! vocabulary uses `extent_raw(fn)`, which keeps the full node/ctx/level form.
+
+use crate::gpoll::{Extent, GPoll};
+
+/// A wired value input; `get` evaluates the input and yields the typed element.
+pub struct ValueIn<'a, T> {
+	read: &'a dyn Fn() -> GPoll<T>,
+}
+
+impl<'a, T> ValueIn<'a, T> {
+	pub fn new(read: &'a dyn Fn() -> GPoll<T>) -> Self {
+		Self { read }
+	}
+
+	pub fn get(&self) -> GPoll<T> {
+		(self.read)()
+	}
+}
+
+/// An upstream input's extents. For derived (per-copy) content the query runs
+/// at the given copy's promoted context; `at` queries copy 0, the uniform
+/// default. For ordinary inputs the copy is ignored.
+pub struct ExtentIn<'a> {
+	query: &'a dyn Fn(u64, u8) -> GPoll<Extent>,
+}
+
+impl<'a> ExtentIn<'a> {
+	pub fn new(query: &'a dyn Fn(u64, u8) -> GPoll<Extent>) -> Self {
+		Self { query }
+	}
+
+	pub fn at(&self, level: LevelIn) -> GPoll<Extent> {
+		(self.query)(0, level.level)
+	}
+
+	pub fn at_copy(&self, copy: u64, level: LevelIn) -> GPoll<Extent> {
+		(self.query)(copy, level.level)
+	}
+}
+
+/// A ranked (`IList`) input materialized whole: `get` drives the batch and
+/// yields the level as a [`List`](crate::node::List), for extents that depend
+/// on the input's data rather than its counts alone. `total` answers the
+/// subject's flat count without materializing, so count-shaped extents stay
+/// cheap: a materializing extent inside another's subject multiplies, and
+/// nested emitters turn that into a blowup.
+pub struct ListIn<'a, T> {
+	get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>,
+	total: &'a dyn Fn() -> GPoll<crate::gpoll::Extent>,
+}
+
+impl<'a, T> ListIn<'a, T> {
+	pub fn new(get: &'a dyn Fn() -> GPoll<crate::node::List<'a, T>>, total: &'a dyn Fn() -> GPoll<crate::gpoll::Extent>) -> Self {
+		Self { get, total }
+	}
+
+	pub fn get(&self) -> GPoll<crate::node::List<'a, T>> {
+		(self.get)()
+	}
+
+	/// The subject input's total flat extent as a plain query.
+	pub fn total(&self) -> GPoll<crate::gpoll::Extent> {
+		(self.total)()
+	}
+}
+
+/// The queried absolute level (innermost `0`), paired with the node's depth.
+#[derive(Clone, Copy, Debug)]
+pub struct LevelIn {
+	pub level: u8,
+	pub depth: u8,
+}
+
+impl LevelIn {
+	pub fn new(level: u8, depth: u8) -> Self {
+		Self { level, depth }
+	}
+
+	/// Whether the query targets the node's own pushed (outermost) level.
+	pub fn pushed(&self) -> bool {
+		self.level + 1 == self.depth
+	}
+
+	/// Whether the query targets the topmost level; `pushed` under the name a
+	/// non-creator (concat, remap) reads naturally.
+	pub fn top(&self) -> bool {
+		self.pushed()
+	}
+}

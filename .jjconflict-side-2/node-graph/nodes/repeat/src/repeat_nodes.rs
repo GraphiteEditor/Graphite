@@ -51,8 +51,8 @@ pub fn repeat_array<T>(
 	content: impl Node<Context<'_>, Output = (T, Attr<TransformAttr>)>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: PixelSize,
-	angle: Angle,
+	direction: Item<PixelSize>,
+	angle: Item<Angle>,
 	#[default(5)]
 	#[hard(1..)]
 	count: u32,
@@ -95,7 +95,7 @@ fn repeat_radial<T>(
 	start_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
-	radius: f64,
+	radius: Item<f64>,
 	#[default(5)]
 	#[hard(1..)]
 	count: u32,
@@ -186,6 +186,7 @@ mod test {
 	use core_types::record::{FieldWrite, FrameClaim, Layout, RecordSource, Served, capture, element_write};
 	use core_types::value::ValueSource;
 	use vector_types::subpath::Subpath;
+	use vector_types::vector::misc::BoxCorners;
 
 	struct TransformSource {
 		layout: Layout,

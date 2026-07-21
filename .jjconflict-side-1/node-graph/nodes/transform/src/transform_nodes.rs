@@ -6,9 +6,8 @@ use core_types::gpoll::{Extent, GPoll, Interrupt};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{CacheHash, Context, Ctx, DeriveCtx, InjectFootprint, ModifyFootprint};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::Graphic;
-use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::{Artboard, Graphic, Vector};
 use vector_types::Gradient;
 
 /// Applies the specified transform to each lane of the input, composing onto the lane's transform attribute.
@@ -97,7 +96,7 @@ fn replace_transform<T>(_: impl Ctx + InjectFootprint, (element, _content_transf
 // TODO: Figure out how this node should behave once #2982 is implemented.
 /// Obtains the transform of the first lane of the input, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient)] content: IList<T>) -> DAffine2 {
+fn extract_transform<T: Clone + Send + Sync + CacheHash + 'static>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: IList<T>) -> DAffine2 {
 	match content.len() {
 		0 => DAffine2::default(),
 		_ => content.lane(0).attr::<TransformAttr>(),
