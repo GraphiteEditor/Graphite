@@ -21,6 +21,9 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			NewDocumentDialogMessage::Infinite { infinite } => self.infinite = infinite,
 			NewDocumentDialogMessage::DimensionsX { width } => self.dimensions.x = width as u32,
 			NewDocumentDialogMessage::DimensionsY { height } => self.dimensions.y = height as u32,
+			NewDocumentDialogMessage::SwapDimensions => {
+				std::mem::swap(&mut self.dimensions.x, &mut self.dimensions.y);
+			}
 			NewDocumentDialogMessage::Submit => {
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
@@ -130,6 +133,12 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.disabled(self.infinite)
 				.min_width(100)
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX { width: number_input.value.unwrap() }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			IconButton::new("SwapHorizontal", 16)
+			    .tooltip_label("Swap Width/Height")
+                .disabled(self.infinite)
+				.on_update(|_| NewDocumentDialogMessage::SwapDimensions.into())
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.dimensions.y as f64))
