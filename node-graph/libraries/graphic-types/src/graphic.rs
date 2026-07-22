@@ -564,7 +564,18 @@ impl RenderComplexity for Graphic {
 		match self {
 			Self::None => 0,
 			Self::Graphic(list) => list.render_complexity(),
-			Self::Vector(list) => list.render_complexity(),
+			Self::Vector(list) => {
+				let element_complexity = list.render_complexity();
+
+				let paint_complexity = [ATTR_FILL, ATTR_STROKE]
+					.into_iter()
+					.filter_map(|attribute| list.iter_attribute_values::<List<Graphic>>(attribute))
+					.flatten()
+					.map(|paint| paint.render_complexity())
+					.fold(0, usize::saturating_add);
+
+				element_complexity.saturating_add(paint_complexity)
+			}
 			Self::RasterCPU(list) => list.render_complexity(),
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
