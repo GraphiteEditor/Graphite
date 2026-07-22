@@ -159,6 +159,13 @@ impl SvgRender {
 			self.svg.push("/>".into());
 		}
 	}
+
+	pub fn with_transform(&mut self, transform: DAffine2, inner: impl FnOnce(&mut Self)) {
+		let previous_transform = self.transform;
+		self.transform *= transform;
+		inner(self);
+		self.transform = previous_transform;
+	}
 }
 
 pub struct SvgRenderOutput {
@@ -265,11 +272,10 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
+// FIXME: Use minimum subpatch size in viewport instead
 const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 32;
 const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 2.;
-// FIXME: only for debug
-// const MESH_COLOR_ERROR_TOLERANCE: f32 = 1. / 255.;
-const MESH_COLOR_ERROR_TOLERANCE: f32 = 1.;
+const MESH_COLOR_ERROR_TOLERANCE: f32 = 5. / 255.;
 const MESH_BASE_CLIP_INFLATION: f64 = 0.01;
 const MESH_MAXIMUM_INFLATION_BUCKET: usize = 8;
 
@@ -766,6 +772,7 @@ impl Render for List<Artboard> {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
+			let artboard_transform = DAffine2::from_translation(location);
 
 			let x = location.x.min(location.x + dimensions.x);
 			let y = location.y.min(location.y + dimensions.y);
@@ -790,7 +797,7 @@ impl Render for List<Artboard> {
 				"g",
 				// Group tag attributes
 				|attributes| {
-					let matrix = format_transform_matrix(DAffine2::from_translation(location));
+					let matrix = format_transform_matrix(artboard_transform);
 					if !matrix.is_empty() {
 						attributes.push(ATTR_TRANSFORM, matrix);
 					}
@@ -812,7 +819,9 @@ impl Render for List<Artboard> {
 				|render| {
 					let mut render_params = render_params.clone();
 					render_params.artboard_background = Some(background);
-					content.render_svg(render, &render_params);
+					render.with_transform(artboard_transform, |render| {
+						content.render_svg(render, &render_params);
+					});
 				},
 			);
 		}
@@ -940,7 +949,9 @@ impl Render for List<Graphic> {
 					}
 				},
 				|render| {
-					element.render_svg(render, render_params);
+					render.with_transform(transform, |render| {
+						element.render_svg(render, render_params);
+					});
 				},
 			);
 		}
@@ -2293,7 +2304,7 @@ impl Render for List<Gradient> {
 }
 
 impl Render for List<MeshGradient> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(mesh_gradient) = self.element(index) else { continue };
 			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
@@ -2302,13 +2313,11 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			// let error_to_viewport = DAffine2::from_scale(DVec2::splat(render_params.viewport_zoom)) * render_params.svg_parent_transform;
-
 			let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
 				evaluator.subdivide_patches_adaptive(
 					MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
 					mesh_transform,
-					mesh_transform,
+					render.transform,
 					MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
 					MESH_COLOR_ERROR_TOLERANCE,
 				)
@@ -2395,6 +2404,18 @@ impl Render for List<MeshGradient> {
 									attributes.push("height", paint_size.to_string());
 									attributes.push("fill", format!("url(#gt{unique_id})"));
 									attributes.push("mask", format!("url(#mm{shared_id}-{bucket})"));
+								});
+
+								// FIXME: For debug
+								render.leaf_tag("rect", |attributes| {
+									attributes.push("x", "0");
+									attributes.push("y", "0");
+									attributes.push("width", "1");
+									attributes.push("height", "1");
+									attributes.push("fill", "none");
+									attributes.push("stroke", "black");
+									attributes.push("stroke-width", "1");
+									attributes.push("vector-effect", "non-scaling-stroke");
 								});
 							},
 						);
@@ -2550,10 +2571,6 @@ impl Render for List<MeshGradient> {
 				scene.pop_layer();
 
 				// FIXME: debug render
-				if is_subpatch_flipped {
-					scene.fill(peniko::Fill::NonZero, local_to_scene, &peniko::Brush::Solid(AlphaColor::from_rgb8(0, 255, 0)), None, &paint_rect);
-				}
-
 				let mut outline_path = clip_rect.to_path(0.1);
 				outline_path.apply_affine(local_to_scene);
 				let (outline_stroke, outline_color) = get_outline_styles(render_params);

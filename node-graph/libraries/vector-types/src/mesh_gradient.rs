@@ -772,7 +772,7 @@ impl MeshGradientEvaluator {
 		&self,
 		maximum_subdivisions_per_patch_per_axis: usize,
 		mesh_transform: DAffine2,
-		error_to_viewport: DAffine2,
+		parent_to_viewport: DAffine2,
 		position_error_tolerance: f64,
 		color_error_tolerance: f32,
 	) -> Option<Vec<MeshSubpatch>> {
@@ -808,7 +808,7 @@ impl MeshGradientEvaluator {
 						let approximated_color = top_color.lerp(bottom_color, local_v as f32);
 
 						let position_error_vector = expected_vertex.position - approximated_position;
-						let position_error = error_to_viewport.transform_vector2(position_error_vector).length();
+						let position_error = parent_to_viewport.transform_vector2(position_error_vector).length();
 						let color_error = (Vec4::from_array(expected_vertex.gamma_color) - approximated_color).abs().max_element();
 						if !position_error.is_finite() || !color_error.is_finite() || position_error > position_error_tolerance || color_error > color_error_tolerance {
 							within_tolerance = false;
