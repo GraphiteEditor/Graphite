@@ -907,8 +907,12 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != passthrough_node {
 			node.implementation = passthrough_node;
 
-			// Connect layer node to the group below
-			node.inputs.drain(1..);
+			// Passthrough requires one value input; context-only nodes have none.
+			if node.inputs.is_empty() {
+				node.inputs.push(NodeInput::value(TaggedValue::None, false));
+			} else {
+				node.inputs.truncate(1);
+			}
 			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
 			return;
@@ -1645,6 +1649,66 @@ mod test {
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
 		ids.sort();
 		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain passthrough and values");
+	}
+
+	#[test]
+	fn flatten_hidden_zero_input_node_does_not_panic() {
+		// Regression test for #3629: hiding a context-only node (zero inputs)
+		// caused a panic from drain(1..) on an empty vec.
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [(
+				NodeId(1),
+				DocumentNode {
+					inputs: vec![],
+					visible: false,
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::animation::PointerPositionNode")),
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		network.populate_dependants();
+		network.flatten(NodeId(1));
+
+		let node = network.nodes.get(&NodeId(1)).expect("node should exist after flatten");
+		assert_eq!(
+			node.implementation,
+			DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
+			"hidden node should become passthrough"
+		);
+		assert_eq!(node.inputs.len(), 1, "passthrough should have exactly one input");
+	}
+
+	#[test]
+	fn flatten_hidden_multi_input_node_keeps_first() {
+		// Hiding a node with multiple inputs should keep only the first.
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [(
+				NodeId(1),
+				DocumentNode {
+					inputs: vec![
+						NodeInput::value(TaggedValue::None, false),
+						NodeInput::value(TaggedValue::F64(1.0), false),
+						NodeInput::value(TaggedValue::F64(2.0), false),
+					],
+					visible: false,
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::math::Vec2ValueNode")),
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		network.populate_dependants();
+		network.flatten(NodeId(1));
+
+		let node = network.nodes.get(&NodeId(1)).expect("node should exist after flatten");
+		assert_eq!(node.inputs.len(), 1, "hidden node should retain only first input");
 	}
 
 	// TODO: Write more tests
