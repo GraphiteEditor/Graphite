@@ -262,7 +262,7 @@ impl BorrowTree {
 	/// This ensures that no borrowed data can escape the node graph.
 	pub async fn eval_tagged_value<I>(&self, id: NodeId, input: I) -> Result<TaggedValue, String>
 	where
-		I: StaticType + 'static + Send + Sync,
+		I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe,
 	{
 		let (node, _path) = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
