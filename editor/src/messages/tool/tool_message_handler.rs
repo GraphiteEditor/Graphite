@@ -66,6 +66,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::ActivateToolText => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }),
 			ToolMessage::ActivateToolFill => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Fill }),
 			ToolMessage::ActivateToolGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Gradient }),
+			ToolMessage::ActivateToolMeshGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::MeshGradient }),
 
 			ToolMessage::ActivateToolPath => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }),
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
@@ -374,6 +375,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ActivateToolEyedropper,
 			ActivateToolFill,
 			ActivateToolGradient,
+			ActivateToolMeshGradient,
 
 			ActivateToolPath,
 			ActivateToolPen,

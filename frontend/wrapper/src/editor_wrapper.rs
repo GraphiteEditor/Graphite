@@ -707,6 +707,7 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = updateGradientStopColor)]
 	pub fn update_gradient_stop_color(&self, color: SRGBA8) {
 		self.dispatch(GradientToolMessage::UpdateStopColor { color: Color::from(color) });
+		self.dispatch(MeshGradientToolMessage::UpdateStopColor { color: Color::from(color) });
 	}
 
 	/// Start a new undo transaction for gradient stop color editing

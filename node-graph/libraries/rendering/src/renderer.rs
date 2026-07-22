@@ -16,7 +16,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2, Vec4};
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
@@ -26,7 +26,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, CubicBez, Join, ParamCurve, PathSeg, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -38,7 +38,6 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::{GradientSpreadMethod, MeshGradient, MeshSubpatch};
-use vector_types::vector::misc::point_to_dvec2;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2465,7 +2464,28 @@ impl Render for List<MeshGradient> {
 			for subpatch in subpatches {
 				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
 				let local_to_mesh = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
-				let local_to_scene = kurbo::Affine::new((parent_transform * local_to_mesh).to_cols_array());
+				let local_to_device = parent_transform * local_to_mesh;
+				let local_to_scene = kurbo::Affine::new(local_to_device.to_cols_array());
+				// Deshear the brush axes because Vello evaluates linear gradients from their transformed endpoints.
+				let inverse_local_to_device = if transform_is_invertible(local_to_device) {
+					local_to_device.inverse()
+				} else {
+					Default::default()
+				};
+				let horizontal_gradient_to_device = gradient_placement(local_to_device, GradientType::Linear);
+				let vertical_axis = local_to_device.matrix2.y_axis;
+				let vertical_band_normal = local_to_device.matrix2.x_axis.perp();
+				let vertical_line = if vertical_band_normal.length_squared() > 0. {
+					vertical_axis.project_onto(vertical_band_normal)
+				} else {
+					vertical_axis
+				};
+				let vertical_gradient_to_device = DAffine2 {
+					matrix2: DMat2::from_cols(vertical_line.perp(), vertical_line),
+					translation: local_to_device.translation,
+				};
+				let horizontal_brush_transform = kurbo::Affine::new((inverse_local_to_device * horizontal_gradient_to_device).to_cols_array());
+				let vertical_brush_transform = kurbo::Affine::new((inverse_local_to_device * vertical_gradient_to_device).to_cols_array());
 				let bucket = mesh_subpatch_inflation_bucket(&subpatch);
 				let (clip_min, clip_size, paint_min, paint_size) = mesh_inflation_values(bucket);
 				let clip_rect = kurbo::Rect::new(clip_min, clip_min, clip_min + clip_size, clip_min + clip_size);
@@ -2486,9 +2506,9 @@ impl Render for List<MeshGradient> {
 
 				// Composite both horizontal gradients first, then apply edge coverage once through the outer clip.
 				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &clip_rect);
-				scene.fill(peniko::Fill::NonZero, local_to_scene, &bottom_gradient, None, &paint_rect);
+				scene.fill(peniko::Fill::NonZero, local_to_scene, &bottom_gradient, Some(horizontal_brush_transform), &paint_rect);
 				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &paint_rect);
-				scene.fill(peniko::Fill::NonZero, local_to_scene, &mask_gradient, None, &paint_rect);
+				scene.fill(peniko::Fill::NonZero, local_to_scene, &mask_gradient, Some(vertical_brush_transform), &paint_rect);
 				scene.push_layer(
 					peniko::Fill::NonZero,
 					peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
@@ -2496,7 +2516,7 @@ impl Render for List<MeshGradient> {
 					local_to_scene,
 					&paint_rect,
 				);
-				scene.fill(peniko::Fill::NonZero, local_to_scene, &top_gradient, None, &paint_rect);
+				scene.fill(peniko::Fill::NonZero, local_to_scene, &top_gradient, Some(horizontal_brush_transform), &paint_rect);
 				scene.pop_layer();
 				scene.pop_layer();
 				scene.pop_layer();

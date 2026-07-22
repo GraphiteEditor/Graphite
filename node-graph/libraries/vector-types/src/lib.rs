@@ -3,6 +3,7 @@ extern crate log;
 
 pub mod gradient;
 pub mod math;
+pub mod mesh_gradient;
 pub mod subpath;
 pub mod vector;
 

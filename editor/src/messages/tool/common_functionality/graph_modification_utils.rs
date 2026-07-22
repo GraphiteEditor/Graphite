@@ -360,6 +360,17 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 	}
 }
 
+/// Try to find a "Mesh Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
+pub fn get_upstream_mesh_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
+
+	network_interface
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::mesh_gradient_value::IDENTIFIER)))
+}
+
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;

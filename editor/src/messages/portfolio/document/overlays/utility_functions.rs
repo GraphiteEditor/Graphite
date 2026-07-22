@@ -69,7 +69,7 @@ pub fn selected_segments_for_layer(vector: &Vector, state: &SelectedLayerState) 
 	selected_segments
 }
 
-fn overlay_bezier_handles(bezier: Bezier, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
+pub fn overlay_bezier_handles(bezier: Bezier, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
 	let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
 	let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 
