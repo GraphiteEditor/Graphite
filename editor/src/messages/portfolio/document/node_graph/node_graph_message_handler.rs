@@ -1193,7 +1193,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.begin_dragging {
 						self.begin_dragging = false;
 						if ipp.keyboard.get(Key::Alt as usize) {
-							responses.add(NodeGraphMessage::DuplicateSelectedNodes);
+							// Duplicate nodes inline within the existing PointerDown transaction.
+							// This means a completed Alt-drag is one undo step, and aborting (right-click / Escape)
+							// rolls back both the duplication and the move with a single plain AbortTransaction.
+							let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
+							let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
+							let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
+							let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+							responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+							responses.add(NodeGraphMessage::SelectedNodesSet {
+								nodes: new_ids.values().cloned().collect(),
+							});
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
