@@ -1,5 +1,5 @@
 use super::graph_modification_utils::merge_layers;
-use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
+use super::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments_for_layer;
@@ -562,7 +562,6 @@ impl ShapeState {
 		}
 	}
 
-	// Snap, returning a viewport delta
 	pub fn snap(
 		&self,
 		snap_manager: &mut SnapManager,
@@ -571,6 +570,8 @@ impl ShapeState {
 		input: &InputPreprocessorMessageHandler,
 		viewport: &ViewportMessageHandler,
 		previous_mouse: DVec2,
+		constraint: SnapConstraint,
+		accumulated_offset: DVec2,
 	) -> DVec2 {
 		let snap_data = SnapData::new_snap_cache(document, input, viewport, snap_cache);
 
@@ -596,7 +597,8 @@ impl ShapeState {
 				};
 
 				let Some(position) = selected.get_position(&vector) else { continue };
-				let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
+				let point_position = to_document.transform_point2(position);
+				let mut point = SnapCandidatePoint::new_source(point_position + mouse_delta, source);
 
 				if let Some(id) = selected.as_anchor() {
 					for neighbor in vector.connected_points(id) {
@@ -608,14 +610,42 @@ impl ShapeState {
 					}
 				}
 
-				let snapped = snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
+				let snapped = match constraint {
+					SnapConstraint::Line { origin, direction } => {
+						let projected_origin = origin + (point_position - origin).project_onto(direction);
+						let constraint = SnapConstraint::Line { origin: projected_origin, direction };
+						snap_manager.constrained_snap(&snap_data, &point, constraint, SnapTypeConfiguration::default())
+					}
+					SnapConstraint::Direction(direction) => {
+						let origin = point_position - accumulated_offset;
+						let constraint = SnapConstraint::Line { origin, direction };
+						snap_manager.constrained_snap(&snap_data, &point, constraint, SnapTypeConfiguration::default())
+					}
+					_ => snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default()),
+				};
+
 				if best_snapped.other_snap_better(&snapped) {
 					offset = snapped.snapped_point_document - point.document_point + mouse_delta;
 					best_snapped = snapped;
 				}
 			}
 		}
+		let is_snapped = best_snapped.is_snapped();
 		snap_manager.update_indicator(best_snapped);
+
+		// If no magnetic snap occurred but we have a constraint, force the constraint
+		if !is_snapped {
+			match constraint {
+				SnapConstraint::Direction(direction) => {
+					let constrained_total_offset = (accumulated_offset + mouse_delta).project_onto(direction);
+					offset = constrained_total_offset - accumulated_offset;
+				}
+				SnapConstraint::Line { direction, .. } if direction != DVec2::ZERO => {
+					offset = mouse_delta.project_onto(direction);
+				}
+				_ => {}
+			}
+		}
 		document.metadata().document_to_viewport.transform_vector2(offset)
 	}
 
