@@ -38,6 +38,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::{GradientSpreadMethod, MeshGradient, MeshSubpatch};
+use vello::peniko::color::AlphaColor;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -264,9 +265,11 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
-const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 8;
-const MESH_POSITION_ERROR_TOLERANCE: f64 = 0.25;
-const MESH_COLOR_ERROR_TOLERANCE: f32 = 1. / 255.;
+const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 32;
+const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 2.;
+// FIXME: only for debug
+// const MESH_COLOR_ERROR_TOLERANCE: f32 = 1. / 255.;
+const MESH_COLOR_ERROR_TOLERANCE: f32 = 1.;
 const MESH_BASE_CLIP_INFLATION: f64 = 0.01;
 const MESH_MAXIMUM_INFLATION_BUCKET: usize = 8;
 
@@ -2299,10 +2302,17 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let Some(subpatches) = mesh_gradient
-				.evaluator()
-				.and_then(|evaluator| evaluator.subdivide_patches_adaptive(MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS, mesh_transform, MESH_POSITION_ERROR_TOLERANCE, MESH_COLOR_ERROR_TOLERANCE))
-			else {
+			// let error_to_viewport = DAffine2::from_scale(DVec2::splat(render_params.viewport_zoom)) * render_params.svg_parent_transform;
+
+			let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
+				evaluator.subdivide_patches_adaptive(
+					MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
+					mesh_transform,
+					mesh_transform,
+					MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
+					MESH_COLOR_ERROR_TOLERANCE,
+				)
+			}) else {
 				continue;
 			};
 
@@ -2446,10 +2456,23 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let Some(subpatches) = mesh_gradient
-				.evaluator()
-				.and_then(|evaluator| evaluator.subdivide_patches_adaptive(MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS, mesh_transform, MESH_POSITION_ERROR_TOLERANCE, MESH_COLOR_ERROR_TOLERANCE))
-			else {
+			let viewport_zoom = if render_params.viewport_zoom.is_finite() && render_params.viewport_zoom > 0. {
+				render_params.viewport_zoom
+			} else {
+				1.
+			};
+
+			let error_to_viewport = DAffine2::from_scale(DVec2::splat(viewport_zoom)) * parent_transform;
+
+			let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
+				evaluator.subdivide_patches_adaptive(
+					MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
+					mesh_transform,
+					error_to_viewport,
+					MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
+					MESH_COLOR_ERROR_TOLERANCE,
+				)
+			}) else {
 				continue;
 			};
 
@@ -2464,6 +2487,11 @@ impl Render for List<MeshGradient> {
 			for subpatch in subpatches {
 				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
 				let local_to_mesh = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
+				let is_subpatch_flipped = local_to_mesh.matrix2.determinant() < 0.;
+				if is_subpatch_flipped {
+					continue;
+				}
+
 				let local_to_device = parent_transform * local_to_mesh;
 				let local_to_scene = kurbo::Affine::new(local_to_device.to_cols_array());
 				// Deshear the brush axes because Vello evaluates linear gradients from their transformed endpoints.
@@ -2520,6 +2548,16 @@ impl Render for List<MeshGradient> {
 				scene.pop_layer();
 				scene.pop_layer();
 				scene.pop_layer();
+
+				// FIXME: debug render
+				if is_subpatch_flipped {
+					scene.fill(peniko::Fill::NonZero, local_to_scene, &peniko::Brush::Solid(AlphaColor::from_rgb8(0, 255, 0)), None, &paint_rect);
+				}
+
+				let mut outline_path = clip_rect.to_path(0.1);
+				outline_path.apply_affine(local_to_scene);
+				let (outline_stroke, outline_color) = get_outline_styles(render_params);
+				scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
 			}
 
 			if item_layer {

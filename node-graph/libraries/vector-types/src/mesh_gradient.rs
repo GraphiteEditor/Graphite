@@ -767,51 +767,12 @@ impl MeshGradientEvaluator {
 		self.patches[patch_index].eval_color(u, v)
 	}
 
-	/// Subdivide all patches in a mesh into parallelogram subpatches so to renderable by two linear gradients with mask.
-	/// Returns subpatchs in row-major.
-	pub fn subdivide_patches(&self, subdivisions_per_patch_per_axis: usize, mesh_transform: DAffine2) -> Option<Vec<MeshSubpatch>> {
-		let count = subdivisions_per_patch_per_axis;
-		if count == 0 {
-			return None;
-		}
-
-		let capacity = self.patches.len().checked_mul(count)?.checked_mul(count)?;
-		let mut subpatches = Vec::with_capacity(capacity);
-
-		for patch in &self.patches {
-			let evaluate_row = |row: usize| -> Vec<MeshSubpatchVertex> {
-				let v = row as f64 / count as f64;
-
-				(0..=count)
-					.map(|column| {
-						let u = column as f64 / count as f64;
-						patch.eval_vertex(u, v, mesh_transform)
-					})
-					.collect()
-			};
-
-			// Reusing the previous bottom row as a current top row to prevent duplicated evaluation on the same subpatch vertices.
-			let mut top_row = evaluate_row(0);
-			for row in 0..count {
-				let bottom_row = evaluate_row(row + 1);
-				for column in 0..count {
-					subpatches.push(MeshSubpatch {
-						corners: [top_row[column], top_row[column + 1], bottom_row[column], bottom_row[column + 1]],
-					});
-				}
-
-				top_row = bottom_row;
-			}
-		}
-
-		Some(subpatches)
-	}
-
 	/// Recursively subdivide only the regions that do not approximate the source mesh within the given tolerances.
 	pub fn subdivide_patches_adaptive(
 		&self,
 		maximum_subdivisions_per_patch_per_axis: usize,
 		mesh_transform: DAffine2,
+		error_to_viewport: DAffine2,
 		position_error_tolerance: f64,
 		color_error_tolerance: f32,
 	) -> Option<Vec<MeshSubpatch>> {
@@ -839,14 +800,16 @@ impl MeshGradientEvaluator {
 				let mut within_tolerance = true;
 				'error_samples: for &local_v in &samples {
 					for &local_u in &samples {
-						let vertex = patch.eval_vertex(u_start + local_u * stride, v_start + local_v * stride, mesh_transform);
+						let expected_vertex = patch.eval_vertex(u_start + local_u * stride, v_start + local_v * stride, mesh_transform);
+						// Approximiated position/color derived by bilerp, which simulates the values in the rendered parallelogram with two linear gradients
 						let approximated_position = top_left.position + (top_right.position - top_left.position) * local_u + (bottom_left.position - top_left.position) * local_v;
 						let top_color = top_left_color.lerp(top_right_color, local_u as f32);
 						let bottom_color = bottom_left_color.lerp(bottom_right_color, local_u as f32);
 						let approximated_color = top_color.lerp(bottom_color, local_v as f32);
 
-						let position_error = vertex.position.distance(approximated_position);
-						let color_error = (Vec4::from_array(vertex.gamma_color) - approximated_color).abs().max_element();
+						let position_error_vector = expected_vertex.position - approximated_position;
+						let position_error = error_to_viewport.transform_vector2(position_error_vector).length();
+						let color_error = (Vec4::from_array(expected_vertex.gamma_color) - approximated_color).abs().max_element();
 						if !position_error.is_finite() || !color_error.is_finite() || position_error > position_error_tolerance || color_error > color_error_tolerance {
 							within_tolerance = false;
 							break 'error_samples;
@@ -876,7 +839,7 @@ impl MeshGradientEvaluator {
 impl RenderComplexity for MeshGradient {
 	fn render_complexity(&self) -> usize {
 		// FIXME: implement proper complexity calc
-		return 10000000;
+		10000000
 	}
 }
 
