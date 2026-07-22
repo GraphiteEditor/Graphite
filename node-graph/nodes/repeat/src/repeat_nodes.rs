@@ -214,13 +214,13 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 			}
 		};
 
-		let range = points_element.point_domain.positions().iter().enumerate();
+		let range = points_element.point_domain.positions().iter();
 		if reverse {
-			for (index, &point) in range.rev() {
+			for (index, &point) in range.rev().enumerate() {
 				iteration(index, point).await;
 			}
 		} else {
-			for (index, &point) in range {
+			for (index, &point) in range.enumerate() {
 				iteration(index, point).await;
 			}
 		}
