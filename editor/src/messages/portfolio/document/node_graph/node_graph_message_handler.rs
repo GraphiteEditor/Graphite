@@ -13,7 +13,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, LayerPosition, NodeNetworkInterface, NodePosition, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
+	self, FlowType, InputConnector, LayerPosition, NodeNetworkInterface, NodePosition, NodeTypePersistentMetadata, OutputConnector, Previewing,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -780,7 +780,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Get network path of node overlay
 				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-					log::error!("Could not get network metadata in PasteNodes");
+					log::error!("Could not get network metadata in InsertNodes");
 					return;
 				};
 
@@ -792,12 +792,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.inverse()
 					.transform_point2(cursor_viewport_location);
 
-				// Sort the selected nodes by the new id so that we know which node was selected first
-				data.sort_by_key(|a| a.0);
-
 				// Get position of the first node selected for copying that has an absolute position. Calculate paste offset from the cursor
 				// If no nodes with absolute position, then there is no offset from cursor
-				let copy_position_opt = data.iter().find_map(|(_, template)| match &template.persistent_node_metadata.node_type_metadata {
+				let copy_position_opt = nodes.iter().find_map(|(_, template)| match &template.persistent_node_metadata.node_type_metadata {
 					NodeTypePersistentMetadata::Layer(layer_metadata) => {
 						if let LayerPosition::Absolute(position) = &layer_metadata.position {
 							Some(position)

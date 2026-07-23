@@ -330,6 +330,18 @@ impl EditorTestUtils {
 		.await;
 		node_id
 	}
+
+	pub async fn create_node_by_name_and_coordinates(&mut self, node_type: DefinitionIdentifier, xy: (i32, i32)) -> NodeId {
+		let node_id = NodeId::new();
+		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(node_id),
+			node_type,
+			xy: Some(xy),
+			add_transaction: true,
+		})
+		.await;
+		node_id
+	}
 }
 
 pub trait FrontendMessageTestUtils {
