@@ -1126,7 +1126,7 @@ impl Fsm for SelectToolFsmState {
 				if let Some(intersect) = document.click(input, viewport) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
-						NestedSelectionBehavior::Deepest => {}
+						NestedSelectionBehavior::Deepest => {edit_layer_deepest_manipulation(intersect, &document.network_interface, responses)}
 					}
 				}
 				self
@@ -1715,7 +1715,6 @@ impl Fsm for SelectToolFsmState {
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
 					if selected_layers.next().is_none() && document.metadata().is_text_layer(layer) {
-						debug!("THIS GOT CALLED");
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -2075,10 +2074,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 /// Called when a double click on a layer in deep select mode.
 /// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
-	if network_interface.document_metadata().is_text_layer(layer) {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
-		responses.add(TextToolMessage::EditSelected);
-	}
+	unimplemented!();
 }
 
 pub fn extend_lasso(lasso_polygon: &mut Vec<DVec2>, point: DVec2) {
