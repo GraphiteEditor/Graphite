@@ -4159,15 +4159,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// When changing a NodeInput::Node to a NodeInput::Node, the input should first be disconnected to ensure proper side effects
-		if (matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. })) {
-			self.disconnect_input(input_connector, network_path);
-			self.set_input(input_connector, new_input, network_path);
-			return;
-		}
-
 		// Reject a change that would create a cycle before any side effects run (only Node connections can create cycles).
-		// The new input is swapped in just for this test, then restored so the layout logic below sees the unmodified network.
+		// The new input is swapped in just for this test, then restored so the disconnect and layout logic below sees the unmodified network.
 		if matches!(new_input, NodeInput::Node { .. }) {
 			let Some(network) = self.network_mut(network_path) else {
 				log::error!("Could not get nested network in set_input");
@@ -4195,6 +4188,13 @@ impl NodeNetworkInterface {
 			if !is_acyclic {
 				return;
 			}
+		}
+
+		// When changing a NodeInput::Node to a NodeInput::Node, the input should first be disconnected to ensure proper side effects
+		if (matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. })) {
+			self.disconnect_input(input_connector, network_path);
+			self.set_input(input_connector, new_input, network_path);
+			return;
 		}
 
 		// If the previous input is connected to a chain node, then set all upstream chain nodes to absolute position
