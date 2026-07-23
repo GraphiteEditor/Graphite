@@ -658,6 +658,40 @@ mod editor_commands {
 		}
 		.into()
 	}
+
+	fn create_guide_line(id: u64, direction: String, mouse_x: f64, mouse_y: f64) -> Message {
+		use editor::messages::portfolio::document::guide_message::GuideLineMessage;
+		use editor::messages::portfolio::document::utility_types::guide::{GuideLineDirection, GuideLineId};
+		let direction = match direction.as_str() {
+			"Horizontal" => GuideLineDirection::Horizontal,
+			"Vertical" => GuideLineDirection::Vertical,
+			other => panic!("Invalid guide line direction: {other:?}"),
+		};
+		GuideLineMessage::CreateGuideLine {
+			id: GuideLineId::from_raw(id),
+			direction,
+			mouse_x,
+			mouse_y,
+		}
+		.into()
+	}
+
+	fn move_guide_line(id: u64, mouse_x: f64, mouse_y: f64) -> Message {
+		use editor::messages::portfolio::document::guide_message::GuideLineMessage;
+		use editor::messages::portfolio::document::utility_types::guide::GuideLineId;
+		GuideLineMessage::MoveGuideLine {
+			id: GuideLineId::from_raw(id),
+			mouse_x,
+			mouse_y,
+		}
+		.into()
+	}
+
+	fn delete_guide_line(id: u64) -> Message {
+		use editor::messages::portfolio::document::guide_message::GuideLineMessage;
+		use editor::messages::portfolio::document::utility_types::guide::GuideLineId;
+		GuideLineMessage::DeleteGuideLine { id: GuideLineId::from_raw(id) }.into()
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
