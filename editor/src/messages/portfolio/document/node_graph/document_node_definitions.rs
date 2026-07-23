@@ -1221,7 +1221,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Split Vec2",
-			category: "Math: Vector",
+			category: "Math: Vec2",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
