@@ -1294,11 +1294,23 @@ fn cross_product(
 
 /// Calculates the angle swept between two vec2s.
 ///
-/// The value is always positive and ranges from 0° (both vec2s point the same direction) to 180° (both vec2s point opposite directions).
+/// The angle ranges from -180° to 180° (or -π to π radians) and its sign gives the sweep direction from the "Direction From" input to the "Direction To" input: positive for clockwise, negative for counterclockwise, as drawn in the viewport and matching the direction convention of the Transform node's rotation.
 #[node_macro::node(category("Math: Vec2"))]
-fn angle_between(_: impl Ctx, vector_a: DVec2, vector_b: DVec2, radians: bool) -> f64 {
-	let dot_product = vector_a.normalize_or_zero().dot(vector_b.normalize_or_zero());
-	let angle = dot_product.acos();
+fn angle_between(
+	_: impl Ctx,
+	/// The direction the angle is measured from.
+	direction_from: DVec2,
+	/// The direction the angle is measured to.
+	#[default(1., 0.)]
+	direction_to: DVec2,
+	/// Whether the resulting angle should be given in radians instead of degrees.
+	radians: bool,
+) -> f64 {
+	if direction_from == DVec2::ZERO || direction_to == DVec2::ZERO {
+		return 0.;
+	}
+
+	let angle = direction_from.angle_to(direction_to);
 	if radians { angle } else { angle.to_degrees() }
 }
 
@@ -1429,6 +1441,21 @@ mod test {
 		assert_eq!(lerp_between(3., f64::INFINITY, 1.), f64::INFINITY);
 		assert!(lerp_between(-0., 7., 0.).is_sign_negative());
 		assert!(lerp_between(5., -0., 1.).is_sign_negative());
+	}
+
+	#[test]
+	pub fn angle_between_signed() {
+		let right = DVec2::new(1., 0.);
+		let down = DVec2::new(0., 1.);
+		let angle = |a, b, radians| angle_between(&(), a, b, radians);
+		assert_eq!(angle(right, down, false), 90.);
+		assert_eq!(angle(down, right, false), -90.);
+	}
+
+	#[test]
+	pub fn angle_between_zero_vector() {
+		let (zero, right) = (DVec2::ZERO, DVec2::new(1., 0.));
+		assert_eq!(angle_between(&(), zero, right, false), 0.);
 	}
 
 	#[test]
