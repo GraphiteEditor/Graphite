@@ -747,8 +747,6 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(state, TextToolMessage::EditSelected) => {
-				debug!("Editing selected on 750");
-				eprintln!("Editing selected on 750");
 				if let Some(layer) = can_edit_selected(document) {
 					tool_data.start_editing_layer(layer, state, document, fonts, responses);
 					return TextToolFsmState::Editing;
@@ -757,8 +755,6 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				debug!("Ready and drag start on 758");
-				eprintln!("Read and drag start on 758");
 				tool_data.resize.start(document, input, viewport);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 				tool_data.drag_start = input.mouse.position;
@@ -815,8 +811,6 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
 
-				debug!("Ready and pointer move on line 814");
-				eprintln!("Ready and pointer move on line 814");
 				// This ensures the cursor only changes if a layer is selected
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -850,7 +844,6 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				debug!("Dragging and pointer Move on 853");
 				if let Some(dragging_layer) = &tool_data.layer_dragging {
 					let delta = input.mouse.position - tool_data.drag_current;
 					tool_data.drag_current = input.mouse.position;
@@ -875,7 +868,6 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				debug!("Resizing bounds and pointer move on 878");
 				if let Some(bounds) = &mut tool_data.bounding_box_manager
 					&& let Some(movement) = &mut bounds.selected_edges
 				{
@@ -1000,24 +992,18 @@ impl Fsm for TextToolFsmState {
 				let top_left = start.min(end);
 				let bottom_right = start.max(end);
 
-				debug!("start = {:?}", start);
-				debug!("end   = {:?}", end);
 				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
 				// Check if the user has clicked (no dragging) on some existing text
 				if !has_dragged && let Some(clicked_text_layer_path) = 
 				TextToolData::check_click(document, input, fonts, responses) {
-					debug!("Editing mode on");
-					eprintln!("Editing mode on");
 					tool_data.start_editing_layer(clicked_text_layer_path, self, document, fonts, responses);
 					return TextToolFsmState::Editing;
 				}
 				
 				// Otherwise create some new text. The window-aligned transform is in viewport space, so the editing overlay (a screen-space CSS matrix) carries the zoom.
-				debug!("otherwise mode on");
-				eprintln!("otherwise mode on");
 
-				// this "constraint" is the bounding box, this is what im concerned with 
+				// this "constraint" is the bounding box, this is what im concerned with FOUND 
 				// let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
 				let constraint_size =
     has_dragged.then_some((bottom_right - top_left) / viewport_zoom(document));
@@ -1071,7 +1057,6 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::DragStart) => {
 				if tool_data.clicked_outside_textbox(document, input, fonts, responses) {
 					responses.add(FrontendMessage::TriggerTextCommit);
-					debug!("clicked outside text box");
 				}
 
 				TextToolFsmState::Ready
