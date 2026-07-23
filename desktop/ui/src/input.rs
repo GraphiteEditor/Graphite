@@ -20,6 +20,7 @@ pub(crate) enum InputEvent {
 	Key(KeyData),
 }
 
+
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MouseData {
 	pub(crate) x: i32,

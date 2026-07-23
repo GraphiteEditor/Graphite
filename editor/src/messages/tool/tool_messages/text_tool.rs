@@ -471,6 +471,27 @@ struct TextToolData {
 }
 
 impl TextToolData {
+
+	// thingy to check if clicked outside textbox
+	// another one is set_editing 2 functions below 
+	fn clicked_outside_textbox(
+        &self,
+        document: &DocumentMessageHandler,
+        input: &InputPreprocessorMessageHandler,
+        fonts: &FontsMessageHandler,
+        responses: &mut VecDeque<Message>,
+    ) -> bool {
+        let mouse = input.mouse.position;
+
+        let quad =
+            document.metadata().transform_to_viewport(self.layer)
+            * text_bounding_box(self.layer, document, fonts, responses);
+
+        !quad.contains(mouse)
+    }
+
+
+
 	fn delete_empty_layer(&mut self, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Remove the editable textbox UI first
 		self.set_editing(false, fonts, responses);
@@ -726,6 +747,8 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(state, TextToolMessage::EditSelected) => {
+				debug!("Editing selected on 750");
+				eprintln!("Editing selected on 750");
 				if let Some(layer) = can_edit_selected(document) {
 					tool_data.start_editing_layer(layer, state, document, fonts, responses);
 					return TextToolFsmState::Editing;
@@ -734,6 +757,8 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
+				debug!("Ready and drag start on 758");
+				eprintln!("Read and drag start on 758");
 				tool_data.resize.start(document, input, viewport);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 				tool_data.drag_start = input.mouse.position;
@@ -789,6 +814,9 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
+
+				debug!("Ready and pointer move on line 814");
+				eprintln!("Ready and pointer move on line 814");
 				// This ensures the cursor only changes if a layer is selected
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -822,6 +850,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+				debug!("Dragging and pointer Move on 853");
 				if let Some(dragging_layer) = &tool_data.layer_dragging {
 					let delta = input.mouse.position - tool_data.drag_current;
 					tool_data.drag_current = input.mouse.position;
@@ -846,6 +875,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
+				debug!("Resizing bounds and pointer move on 878");
 				if let Some(bounds) = &mut tool_data.bounding_box_manager
 					&& let Some(movement) = &mut bounds.selected_edges
 				{
@@ -865,6 +895,9 @@ impl Fsm for TextToolFsmState {
 						points: &mut tool_data.snap_candidates,
 						snap_data: SnapData::ignore(document, input, viewport, &selected),
 					});
+
+					
+					// This seems to be the part of code im concerned with btw
 
 					let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, constrain, snap);
 					// Normalize so the size is always positive
@@ -963,19 +996,34 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Placing, TextToolMessage::DragStop) => {
 				let [start, end] = tool_data.cached_resize_bounds;
+
+				let top_left = start.min(end);
+				let bottom_right = start.max(end);
+
+				debug!("start = {:?}", start);
+				debug!("end   = {:?}", end);
 				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
 				// Check if the user has clicked (no dragging) on some existing text
-				if !has_dragged && let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, fonts, responses) {
+				if !has_dragged && let Some(clicked_text_layer_path) = 
+				TextToolData::check_click(document, input, fonts, responses) {
+					debug!("Editing mode on");
+					eprintln!("Editing mode on");
 					tool_data.start_editing_layer(clicked_text_layer_path, self, document, fonts, responses);
 					return TextToolFsmState::Editing;
 				}
-
+				
 				// Otherwise create some new text. The window-aligned transform is in viewport space, so the editing overlay (a screen-space CSS matrix) carries the zoom.
-				let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
+				debug!("otherwise mode on");
+				eprintln!("otherwise mode on");
+
+				// this "constraint" is the bounding box, this is what im concerned with 
+				// let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
+				let constraint_size =
+    has_dragged.then_some((bottom_right - top_left) / viewport_zoom(document));
 				let editing_text = EditingText {
 					text: String::new(),
-					transform: window_aligned_transform(document, start, DVec2::ONE),
+					transform: window_aligned_transform(document, top_left, DVec2::ONE),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
 						letter_spacing: tool_options.letter_spacing,
@@ -1019,6 +1067,15 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Editing
 			}
+
+			(TextToolFsmState::Editing, TextToolMessage::DragStart) => {
+				if tool_data.clicked_outside_textbox(document, input, fonts, responses) {
+					responses.add(FrontendMessage::TriggerTextCommit);
+					debug!("clicked outside text box");
+				}
+
+				TextToolFsmState::Ready
+			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
 				tool_data.new_text = new_text;
 
@@ -1042,6 +1099,8 @@ impl Fsm for TextToolFsmState {
 					TextToolFsmState::Editing
 				}
 			}
+
+			// why does something called "updateBounds" change text instead of changing borders
 			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
 				tool_data.new_text = new_text;
 				responses.add(OverlaysMessage::Draw);
