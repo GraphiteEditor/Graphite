@@ -13,7 +13,7 @@ use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
 
 /// The struct that stores the context for the maths parser.
@@ -134,11 +134,52 @@ fn multiply<A: Mul<B>, B>(
 	Item::from_parts(multiplier * multiplicand.into_element(), attributes)
 }
 
+pub trait SafeDivide<Rhs = Self> {
+	type Output;
+	fn safe_divide(self, denominator: Rhs) -> Self::Output;
+}
+impl SafeDivide for f64 {
+	type Output = f64;
+	fn safe_divide(self, denominator: f64) -> f64 {
+		if denominator == 0. { 0. } else { self / denominator }
+	}
+}
+impl SafeDivide for f32 {
+	type Output = f32;
+	fn safe_divide(self, denominator: f32) -> f32 {
+		if denominator == 0. { 0. } else { self / denominator }
+	}
+}
+impl SafeDivide for u32 {
+	type Output = u32;
+	fn safe_divide(self, denominator: u32) -> u32 {
+		self.checked_div(denominator).unwrap_or(0)
+	}
+}
+impl SafeDivide for DVec2 {
+	type Output = DVec2;
+	fn safe_divide(self, denominator: DVec2) -> DVec2 {
+		DVec2::new(self.x.safe_divide(denominator.x), self.y.safe_divide(denominator.y))
+	}
+}
+impl SafeDivide<f64> for DVec2 {
+	type Output = DVec2;
+	fn safe_divide(self, denominator: f64) -> DVec2 {
+		DVec2::new(self.x.safe_divide(denominator), self.y.safe_divide(denominator))
+	}
+}
+impl SafeDivide<DVec2> for f64 {
+	type Output = DVec2;
+	fn safe_divide(self, denominator: DVec2) -> DVec2 {
+		DVec2::new(self.safe_divide(denominator.x), self.safe_divide(denominator.y))
+	}
+}
+
 /// The division operation (`÷`) calculates the quotient of two scalar numbers or vectors.
 ///
-/// Produces 0 if the denominator is 0.
+/// Produces 0 for any division by 0. With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn divide<A: Div<B> + Default + PartialEq, B: Default + PartialEq>(
+fn divide<A: SafeDivide<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
 	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
@@ -147,15 +188,10 @@ fn divide<A: Div<B> + Default + PartialEq, B: Default + PartialEq>(
 	#[default(1.)]
 	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
 	denominator: Item<B>,
-) -> Item<<A as Div<B>>::Output>
-where
-	<A as Div<B>>::Output: Default,
-{
+) -> Item<<A as SafeDivide<B>>::Output> {
 	let (numerator, attributes) = numerator.into_parts();
-	let denominator = denominator.into_element();
 
-	let result = if denominator == B::default() { <A as Div<B>>::Output::default() } else { numerator / denominator };
-	Item::from_parts(result, attributes)
+	Item::from_parts(numerator.safe_divide(denominator.into_element()), attributes)
 }
 
 /// The reciprocal operation (`1/x`) calculates the multiplicative inverse of a number.
@@ -266,7 +302,7 @@ fn logarithm<T: num_traits::float::Float>(
 		value.log2()
 	} else if base == T::from(10.).unwrap() {
 		value.log10()
-	} else if base - T::from(std::f64::consts::E).unwrap() < T::epsilon() * T::from(1e6).unwrap() {
+	} else if (base - T::from(std::f64::consts::E).unwrap()).abs() < T::epsilon() * T::from(1e6).unwrap() {
 		value.ln()
 	} else {
 		value.log(base)
@@ -1249,6 +1285,12 @@ mod test {
 	#[test]
 	pub fn divide_vectors() {
 		assert_eq!(super::divide((), Item::new_from_element(DVec2::ONE), Item::new_from_element(2_f64)).into_element(), DVec2::ONE / 2.);
+	}
+
+	#[test]
+	pub fn divide_vector_by_partially_zero_vector() {
+		let (numerator, denominator) = (Item::new_from_element(DVec2::new(1., 2.)), Item::new_from_element(DVec2::new(2., 0.)));
+		assert_eq!(super::divide((), numerator, denominator).into_element(), DVec2::new(0.5, 0.));
 	}
 
 	#[test]
