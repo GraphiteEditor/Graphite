@@ -2,11 +2,13 @@
 	"image": "mcr.microsoft.com/devcontainers/base:debian",
 	"features": {
 		"ghcr.io/devcontainers/features/rust:1": {
-			"profile": "default"
+			"profile": "default",
+			"targets": "wasm32-unknown-unknown"
 		},
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
-	"onCreateCommand": "cargo install cargo-about && cargo install -f wasm-bindgen-cli@0.2.121",
+	// NOTE: Keep this in sync with WASM_BINDGEN_CLI_VERSION and CARGO_ABOUT_VERSION in `.github/workflows/build.yml`
+	"onCreateCommand": "curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && cargo binstall --no-confirm --force cargo-about@0.9.0 wasm-bindgen-cli@0.2.121",
 	"customizations": {
 		"vscode": {
 			// NOTE: Keep this in sync with `.vscode/extensions.json`
@@ -16,14 +18,16 @@
 				"tamasfe.even-better-toml",
 				// Web
 				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
 				"svelte.svelte-vscode",
 				"vitaliymaz.vscode-svg-previewer",
 				// Code quality
 				"wayou.vscode-todo-highlight",
 				"streetsidesoftware.code-spell-checker",
-				// Helpful
+				// Git
 				"mhutchie.git-graph",
 				"qezhu.gitlink",
+				// Helpful
 				"wmaurer.change-case"
 			]
 		}
