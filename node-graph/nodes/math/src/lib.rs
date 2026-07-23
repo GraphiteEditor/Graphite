@@ -1473,15 +1473,28 @@ fn cross_product(
 	Item::from_parts(value.perp_dot(*other_value.element()), attributes)
 }
 
-/// Calculates the angle swept between two vectors.
+/// Calculates the angle swept between two vec2s.
 ///
-/// The value is always positive and ranges from 0° (both vectors point the same direction) to 180° (both vectors point opposite directions).
+/// The angle ranges from -180° to 180° (or -π to π radians) and its sign gives the sweep direction from the "Direction From" input to the "Direction To" input: positive for clockwise, negative for counterclockwise, as drawn in the viewport and matching the direction convention of the Transform node's rotation.
 #[node_macro::node(category("Math: Vec2"))]
-fn angle_between(_: impl Ctx, vector_a: Item<DVec2>, vector_b: Item<DVec2>, radians: Item<bool>) -> Item<f64> {
-	let (vector_a, attributes) = vector_a.into_parts();
+fn angle_between(
+	_: impl Ctx,
+	/// The direction the angle is measured from.
+	direction_from: Item<DVec2>,
+	/// The direction the angle is measured to.
+	#[default(1., 0.)]
+	direction_to: Item<DVec2>,
+	/// Whether the resulting angle should be given in radians instead of degrees.
+	radians: Item<bool>,
+) -> Item<f64> {
+	let (direction_from, attributes) = direction_from.into_parts();
+	let direction_to = *direction_to.element();
 
-	let dot_product = vector_a.normalize_or_zero().dot(vector_b.element().normalize_or_zero());
-	let angle = dot_product.acos();
+	if direction_from == DVec2::ZERO || direction_to == DVec2::ZERO {
+		return Item::from_parts(0., attributes);
+	}
+
+	let angle = direction_from.angle_to(direction_to);
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -1651,6 +1664,21 @@ mod test {
 		assert_eq!(lerp_between(3., f64::INFINITY, 1.), f64::INFINITY);
 		assert!(lerp_between(-0., 7., 0.).is_sign_negative());
 		assert!(lerp_between(5., -0., 1.).is_sign_negative());
+	}
+
+	#[test]
+	pub fn angle_between_signed() {
+		let right = DVec2::new(1., 0.);
+		let down = DVec2::new(0., 1.);
+		let angle = |a, b, radians| angle_between((), Item::new_from_element(a), Item::new_from_element(b), Item::new_from_element(radians)).into_element();
+		assert_eq!(angle(right, down, false), 90.);
+		assert_eq!(angle(down, right, false), -90.);
+	}
+
+	#[test]
+	pub fn angle_between_zero_vector() {
+		let (zero, right) = (Item::new_from_element(DVec2::ZERO), Item::new_from_element(DVec2::new(1., 0.)));
+		assert_eq!(angle_between((), zero, right, Item::new_from_element(false)).into_element(), 0.);
 	}
 
 	#[test]
