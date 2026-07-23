@@ -173,7 +173,16 @@
 	};
 
 	function isGuideEditor(x: unknown): x is GuideEditor {
-		return true;
+		return (
+			typeof x === "object" &&
+			x !== null &&
+			"createGuideLine" in x &&
+			typeof (x as GuideEditor).createGuideLine === "function" &&
+			"moveGuideLine" in x &&
+			typeof (x as GuideEditor).moveGuideLine === "function" &&
+			"deleteGuideLine" in x &&
+			typeof (x as GuideEditor).deleteGuideLine === "function"
+		);
 	}
 
 	// Access the underlying EditorHandle for guide-specific methods
@@ -688,6 +697,14 @@
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
 		subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
+
+		// Cancel any in-progress guide drag so global window listeners don't leak
+		if (draggingGuideId !== undefined) {
+			const editorHandle = getEditorHandle();
+			if (isGuideEditor(editorHandle)) editorHandle.deleteGuideLine(draggingGuideId);
+			draggingGuideId = undefined;
+			draggingGuideDirection = undefined;
+		}
 	});
 </script>
 
