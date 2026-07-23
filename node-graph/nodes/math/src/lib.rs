@@ -84,7 +84,7 @@ fn math<T: num_traits::float::Float>(
 	Item::from_parts(result, attributes)
 }
 
-/// The addition operation (`+`) calculates the sum of two scalar numbers or vectors.
+/// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn add<A: Add<B>, B>(
 	_: impl Ctx,
@@ -100,7 +100,7 @@ fn add<A: Add<B>, B>(
 	Item::from_parts(augend + addend.into_element(), attributes)
 }
 
-/// The subtraction operation (`-`) calculates the difference between two scalar numbers or vectors.
+/// The subtraction operation (`-`) calculates the difference between two scalar numbers or vec2s.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<A: Sub<B>, B>(
 	_: impl Ctx,
@@ -116,7 +116,7 @@ fn subtract<A: Sub<B>, B>(
 	Item::from_parts(minuend - subtrahend.into_element(), attributes)
 }
 
-/// The multiplication operation (`×`) calculates the product of two scalar numbers, vectors, or transforms.
+/// The multiplication operation (`×`) calculates the product of two scalar numbers, vec2s, or transforms.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<A: Mul<B>, B>(
 	_: impl Ctx,
@@ -174,7 +174,7 @@ impl SafeDivide<DVec2> for f64 {
 	}
 }
 
-/// The division operation (`÷`) calculates the quotient of two scalar numbers or vectors.
+/// The division operation (`÷`) calculates the quotient of two scalar numbers or vec2s.
 ///
 /// Produces 0 for any division by 0. With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
@@ -227,7 +227,7 @@ fn reciprocal<T: Componentwise>(
 	Item::from_parts(value.componentwise(|value| if value == 0. { 0. } else { 1. / value }), attributes)
 }
 
-/// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vectors.
+/// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vec2s.
 ///
 /// The sign of the result shares the sign of the numerator unless *Always Positive* is enabled.
 #[node_macro::node(category("Math: Arithmetic"))]
@@ -639,6 +639,59 @@ fn remap<U: num_traits::float::Float>(
 	Item::from_parts(result, attributes)
 }
 
+trait Lerp {
+	fn lerp(self, end: Self, factor: f64) -> Self;
+}
+impl Lerp for f64 {
+	fn lerp(self, end: Self, factor: f64) -> Self {
+		self * (1. - factor) + end * factor
+	}
+}
+impl Lerp for f32 {
+	fn lerp(self, end: Self, factor: f64) -> Self {
+		(self as f64 * (1. - factor) + end as f64 * factor) as f32
+	}
+}
+impl Lerp for DVec2 {
+	fn lerp(self, end: Self, factor: f64) -> Self {
+		self * (1. - factor) + end * factor
+	}
+}
+
+/// Linearly interpolates between the start and end values, where a factor of 0 gives the start value, 1 gives the end value, and 0.5 gives their midpoint.
+///
+/// With vec2 inputs, this traces the straight line path between the two points.
+#[node_macro::node(category("Math: Numeric"))]
+fn lerp<T: Lerp>(
+	_: impl Ctx,
+	/// The value produced when the factor is 0.
+	#[implementations(f64, f32, DVec2)]
+	start: Item<T>,
+	/// The value produced when the factor is 1.
+	#[default(1.)]
+	#[implementations(f64, f32, DVec2)]
+	end: Item<T>,
+	/// The mix between the start (at 0) and end (at 1) values.
+	#[default(0.5)]
+	factor: Item<f64>,
+	/// Whether to constrain the factor within 0 to 1, preventing extrapolation beyond the start and end values.
+	#[default(true)]
+	clamped: Item<bool>,
+) -> Item<T> {
+	let (start, attributes) = start.into_parts();
+	let factor = if *clamped.element() { factor.element().clamp(0., 1.) } else { *factor.element() };
+
+	// Exact endpoint factors pass the endpoint through untouched, since the unused operand would otherwise contaminate the weighted sum (NaN or infinity times 0 is NaN)
+	let result = if factor == 0. {
+		start
+	} else if factor == 1. {
+		end.into_element()
+	} else {
+		start.lerp(end.into_element(), factor)
+	};
+	Item::from_parts(result, attributes)
+}
+
 /// The random function (`rand`) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
 fn random(
@@ -767,6 +820,30 @@ fn absolute_value<T: AbsoluteValue>(
 	let (value, attributes) = value.into_parts();
 
 	Item::from_parts(value.abs(), attributes)
+}
+
+/// The sign function (`sign`) reports whether an input value is positive (1), negative (-1), or zero (0).
+///
+/// With a vec2 input, this applies separately to the X and Y components.
+#[node_macro::node(category("Math: Numeric"))]
+fn sign<T: Componentwise>(
+	_: impl Ctx,
+	/// The number whose sign is checked.
+	#[implementations(f64, f32, DVec2)]
+	value: Item<T>,
+) -> Item<T> {
+	let (value, attributes) = value.into_parts();
+
+	let result = value.componentwise(|value| {
+		if value > 0. {
+			1.
+		} else if value < 0. {
+			-1.
+		} else {
+			0.
+		}
+	});
+	Item::from_parts(result, attributes)
 }
 
 pub trait MinMax<Rhs = Self> {
@@ -1234,7 +1311,7 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Item<Percentage>) -> 
 	percentage
 }
 
-/// Constructs a two-dimensional vector value which may be set to any XY pair.
+/// Constructs a vec2 value, a two-dimensional quantity which may be set to any XY pair.
 #[node_macro::node(category("Value"), name("Vec2 Value"))]
 fn vec2_value(_: impl Ctx, _primary: (), #[name("Vec2")] vec2: Item<DVec2>) -> Item<DVec2> {
 	vec2
@@ -1337,7 +1414,7 @@ fn footprint_value(_: impl Ctx, _primary: (), transform: Item<DAffine2>, #[defau
 /// Composes a vec2 from its X and Y components.
 ///
 /// The inverse of this node is **Split Vec2**, which decomposes a vec2 back into its X and Y components.
-#[node_macro::node(category("Math: Vector"), name("Combine Vec2"))]
+#[node_macro::node(category("Math: Vec2"), name("Combine Vec2"))]
 fn combine_vec2(
 	_: impl Ctx,
 	_primary: (),
@@ -1355,34 +1432,51 @@ fn combine_vec2(
 ///
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).
 /// The output ranges from the positive to negative product of their lengths based on when they are pointing in the same or opposite directions.
-/// If any vector has zero length, the output is 0.
-#[node_macro::node(category("Math: Vector"))]
+/// If either vec2 has zero length, the output is 0.
+#[node_macro::node(category("Math: Vec2"))]
 fn dot_product(
 	_: impl Ctx,
 	/// An operand of the dot product operation.
-	vector_a: Item<DVec2>,
+	value: Item<DVec2>,
 	/// The other operand of the dot product operation.
 	#[default(1., 0.)]
-	vector_b: Item<DVec2>,
-	/// Whether to normalize both input vectors so the calculation ranges in `[-1, 1]` by considering only their degree of directional alignment.
+	other_value: Item<DVec2>,
+	/// Whether to normalize both input vec2s so the calculation ranges in `[-1, 1]` by considering only their degree of directional alignment.
 	normalize: Item<bool>,
 ) -> Item<f64> {
-	let (vector_a, attributes) = vector_a.into_parts();
-	let vector_b = *vector_b.element();
+	let (value, attributes) = value.into_parts();
+	let other_value = *other_value.element();
 
 	let result = if *normalize.element() {
-		vector_a.normalize_or_zero().dot(vector_b.normalize_or_zero())
+		value.normalize_or_zero().dot(other_value.normalize_or_zero())
 	} else {
-		vector_a.dot(vector_b)
+		value.dot(other_value)
 	};
 
 	Item::from_parts(result, attributes)
 }
 
+/// The cross product operation (`×`) calculates the signed area of the parallelogram formed by a vec2 pair.
+///
+/// The sign gives the rotation direction from the first vec2 to the second: positive for clockwise, negative for counterclockwise, and 0 when both are parallel, as drawn in the viewport.
+#[node_macro::node(category("Math: Vec2"))]
+fn cross_product(
+	_: impl Ctx,
+	/// The vec2 on the left-hand side of the cross product operation.
+	value: Item<DVec2>,
+	/// The vec2 on the right-hand side of the cross product operation.
+	#[default(1., 0.)]
+	other_value: Item<DVec2>,
+) -> Item<f64> {
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(value.perp_dot(*other_value.element()), attributes)
+}
+
 /// Calculates the angle swept between two vectors.
 ///
 /// The value is always positive and ranges from 0° (both vectors point the same direction) to 180° (both vectors point opposite directions).
-#[node_macro::node(category("Math: Vector"))]
+#[node_macro::node(category("Math: Vec2"))]
 fn angle_between(_: impl Ctx, vector_a: Item<DVec2>, vector_b: Item<DVec2>, radians: Item<bool>) -> Item<f64> {
 	let (vector_a, attributes) = vector_a.into_parts();
 
@@ -1406,46 +1500,60 @@ impl ToPosition for DAffine2 {
 	}
 }
 
-/// Calculates the angle needed for a rightward-facing object placed at the observer position to turn so it points toward the target position.
-#[node_macro::node(category("Math: Vector"))]
+/// Calculates the angle needed for a rightward-facing object placed at the "Position From" point to turn so it points toward the "Position To" point.
+#[node_macro::node(category("Math: Vec2"))]
 fn angle_to<T: ToPosition, U: ToPosition>(
 	_: impl Ctx,
 	/// The position from which the angle is measured.
 	#[implementations(DVec2, DAffine2, DVec2, DAffine2)]
-	observer: Item<T>,
+	position_from: Item<T>,
 	/// The position toward which the angle is measured.
 	#[expose]
 	#[implementations(DVec2, DVec2, DAffine2, DAffine2)]
-	target: Item<U>,
+	position_to: Item<U>,
 	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
-	let (observer, attributes) = observer.into_parts();
+	let (position_from, attributes) = position_from.into_parts();
 
-	let from = observer.to_position();
-	let to = target.into_element().to_position();
+	let from = position_from.to_position();
+	let to = position_to.into_element().to_position();
 	let delta = to - from;
 	let angle = delta.y.atan2(delta.x);
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
 
-/// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow represented by the vector.
-#[node_macro::node(category("Math: Vector"))]
-fn magnitude(_: impl Ctx, vector: Item<DVec2>) -> Item<f64> {
-	let (vector, attributes) = vector.into_parts();
+/// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow it represents.
+#[node_macro::node(category("Math: Vec2"))]
+fn magnitude(_: impl Ctx, vec2: Item<DVec2>) -> Item<f64> {
+	let (vec2, attributes) = vec2.into_parts();
 
-	Item::from_parts(vector.length(), attributes)
+	Item::from_parts(vec2.length(), attributes)
 }
 
-/// Scales the input vector to unit length while preserving its direction. This is equivalent to dividing the input vector by its own magnitude.
-///
-/// Returns 0 when the input vector has zero length.
-#[node_macro::node(category("Math: Vector"))]
-fn normalize(_: impl Ctx, vector: Item<DVec2>) -> Item<DVec2> {
-	let (vector, attributes) = vector.into_parts();
+/// Measures the distance between two points, which is the length of the straight line segment connecting them.
+#[node_macro::node(category("Math: Vec2"))]
+fn distance(
+	_: impl Ctx,
+	/// The point the distance is measured from.
+	position_from: Item<DVec2>,
+	/// The point the distance is measured to.
+	position_to: Item<DVec2>,
+) -> Item<f64> {
+	let (position_from, attributes) = position_from.into_parts();
 
-	Item::from_parts(vector.normalize_or_zero(), attributes)
+	Item::from_parts(position_from.distance(*position_to.element()), attributes)
+}
+
+/// Scales the input vec2 to unit length while preserving its direction. This is equivalent to dividing the input vec2 by its own magnitude.
+///
+/// Returns 0 when the input vec2 has zero length.
+#[node_macro::node(category("Math: Vec2"))]
+fn normalize(_: impl Ctx, vec2: Item<DVec2>) -> Item<DVec2> {
+	let (vec2, attributes) = vec2.into_parts();
+
+	Item::from_parts(vec2.normalize_or_zero(), attributes)
 }
 
 #[cfg(test)]
@@ -1465,6 +1573,84 @@ mod test {
 	pub fn magnitude_function() {
 		let vector = Item::new_from_element(DVec2::new(3., 4.));
 		assert_eq!(magnitude((), vector).into_element(), 5.);
+	}
+
+	#[test]
+	pub fn distance_function() {
+		let (position_from, position_to) = (Item::new_from_element(DVec2::new(1., 2.)), Item::new_from_element(DVec2::new(4., 6.)));
+		assert_eq!(distance((), position_from, position_to).into_element(), 5.);
+	}
+
+	#[test]
+	pub fn cross_product_sign() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert_eq!(cross_product((), vec2(1., 0.), vec2(0., 1.)).into_element(), 1.);
+		assert_eq!(cross_product((), vec2(0., 1.), vec2(1., 0.)).into_element(), -1.);
+		assert_eq!(cross_product((), vec2(2., 2.), vec2(1., 1.)).into_element(), 0.);
+	}
+
+	#[test]
+	pub fn sign_of_negative_zero_is_positive_zero() {
+		let result = sign((), Item::new_from_element(-0.0_f64)).into_element();
+		assert_eq!(result, 0.);
+		assert!(result.is_sign_positive());
+	}
+
+	#[test]
+	pub fn sign_componentwise() {
+		assert_eq!(sign((), Item::new_from_element(DVec2::new(-5., 3.))).into_element(), DVec2::new(-1., 1.));
+	}
+
+	#[test]
+	pub fn lerp_endpoints_are_exact() {
+		let lerp_between = |factor, clamped| {
+			lerp(
+				(),
+				Item::new_from_element(3.),
+				Item::new_from_element(7.),
+				Item::new_from_element(factor),
+				Item::new_from_element(clamped),
+			)
+			.into_element()
+		};
+		assert_eq!(lerp_between(0., true), 3.);
+		assert_eq!(lerp_between(1., true), 7.);
+		assert_eq!(lerp_between(0.5, true), 5.);
+	}
+
+	#[test]
+	pub fn lerp_clamped_and_extrapolated() {
+		let lerp_between = |factor, clamped| {
+			lerp(
+				(),
+				Item::new_from_element(0.),
+				Item::new_from_element(10.),
+				Item::new_from_element(factor),
+				Item::new_from_element(clamped),
+			)
+			.into_element()
+		};
+		assert_eq!(lerp_between(2., true), 10.);
+		assert_eq!(lerp_between(2., false), 20.);
+	}
+
+	#[test]
+	pub fn lerp_endpoint_factors_pass_endpoints_through() {
+		let lerp_between = |start: f64, end: f64, factor| {
+			lerp(
+				(),
+				Item::new_from_element(start),
+				Item::new_from_element(end),
+				Item::new_from_element(factor),
+				Item::new_from_element(true),
+			)
+			.into_element()
+		};
+		assert_eq!(lerp_between(3., f64::INFINITY, 0.), 3.);
+		assert_eq!(lerp_between(f64::NAN, 7., 1.), 7.);
+		assert_eq!(lerp_between(3., f64::INFINITY, 1.), f64::INFINITY);
+		assert!(lerp_between(-0., 7., 0.).is_sign_negative());
+		assert!(lerp_between(5., -0., 1.).is_sign_negative());
 	}
 
 	#[test]
