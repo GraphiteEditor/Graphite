@@ -1,6 +1,6 @@
+use core_types::Ctx;
 use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
 use core_types::list::{Item, List};
-use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -69,28 +69,28 @@ fn text(
 	let mut item = Item::new_from_element(text);
 
 	if font != Resource::default() {
-		item.set_attribute(ATTR_FONT, font);
+		item.set_attr::<attr::Font>(font);
 	}
 	if (size - DEFAULT_FONT_SIZE).abs() > f64::EPSILON {
-		item.set_attribute(ATTR_FONT_SIZE, size);
+		item.set_attr::<core_types::attr::FontSize>(size);
 	}
 	if (line_height - DEFAULT_LINE_HEIGHT).abs() > f64::EPSILON {
-		item.set_attribute(ATTR_LINE_HEIGHT, line_height);
+		item.set_attr::<core_types::attr::LineHeight>(line_height);
 	}
 	if letter_spacing != 0. {
-		item.set_attribute(ATTR_LETTER_SPACING, letter_spacing);
+		item.set_attr::<core_types::attr::LetterSpacing>(letter_spacing);
 	}
 	if letter_tilt != 0. {
-		item.set_attribute(ATTR_LETTER_TILT, letter_tilt);
+		item.set_attr::<core_types::attr::LetterTilt>(letter_tilt);
 	}
 	if has_max_width {
-		item.set_attribute(ATTR_MAX_WIDTH, Some(max_width));
+		item.set_attr::<core_types::attr::MaxWidth>(Some(max_width));
 	}
 	if has_max_height {
-		item.set_attribute(ATTR_MAX_HEIGHT, Some(max_height));
+		item.set_attr::<core_types::attr::MaxHeight>(Some(max_height));
 	}
 	if align != TextAlign::default() {
-		item.set_attribute(ATTR_TEXT_ALIGN, align);
+		item.set_attr::<attr::TextAlign>(align);
 	}
 
 	item

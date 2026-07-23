@@ -2774,7 +2774,7 @@ impl DocumentMessageHandler {
 
 			let has_fill = fill_graphic_list.is_some_and(|list| is_paint_present(list));
 			// `Vector.stroke` captures stroke geometry, even with weight 0 or transparent paint.
-			// So stroke visibility must be checked from `ATTR_STROKE`, the paint source of truth.
+			// So stroke visibility must be checked from `graphic_types::attr::Stroke`, the paint source of truth.
 			let stroke_visible = stroke_graphic_list.is_some_and(|list| list.element(0).is_some_and(|g| !g.is_fully_transparent()));
 			let has_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
 

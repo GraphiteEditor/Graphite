@@ -1,7 +1,8 @@
+use core_types::attr;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, SeedValue, SignedInteger};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -489,7 +490,7 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 	let normal = DVec2::from_angle(angle.to_radians());
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let item_transform = content.attr_cloned_or_default::<attr::Transform>();
 	let RenderBoundingBox::Rectangle(bounding_box) = content.element().bounding_box(item_transform, false) else {
 		return List::new_from_item(content);
 	};
@@ -521,7 +522,7 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 
 	// Add the mirrored copy with the reflection composed onto its transform
 	let mut mirrored = content;
-	mirrored.set_attribute(ATTR_TRANSFORM, reflected_transform * item_transform);
+	mirrored.set_attr::<attr::Transform>(reflected_transform * item_transform);
 	result_list.push(mirrored);
 
 	result_list
@@ -600,7 +601,7 @@ fn read_attribute_vector(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<Vector>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -618,10 +619,10 @@ fn read_attribute_number(
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let value = content
-			.attribute::<f64>(&name, index)
+			.attribute_dyn::<f64>(&name, index)
 			.copied()
-			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
-			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
+			.or_else(|| content.attribute_dyn::<u64>(&name, index).map(|v| *v as f64))
+			.or_else(|| content.attribute_dyn::<u32>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
 		result.push(Item::new_from_element(value));
 	}
@@ -639,7 +640,7 @@ fn read_attribute_bool(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<bool>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -656,7 +657,7 @@ fn read_attribute_string(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<String>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<String>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -673,7 +674,7 @@ fn read_attribute_transform(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<DAffine2>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -690,7 +691,7 @@ fn read_attribute_color(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<Color>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -707,7 +708,7 @@ fn read_attribute_blend_mode(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<BlendMode>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -724,7 +725,7 @@ fn read_attribute_gradient_type(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<GradientType>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -741,7 +742,7 @@ fn read_attribute_spread_method(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<GradientSpreadMethod>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
@@ -758,7 +759,7 @@ fn read_attribute_gradient_stops(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Gradient>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<Gradient>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -775,7 +776,7 @@ fn read_attribute_artboard(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<Artboard>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -792,7 +793,7 @@ fn read_attribute_raster(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
+		let Some(value) = content.attribute_dyn::<Raster<CPU>>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -869,7 +870,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+		row.set_attr::<attr::editor::LayerPath>(layer_path.clone());
 		base.push(row);
 	}
 
@@ -926,7 +927,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 		for index in 0..current_graphic_list.len() {
 			let Some(current_element) = current_graphic_list.element(index) else { continue };
 			let current_element = current_element.clone();
-			let current_transform: DAffine2 = current_graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let current_transform = current_graphic_list.attr_cloned_or_default::<attr::Transform>(index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -934,7 +935,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+					for graphic_transform in current_element.iter_attr_values_mut_or_default::<attr::Transform>() {
 						*graphic_transform = current_transform * *graphic_transform;
 					}
 
@@ -974,15 +975,15 @@ pub async fn flatten_vector<T: IntoGraphicList>(_: impl Ctx, #[implementations(L
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
 		let mut graphic_list = graphic_list;
-		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		let item_0_transform = output.attr_cloned_or_default::<attr::Transform>(0);
 		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
 			let inverse = item_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for transform in graphic_list.iter_attr_values_mut_or_default::<attr::Transform>() {
 				*transform = inverse * *transform;
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+		output.set_attr::<graphic_types::attr::editor::MergedLayers>(0, graphic_list);
 	}
 
 	output

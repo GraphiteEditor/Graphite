@@ -1,16 +1,14 @@
 use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
+use core_types::attr::{self, Attr};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
-};
+use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute_at};
@@ -73,32 +71,32 @@ impl VectorListIterMut for List<Vector> {
 trait VectorItemMut {
 	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
 
-	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>);
+	fn set_vector_paint<A: Attr<Value = List<Graphic>>>(&mut self, paint: List<Graphic>);
 }
 
 impl VectorItemMut for Item<Vector> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let transform = self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+		let transform = self.attr_cloned_or_default::<attr::Transform>();
 		f(self.element_mut(), transform);
 	}
 
-	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>) {
-		self.set_attribute(key, paint);
+	fn set_vector_paint<A: Attr<Value = List<Graphic>>>(&mut self, paint: List<Graphic>) {
+		self.set_attr::<A>(paint);
 	}
 }
 
 impl VectorItemMut for Item<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
 		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
-		let (elements, transforms) = vector_list.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
+		let (elements, transforms) = vector_list.element_and_attr_slices_mut::<attr::Transform>();
 		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
 			f(vector, *transform);
 		}
 	}
 
-	fn set_vector_paint(&mut self, key: &str, paint: List<Graphic>) {
+	fn set_vector_paint<A: Attr<Value = List<Graphic>>>(&mut self, paint: List<Graphic>) {
 		let Some(vector_list) = self.element_mut().as_vector_mut() else { return };
-		for slot in vector_list.iter_attribute_values_mut_or_default::<List<Graphic>>(key) {
+		for slot in vector_list.iter_attr_values_mut_or_default::<A>() {
 			*slot = paint.clone();
 		}
 	}
@@ -161,10 +159,10 @@ where
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
-				set_paint_attribute_at(vector_list, index, ATTR_FILL, paint.clone());
+				set_paint_attribute_at::<graphic_types::attr::Fill, _>(vector_list, index, paint.clone());
 			}
 			if stroke && vector_list.element(index).is_some_and(|vector| vector.stroke.is_some()) {
-				set_paint_attribute_at(vector_list, index, ATTR_STROKE, paint.clone());
+				set_paint_attribute_at::<graphic_types::attr::Stroke, _>(vector_list, index, paint.clone());
 			}
 
 			i += 1;
@@ -208,19 +206,19 @@ where
 	for graphic in fill.iter_element_values_mut() {
 		let Graphic::Gradient(gradient) = graphic else { continue };
 
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
+		if gradient.iter_attr_values::<vector_types::attr::GradientType>().is_none() {
+			for value in gradient.iter_attr_values_mut_or_default::<vector_types::attr::GradientType>() {
 				*value = _gradient_type;
 			}
 		}
 
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+		if gradient.iter_attr_values::<vector_types::attr::SpreadMethod>().is_none() {
+			for value in gradient.iter_attr_values_mut_or_default::<vector_types::attr::SpreadMethod>() {
 				*value = _spread_method;
 			}
 		}
 
-		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+		if gradient.iter_attr_values::<attr::Transform>().is_none() {
 			// Without an explicit placement, derive one covering the paint target's bounding box (the CSS `auto` behavior)
 			let transform = if _has_transform {
 				_transform
@@ -246,13 +244,13 @@ where
 				initial_gradient_transform_for_bounding_box([min, max])
 			};
 
-			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for value in gradient.iter_attr_values_mut_or_default::<attr::Transform>() {
 				*value = transform;
 			}
 		}
 	}
 
-	content.set_vector_paint(ATTR_FILL, fill);
+	content.set_vector_paint::<graphic_types::attr::Fill>(fill);
 	content
 }
 
@@ -326,7 +324,7 @@ where
 	});
 
 	let paint = paint.into_graphic_list();
-	content.set_vector_paint(ATTR_STROKE, paint);
+	content.set_vector_paint::<graphic_types::attr::Stroke>(paint);
 	content
 }
 
@@ -388,7 +386,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 		let do_scale = random_scale_difference.abs() > 1e-6;
 		let do_rotation = random_rotation.abs() > 1e-6;
 
-		let points_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let points_transform: DAffine2 = row.attr_cloned_or_default::<attr::Transform>();
 		for &point in row.element().point_domain.positions() {
 			let translation = points_transform.transform_point2(point);
 
@@ -417,8 +415,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 
 			for row_index in 0..content.len() {
 				let Some(mut row) = content.clone_item(row_index) else { continue };
-				let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-				row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
+				let row_transform: DAffine2 = row.attr_cloned_or_default::<attr::Transform>();
+				row.set_attr::<attr::Transform>(transform * row_transform);
 
 				result_list.push(row);
 			}
@@ -446,7 +444,7 @@ async fn round_corners(
 	min_angle_threshold: Item<Angle>,
 ) -> Item<Vector> {
 	let (radius, roundness, edge_length_limit, min_angle_threshold) = (*radius.element(), *roundness.element(), *edge_length_limit.element(), *min_angle_threshold.element());
-	let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let source_transform: DAffine2 = source.attr_cloned_or_default::<attr::Transform>();
 	let source_transform_inverse = source_transform.inverse();
 	let (source, attributes) = source.into_parts();
 
@@ -550,7 +548,7 @@ pub fn merge_by_distance(
 
 	match algorithm {
 		MergeByDistanceAlgorithm::Spatial => {
-			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 			content.element_mut().merge_by_distance_spatial(transform, distance);
 		}
 		MergeByDistanceAlgorithm::Topological => content.element_mut().merge_by_distance_topological(distance),
@@ -767,12 +765,12 @@ async fn extrude(_: impl Ctx, source: Item<Vector>, direction: Item<DVec2>, join
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn box_warp(_: impl Ctx, content: Item<Vector>, #[expose] rectangle: Item<Vector>) -> Item<Vector> {
-	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let target_transform: DAffine2 = rectangle.attr_cloned_or_default::<attr::Transform>();
 	let target = rectangle.into_element();
 
 	let mut row = content;
 	{
-		let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let transform: DAffine2 = row.attr_cloned_or_default::<attr::Transform>();
 		let vector = std::mem::take(row.element_mut());
 
 		// Get the bounding box of the source vector geometry
@@ -832,7 +830,7 @@ async fn box_warp(_: impl Ctx, content: Item<Vector>, #[expose] rectangle: Item<
 
 		// Reset the transform since we've applied it directly to the points
 		*row.element_mut() = result;
-		row.set_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY);
+		row.set_attr::<attr::Transform>(DAffine2::IDENTITY);
 	}
 	row
 }
@@ -942,8 +940,8 @@ where
 				RowsOrColumns::Rows => DVec2::new(strip.along_position, strip.cross_position),
 				RowsOrColumns::Columns => DVec2::new(strip.cross_position, strip.along_position),
 			};
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			row.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
+			let row_transform: DAffine2 = row.attr_cloned_or_default::<attr::Transform>();
+			row.set_attr::<attr::Transform>(DAffine2::from_translation(target_position - top_left) * row_transform);
 
 			strip.along_position += along + separation;
 		} else {
@@ -954,8 +952,8 @@ where
 				RowsOrColumns::Rows => DVec2::new(0., new_cross),
 				RowsOrColumns::Columns => DVec2::new(new_cross, 0.),
 			};
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			row.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
+			let row_transform: DAffine2 = row.attr_cloned_or_default::<attr::Transform>();
+			row.set_attr::<attr::Transform>(DAffine2::from_translation(target_position - top_left) * row_transform);
 
 			strips.push(Strip {
 				along_position: along + separation,
@@ -986,7 +984,7 @@ async fn auto_tangents(
 ) -> Item<Vector> {
 	let (spread, preserve_existing) = (*spread.element(), *preserve_existing.element());
 
-	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = source.attr_cloned_or_default::<attr::Transform>();
 	let (source, attributes) = source.into_parts();
 
 	let mut result = Vector {
@@ -1146,7 +1144,7 @@ async fn bounding_box(_: impl Ctx, content: Item<Vector>) -> Item<Vector> {
 async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 	let dimensions = content
 		.element()
-		.bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM))
+		.bounding_box_with_transform(content.attr_cloned_or_default::<attr::Transform>())
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default();
 
@@ -1358,7 +1356,7 @@ async fn offset_path(_: impl Ctx, content: Item<Vector>, distance: Item<f64>, jo
 	let mut content = content;
 	let (distance, join, miter_limit) = (*distance.element(), *join.element(), *miter_limit.element());
 
-	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let transform = Affine::new(transform_attribute.to_cols_array());
 	let vector = std::mem::take(content.element_mut());
 
@@ -1406,7 +1404,7 @@ where
 	let flattened: List<Vector> = graphic_list.clone().into_flattened_list();
 
 	// A fill exists when the canonical attribute carries paint
-	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint_at(&flattened, index, ATTR_FILL)).collect();
+	let has_fills: Vec<bool> = (0..flattened.len()).map(|index| has_paint_at::<graphic_types::attr::Fill>(&flattened, index)).collect();
 
 	let mut output: List<Vector> = flattened
 		.into_iter()
@@ -1466,14 +1464,14 @@ where
 				vector.stroke = None;
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
-				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
+				fill_attributes.remove_attr::<graphic_types::attr::Stroke>();
 				Item::from_parts(vector, fill_attributes)
 			});
 
 			let mut stroke_attributes = attributes;
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
-			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
-			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
+			stroke_attributes.remove_attr::<graphic_types::attr::Fill>();
+			stroke_attributes.rename(graphic_types::attr::Stroke::name(), graphic_types::attr::Fill::name());
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
@@ -1492,15 +1490,15 @@ where
 		// already holds the original transforms; pre-compensate by row 0's inverse so the renderer's
 		// `upstream_footprint *= row_0_transform` recursion cancels out and leaves the originals intact.
 		let mut graphic_list = graphic_list;
-		let row_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		let row_0_transform: DAffine2 = output.attr_cloned_or_default::<attr::Transform>(0);
 		if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
 			let inverse = row_0_transform.inverse();
-			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for transform in graphic_list.iter_attr_values_mut_or_default::<attr::Transform>() {
 				*transform = inverse * *transform;
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+		output.set_attr::<graphic_types::attr::editor::MergedLayers>(0, graphic_list);
 	}
 
 	output
@@ -1574,14 +1572,14 @@ pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let layer_path: List<NodeId> = flattened.attribute_cloned_or_default::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, index).0;
+		let layer_path: List<NodeId> = flattened.attr_cloned_or_default::<attr::editor::LayerPath>(index).0;
 		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
 		(index, node_id).hash(&mut hasher);
 		let collision_hash_seed = hasher.finish();
 
-		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+		let source_transform = flattened.attr_cloned_or_default::<attr::Transform>(index);
 		output.concat(element, source_transform, collision_hash_seed);
 
 		// TODO: Make this instead use the first encountered stroke
@@ -1595,10 +1593,10 @@ pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 		let source_attributes = flattened.clone_item_attributes(primary);
 		let mut attributes = ItemAttributeValues::new();
 
-		attributes.insert_cloned_from(&source_attributes, ATTR_FILL);
-		attributes.insert_cloned_from(&source_attributes, ATTR_STROKE);
+		attributes.insert_cloned_from(&source_attributes, graphic_types::attr::Fill::name());
+		attributes.insert_cloned_from(&source_attributes, graphic_types::attr::Stroke::name());
 		// Adopt the last input item's layer (if any) so the editor can also bucket clicks under a contributing child layer
-		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
+		attributes.insert_cloned_from(&source_attributes, attr::editor::LayerPath::name());
 		bake_paint_transforms(&mut attributes, source_transform);
 
 		let output = std::mem::take(output_list.element_mut(0).unwrap());
@@ -1608,7 +1606,7 @@ pub async fn combine_paths<T: IntoGraphicList>(_: impl Ctx, #[implementations(Li
 	// Preserve a reference to the original upstream `List<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
-	output_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
+	output_list.set_attr::<graphic_types::attr::editor::MergedLayers>(0, graphic_list);
 
 	output_list.into_iter().next().unwrap_or_default()
 }
@@ -1654,12 +1652,12 @@ async fn sample_polyline(
 		stroke: std::mem::take(&mut content.element_mut().stroke),
 	};
 	// Transfer the stroke transform from the input vector content to the result.
-	result.set_stroke_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM));
+	result.set_stroke_transform(content.attr_cloned_or_default::<attr::Transform>());
 
 	for local_bezpath in content.element().stroke_bezpath_iter() {
 		// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
 		let mut world_bezpath = local_bezpath.clone();
-		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 		world_bezpath.apply_affine(Affine::new(transform_attribute.to_cols_array()));
 
 		// Per-segment perimeter lengths (transform-baked) for distance-based spacing
@@ -1718,7 +1716,7 @@ async fn simplify(
 
 	let options = SimplifyOptions::default();
 
-	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let transform = Affine::new(transform_attribute.to_cols_array());
 	let inverse_transform = transform.inverse();
 
@@ -1812,7 +1810,7 @@ async fn decimate(
 		points.iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| *p).collect()
 	}
 
-	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let transform = Affine::new(transform_attribute.to_cols_array());
 	let inverse_transform = transform.inverse();
 
@@ -1992,7 +1990,7 @@ async fn position_on_path(
 	let (progression, reverse, parameterized_distance) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element());
 	let euclidian = !parameterized_distance;
 
-	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let mut bezpaths: Vec<_> = content.element().stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect();
 	let bezpath_count = bezpaths.len() as f64;
 	let progression = progression.clamp(0., bezpath_count);
@@ -2031,7 +2029,7 @@ async fn tangent_on_path(
 	let (progression, reverse, parameterized_distance, radians) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element(), radians.into_element());
 	let euclidian = !parameterized_distance;
 
-	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let mut bezpaths: Vec<_> = content.element().stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect();
 	let bezpath_count = bezpaths.len() as f64;
 	let progression = progression.clamp(0., bezpath_count);
@@ -2222,7 +2220,7 @@ async fn jitter_points(
 	let (max_distance, seed, along_normals) = (*max_distance.element(), *seed.element(), *along_normals.element());
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
-	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
 	let deltas: Vec<_> = (0..content.element().point_domain.positions().len())
@@ -2247,7 +2245,7 @@ async fn jitter_points(
 		})
 		.collect();
 
-	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	apply_point_deltas(content.element_mut(), &deltas, transform);
 
 	content
@@ -2267,7 +2265,7 @@ async fn offset_points(
 ) -> Item<Vector> {
 	let mut content = content;
 	let distance = *distance.element();
-	let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
 	let deltas: Vec<_> = (0..content.element().point_domain.positions().len())
@@ -2285,7 +2283,7 @@ async fn offset_points(
 		})
 		.collect();
 
-	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>();
 	apply_point_deltas(content.element_mut(), &deltas, transform);
 
 	content
@@ -2409,8 +2407,8 @@ async fn morph<I: IntoGraphicList>(
 	}
 
 	fn lerp_gradient_transform(gradient_list_a: &List<Gradient>, gradient_list_b: &List<Gradient>, time: f64) -> DAffine2 {
-		let transform_a = gradient_list_a.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
-		let transform_b = gradient_list_b.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+		let transform_a = gradient_list_a.attr_cloned_or_default::<attr::Transform>(0);
+		let transform_b = gradient_list_b.attr_cloned_or_default::<attr::Transform>(0);
 
 		let start_a = transform_a.translation;
 		let end_a = transform_a.translation + transform_a.matrix2.x_axis;
@@ -2470,7 +2468,7 @@ async fn morph<I: IntoGraphicList>(
 				let metadata_source = if time < 0.5 { gradient_list_a } else { gradient_list_b };
 
 				let mut gradient_list = metadata_source.clone();
-				gradient_list.set_attribute(ATTR_TRANSFORM, 0, lerp_gradient_transform(gradient_list_a, gradient_list_b, time));
+				gradient_list.set_attr::<attr::Transform>(0, lerp_gradient_transform(gradient_list_a, gradient_list_b, time));
 
 				gradient_with_stops(gradient_list, stops)
 			}),
@@ -2499,7 +2497,7 @@ async fn morph<I: IntoGraphicList>(
 	let default_polyline = || {
 		let mut default_path = BezPath::new();
 		for index in 0..content.len() {
-			let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform_attribute: DAffine2 = content.attr_cloned_or_default::<attr::Transform>(index);
 			let origin = transform_attribute.translation;
 			let point = kurbo::Point::new(origin.x, origin.y);
 			if index == 0 {
@@ -2513,7 +2511,7 @@ async fn morph<I: IntoGraphicList>(
 
 	let control_bezpaths: Vec<BezPath> = {
 		// User-provided path: collect all subpaths with the path's transform applied
-		let path_transform: DAffine2 = path.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let path_transform: DAffine2 = path.attr_cloned_or_default::<attr::Transform>();
 		let paths: Vec<BezPath> = path
 			.element()
 			.stroke_bezpath_iter()
@@ -2585,8 +2583,8 @@ async fn morph<I: IntoGraphicList>(
 					if content.element(source_index).is_none() || content.element(target_index).is_none() {
 						return 0.;
 					}
-					let source_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, source_index);
-					let target_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, target_index);
+					let source_transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>(source_index);
+					let target_transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>(target_index);
 					let (s_angle, s_scale, s_skew) = source_transform.decompose_rotation_scale_skew();
 					let (t_angle, t_scale, t_skew) = target_transform.decompose_rotation_scale_skew();
 
@@ -2658,14 +2656,14 @@ async fn morph<I: IntoGraphicList>(
 	};
 
 	// Lerp blending attributes: opacity/fill interpolate, blend_mode/clip step at the midpoint
-	let source_blend_mode: BlendMode = content.attribute_cloned_or_default(ATTR_BLEND_MODE, source_index);
-	let target_blend_mode: BlendMode = content.attribute_cloned_or_default(ATTR_BLEND_MODE, target_index);
-	let source_opacity: f64 = content.attribute_cloned_or(ATTR_OPACITY, source_index, 1.);
-	let target_opacity: f64 = content.attribute_cloned_or(ATTR_OPACITY, target_index, 1.);
-	let source_fill: f64 = content.attribute_cloned_or(ATTR_OPACITY_FILL, source_index, 1.);
-	let target_fill: f64 = content.attribute_cloned_or(ATTR_OPACITY_FILL, target_index, 1.);
-	let source_clip: bool = content.attribute_cloned_or_default(ATTR_CLIPPING_MASK, source_index);
-	let target_clip: bool = content.attribute_cloned_or_default(ATTR_CLIPPING_MASK, target_index);
+	let source_blend_mode: BlendMode = content.attr_cloned_or_default::<attr::BlendMode>(source_index);
+	let target_blend_mode: BlendMode = content.attr_cloned_or_default::<attr::BlendMode>(target_index);
+	let source_opacity: f64 = content.attr_cloned_or_default::<attr::Opacity>(source_index);
+	let target_opacity: f64 = content.attr_cloned_or_default::<attr::Opacity>(target_index);
+	let source_fill: f64 = content.attr_cloned_or_default::<attr::OpacityFill>(source_index);
+	let target_fill: f64 = content.attr_cloned_or_default::<attr::OpacityFill>(target_index);
+	let source_clip: bool = content.attr_cloned_or_default::<attr::ClippingMask>(source_index);
+	let target_clip: bool = content.attr_cloned_or_default::<attr::ClippingMask>(target_index);
 
 	let lerped_blend_mode = if time < 0.5 { source_blend_mode } else { target_blend_mode };
 	let lerped_opacity = source_opacity + (target_opacity - source_opacity) * time;
@@ -2687,8 +2685,8 @@ async fn morph<I: IntoGraphicList>(
 	// This decomposition must match the one used in Stroke::lerp so the renderer's stroke_transform.inverse()
 	// correctly cancels the element transform, keeping the stroke uniform when Stroke is after Transform.
 	let lerped_transform = {
-		let source_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, source_index);
-		let target_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, target_index);
+		let source_transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>(source_index);
+		let target_transform: DAffine2 = content.attr_cloned_or_default::<attr::Transform>(target_index);
 		let (s_angle, s_scale, s_skew) = source_transform.decompose_rotation_scale_skew();
 		let (t_angle, t_scale, t_skew) = target_transform.decompose_rotation_scale_skew();
 
@@ -2717,7 +2715,7 @@ async fn morph<I: IntoGraphicList>(
 	// in which case we skip pre-compensation to avoid propagating NaN through merged_layers transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
 		let lerped_inverse = lerped_transform.inverse();
-		for transform in graphic_list_content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+		for transform in graphic_list_content.iter_attr_values_mut_or_default::<attr::Transform>() {
 			*transform = lerped_inverse * *transform;
 		}
 	}
@@ -2729,8 +2727,8 @@ async fn morph<I: IntoGraphicList>(
 		let endpoint_element = content.element(endpoint_index).unwrap();
 
 		let mut attributes = content.clone_item_attributes(endpoint_index);
-		attributes.insert(ATTR_TRANSFORM, lerped_transform);
-		attributes.insert(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
+		attributes.set_attr::<attr::Transform>(lerped_transform);
+		attributes.set_attr::<graphic_types::attr::editor::MergedLayers>(graphic_list_content);
 
 		return Item::from_parts(endpoint_element.clone(), attributes);
 	}
@@ -2756,13 +2754,13 @@ async fn morph<I: IntoGraphicList>(
 	let mut vector = Vector { stroke, ..Default::default() };
 
 	let fill_paint = {
-		let source = graphic_list_at(&content, source_index, ATTR_FILL);
-		let target = graphic_list_at(&content, target_index, ATTR_FILL);
+		let source = graphic_list_at::<graphic_types::attr::Fill>(&content, source_index);
+		let target = graphic_list_at::<graphic_types::attr::Fill>(&content, target_index);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 	let stroke_paint = {
-		let source = graphic_list_at(&content, source_index, ATTR_STROKE);
-		let target = graphic_list_at(&content, target_index, ATTR_STROKE);
+		let source = graphic_list_at::<graphic_types::attr::Stroke>(&content, source_index);
+		let target = graphic_list_at::<graphic_types::attr::Stroke>(&content, target_index);
 		lerp_graphic(source.as_deref(), target.as_deref(), time)
 	};
 
@@ -2913,31 +2911,31 @@ async fn morph<I: IntoGraphicList>(
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
 	let mut item = Item::new_from_element(vector);
-	item.set_attribute(ATTR_TRANSFORM, lerped_transform);
+	item.set_attr::<attr::Transform>(lerped_transform);
 
 	// Propagate each blending/layer column only when the input carries it, so attribute presence stays determined by the graph rather than by runtime values
-	if content.attribute::<BlendMode>(ATTR_BLEND_MODE, source_index).is_some() {
-		item.set_attribute(ATTR_BLEND_MODE, lerped_blend_mode);
+	if content.attr::<attr::BlendMode>(source_index).is_some() {
+		item.set_attr::<attr::BlendMode>(lerped_blend_mode);
 	}
-	if content.attribute::<f64>(ATTR_OPACITY, source_index).is_some() {
-		item.set_attribute(ATTR_OPACITY, lerped_opacity);
+	if content.attr::<attr::Opacity>(source_index).is_some() {
+		item.set_attr::<attr::Opacity>(lerped_opacity);
 	}
-	if content.attribute::<f64>(ATTR_OPACITY_FILL, source_index).is_some() {
-		item.set_attribute(ATTR_OPACITY_FILL, lerped_fill);
+	if content.attr::<attr::OpacityFill>(source_index).is_some() {
+		item.set_attr::<attr::OpacityFill>(lerped_fill);
 	}
-	if content.attribute::<bool>(ATTR_CLIPPING_MASK, source_index).is_some() {
-		item.set_attribute(ATTR_CLIPPING_MASK, lerped_clip);
+	if content.attr::<attr::ClippingMask>(source_index).is_some() {
+		item.set_attr::<attr::ClippingMask>(lerped_clip);
 	}
-	if let Some(layer_path) = content.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH, primary_index) {
-		item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+	if let Some(layer_path) = content.attr::<attr::editor::LayerPath>(primary_index) {
+		item.set_attr::<attr::editor::LayerPath>(layer_path.clone());
 	}
-	item.set_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_list_content);
+	item.set_attr::<graphic_types::attr::editor::MergedLayers>(graphic_list_content);
 
 	if let Some(fill) = fill_paint {
-		item.set_attribute(ATTR_FILL, fill);
+		item.set_attr::<graphic_types::attr::Fill>(fill);
 	}
 	if let Some(stroke) = stroke_paint {
-		item.set_attribute(ATTR_STROKE, stroke);
+		item.set_attr::<graphic_types::attr::Stroke>(stroke);
 	}
 
 	item
@@ -3217,7 +3215,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 fn bevel(_: impl Ctx, source: Item<Vector>, #[default(10.)] distance: Item<Length>) -> Item<Vector> {
 	let distance = *distance.element();
 
-	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = source.attr_cloned_or_default::<attr::Transform>();
 	let (element, attributes) = source.into_parts();
 
 	Item::from_parts(bevel_algorithm(element, transform, distance), attributes)
@@ -3233,7 +3231,7 @@ fn close_path(_: impl Ctx, source: Item<Vector>) -> Item<Vector> {
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<bool> {
 	let point = point.into_element();
-	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = source.attr_cloned_or_default::<attr::Transform>();
 	let inside = source.element().check_point_inside_shape(transform, point);
 
 	Item::new_from_element(inside)
@@ -3292,7 +3290,7 @@ async fn index_points(
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
-	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = source.attr_cloned_or_default::<attr::Transform>();
 	let length = source
 		.element()
 		.stroke_bezpath_iter()
@@ -3310,7 +3308,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
-	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = vector.attr_cloned_or_default::<attr::Transform>();
 	let area_scale = transform.matrix2.determinant().abs();
 	let area = vector.element().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>();
 
@@ -3323,7 +3321,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
-	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform: DAffine2 = vector.attr_cloned_or_default::<attr::Transform>();
 	let position = element_centroid(vector.element(), transform, centroid_type);
 
 	Item::new_from_element(position)
@@ -3390,7 +3388,7 @@ mod test {
 	fn create_vector_item(bezpath: BezPath, transform: DAffine2) -> Item<Vector> {
 		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
-		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
+		Item::new_from_element(row).with_attr::<attr::Transform>(transform)
 	}
 
 	fn item<T>(value: T) -> Item<T> {
@@ -3559,7 +3557,7 @@ mod test {
 		// Test a rectangular path with non-zero rotation
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = List::new_from_element(square);
-		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
+		square.with_attr_mut_or_default::<attr::Transform, _, _>(0, |t| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = BoundingBoxNodeMapped { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
@@ -3692,7 +3690,7 @@ mod test {
 	async fn morph() {
 		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
 		let mut second_rectangle = rectangles.clone_item(0).unwrap();
-		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
+		*second_rectangle.attr_mut_or_insert_default::<attr::Transform>() *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
 		let morphed = super::morph(
@@ -3712,7 +3710,7 @@ mod test {
 			vec![DVec2::new(0., 0.), DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]
 		);
 		// The interpolated transform carries the midpoint translation (approximate due to arc-length parameterization)
-		assert!((morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
+		assert!((morphed.attr_cloned_or_default::<attr::Transform>(0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
 	}
 
 	#[tokio::test]
@@ -3724,11 +3722,11 @@ mod test {
 		};
 
 		let item_a = Item::new_from_element(rect())
-			.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY)
-			.with_attribute(ATTR_FILL, List::new_from_element(Color::RED).into_graphic_list());
+			.with_attr::<attr::Transform>(DAffine2::IDENTITY)
+			.with_attr::<graphic_types::attr::Fill>(List::new_from_element(Color::RED).into_graphic_list());
 		let item_b = Item::new_from_element(rect())
-			.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation((-100., -100.).into()))
-			.with_attribute(ATTR_FILL, List::new_from_element(Color::BLUE).into_graphic_list());
+			.with_attr::<attr::Transform>(DAffine2::from_translation((-100., -100.).into()))
+			.with_attr::<graphic_types::attr::Fill>(List::new_from_element(Color::BLUE).into_graphic_list());
 
 		let mut content = List::new_from_item(item_a);
 		content.push(item_b);
@@ -3744,7 +3742,7 @@ mod test {
 		.await;
 		let morphed = List::new_from_item(morphed);
 
-		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("Morph should keep the fill paint at the midpoint");
+		let fill = graphic_list_at::<graphic_types::attr::Fill>(&morphed, 0).expect("Morph should keep the fill paint at the midpoint");
 
 		// Interpolated color between red and blue should have >0 value on both R and B
 		let Some(Graphic::Color(colors)) = fill.element(0) else {
@@ -3825,7 +3823,7 @@ mod test {
 		source.push(curve.as_path_el());
 
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
-		let vector_item = Item::new_from_element(Vector::from_bezpath(source)).with_attribute(ATTR_TRANSFORM, transform);
+		let vector_item = Item::new_from_element(Vector::from_bezpath(source)).with_attr::<attr::Transform>(transform);
 
 		let beveled = super::bevel((), vector_item, Item::new_from_element(2_f64.sqrt() * 100.));
 		let beveled = beveled.element();

@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::format_r
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
-use graphene_std::ATTR_TRANSFORM;
+use graphene_std::attr;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
@@ -1169,7 +1169,7 @@ impl OverlayContextInternal {
 			// Use the existing bezier_to_path infrastructure to convert Vector to BezPath
 			let mut path = BezPath::new();
 			let mut last_point = None;
-			let transform: DAffine2 = text_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform = text_list.attr_cloned_or_default::<attr::Transform>(index);
 
 			let Some(element) = text_list.element(index) else { continue };
 			for (_, bezier, start_id, end_id) in element.segment_iter() {

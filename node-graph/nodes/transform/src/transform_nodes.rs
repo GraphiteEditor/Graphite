@@ -1,8 +1,9 @@
 use core::f64;
+use core_types::attr;
 use core_types::color::Color;
 use core_types::list::{Item, List};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -106,7 +107,7 @@ fn reset_transform<T>(
 	let mut content = content;
 	let (reset_translation, reset_rotation, reset_scale) = (*reset_translation.element(), *reset_rotation.element(), *reset_scale.element());
 
-	let item_transform = content.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
+	let item_transform = content.attr_mut_or_insert_default::<attr::Transform>();
 
 	if reset_translation {
 		item_transform.translation = DVec2::ZERO;
@@ -147,14 +148,14 @@ fn replace_transform<T>(
 	let mut content = content;
 	let transform = *transform.element();
 
-	content.set_attribute(ATTR_TRANSFORM, transform.transform());
+	content.set_attr::<attr::Transform>(transform.transform());
 	content
 }
 
 /// Obtains the transform of the input content.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
 fn extract_transform<T: 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
-	Item::new_from_element(content.attribute_cloned_or_default(ATTR_TRANSFORM))
+	Item::new_from_element(content.attr_cloned_or_default::<attr::Transform>())
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.

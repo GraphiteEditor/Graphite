@@ -1,5 +1,5 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use core_types::ATTR_TRANSFORM;
+use core_types::attr;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
@@ -32,7 +32,7 @@ impl From<std::io::Error> for Error {
 
 #[node_macro::node(category("Debug"))]
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
-	let image_frame_transform: DAffine2 = image_frame.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let image_frame_transform = image_frame.attr_cloned_or_default::<attr::Transform>();
 
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
@@ -86,7 +86,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	// we need to adjust the offset if we truncate the offset calculation
 
 	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	attributes.insert(ATTR_TRANSFORM, new_transform);
+	attributes.set_attr::<attr::Transform>(new_transform);
 
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
@@ -163,7 +163,7 @@ pub fn mask(
 
 	let mut row = image;
 	let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
-	let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let stencil_transform = stencil.attr_cloned_or_default::<attr::Transform>();
 	let mask_size = stencil_transform.scale_magnitudes();
 
 	if mask_size == DVec2::ZERO {
@@ -171,7 +171,7 @@ pub fn mask(
 	}
 
 	// Transforms a point from the background image to the foreground image
-	let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let transform_attribute = row.attr_cloned_or_default::<attr::Transform>();
 	let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
 	let stencil_transform_inverse = stencil_transform.inverse();
 
@@ -196,7 +196,7 @@ pub fn mask(
 pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
 	let bounds = *bounds.element();
 
-	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let image_transform = image.attr_cloned_or_default::<attr::Transform>();
 	let image_aabb = Bbox::unit().affine_transform(image_transform).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
@@ -232,7 +232,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 	let new_texture_to_layer_space = image_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-	attributes.insert(ATTR_TRANSFORM, new_texture_to_layer_space);
+	attributes.set_attr::<attr::Transform>(new_texture_to_layer_space);
 	Item::from_parts(Raster::new_cpu(new_image), attributes)
 }
 
@@ -244,7 +244,7 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 
 	let image = Image::new(width, height, color.into_element());
 
-	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
+	Item::new_from_element(Raster::new_cpu(image)).with_attr::<attr::Transform>(transform)
 }
 
 #[node_macro::node(category(""))]
@@ -376,7 +376,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform);
+			return Item::new_from_element(Raster::new_cpu(image)).with_attr::<attr::Transform>(transform);
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -434,7 +434,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
+	Item::new_from_element(Raster::new_cpu(image)).with_attr::<attr::Transform>(transform)
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
@@ -478,7 +478,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 		data,
 		..Default::default()
 	}))
-	.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size))
+	.with_attr::<attr::Transform>(DAffine2::from_translation(offset) * DAffine2::from_scale(size))
 }
 
 #[inline(always)]

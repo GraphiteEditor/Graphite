@@ -1,4 +1,5 @@
 pub mod artboard;
+pub mod attr;
 pub mod graphic;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types

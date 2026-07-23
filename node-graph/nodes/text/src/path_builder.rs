@@ -1,5 +1,5 @@
+use core_types::attr;
 use core_types::list::{Item, List};
-use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
@@ -15,13 +15,13 @@ pub struct PathBuilder {
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
 	pub vector_list: List<Vector>,
-	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
+	/// Per-glyph AABBs collected in single-item mode, published as `vector_types::attr::editor::ClickTarget` in `finalize()`.
 	merged_click_target_bboxes: Vec<[DVec2; 2]>,
 	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
 	merged_click_target_baselines: Vec<f64>,
 	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
 	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
-	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
+	/// Text frame size, stamped per item as `attr::editor::TextFrame` relative to each item's origin.
 	text_frame_size: DVec2,
 	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
 	/// `local_transforms` stays stable when all glyphs are clipped during a resize drag.
@@ -85,8 +85,8 @@ impl PathBuilder {
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
 
 			let item = Item::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
-				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
-				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+				.with_attr::<attr::Transform>(DAffine2::from_translation(glyph_offset))
+				.with_attr::<attr::editor::TextFrame>(frame_in_item_local);
 			self.vector_list.push(item);
 
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
@@ -170,8 +170,8 @@ impl PathBuilder {
 		if self.vector_list.is_empty() {
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
 			let item = Item::new_from_element(Vector::default())
-				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
-				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+				.with_attr::<attr::Transform>(DAffine2::from_translation(self.first_glyph_offset))
+				.with_attr::<attr::editor::TextFrame>(frame_in_item_local);
 			self.vector_list.push(item);
 		}
 
@@ -184,7 +184,7 @@ impl PathBuilder {
 				.enumerate()
 				.filter_map(|(index, bbox)| {
 					let bbox = (*bbox)?;
-					let offset = self.vector_list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation;
+					let offset = self.vector_list.attr_cloned_or_default::<attr::Transform>(index).translation;
 					Some((index, offset, [bbox[0] + offset, bbox[1] + offset]))
 				})
 				.collect();
@@ -197,7 +197,7 @@ impl PathBuilder {
 			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
 				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
 				let rect = Subpath::new_rectangle(glyph_local[0], glyph_local[1]);
-				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_subpaths([rect], false));
+				self.vector_list.set_attr::<vector_types::attr::editor::ClickTarget>(entry.0, Vector::from_subpaths([rect], false));
 			}
 		}
 
@@ -207,14 +207,14 @@ impl PathBuilder {
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
 
 			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
-			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(widened_subpaths, false));
+			self.vector_list.set_attr::<vector_types::attr::editor::ClickTarget>(0, Vector::from_subpaths(widened_subpaths, false));
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
 		let frame = DAffine2::from_scale(self.text_frame_size);
 		for index in 0..self.vector_list.len() {
-			if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
-				self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+			if self.vector_list.attr::<attr::editor::TextFrame>(index).is_none() {
+				self.vector_list.set_attr::<attr::editor::TextFrame>(index, frame);
 			}
 		}
 

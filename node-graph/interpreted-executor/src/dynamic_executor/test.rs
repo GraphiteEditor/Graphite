@@ -185,7 +185,7 @@ fn transform_network(content: TaggedValue, rotation: TaggedValue) -> ProtoNetwor
 
 #[test]
 fn transform_composes_onto_item_wire() {
-	use glam::{DAffine2, DVec2};
+	use glam::DVec2;
 
 	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::F64(0.));
 	let output = network.output;
@@ -197,7 +197,7 @@ fn transform_composes_onto_item_wire() {
 	let context: Context = None;
 	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(output, context));
 	let item = result.expect("A rank-0 chain through Transform should stay rank 0");
-	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+	let transform = item.attr_cloned_or_default::<core_types::attr::Transform>();
 	assert_eq!(transform.translation, DVec2::new(5., 0.), "The translation should compose onto the item's transform attribute");
 }
 
@@ -219,8 +219,8 @@ fn transform_broadcasts_item_content_across_a_framed_parameter() {
 	let list = result.expect("The broadcast should produce a List");
 	assert_eq!(list.len(), 2, "One output item per frame slot");
 
-	let first: DAffine2 = list.attribute_cloned_or_default(core_types::ATTR_TRANSFORM, 0);
-	let second: DAffine2 = list.attribute_cloned_or_default(core_types::ATTR_TRANSFORM, 1);
+	let first: DAffine2 = list.attr_cloned_or_default::<core_types::attr::Transform>(0);
+	let second: DAffine2 = list.attr_cloned_or_default::<core_types::attr::Transform>(1);
 	assert!((first.matrix2.col(0).y - 0.).abs() < 1e-10, "Slot 0 should be unrotated");
 	assert!((second.matrix2.col(0).y - 1.).abs() < 1e-10, "Slot 1 should be rotated 90 degrees");
 }
@@ -320,7 +320,7 @@ fn value_wires_materialize_as_items_at_resolution() {
 	let context: Context = None;
 	let result: Option<Item<DAffine2>> = futures::executor::block_on(tree.eval(NodeId(5), context));
 	let item = result.expect("A value matrix should flow through Transform as an Item");
-	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+	let transform = item.attr_cloned_or_default::<core_types::attr::Transform>();
 	assert_eq!(transform.translation, DVec2::new(7., 0.), "The translation should compose onto the gained transform attribute");
 }
 

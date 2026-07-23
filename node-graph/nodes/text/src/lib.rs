@@ -1,3 +1,4 @@
+pub mod attr;
 pub mod fallback;
 mod font;
 pub mod json;

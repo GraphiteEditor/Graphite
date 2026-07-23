@@ -1,6 +1,6 @@
 use core_types::list::{Item, List};
 use core_types::registry::types::SignedInteger;
-use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
+use core_types::{Ctx, attr};
 
 /// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.
 #[node_macro::node(category("Text: Regex"))]
@@ -159,10 +159,7 @@ fn regex_find(
 			let start = captured.map_or(0_u64, |m| m.start() as u64);
 			let end = captured.map_or(0_u64, |m| m.end() as u64);
 			let name = capture_names.get(i).cloned().flatten().unwrap_or_default();
-			Item::new_from_element(text)
-				.with_attribute(ATTR_START, start)
-				.with_attribute(ATTR_END, end)
-				.with_attribute(ATTR_NAME, name)
+			Item::new_from_element(text).with_attr::<attr::Start>(start).with_attr::<attr::End>(end).with_attr::<attr::Name>(name)
 		})
 		.collect()
 }
@@ -208,8 +205,8 @@ fn regex_find_all(
 		.filter_map(|m| m.ok())
 		.map(|m| {
 			Item::new_from_element(m.as_str().to_string())
-				.with_attribute(ATTR_START, m.start() as u64)
-				.with_attribute(ATTR_END, m.end() as u64)
+				.with_attr::<attr::Start>(m.start() as u64)
+				.with_attr::<attr::End>(m.end() as u64)
 		})
 		.collect()
 }
