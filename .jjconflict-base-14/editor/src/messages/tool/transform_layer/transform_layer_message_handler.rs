@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::transformation::{Axis, 
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -217,7 +218,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				let format_rounded = |value: f64, precision: usize| {
 					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-						format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
+						format_rounded(value, precision)
 					} else {
 						self.typing.string.clone()
 					}
