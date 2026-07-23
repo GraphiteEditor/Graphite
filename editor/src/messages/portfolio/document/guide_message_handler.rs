@@ -78,8 +78,10 @@ impl MessageHandler<GuideLineMessage, GuideLinesMessageContext> for GuideLinesMe
 					GuideLineDirection::Vertical => document_point.x,
 				};
 
+				responses.add(DocumentMessage::StartTransaction);
 				let guide_line = GuideLine::with_id(id, direction, document_position);
 				self.guide_lines.push(guide_line);
+				responses.add(DocumentMessage::CommitTransaction);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -87,15 +89,19 @@ impl MessageHandler<GuideLineMessage, GuideLinesMessageContext> for GuideLinesMe
 				let document_point = document_point(mouse_x, mouse_y);
 
 				if let Some(guide_line) = self.guide_lines.iter_mut().find(|guide_line| guide_line.id == id) {
+					responses.add(DocumentMessage::StartTransaction);
 					guide_line.position = match guide_line.direction {
 						GuideLineDirection::Horizontal => document_point.y,
 						GuideLineDirection::Vertical => document_point.x,
 					};
+					responses.add(DocumentMessage::CommitTransaction);
 				}
 				responses.add(OverlaysMessage::Draw);
 			}
 			GuideLineMessage::DeleteGuideLine { id } => {
+				responses.add(DocumentMessage::StartTransaction);
 				self.guide_lines.retain(|g| g.id != id);
+				responses.add(DocumentMessage::CommitTransaction);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -105,7 +111,9 @@ impl MessageHandler<GuideLineMessage, GuideLinesMessageContext> for GuideLinesMe
 				}
 			}
 			GuideLineMessage::ToggleGuideLinesVisibility => {
+				responses.add(DocumentMessage::StartTransaction);
 				self.guide_lines_visible = !self.guide_lines_visible;
+				responses.add(DocumentMessage::CommitTransaction);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(MenuBarMessage::SendLayout);
