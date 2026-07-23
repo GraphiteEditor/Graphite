@@ -372,7 +372,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Creates a copy for each node by disconnecting nodes which are not connected to other copied nodes.
-	/// Returns an iterator of all persistent metadata for a node and their ids
+	/// Returns an iterator, sorted by original node id, of all persistent metadata for a node and their ids
 	pub fn copy_nodes<'a>(&'a mut self, new_ids: &'a HashMap<NodeId, NodeId>, network_path: &'a [NodeId]) -> impl Iterator<Item = (NodeId, NodeTemplate)> + 'a {
 		let mut new_nodes = new_ids
 			.iter()
@@ -442,6 +442,7 @@ impl NodeNetworkInterface {
 				}
 			}
 		}
+		new_nodes.sort_by_key(|a| a.0);
 		new_nodes.into_iter().map(move |(new, node_id, node)| (new, self.map_ids(node, &node_id, new_ids, network_path)))
 	}
 
