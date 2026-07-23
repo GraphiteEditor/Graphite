@@ -472,26 +472,6 @@ struct TextToolData {
 
 impl TextToolData {
 
-	// thingy to check if clicked outside textbox
-	// another one is set_editing 2 functions below 
-	fn clicked_outside_textbox(
-        &self,
-        document: &DocumentMessageHandler,
-        input: &InputPreprocessorMessageHandler,
-        fonts: &FontsMessageHandler,
-        responses: &mut VecDeque<Message>,
-    ) -> bool {
-        let mouse = input.mouse.position;
-
-        let quad =
-            document.metadata().transform_to_viewport(self.layer)
-            * text_bounding_box(self.layer, document, fonts, responses);
-
-        !quad.contains(mouse)
-    }
-
-
-
 	fn delete_empty_layer(&mut self, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Remove the editable textbox UI first
 		self.set_editing(false, fonts, responses);
@@ -1052,14 +1032,6 @@ impl Fsm for TextToolFsmState {
 				});
 
 				TextToolFsmState::Editing
-			}
-
-			(TextToolFsmState::Editing, TextToolMessage::DragStart) => {
-				if tool_data.clicked_outside_textbox(document, input, fonts, responses) {
-					responses.add(FrontendMessage::TriggerTextCommit);
-				}
-
-				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
 				tool_data.new_text = new_text;
