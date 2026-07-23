@@ -11,7 +11,6 @@ use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
-use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
@@ -194,20 +193,38 @@ fn divide<A: SafeDivide<B>, B>(
 	Item::from_parts(numerator.safe_divide(denominator.into_element()), attributes)
 }
 
+trait Componentwise {
+	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self;
+}
+impl Componentwise for f64 {
+	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
+		f(self)
+	}
+}
+impl Componentwise for f32 {
+	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
+		f(self as f64) as f32
+	}
+}
+impl Componentwise for DVec2 {
+	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
+		DVec2::new(f(self.x), f(self.y))
+	}
+}
+
 /// The reciprocal operation (`1/x`) calculates the multiplicative inverse of a number.
 ///
-/// Produces 0 if the input is 0.
+/// Produces 0 if the input is 0. With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn reciprocal<T: num_traits::float::Float>(
+fn reciprocal<T: Componentwise>(
 	_: impl Ctx,
 	/// The number for which the reciprocal is calculated.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
 
-	let result = if value == T::from(0.).unwrap() { T::from(0.).unwrap() } else { T::from(1.).unwrap() / value };
-	Item::from_parts(result, attributes)
+	Item::from_parts(value.componentwise(|value| if value == 0. { 0. } else { 1. / value }), attributes)
 }
 
 /// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vectors.
@@ -234,128 +251,210 @@ fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy
 	Item::from_parts(result, attributes)
 }
 
+trait Exponent<Rhs = Self> {
+	fn power(self, power: Rhs) -> Self;
+}
+impl Exponent for f64 {
+	fn power(self, power: f64) -> Self {
+		self.powf(power)
+	}
+}
+impl Exponent for f32 {
+	fn power(self, power: f32) -> Self {
+		self.powf(power)
+	}
+}
+impl Exponent for u32 {
+	fn power(self, power: u32) -> Self {
+		self.pow(power)
+	}
+}
+impl Exponent for DVec2 {
+	fn power(self, power: DVec2) -> Self {
+		DVec2::new(self.x.powf(power.x), self.y.powf(power.y))
+	}
+}
+impl Exponent<f64> for DVec2 {
+	fn power(self, power: f64) -> Self {
+		DVec2::new(self.x.powf(power), self.y.powf(power))
+	}
+}
+
 /// The exponent operation (`^`) calculates the result of raising a number to a power.
+///
+/// With a vec2 base, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn exponent<T: Pow<T>>(
+fn exponent<A: Exponent<B>, B>(
 	_: impl Ctx,
 	/// The base number that is raised to the power.
-	#[implementations(f64, f32, u32)]
-	base: Item<T>,
+	#[implementations(f64, f32, u32, DVec2, DVec2)]
+	base: Item<A>,
 	/// The power to which the base number is raised.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, f32, u32, DVec2, f64)]
 	#[default(2.)]
-	power: Item<T>,
-) -> Item<<T as num_traits::Pow<T>>::Output> {
+	power: Item<B>,
+) -> Item<A> {
 	let (base, attributes) = base.into_parts();
 
-	Item::from_parts(base.pow(power.into_element()), attributes)
+	Item::from_parts(base.power(power.into_element()), attributes)
+}
+
+fn scalar_nth_root(radicand: f64, degree: f64) -> f64 {
+	if degree == 2. {
+		radicand.sqrt()
+	} else if degree == 3. {
+		radicand.cbrt()
+	} else if degree <= 0. {
+		0.
+	} else {
+		radicand.powf(1. / degree)
+	}
+}
+
+trait NthRoot<Degree = Self> {
+	fn nth_root(self, degree: Degree) -> Self;
+}
+impl NthRoot for f64 {
+	fn nth_root(self, degree: f64) -> Self {
+		scalar_nth_root(self, degree)
+	}
+}
+impl NthRoot for f32 {
+	fn nth_root(self, degree: f32) -> Self {
+		scalar_nth_root(self as f64, degree as f64) as f32
+	}
+}
+impl NthRoot<f64> for DVec2 {
+	fn nth_root(self, degree: f64) -> Self {
+		DVec2::new(scalar_nth_root(self.x, degree), scalar_nth_root(self.y, degree))
+	}
 }
 
 /// The `n`th root operation (`√`) calculates the inverse of exponentiation. Square root inverts squaring, cube root inverts cubing, and so on.
 ///
-/// This is equivalent to raising the number to the power of `1/n`.
+/// This is equivalent to raising the number to the power of `1/n`. With a vec2 radicand, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn root<T: num_traits::float::Float>(
+fn root<A: NthRoot<B>, B>(
 	_: impl Ctx,
 	/// The number inside the radical for which the `n`th root is calculated.
 	#[default(2.)]
-	#[implementations(f64, f32)]
-	radicand: Item<T>,
+	#[implementations(f64, f32, DVec2)]
+	radicand: Item<A>,
 	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	/// Degrees 0 or less are invalid and will produce an output of 0.
 	#[default(2.)]
-	#[implementations(f64, f32)]
-	degree: Item<T>,
-) -> Item<T> {
+	#[implementations(f64, f32, f64)]
+	degree: Item<B>,
+) -> Item<A> {
 	let (radicand, attributes) = radicand.into_parts();
-	let degree = *degree.element();
 
-	let result = if degree == T::from(2.).unwrap() {
-		radicand.sqrt()
-	} else if degree == T::from(3.).unwrap() {
-		radicand.cbrt()
-	} else if degree <= T::from(0.).unwrap() {
-		T::from(0.).unwrap()
-	} else {
-		radicand.powf(T::from(1.).unwrap() / degree)
-	};
-
-	Item::from_parts(result, attributes)
+	Item::from_parts(radicand.nth_root(degree.into_element()), attributes)
 }
 
-/// The logarithmic function (`log`) calculates the logarithm of a number with a specified base. If the natural logarithm function (`ln`) is desired, set the base to "e".
-#[node_macro::node(category("Math: Arithmetic"))]
-fn logarithm<T: num_traits::float::Float>(
-	_: impl Ctx,
-	/// The number for which the logarithm is calculated.
-	#[implementations(f64, f32)]
-	value: Item<T>,
-	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
-	#[default(2.)]
-	#[implementations(f64, f32)]
-	base: Item<T>,
-) -> Item<T> {
-	let (value, attributes) = value.into_parts();
-	let base = *base.element();
-
-	let result = if base == T::from(2.).unwrap() {
+fn scalar_logarithm(value: f64, base: f64) -> f64 {
+	if base == 2. {
 		value.log2()
-	} else if base == T::from(10.).unwrap() {
+	} else if base == 10. {
 		value.log10()
-	} else if (base - T::from(std::f64::consts::E).unwrap()).abs() < T::epsilon() * T::from(1e6).unwrap() {
+	} else if (base - std::f64::consts::E).abs() < f64::EPSILON * 1e6 {
 		value.ln()
 	} else {
 		value.log(base)
-	};
+	}
+}
 
-	Item::from_parts(result, attributes)
+trait Logarithm<Base = Self> {
+	fn logarithm(self, base: Base) -> Self;
+}
+impl Logarithm for f64 {
+	fn logarithm(self, base: f64) -> Self {
+		scalar_logarithm(self, base)
+	}
+}
+impl Logarithm for f32 {
+	fn logarithm(self, base: f32) -> Self {
+		scalar_logarithm(self as f64, base as f64) as f32
+	}
+}
+impl Logarithm<f64> for DVec2 {
+	fn logarithm(self, base: f64) -> Self {
+		DVec2::new(scalar_logarithm(self.x, base), scalar_logarithm(self.y, base))
+	}
+}
+
+/// The logarithmic function (`log`) calculates the logarithm of a number with a specified base. If the natural logarithm function (`ln`) is desired, set the base to "e".
+///
+/// With a vec2 input, this applies separately to the X and Y components.
+#[node_macro::node(category("Math: Arithmetic"))]
+fn logarithm<A: Logarithm<B>, B>(
+	_: impl Ctx,
+	/// The number for which the logarithm is calculated.
+	#[implementations(f64, f32, DVec2)]
+	value: Item<A>,
+	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
+	#[default(2.)]
+	#[implementations(f64, f32, f64)]
+	base: Item<B>,
+) -> Item<A> {
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(value.logarithm(base.into_element()), attributes)
 }
 
 /// The sine trigonometric function (`sin`) calculates the ratio of the angle's opposite side length to its hypotenuse length.
+///
+/// With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Trig"))]
-fn sine<T: num_traits::float::Float>(
+fn sine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<T> {
 	let (theta, attributes) = theta.into_parts();
+	let radians = *radians.element();
 
-	let result = if *radians.element() { theta.sin() } else { theta.to_radians().sin() };
+	let result = theta.componentwise(|theta| if radians { theta.sin() } else { theta.to_radians().sin() });
 	Item::from_parts(result, attributes)
 }
 
 /// The cosine trigonometric function (`cos`) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
+///
+/// With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine<T: num_traits::float::Float>(
+fn cosine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<T> {
 	let (theta, attributes) = theta.into_parts();
+	let radians = *radians.element();
 
-	let result = if *radians.element() { theta.cos() } else { theta.to_radians().cos() };
+	let result = theta.componentwise(|theta| if radians { theta.cos() } else { theta.to_radians().cos() });
 	Item::from_parts(result, attributes)
 }
 
 /// The tangent trigonometric function (`tan`) calculates the ratio of the angle's opposite side length to its adjacent side length.
+///
+/// With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent<T: num_traits::float::Float>(
+fn tangent<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<T> {
 	let (theta, attributes) = theta.into_parts();
+	let radians = *radians.element();
 
-	let result = if *radians.element() { theta.tan() } else { theta.to_radians().tan() };
+	let result = theta.componentwise(|theta| if radians { theta.tan() } else { theta.to_radians().tan() });
 	Item::from_parts(result, attributes)
 }
 
@@ -532,42 +631,48 @@ fn as_f64(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 }
 
 /// The rounding function (`round`) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
+///
+/// With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn round<T: num_traits::float::Float>(
+fn round<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded to the nearest whole number.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
 
-	Item::from_parts(value.round(), attributes)
+	Item::from_parts(value.componentwise(f64::round), attributes)
 }
 
 /// The floor function (`floor`) rounds down an input value to the nearest whole number, unless the input number is already whole.
+///
+/// With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn floor<T: num_traits::float::Float>(
+fn floor<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded down.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
 
-	Item::from_parts(value.floor(), attributes)
+	Item::from_parts(value.componentwise(f64::floor), attributes)
 }
 
 /// The ceiling function (`ceil`) rounds up an input value to the nearest whole number, unless the input number is already whole.
+///
+/// With a vec2 input, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn ceiling<T: num_traits::float::Float>(
+fn ceiling<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded up.
-	#[implementations(f64, f32)]
+	#[implementations(f64, f32, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
 
-	Item::from_parts(value.ceil(), attributes)
+	Item::from_parts(value.componentwise(f64::ceil), attributes)
 }
 
 trait AbsoluteValue {
@@ -600,6 +705,8 @@ impl AbsoluteValue for i64 {
 }
 
 /// The absolute value function (`abs`) removes the negative sign from an input value, if present.
+///
+/// With a vec2 input, this applies separately to the X and Y components. For the overall length of a vec2, see the "Magnitude" node instead.
 #[node_macro::node(category("Math: Numeric"))]
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
@@ -612,68 +719,117 @@ fn absolute_value<T: AbsoluteValue>(
 	Item::from_parts(value.abs(), attributes)
 }
 
+trait MinMax<Rhs = Self> {
+	fn minimum(self, other: Rhs) -> Self;
+	fn maximum(self, other: Rhs) -> Self;
+}
+impl MinMax for f64 {
+	fn minimum(self, other: f64) -> Self {
+		if self < other { self } else { other }
+	}
+	fn maximum(self, other: f64) -> Self {
+		if self > other { self } else { other }
+	}
+}
+impl MinMax for f32 {
+	fn minimum(self, other: f32) -> Self {
+		if self < other { self } else { other }
+	}
+	fn maximum(self, other: f32) -> Self {
+		if self > other { self } else { other }
+	}
+}
+impl MinMax for u32 {
+	fn minimum(self, other: u32) -> Self {
+		if self < other { self } else { other }
+	}
+	fn maximum(self, other: u32) -> Self {
+		if self > other { self } else { other }
+	}
+}
+impl MinMax for String {
+	fn minimum(self, other: Self) -> Self {
+		if self < other { self } else { other }
+	}
+	fn maximum(self, other: Self) -> Self {
+		if self > other { self } else { other }
+	}
+}
+impl MinMax for DVec2 {
+	fn minimum(self, other: DVec2) -> Self {
+		self.min(other)
+	}
+	fn maximum(self, other: DVec2) -> Self {
+		self.max(other)
+	}
+}
+impl MinMax<f64> for DVec2 {
+	fn minimum(self, other: f64) -> Self {
+		self.min(DVec2::splat(other))
+	}
+	fn maximum(self, other: f64) -> Self {
+		self.max(DVec2::splat(other))
+	}
+}
+
 /// The minimum function (`min`) picks the smaller of two numbers.
+///
+/// With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn min<T: std::cmp::PartialOrd>(
+fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String)]
-	value: Item<T>,
+	#[implementations(f64, f32, u32, String, DVec2, DVec2)]
+	value: Item<A>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String)]
-	other_value: Item<T>,
-) -> Item<T> {
+	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	other_value: Item<B>,
+) -> Item<A> {
 	let (value, attributes) = value.into_parts();
-	let other_value = other_value.into_element();
 
-	Item::from_parts(if value < other_value { value } else { other_value }, attributes)
+	Item::from_parts(value.minimum(other_value.into_element()), attributes)
 }
 
 /// The maximum function (`max`) picks the larger of two numbers.
+///
+/// With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn max<T: std::cmp::PartialOrd>(
+fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String)]
-	value: Item<T>,
+	#[implementations(f64, f32, u32, String, DVec2, DVec2)]
+	value: Item<A>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String)]
-	other_value: Item<T>,
-) -> Item<T> {
+	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	other_value: Item<B>,
+) -> Item<A> {
 	let (value, attributes) = value.into_parts();
-	let other_value = other_value.into_element();
 
-	Item::from_parts(if value > other_value { value } else { other_value }, attributes)
+	Item::from_parts(value.maximum(other_value.into_element()), attributes)
 }
 
 /// The clamp function (`clamp`) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
+///
+/// With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn clamp<T: std::cmp::PartialOrd>(
+fn clamp<A: MinMax<B>, B: MinMax + Clone>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, String)]
-	value: Item<T>,
+	#[implementations(f64, f32, u32, String, DVec2, DVec2)]
+	value: Item<A>,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, f32, u32, String)]
-	min: Item<T>,
+	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	min: Item<B>,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, f32, u32, String)]
+	#[implementations(f64, f32, u32, String, DVec2, f64)]
 	#[default(1)]
-	max: Item<T>,
-) -> Item<T> {
+	max: Item<B>,
+) -> Item<A> {
 	let (value, attributes) = value.into_parts();
 	let (min, max) = (min.into_element(), max.into_element());
 
-	let (min, max) = if min < max { (min, max) } else { (max, min) };
-	let result = if value < min {
-		min
-	} else if value > max {
-		max
-	} else {
-		value
-	};
-
-	Item::from_parts(result, attributes)
+	let (min, max) = (min.clone().minimum(max.clone()), min.maximum(max));
+	Item::from_parts(value.maximum(min).minimum(max), attributes)
 }
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
@@ -1240,6 +1396,27 @@ mod test {
 	pub fn magnitude_function() {
 		let vector = Item::new_from_element(DVec2::new(3., 4.));
 		assert_eq!(magnitude((), vector).into_element(), 5.);
+	}
+
+	#[test]
+	pub fn clamp_vec2_within_swapped_bounds() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert_eq!(clamp((), vec2(-5., 5.), vec2(1., 1.), vec2(0., 2.)).into_element(), DVec2::new(0., 2.));
+	}
+
+	#[test]
+	pub fn min_max_vec2_with_scalar() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert_eq!(super::min((), vec2(-5., 5.), Item::new_from_element(0_f64)).into_element(), DVec2::new(-5., 0.));
+		assert_eq!(super::max((), vec2(-5., 5.), Item::new_from_element(0_f64)).into_element(), DVec2::new(0., 5.));
+	}
+
+	#[test]
+	pub fn round_floor_ceiling_vec2() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert_eq!(round((), vec2(1.5, -1.4)).into_element(), DVec2::new(2., -1.));
+		assert_eq!(floor((), vec2(1.9, -1.1)).into_element(), DVec2::new(1., -2.));
+		assert_eq!(ceiling((), vec2(1.1, -1.9)).into_element(), DVec2::new(2., -1.));
 	}
 
 	#[test]
