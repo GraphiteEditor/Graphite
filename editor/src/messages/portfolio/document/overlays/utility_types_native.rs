@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
+use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
@@ -1189,7 +1190,7 @@ impl OverlayContextInternal {
 
 			let width = match typed_string {
 				Some(ref typed_string) => typed_string,
-				None => &format!("{:.2}", translation.x).trim_end_matches('0').trim_end_matches('.').to_string(),
+				None => &format_rounded(translation.x, 2),
 			};
 			let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
 			self.text(width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
@@ -1200,7 +1201,7 @@ impl OverlayContextInternal {
 
 			let height = match typed_string {
 				Some(ref typed_string) => typed_string,
-				None => &format!("{:.2}", translation.y).trim_end_matches('0').trim_end_matches('.').to_string(),
+				None => &format_rounded(translation.y, 2),
 			};
 			let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
 			let height_pivot = if translation.x > -1e-3 { Pivot::Start } else { Pivot::End };
