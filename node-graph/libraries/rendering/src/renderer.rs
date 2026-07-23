@@ -1421,6 +1421,10 @@ impl Render for List<Vector> {
 
 				for paint_index in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_index) else { continue };
+					// FIXME: Remove this, only for debug purpose
+					if render_params.render_mode == RenderMode::Outline && !matches!(paint, Graphic::MeshGradient(_)) {
+						continue;
+					}
 					match paint {
 						Graphic::None => continue,
 						Graphic::Color(list) => {
@@ -1542,6 +1546,8 @@ impl Render for List<Vector> {
 					let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
+					// FIXME: Remove this, only for debug purpose
+					do_fill(scene, context);
 				}
 				_ => {
 					if use_layer {
@@ -2405,18 +2411,6 @@ impl Render for List<MeshGradient> {
 									attributes.push("fill", format!("url(#gt{unique_id})"));
 									attributes.push("mask", format!("url(#mm{shared_id}-{bucket})"));
 								});
-
-								// FIXME: For debug
-								render.leaf_tag("rect", |attributes| {
-									attributes.push("x", "0");
-									attributes.push("y", "0");
-									attributes.push("width", "1");
-									attributes.push("height", "1");
-									attributes.push("fill", "none");
-									attributes.push("stroke", "black");
-									attributes.push("stroke-width", "1");
-									attributes.push("vector-effect", "non-scaling-stroke");
-								});
 							},
 						);
 					},
@@ -2429,10 +2423,6 @@ impl Render for List<MeshGradient> {
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
-
-		if let RenderMode::Outline = render_params.render_mode {
-			return;
-		}
 
 		let linear_gradient = |start: DVec2, end: DVec2, start_color: SRGBA8, end_color: SRGBA8| {
 			let mut stops = peniko::ColorStops::new();
@@ -2496,6 +2486,26 @@ impl Render for List<MeshGradient> {
 			}) else {
 				continue;
 			};
+
+			// FIXME: Remove this, only for debug purpose
+			if let RenderMode::Outline = render_params.render_mode {
+				let unit_rect = kurbo::Rect::new(0., 0., 1., 1.);
+				let (outline_stroke, outline_color) = get_outline_styles(render_params);
+
+				for subpatch in subpatches {
+					let [top_left, top_right, bottom_left, _] = subpatch.corners;
+					let local_to_mesh = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
+					if local_to_mesh.matrix2.determinant() < 0. {
+						continue;
+					}
+
+					let mut outline_path = unit_rect.to_path(0.1);
+					outline_path.apply_affine(kurbo::Affine::new((parent_transform * local_to_mesh).to_cols_array()));
+					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
+				}
+
+				continue;
+			}
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			let mut item_layer = false;
@@ -2569,12 +2579,6 @@ impl Render for List<MeshGradient> {
 				scene.pop_layer();
 				scene.pop_layer();
 				scene.pop_layer();
-
-				// FIXME: debug render
-				let mut outline_path = clip_rect.to_path(0.1);
-				outline_path.apply_affine(local_to_scene);
-				let (outline_stroke, outline_color) = get_outline_styles(render_params);
-				scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
 			}
 
 			if item_layer {
