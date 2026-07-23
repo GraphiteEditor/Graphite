@@ -27,7 +27,7 @@ pub fn category_description(category: &str) -> &str {
 		"Math: Numeric" => "Nodes in this category perform discontinuous numeric operations such as rounding, clamping, mapping, and randomization.",
 		"Math: Transform" => "Nodes in this category perform transformations on graphical elements and calculations involving transformation matrices.",
 		"Math: Trig" => "Nodes in this category perform trigonometric operations such as sine, cosine, tangent, and their inverses.",
-		"Math: Vector" => "Nodes in this category perform operations involving `vec2` values (points or arrows in 2D space) such as the dot product, normalization, and distance calculations.",
+		"Math: Vec2" => "Nodes in this category perform operations involving `vec2` values (points or arrows in 2D space) such as the dot product, normalization, and distance calculations.",
 		"Raster: Adjustment" => "Nodes in this category perform per-pixel color adjustments on raster graphics, such as brightness and contrast modifications.",
 		"Raster: Channels" => "Nodes in this category enable channel-specific manipulation of the RGB and alpha channels of raster graphics.",
 		"Raster: Filter" => "Nodes in this category apply filtering effects to raster graphics such as blurs and sharpening.",
