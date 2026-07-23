@@ -372,7 +372,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Creates a copy for each node by disconnecting nodes which are not connected to other copied nodes.
-	/// Returns an iterator of all persistent metadata for a node and their ids
+	/// Returns an iterator, sorted by original node id, of all persistent metadata for a node and their ids
 	pub fn copy_nodes<'a>(&'a mut self, new_ids: &'a HashMap<NodeId, NodeId>, network_path: &'a [NodeId]) -> impl Iterator<Item = (NodeId, NodeTemplate)> + 'a {
 		let mut new_nodes = new_ids
 			.iter()
@@ -442,6 +442,7 @@ impl NodeNetworkInterface {
 				}
 			}
 		}
+		new_nodes.sort_by_key(|a| a.0);
 		new_nodes.into_iter().map(move |(new, node_id, node)| (new, self.map_ids(node, &node_id, new_ids, network_path)))
 	}
 
@@ -6931,6 +6932,7 @@ impl NodePersistentMetadata {
 	pub fn new(position: NodePosition) -> Self {
 		Self { position }
 	}
+
 	pub fn position(&self) -> &NodePosition {
 		&self.position
 	}
@@ -7074,7 +7076,10 @@ pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>
 
 #[cfg(test)]
 mod network_interface_tests {
-	use crate::test_utils::test_prelude::*;
+	use crate::{
+		messages::portfolio::document::utility_types::network_interface::{LayerPosition, NodePosition, NodeTypePersistentMetadata},
+		test_utils::test_prelude::*,
+	};
 	#[tokio::test]
 	async fn copy_isolated_node() {
 		let mut editor = EditorTestUtils::create();
@@ -7103,5 +7108,83 @@ mod network_interface_tests {
 			nodes.values().any(|other| *other == orignal),
 			"duplicated node should exist\nother nodes: {nodes:#?}\norignal {orignal:#?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn copy_and_paste_nodes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = editor
+			.create_node_by_name_and_coordinates(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER), (0, 0))
+			.await;
+		let circle = editor
+			.create_node_by_name_and_coordinates(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::circle::IDENTIFIER), (5, 5))
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![circle, rectangle] }).await;
+		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
+		let clipboard = frontend_messages
+			.into_iter()
+			.find_map(|msg| match msg {
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				_ => None,
+			})
+			.expect("copy message should be dispatched");
+		println!("Clipboard: {clipboard}");
+		// Move mouse then paste at new location
+		let mouse_pos = (24.0, 24.0);
+
+		editor.move_mouse(mouse_pos.0, mouse_pos.1, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(mouse_pos.0, mouse_pos.1, ModifierKeys::empty()).await;
+		editor.left_mouseup(mouse_pos.0, mouse_pos.1, ModifierKeys::empty()).await;
+		editor
+			.handle_message(ClipboardMessage::ReadClipboard {
+				content: ClipboardContentRaw::Text(clipboard),
+			})
+			.await;
+
+		// For each pasted node, check that the change in position is based on the delta of the mouse position and original circle. The mouse position in grid coordinates is (1,1). Since the original
+		// circle is at (5,5), the new circle should be pasted at (1,1), and the new square should be pasted at (-4, -4). Because we preserve selection order, the first selected pasted node should be
+		// a circle, the second a rectangle.
+		let new_positions: Vec<&IVec2> = editor
+			.active_document()
+			.network_interface
+			.selected_nodes()
+			.selected_nodes()
+			.map(|node_id| {
+				let node_metadata = &editor
+					.active_document()
+					.network_interface
+					.document_network_metadata()
+					.persistent_metadata
+					.node_metadata
+					.get(node_id)
+					.expect("Node should exist")
+					.persistent_metadata
+					.node_type_metadata;
+				let new_position = match node_metadata {
+					NodeTypePersistentMetadata::Layer(layer_metadata) => {
+						if let LayerPosition::Absolute(position) = &layer_metadata.position {
+							Some(position)
+						} else {
+							None
+						}
+					}
+					NodeTypePersistentMetadata::Node(node_metadata) => {
+						if let NodePosition::Absolute(position) = node_metadata.position() {
+							Some(position)
+						} else {
+							None
+						}
+					}
+				}
+				.expect("Pasted node should have a position");
+				new_position
+			})
+			.collect();
+		println!("positions of pasted nodes: {:?}", new_positions);
+		// Check position of pasted circle
+		assert_eq!(new_positions[0], &IVec2::new(1, 1));
+		// Check position of pasted rectangle
+		assert_eq!(new_positions[1], &IVec2::new(-4, -4));
 	}
 }
