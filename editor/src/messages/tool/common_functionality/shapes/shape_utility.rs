@@ -571,9 +571,9 @@ pub fn wrap_to_tau(angle: f64) -> f64 {
 }
 
 pub fn format_rounded(value: f64, precision: usize) -> String {
-	// Denoised values within floating point noise of zero (including -0) display as unsigned zero
+	// Denoised values within floating point noise of zero (including -0) display as unsigned zero, unless the precision is fine enough to display them
 	let value = round_away_float_noise(value);
-	let value = if value.abs() < 1e-12 { 0. } else { value };
+	let value = if value.abs() < f64::min(1e-12, 0.5 * 10_f64.powi(-(precision as i32))) { 0. } else { value };
 	let formatted = format!("{value:.precision$}");
 
 	// Trailing zeros are trimmed only when the display is exact, so a truncated value keeps its decimal places (like "0.00" or "3.10") to indicate the truncation
@@ -693,7 +693,7 @@ mod tests {
 		assert_eq!(format_rounded(0.0003, 3), "0.000");
 		assert_eq!(format_rounded(3.10001, 2), "3.10");
 		assert_eq!(format_rounded(45.001, 2), "45.00");
-		assert_eq!(format_rounded(3.14159, 2), "3.14");
+		assert_eq!(format_rounded(std::f64::consts::PI, 2), "3.14");
 	}
 
 	#[test]
@@ -708,5 +708,13 @@ mod tests {
 		assert_eq!(format_rounded(-0., 2), "0");
 		assert_eq!(format_rounded(1e-15, 2), "0");
 		assert_eq!(format_rounded(-1e-15, 2), "0");
+	}
+
+	#[test]
+	fn format_rounded_keeps_tiny_values_at_displayable_precision() {
+		assert_eq!(format_rounded(5e-13, 20), "0.0000000000005");
+		assert_eq!(format_rounded(-5e-13, 20), "-0.0000000000005");
+		assert_eq!(format_rounded(0., 20), "0");
+		assert_eq!(format_rounded(-0., 20), "0");
 	}
 }

@@ -217,8 +217,8 @@
 		const decimalPlaces = Math.max(displayDecimalPlaces, 0);
 		const roundingPower = 10 ** decimalPlaces;
 
-		// Values within floating point noise of zero (including -0) display as unsigned zero
-		const effectiveValue = Math.abs(displayValue) < 1e-12 ? 0 : roundAwayFloatNoise(displayValue);
+		// Values within floating point noise of zero (including -0) display as unsigned zero, unless the field's decimal precision is fine enough to display them
+		const effectiveValue = Math.abs(displayValue) < Math.min(1e-12, 0.5 / roundingPower) ? 0 : roundAwayFloatNoise(displayValue);
 		const unitlessDisplayValue = Math.round(effectiveValue * roundingPower) / roundingPower;
 
 		// Trailing zeros are trimmed only when the display is exact, so a truncated value keeps its decimal places (like "0.00" or "3.10") to indicate the truncation
