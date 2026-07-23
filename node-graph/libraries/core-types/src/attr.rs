@@ -5,7 +5,8 @@
 //!
 //! Keys are declared with the [`node_macro::attrs!`] macro: `Name: Type` entries, where
 //! `namespace { ... }` blocks contribute a `namespace:` name prefix. The key name is
-//! derived mechanically from the ident (UpperCamel -> snake_case).
+//! derived mechanically from the ident (UpperCamel -> snake_case). An optional `= value`
+//! after the type declares the key's implicit default (see [`Attr::implicit_default`]).
 
 use crate::Color;
 use crate::list::NodeIdPath;
@@ -16,6 +17,12 @@ use std::fmt::Debug;
 pub trait Attr {
 	type Value: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static;
 	fn name() -> &'static str;
+
+	/// The value an item without this attribute is considered to have: the value type's `Default`,
+	/// unless the key's `attrs!` declaration overrides it with `= value`.
+	fn implicit_default() -> Self::Value {
+		Default::default()
+	}
 }
 
 node_macro::attrs! {
@@ -24,9 +31,9 @@ node_macro::attrs! {
 	/// Item's `BlendMode`, controlling how it composites with content beneath it.
 	BlendMode: crate::blending::BlendMode,
 	/// Item's opacity multiplier, composed multiplicatively through nested groups. Affects content clipped to the item.
-	Opacity: f64,
+	Opacity: f64 = 1.,
 	/// Item's fill opacity multiplier. Like opacity but does not affect content clipped to the item.
-	OpacityFill: f64,
+	OpacityFill: f64 = 1.,
 	/// Whether an item inherits the alpha of the content beneath it (clipping mask).
 	ClippingMask: bool,
 	/// Byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).

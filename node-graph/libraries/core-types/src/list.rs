@@ -60,27 +60,9 @@ unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
 // Implicit attribute defaults
 // ===========================
 
-// TODO: Remove this is not maintainable
-/// Overrides the type's default value for certain attributes.
-fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
-	if key == attr::Opacity::name() || key == attr::OpacityFill::name() {
-		Some(Box::new(1_f64))
-	} else {
-		None
-	}
-}
-
-/// The value an item without attribute `A` is considered to have: the key's implicit default if it
-/// has one, otherwise the value type's `Default`.
-fn implicit_default<A: Attr>() -> A::Value {
-	implicit_default_value(A::name())
-		.and_then(|value| value.into_any().downcast::<A::Value>().ok())
-		.map_or_else(Default::default, |value| *value)
-}
-
-/// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).
+/// Appends `count` copies of `key`'s implicit default to `attribute` (see [`attr::implicit_default_value`]).
 fn pad_with_implicit_default(key: &str, attribute: &mut Box<dyn AnyAttribute>, count: usize) {
-	match implicit_default_value(key) {
+	match attr::implicit_default_value(key) {
 		Some(default) => attribute.push_repeated(&*default, count),
 		None => {
 			for _ in 0..count {
@@ -661,7 +643,7 @@ impl ItemAttributeValues {
 
 	/// Gets a mutable reference to the value of the typed attribute, inserting the key's default value if absent.
 	pub fn attr_mut_or_insert_default<A: Attr>(&mut self) -> &mut A::Value {
-		self.get_or_insert_with_mut(A::name(), implicit_default::<A>)
+		self.get_or_insert_with_mut(A::name(), A::implicit_default)
 	}
 
 	/// Inserts the typed attribute's value, replacing any existing entry.
@@ -1049,7 +1031,7 @@ impl<T> List<T> {
 
 	/// Returns a clone of the value of the typed attribute at the given item index, or the key's default value if absent.
 	pub fn attr_cloned_or_default<A: Attr>(&self, index: usize) -> A::Value {
-		self.attr::<A>(index).cloned().unwrap_or_else(implicit_default::<A>)
+		self.attr::<A>(index).cloned().unwrap_or_else(A::implicit_default)
 	}
 
 	/// Returns a clone of the value of the typed attribute at the given item index, or the provided default if absent.
@@ -1087,7 +1069,7 @@ impl<T> List<T> {
 	pub fn iter_attr_values_or_default<A: Attr>(&self) -> impl Iterator<Item = A::Value> + '_ {
 		let slice = self.attributes.get_attribute_slice::<A::Value>(A::name());
 		let len = self.element.len();
-		(0..len).map(move |i| slice.map_or_else(implicit_default::<A>, |s| s[i].clone()))
+		(0..len).map(move |i| slice.map_or_else(A::implicit_default, |s| s[i].clone()))
 	}
 
 	/// Returns a mutable iterator over the typed attribute, creating the attribute with defaults if it doesn't exist.
@@ -1349,7 +1331,7 @@ impl<T> Item<T> {
 
 	/// Returns a clone of the value of the typed attribute, or the key's default value if absent.
 	pub fn attr_cloned_or_default<A: Attr>(&self) -> A::Value {
-		self.attr::<A>().cloned().unwrap_or_else(implicit_default::<A>)
+		self.attr::<A>().cloned().unwrap_or_else(A::implicit_default)
 	}
 
 	/// Returns a mutable reference to the value of the typed attribute, if present.
