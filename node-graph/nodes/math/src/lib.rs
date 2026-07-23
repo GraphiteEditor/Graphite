@@ -404,7 +404,13 @@ impl Logarithm for f64 {
 impl Logarithm for f32 {
 	type Output = f32;
 	fn logarithm(self, base: f32) -> f32 {
-		scalar_logarithm(self as f64, base as f64) as f32
+		// The f32 representation of e widens inexactly, so match it against e at f32 precision and substitute the exact f64 e
+		let base = if (base - std::f32::consts::E).abs() < f32::EPSILON * 10. {
+			std::f64::consts::E
+		} else {
+			base as f64
+		};
+		scalar_logarithm(self as f64, base) as f32
 	}
 }
 impl Logarithm for DVec2 {
@@ -1490,6 +1496,18 @@ mod test {
 		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
 		assert_eq!(root((), vec2(64., 27.), vec2(2., 3.)).into_element(), DVec2::new(8., 3.));
 		assert_eq!(logarithm((), vec2(8., 100.), vec2(2., 10.)).into_element(), DVec2::new(3., 2.));
+	}
+
+	#[test]
+	pub fn logarithm_f32_base_e_and_near_e() {
+		assert_eq!(
+			logarithm((), Item::new_from_element(8_f32), Item::new_from_element(std::f32::consts::E)).into_element(),
+			8_f64.ln() as f32
+		);
+		assert_eq!(
+			logarithm((), Item::new_from_element(8_f32), Item::new_from_element(2.7_f32)).into_element(),
+			8_f64.log(2.7_f32 as f64) as f32
+		);
 	}
 
 	#[test]
