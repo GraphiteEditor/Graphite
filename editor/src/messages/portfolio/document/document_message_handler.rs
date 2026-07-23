@@ -1346,6 +1346,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.start_transaction();
 				self.history.push_undo(self.network_interface.clone());
+				self.history.push_guide_undo(self.guide_lines_message_handler.guide_lines.clone());
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -2429,6 +2430,7 @@ impl DocumentMessageHandler {
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let mut network_interface = self.history.pop_undo()?;
+		let guide_lines_snapshot = self.history.pop_guide_undo();
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
@@ -2442,6 +2444,13 @@ impl DocumentMessageHandler {
 		network_interface.load_structure();
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+
+		// Restore guide lines from the snapshot and stash the current state for redo
+		if let Some(guide_lines) = guide_lines_snapshot {
+			let current_guides = std::mem::replace(&mut self.guide_lines_message_handler.guide_lines, guide_lines);
+			self.history.push_guide_redo(current_guides);
+			responses.add(OverlaysMessage::Draw);
+		}
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -2467,6 +2476,7 @@ impl DocumentMessageHandler {
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let mut network_interface = self.history.pop_redo()?;
+		let guide_lines_snapshot = self.history.pop_guide_redo();
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
@@ -2477,6 +2487,14 @@ impl DocumentMessageHandler {
 		network_interface.set_document_to_viewport_transform(transform);
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+
+		// Restore guide lines from the redo snapshot and stash the current state for undo
+		if let Some(guide_lines) = guide_lines_snapshot {
+			let current_guides = std::mem::replace(&mut self.guide_lines_message_handler.guide_lines, guide_lines);
+			self.history.push_guide_undo(current_guides);
+			responses.add(OverlaysMessage::Draw);
+		}
+
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);

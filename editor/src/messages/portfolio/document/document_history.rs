@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 use document_graph_storage::Registry;
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
 
+use super::utility_types::guide::GuideLine;
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, collect_network_view_settings};
 
@@ -20,6 +21,10 @@ pub struct DocumentHistory {
 	lagacy_undo_stack: VecDeque<NodeNetworkInterface>,
 	/// Stack of document network snapshots for future history states.
 	lagacy_redo_stack: VecDeque<NodeNetworkInterface>,
+	/// Guide-line state paired with each legacy undo snapshot.
+	guide_undo_stack: VecDeque<Vec<GuideLine>>,
+	/// Guide-line state paired with each legacy redo snapshot.
+	guide_redo_stack: VecDeque<Vec<GuideLine>>,
 	/// The `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None` until the mount
 	/// future built by `load_document` resolves.
 	#[derivative(Debug = "ignore")]
@@ -34,9 +39,19 @@ impl DocumentHistory {
 		Self::push_capped(&mut self.lagacy_undo_stack, snapshot);
 	}
 
+	/// Push a guide-line snapshot alongside the most recent undo network snapshot.
+	pub fn push_guide_undo(&mut self, guide_lines: Vec<GuideLine>) {
+		Self::push_capped(&mut self.guide_undo_stack, guide_lines);
+	}
+
 	/// Push a snapshot onto the redo stack, evicting the oldest entry past the history cap.
 	pub fn push_redo(&mut self, snapshot: NodeNetworkInterface) {
 		Self::push_capped(&mut self.lagacy_redo_stack, snapshot);
+	}
+
+	/// Push a guide-line snapshot alongside the most recent redo network snapshot.
+	pub fn push_guide_redo(&mut self, guide_lines: Vec<GuideLine>) {
+		Self::push_capped(&mut self.guide_redo_stack, guide_lines);
 	}
 
 	/// Pop the most recent undo snapshot, or `None` when the stack is empty.
@@ -44,19 +59,31 @@ impl DocumentHistory {
 		self.lagacy_undo_stack.pop_back()
 	}
 
+	/// Pop the guide-line snapshot paired with the most recent undo entry.
+	pub fn pop_guide_undo(&mut self) -> Option<Vec<GuideLine>> {
+		self.guide_undo_stack.pop_back()
+	}
+
 	/// Pop the most recent redo snapshot, or `None` when the stack is empty.
 	pub fn pop_redo(&mut self) -> Option<NodeNetworkInterface> {
 		self.lagacy_redo_stack.pop_back()
 	}
 
+	/// Pop the guide-line snapshot paired with the most recent redo entry.
+	pub fn pop_guide_redo(&mut self) -> Option<Vec<GuideLine>> {
+		self.guide_redo_stack.pop_back()
+	}
+
 	/// Drop the most recently pushed undo snapshot (used to cancel a transaction that ended up unmodified).
 	pub fn discard_last_undo(&mut self) {
 		self.lagacy_undo_stack.pop_back();
+		self.guide_undo_stack.pop_back();
 	}
 
 	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
 	pub fn clear_redo(&mut self) {
 		self.lagacy_redo_stack.clear();
+		self.guide_redo_stack.clear();
 	}
 
 	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
@@ -258,7 +285,7 @@ impl DocumentHistory {
 		}
 	}
 
-	fn push_capped(stack: &mut VecDeque<NodeNetworkInterface>, snapshot: NodeNetworkInterface) {
+	fn push_capped<T>(stack: &mut VecDeque<T>, snapshot: T) {
 		stack.push_back(snapshot);
 		if stack.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			stack.pop_front();
