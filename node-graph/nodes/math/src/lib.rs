@@ -251,49 +251,61 @@ fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy
 	Item::from_parts(result, attributes)
 }
 
-trait Exponent<Rhs = Self> {
-	fn power(self, power: Rhs) -> Self;
+pub trait Exponent<Rhs = Self> {
+	type Output;
+	fn power(self, power: Rhs) -> Self::Output;
 }
 impl Exponent for f64 {
-	fn power(self, power: f64) -> Self {
+	type Output = f64;
+	fn power(self, power: f64) -> f64 {
 		self.powf(power)
 	}
 }
 impl Exponent for f32 {
-	fn power(self, power: f32) -> Self {
+	type Output = f32;
+	fn power(self, power: f32) -> f32 {
 		self.powf(power)
 	}
 }
 impl Exponent for u32 {
-	fn power(self, power: u32) -> Self {
+	type Output = u32;
+	fn power(self, power: u32) -> u32 {
 		self.pow(power)
 	}
 }
 impl Exponent for DVec2 {
-	fn power(self, power: DVec2) -> Self {
+	type Output = DVec2;
+	fn power(self, power: DVec2) -> DVec2 {
 		DVec2::new(self.x.powf(power.x), self.y.powf(power.y))
 	}
 }
 impl Exponent<f64> for DVec2 {
-	fn power(self, power: f64) -> Self {
+	type Output = DVec2;
+	fn power(self, power: f64) -> DVec2 {
 		DVec2::new(self.x.powf(power), self.y.powf(power))
+	}
+}
+impl Exponent<DVec2> for f64 {
+	type Output = DVec2;
+	fn power(self, power: DVec2) -> DVec2 {
+		DVec2::new(self.powf(power.x), self.powf(power.y))
 	}
 }
 
 /// The exponent operation (`^`) calculates the result of raising a number to a power.
 ///
-/// With a vec2 base, this applies separately to the X and Y components.
+/// With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn exponent<A: Exponent<B>, B>(
 	_: impl Ctx,
 	/// The base number that is raised to the power.
-	#[implementations(f64, f32, u32, DVec2, DVec2)]
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
 	base: Item<A>,
 	/// The power to which the base number is raised.
-	#[implementations(f64, f32, u32, DVec2, f64)]
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
 	#[default(2.)]
 	power: Item<B>,
-) -> Item<A> {
+) -> Item<<A as Exponent<B>>::Output> {
 	let (base, attributes) = base.into_parts();
 
 	Item::from_parts(base.power(power.into_element()), attributes)
@@ -311,41 +323,57 @@ fn scalar_nth_root(radicand: f64, degree: f64) -> f64 {
 	}
 }
 
-trait NthRoot<Degree = Self> {
-	fn nth_root(self, degree: Degree) -> Self;
+pub trait NthRoot<Degree = Self> {
+	type Output;
+	fn nth_root(self, degree: Degree) -> Self::Output;
 }
 impl NthRoot for f64 {
-	fn nth_root(self, degree: f64) -> Self {
+	type Output = f64;
+	fn nth_root(self, degree: f64) -> f64 {
 		scalar_nth_root(self, degree)
 	}
 }
 impl NthRoot for f32 {
-	fn nth_root(self, degree: f32) -> Self {
+	type Output = f32;
+	fn nth_root(self, degree: f32) -> f32 {
 		scalar_nth_root(self as f64, degree as f64) as f32
 	}
 }
+impl NthRoot for DVec2 {
+	type Output = DVec2;
+	fn nth_root(self, degree: DVec2) -> DVec2 {
+		DVec2::new(scalar_nth_root(self.x, degree.x), scalar_nth_root(self.y, degree.y))
+	}
+}
 impl NthRoot<f64> for DVec2 {
-	fn nth_root(self, degree: f64) -> Self {
+	type Output = DVec2;
+	fn nth_root(self, degree: f64) -> DVec2 {
 		DVec2::new(scalar_nth_root(self.x, degree), scalar_nth_root(self.y, degree))
+	}
+}
+impl NthRoot<DVec2> for f64 {
+	type Output = DVec2;
+	fn nth_root(self, degree: DVec2) -> DVec2 {
+		DVec2::new(scalar_nth_root(self, degree.x), scalar_nth_root(self, degree.y))
 	}
 }
 
 /// The `n`th root operation (`√`) calculates the inverse of exponentiation. Square root inverts squaring, cube root inverts cubing, and so on.
 ///
-/// This is equivalent to raising the number to the power of `1/n`. With a vec2 radicand, this applies separately to the X and Y components.
+/// This is equivalent to raising the number to the power of `1/n`. With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn root<A: NthRoot<B>, B>(
 	_: impl Ctx,
 	/// The number inside the radical for which the `n`th root is calculated.
 	#[default(2.)]
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, f32, DVec2, DVec2, f64)]
 	radicand: Item<A>,
 	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	/// Degrees 0 or less are invalid and will produce an output of 0.
 	#[default(2.)]
-	#[implementations(f64, f32, f64)]
+	#[implementations(f64, f32, f64, DVec2, DVec2)]
 	degree: Item<B>,
-) -> Item<A> {
+) -> Item<<A as NthRoot<B>>::Output> {
 	let (radicand, attributes) = radicand.into_parts();
 
 	Item::from_parts(radicand.nth_root(degree.into_element()), attributes)
@@ -363,39 +391,55 @@ fn scalar_logarithm(value: f64, base: f64) -> f64 {
 	}
 }
 
-trait Logarithm<Base = Self> {
-	fn logarithm(self, base: Base) -> Self;
+pub trait Logarithm<Base = Self> {
+	type Output;
+	fn logarithm(self, base: Base) -> Self::Output;
 }
 impl Logarithm for f64 {
-	fn logarithm(self, base: f64) -> Self {
+	type Output = f64;
+	fn logarithm(self, base: f64) -> f64 {
 		scalar_logarithm(self, base)
 	}
 }
 impl Logarithm for f32 {
-	fn logarithm(self, base: f32) -> Self {
+	type Output = f32;
+	fn logarithm(self, base: f32) -> f32 {
 		scalar_logarithm(self as f64, base as f64) as f32
 	}
 }
+impl Logarithm for DVec2 {
+	type Output = DVec2;
+	fn logarithm(self, base: DVec2) -> DVec2 {
+		DVec2::new(scalar_logarithm(self.x, base.x), scalar_logarithm(self.y, base.y))
+	}
+}
 impl Logarithm<f64> for DVec2 {
-	fn logarithm(self, base: f64) -> Self {
+	type Output = DVec2;
+	fn logarithm(self, base: f64) -> DVec2 {
 		DVec2::new(scalar_logarithm(self.x, base), scalar_logarithm(self.y, base))
+	}
+}
+impl Logarithm<DVec2> for f64 {
+	type Output = DVec2;
+	fn logarithm(self, base: DVec2) -> DVec2 {
+		DVec2::new(scalar_logarithm(self, base.x), scalar_logarithm(self, base.y))
 	}
 }
 
 /// The logarithmic function (`log`) calculates the logarithm of a number with a specified base. If the natural logarithm function (`ln`) is desired, set the base to "e".
 ///
-/// With a vec2 input, this applies separately to the X and Y components.
+/// With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn logarithm<A: Logarithm<B>, B>(
 	_: impl Ctx,
 	/// The number for which the logarithm is calculated.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, f32, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
 	#[default(2.)]
-	#[implementations(f64, f32, f64)]
+	#[implementations(f64, f32, f64, DVec2, DVec2)]
 	base: Item<B>,
-) -> Item<A> {
+) -> Item<<A as Logarithm<B>>::Output> {
 	let (value, attributes) = value.into_parts();
 
 	Item::from_parts(value.logarithm(base.into_element()), attributes)
@@ -719,56 +763,72 @@ fn absolute_value<T: AbsoluteValue>(
 	Item::from_parts(value.abs(), attributes)
 }
 
-trait MinMax<Rhs = Self> {
-	fn minimum(self, other: Rhs) -> Self;
-	fn maximum(self, other: Rhs) -> Self;
+pub trait MinMax<Rhs = Self> {
+	type Output;
+	fn minimum(self, other: Rhs) -> Self::Output;
+	fn maximum(self, other: Rhs) -> Self::Output;
 }
 impl MinMax for f64 {
-	fn minimum(self, other: f64) -> Self {
+	type Output = f64;
+	fn minimum(self, other: f64) -> f64 {
 		if self < other { self } else { other }
 	}
-	fn maximum(self, other: f64) -> Self {
+	fn maximum(self, other: f64) -> f64 {
 		if self > other { self } else { other }
 	}
 }
 impl MinMax for f32 {
-	fn minimum(self, other: f32) -> Self {
+	type Output = f32;
+	fn minimum(self, other: f32) -> f32 {
 		if self < other { self } else { other }
 	}
-	fn maximum(self, other: f32) -> Self {
+	fn maximum(self, other: f32) -> f32 {
 		if self > other { self } else { other }
 	}
 }
 impl MinMax for u32 {
-	fn minimum(self, other: u32) -> Self {
+	type Output = u32;
+	fn minimum(self, other: u32) -> u32 {
 		if self < other { self } else { other }
 	}
-	fn maximum(self, other: u32) -> Self {
+	fn maximum(self, other: u32) -> u32 {
 		if self > other { self } else { other }
 	}
 }
 impl MinMax for String {
-	fn minimum(self, other: Self) -> Self {
+	type Output = String;
+	fn minimum(self, other: Self) -> String {
 		if self < other { self } else { other }
 	}
-	fn maximum(self, other: Self) -> Self {
+	fn maximum(self, other: Self) -> String {
 		if self > other { self } else { other }
 	}
 }
 impl MinMax for DVec2 {
-	fn minimum(self, other: DVec2) -> Self {
+	type Output = DVec2;
+	fn minimum(self, other: DVec2) -> DVec2 {
 		self.min(other)
 	}
-	fn maximum(self, other: DVec2) -> Self {
+	fn maximum(self, other: DVec2) -> DVec2 {
 		self.max(other)
 	}
 }
 impl MinMax<f64> for DVec2 {
-	fn minimum(self, other: f64) -> Self {
+	type Output = DVec2;
+	fn minimum(self, other: f64) -> DVec2 {
 		self.min(DVec2::splat(other))
 	}
-	fn maximum(self, other: f64) -> Self {
+	fn maximum(self, other: f64) -> DVec2 {
 		self.max(DVec2::splat(other))
+	}
+}
+impl MinMax<DVec2> for f64 {
+	type Output = DVec2;
+	fn minimum(self, other: DVec2) -> DVec2 {
+		DVec2::splat(self).min(other)
+	}
+	fn maximum(self, other: DVec2) -> DVec2 {
+		DVec2::splat(self).max(other)
 	}
 }
 
@@ -779,12 +839,12 @@ impl MinMax<f64> for DVec2 {
 fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2)]
+	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
-) -> Item<A> {
+) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
 
 	Item::from_parts(value.minimum(other_value.into_element()), attributes)
@@ -797,12 +857,12 @@ fn min<A: MinMax<B>, B>(
 fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2)]
+	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
-) -> Item<A> {
+) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
 
 	Item::from_parts(value.maximum(other_value.into_element()), attributes)
@@ -812,19 +872,22 @@ fn max<A: MinMax<B>, B>(
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
 #[node_macro::node(category("Math: Numeric"))]
-fn clamp<A: MinMax<B>, B: MinMax + Clone>(
+fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2)]
+	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
 	min: Item<B>,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, f32, u32, String, DVec2, f64)]
+	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
 	#[default(1)]
 	max: Item<B>,
-) -> Item<A> {
+) -> Item<<A as MinMax<B>>::Output>
+where
+	<A as MinMax<B>>::Output: MinMax<B, Output = <A as MinMax<B>>::Output>,
+{
 	let (value, attributes) = value.into_parts();
 	let (min, max) = (min.into_element(), max.into_element());
 
@@ -1409,6 +1472,24 @@ mod test {
 		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
 		assert_eq!(super::min((), vec2(-5., 5.), Item::new_from_element(0_f64)).into_element(), DVec2::new(-5., 0.));
 		assert_eq!(super::max((), vec2(-5., 5.), Item::new_from_element(0_f64)).into_element(), DVec2::new(0., 5.));
+	}
+
+	#[test]
+	pub fn scalar_with_vec2_operand_orders() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert_eq!(super::min((), Item::new_from_element(0_f64), vec2(-5., 5.)).into_element(), DVec2::new(-5., 0.));
+		assert_eq!(super::max((), Item::new_from_element(0_f64), vec2(-5., 5.)).into_element(), DVec2::new(0., 5.));
+		assert_eq!(exponent((), Item::new_from_element(2_f64), vec2(2., 3.)).into_element(), DVec2::new(4., 8.));
+		assert_eq!(root((), Item::new_from_element(64_f64), vec2(2., 3.)).into_element(), DVec2::new(8., 4.));
+		assert_eq!(logarithm((), Item::new_from_element(8_f64), vec2(2., 10.)).into_element(), DVec2::new(3., 8_f64.log10()));
+		assert_eq!(clamp((), Item::new_from_element(5_f64), vec2(0., 6.), vec2(1., 10.)).into_element(), DVec2::new(1., 6.));
+	}
+
+	#[test]
+	pub fn vec2_degrees_and_bases() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert_eq!(root((), vec2(64., 27.), vec2(2., 3.)).into_element(), DVec2::new(8., 3.));
+		assert_eq!(logarithm((), vec2(8., 100.), vec2(2., 10.)).into_element(), DVec2::new(3., 2.));
 	}
 
 	#[test]
