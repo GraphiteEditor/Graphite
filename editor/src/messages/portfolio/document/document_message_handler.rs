@@ -1357,7 +1357,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.start_transaction();
 				self.history.push_undo(self.network_interface.clone());
-				self.history.push_guide_undo(self.guide_lines_message_handler.guide_lines.clone());
+				self.history.push_guide_undo(self.current_guide_state());
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -1952,10 +1952,10 @@ impl DocumentMessageHandler {
 				let snap_data = SnapData::new(document, ipp, viewport);
 				let point = SnapCandidatePoint::new_source(raw_doc, SnapSource::None);
 				let constraint = match direction {
-					// Horizontal guide: fixed Y position, constrain snap search along X
-					GuideLineDirection::Horizontal => SnapConstraint::Line { origin: raw_doc, direction: DVec2::X },
-					// Vertical guide: fixed X position, constrain snap search along Y
-					GuideLineDirection::Vertical => SnapConstraint::Line { origin: raw_doc, direction: DVec2::Y },
+					// Horizontal guide: position varies on Y, constrain snap search along Y
+					GuideLineDirection::Horizontal => SnapConstraint::Line { origin: raw_doc, direction: DVec2::Y },
+					// Vertical guide: position varies on X, constrain snap search along X
+					GuideLineDirection::Vertical => SnapConstraint::Line { origin: raw_doc, direction: DVec2::X },
 				};
 				let snapped = snap_manager.constrained_snap(&snap_data, &point, constraint, SnapTypeConfiguration::default());
 				snap_manager.update_indicator(snapped.clone());
@@ -2478,6 +2478,13 @@ impl DocumentMessageHandler {
 		paths
 	}
 
+	pub fn current_guide_state(&self) -> crate::messages::portfolio::document::utility_types::guide::GuideLinesState {
+		crate::messages::portfolio::document::utility_types::guide::GuideLinesState {
+			guide_lines: self.guide_lines_message_handler.guide_lines.clone(),
+			guide_lines_visible: self.guide_lines_message_handler.guide_lines_visible,
+		}
+	}
+
 	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
@@ -2486,35 +2493,41 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
+		if legacy_applied {
+			self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
+		}
 	}
 
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_undo()?;
-		let guide_lines_snapshot = self.history.pop_guide_undo();
+		let network_snapshot = self.history.pop_undo();
+		let guide_snapshot = self.history.pop_guide_undo();
 
-		// Set the previous network navigation metadata to the current navigation metadata
-		network_interface.copy_all_navigation_metadata(&self.network_interface);
-		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-		//Update the metadata transform based on document PTZ
-		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		network_interface.set_document_to_viewport_transform(transform);
-
-		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
-		network_interface.load_structure();
-
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
-
-		// Restore guide lines from the snapshot and stash the current state for redo
-		if let Some(guide_lines) = guide_lines_snapshot {
-			let current_guides = std::mem::replace(&mut self.guide_lines_message_handler.guide_lines, guide_lines);
-			self.history.push_guide_redo(current_guides);
-			responses.add(OverlaysMessage::Draw);
+		if network_snapshot.is_none() && guide_snapshot.is_none() {
+			return None;
 		}
 
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		if let Some(guide_state) = guide_snapshot {
+			let current_state = self.current_guide_state();
+			self.guide_lines_message_handler.guide_lines = guide_state.guide_lines;
+			self.guide_lines_message_handler.guide_lines_visible = guide_state.guide_lines_visible;
+			self.history.push_guide_redo(current_state);
+			responses.add(OverlaysMessage::Draw);
+			responses.add(PortfolioMessage::UpdateDocumentWidgets);
+		}
+
+		let previous_network = if let Some(mut network_interface) = network_snapshot {
+			network_interface.copy_all_navigation_metadata(&self.network_interface);
+			std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
+
+			let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+			network_interface.set_document_to_viewport_transform(transform);
+
+			network_interface.load_structure();
+			Some(std::mem::replace(&mut self.network_interface, network_interface))
+		} else {
+			None
+		};
+
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
@@ -2522,8 +2535,9 @@ impl DocumentMessageHandler {
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
 		responses.add(NodeGraphMessage::UnloadWires);
 
-		Some(previous_network)
+		previous_network
 	}
+
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
@@ -2532,42 +2546,56 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
+		if legacy_applied {
+			self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
+		}
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let mut network_interface = self.history.pop_redo()?;
-		let guide_lines_snapshot = self.history.pop_guide_redo();
+		let network_snapshot = self.history.pop_redo();
+		let guide_snapshot = self.history.pop_guide_redo();
 
-		// Set the previous network navigation metadata to the current navigation metadata
-		network_interface.copy_all_navigation_metadata(&self.network_interface);
-		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-		//Update the metadata transform based on document PTZ
-		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		network_interface.set_document_to_viewport_transform(transform);
-
-		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
-
-		// Restore guide lines from the redo snapshot and stash the current state for undo
-		if let Some(guide_lines) = guide_lines_snapshot {
-			let current_guides = std::mem::replace(&mut self.guide_lines_message_handler.guide_lines, guide_lines);
-			self.history.push_guide_undo(current_guides);
-			responses.add(OverlaysMessage::Draw);
+		if network_snapshot.is_none() && guide_snapshot.is_none() {
+			return None;
 		}
 
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		if let Some(guide_state) = guide_snapshot {
+			let current_state = self.current_guide_state();
+			self.guide_lines_message_handler.guide_lines = guide_state.guide_lines;
+			self.guide_lines_message_handler.guide_lines_visible = guide_state.guide_lines_visible;
+			self.history.push_guide_undo(current_state);
+			responses.add(OverlaysMessage::Draw);
+			responses.add(PortfolioMessage::UpdateDocumentWidgets);
+		}
+
+		let previous_network = if let Some(mut network_interface) = network_snapshot {
+			network_interface.copy_all_navigation_metadata(&self.network_interface);
+			std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
+
+			let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+			network_interface.set_document_to_viewport_transform(transform);
+
+			Some(std::mem::replace(&mut self.network_interface, network_interface))
+		} else {
+			None
+		};
+
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
-		Some(previous_network)
+
+		previous_network
 	}
 
 	pub fn current_hash(&self) -> u64 {
-		self.network_interface.document_network().current_hash()
+		use std::hash::{Hash, Hasher};
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		self.network_interface.document_network().current_hash().hash(&mut hasher);
+		self.guide_lines_message_handler.guide_lines.hash(&mut hasher);
+		self.guide_lines_message_handler.guide_lines_visible.hash(&mut hasher);
+		hasher.finish()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
