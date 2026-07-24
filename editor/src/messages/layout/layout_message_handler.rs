@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
+use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;

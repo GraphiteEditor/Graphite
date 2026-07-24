@@ -4,7 +4,7 @@ use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::broadcast::event::EventMessage;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LabeledKeyOrMouseMotion, LabeledShortcut, MouseMotion};
+use crate::messages::input_mapper::utility_types::keyboard::{Key, KeysGroup, LabeledKeyOrMouseMotion, LabeledShortcut, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;

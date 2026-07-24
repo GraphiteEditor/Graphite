@@ -1,5 +1,5 @@
 use super::utility_types::Direction;
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
