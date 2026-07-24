@@ -6,6 +6,7 @@
 		"tamasfe.even-better-toml",
 		// Web
 		"dbaeumer.vscode-eslint",
+		"esbenp.prettier-vscode",
 		"svelte.svelte-vscode",
 		"vitaliymaz.vscode-svg-previewer",
 		// Code quality
