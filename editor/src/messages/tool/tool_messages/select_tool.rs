@@ -1185,6 +1185,7 @@ impl Fsm for SelectToolFsmState {
 
 					state
 				} else if let Some((guide_line_id, direction)) = document.guide_lines_message_handler.hit_test(input.mouse.position, document.metadata().document_to_viewport) {
+					responses.add(DocumentMessage::StartTransaction);
 					tool_data.dragging_guide_line_id = Some(guide_line_id);
 					tool_data.dragging_guide_line_direction = Some(direction);
 
@@ -1283,6 +1284,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::DraggingGuideLine { .. }, SelectToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.dragging_guide_line_id = None;
 				tool_data.dragging_guide_line_direction = None;
 				tool_data.guide_line_drag_start_position = None;
@@ -1317,6 +1319,7 @@ impl Fsm for SelectToolFsmState {
 				let outside_viewport = input.mouse.position.x < 0.0 || input.mouse.position.y < 0.0 || input.mouse.position.x > viewport_size.x || input.mouse.position.y > viewport_size.y;
 
 				if outside_viewport {
+					responses.add(DocumentMessage::AbortTransaction);
 					responses.add(GuideLineMessage::DeleteGuideLine { id: guide_line_id });
 				} else {
 					responses.add(GuideLineMessage::MoveGuideLine {
@@ -1324,8 +1327,10 @@ impl Fsm for SelectToolFsmState {
 						mouse_x: input.mouse.position.x,
 						mouse_y: input.mouse.position.y,
 					});
+					responses.add(DocumentMessage::CommitTransaction);
 				}
 
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				tool_data.dragging_guide_line_id = None;
 				tool_data.dragging_guide_line_direction = None;
 				tool_data.guide_line_drag_start_position = None;
