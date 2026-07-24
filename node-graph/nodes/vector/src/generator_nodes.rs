@@ -182,71 +182,69 @@ fn heart(
 	_primary: (),
 	#[unit(" px")]
 	#[default(50)]
-	radius: f64,
+	radius: Item<f64>,
 	/// How far the top V dips below the upper bound of the heart.
 	#[default(0.2)]
-	#[range((0., 0.6))]
-	#[hard_min(0.)]
-	#[hard_max(0.6)]
-	cleavage_depth: f64,
+	#[range]
+	#[hard(0..0.6)]
+	cleavage_depth: Item<f64>,
 	/// Half-angle of the top V. Zero collapses the V into a smooth join.
 	#[default(45.)]
-	#[range((0., 89.))]
-	#[hard_min(0.)]
-	#[hard_max(89.)]
-	cleavage_angle: Angle,
+	#[range]
+	#[hard(0..89)]
+	cleavage_angle: Item<Angle>,
 	/// Tangent length leaving the top cusp, controlling the upper roundness of each lobe.
 	#[default(0.55)]
-	#[range((0., 1.2))]
-	#[hard_min(0.)]
-	#[hard_max(1.2)]
-	lobe_fullness: f64,
+	#[range]
+	#[hard(0..1.2)]
+	lobe_fullness: Item<f64>,
 	/// Vertical position of the side anchor (positive raises the shoulder).
 	#[default(0.5)]
-	#[range((-0.5, 0.9))]
-	#[hard_min(-0.5)]
-	#[hard_max(0.9)]
-	shoulder_height: f64,
+	#[range]
+	#[hard(-0.5..0.9)]
+	shoulder_height: Item<f64>,
 	/// Horizontal position of the side anchor.
 	#[default(1.)]
-	#[range((0., 1.4))]
-	#[hard_min(0.)]
-	#[hard_max(1.4)]
-	shoulder_width: f64,
+	#[range]
+	#[hard(0..1.4)]
+	shoulder_width: Item<f64>,
 	/// Rotation of the shoulder tangent from vertical. Positive leans the shoulder outward at top.
 	#[default(0.)]
-	#[range((-60., 60.))]
-	#[hard_min(-60.)]
-	#[hard_max(60.)]
-	shoulder_tilt: Angle,
+	#[range]
+	#[hard(-60..60)]
+	shoulder_tilt: Item<Angle>,
 	/// Tangent length at the shoulder going up, controlling the curvature of the upper lobe side.
 	#[default(0.55)]
-	#[range((0., 1.2))]
-	#[hard_min(0.)]
-	#[hard_max(1.2)]
-	upper_curvature: f64,
+	#[range]
+	#[hard(0..1.2)]
+	upper_curvature: Item<f64>,
 	/// Tangent length at the shoulder going down, controlling the curvature of the lower side.
 	#[default(1.)]
-	#[range((0., 1.5))]
-	#[hard_min(0.)]
-	#[hard_max(1.5)]
-	lower_curvature: f64,
+	#[range]
+	#[hard(0..1.5)]
+	lower_curvature: Item<f64>,
 	/// Half-angle of the bottom V. Zero produces a needle-sharp point with vertical tangents.
 	#[default(30.)]
-	#[range((0., 89.))]
-	#[hard_min(0.)]
-	#[hard_max(89.)]
-	point_sharpness: Angle,
+	#[range]
+	#[hard(0..89)]
+	point_sharpness: Item<Angle>,
 	/// Tangent length arriving at the bottom cusp, controlling how the sides taper into the point.
 	#[default(0.7)]
-	#[range((0., 1.2))]
-	#[hard_min(0.)]
-	#[hard_max(1.2)]
-	taper_length: f64,
-) -> List<Vector> {
-	let cleavage_angle = cleavage_angle.to_radians();
-	let point_sharpness = point_sharpness.to_radians();
-	let shoulder_tilt = shoulder_tilt.to_radians();
+	#[range]
+	#[hard(0..1.2)]
+	taper_length: Item<f64>,
+) -> Item<Vector> {
+	let radius = *radius.element();
+	let cleavage_depth = *cleavage_depth.element();
+	let lobe_fullness = *lobe_fullness.element();
+	let shoulder_height = *shoulder_height.element();
+	let shoulder_width = *shoulder_width.element();
+	let upper_curvature = *upper_curvature.element();
+	let lower_curvature = *lower_curvature.element();
+	let taper_length = *taper_length.element();
+	let cleavage_angle = cleavage_angle.element().to_radians();
+	let point_sharpness = point_sharpness.element().to_radians();
+	let shoulder_tilt = shoulder_tilt.element().to_radians();
 
 	// Anchor points for the right half plus the y-axis cusps, in normalized coordinates (y points downward).
 	let top = DVec2::new(0., -1. + cleavage_depth);
@@ -276,7 +274,7 @@ fn heart(
 	]
 	.to_vec();
 
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new(manipulator_groups, true)))
+	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new(manipulator_groups, true)))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
