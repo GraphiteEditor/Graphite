@@ -1,3 +1,4 @@
+use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
@@ -500,11 +501,11 @@ fn read_attribute_raster(
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `List` whose items will appear at the start of the extended `List`.
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>, List<Stroke>)]
 	base: List<T>,
 	/// The `List` whose items will appear at the end of the extended `List`.
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>, List<Stroke>)]
 	new: List<T>,
 ) -> List<T> {
 	let mut base = base;
@@ -556,6 +557,7 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 		List<String>,
 		DAffine2,
 		DVec2,
+		List<Stroke>,
 	)]
 	content: T,
 ) -> List<Graphic> {
@@ -575,6 +577,7 @@ pub async fn to_graphic<T: IntoGraphicList>(
 		List<Color>,
 		List<GradientStops>,
 		List<String>,
+		List<Stroke>,
 	)]
 	content: T,
 ) -> List<Graphic> {

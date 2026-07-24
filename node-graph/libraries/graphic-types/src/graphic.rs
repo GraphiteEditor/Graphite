@@ -1,3 +1,4 @@
+use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, ItemAttributeValues, List};
@@ -22,6 +23,7 @@ pub enum Graphic {
 	Color(List<Color>),
 	Gradient(List<GradientStops>),
 	Text(List<String>),
+	Stroke(List<Stroke>),
 }
 
 impl Default for Graphic {
@@ -103,7 +105,19 @@ impl From<List<GradientStops>> for Graphic {
 	}
 }
 
-// String
+// Stroke
+impl From<Stroke> for Graphic {
+	fn from(stroke: Stroke) -> Self {
+		Graphic::Stroke(List::new_from_element(stroke))
+	}
+}
+impl From<List<Stroke>> for Graphic {
+	fn from(stroke: List<Stroke>) -> Self {
+		Graphic::Stroke(stroke)
+	}
+}
+
+// Text
 impl From<String> for Graphic {
 	fn from(text: String) -> Self {
 		Graphic::Text(List::new_from_element(text))
@@ -238,6 +252,7 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 				Graphic::RasterGPU(list) => bake_list_transform(list, transform),
 				Graphic::Gradient(list) => bake_list_transform(list, transform),
 				Graphic::Text(list) => bake_list_transform(list, transform),
+				Graphic::Stroke(list) => bake_list_transform(list, transform),
 				Graphic::Color(_) => {}
 			}
 		}
@@ -283,6 +298,12 @@ impl TryFromGraphic for GradientStops {
 impl TryFromGraphic for String {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Text(t) = graphic { Some(t) } else { None }
+	}
+}
+
+impl TryFromGraphic for Stroke {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		if let Graphic::Stroke(t) = graphic { Some(t) } else { None }
 	}
 }
 
@@ -339,6 +360,17 @@ impl IntoGraphicList for List<Color> {
 impl IntoGraphicList for List<GradientStops> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::Gradient(self))
+	}
+}
+
+impl IntoGraphicList for List<Stroke> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let mut graphic_list = List::new_from_element(Graphic::Stroke(self));
+		if !layer_path.is_empty() {
+			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		}
+		graphic_list
 	}
 }
 
@@ -430,6 +462,7 @@ impl Graphic {
 			Graphic::Color(list) => all_clipped(list),
 			Graphic::Gradient(list) => all_clipped(list),
 			Graphic::Text(list) => all_clipped(list),
+			Graphic::Stroke(list) => all_clipped(list),
 		}
 	}
 
@@ -468,7 +501,7 @@ impl Graphic {
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) => false,
 		}
 	}
 
@@ -491,7 +524,7 @@ impl Graphic {
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) => false,
 		}
 	}
 
@@ -511,6 +544,7 @@ impl Graphic {
 			Graphic::RasterCPU(list) => list.is_empty(),
 			Graphic::RasterGPU(list) => list.is_empty(),
 			Graphic::Text(list) => list.is_empty(),
+			Graphic::Stroke(list) => list.is_empty(),
 		}
 	}
 }
@@ -525,6 +559,7 @@ impl BoundingBox for Graphic {
 			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Stroke(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -537,6 +572,7 @@ impl BoundingBox for Graphic {
 			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Stroke(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -567,6 +603,7 @@ impl RenderComplexity for Graphic {
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
 			Self::Text(list) => list.render_complexity(),
+			Self::Stroke(list) => list.render_complexity(),
 		}
 	}
 }
