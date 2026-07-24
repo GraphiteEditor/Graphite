@@ -62,25 +62,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::raster::OpacityNode", "graphene_core::blending_nodes::OpacityNode"],
 	},
 	// ================================
-	// brush
-	// ================================
-	NodeReplacement {
-		node: graphene_std::brush::brush::blit::IDENTIFIER,
-		aliases: &["graphene_brush::BlitNode", "graphene_std::brush::BlitNode", "graphene_brush::brush::BlitNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::brush::brush::brush::IDENTIFIER,
-		aliases: &["graphene_brush::BrushNode", "graphene_std::brush::BrushNode", "graphene_brush::brush::BrushNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::brush::brush::brush_stamp_generator::IDENTIFIER,
-		aliases: &[
-			"graphene_brush::BrushStampGeneratorNode",
-			"graphene_std::brush::BrushStampGeneratorNode",
-			"graphene_brush::brush::BrushStampGeneratorNode",
-		],
-	},
-	// ================================
 	// gcore
 	// ================================
 	NodeReplacement {
@@ -1148,30 +1129,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// The "Brush" wrapper network was replaced with the `brush` proto node directly. Convert old `Network("Brush")` instances to the proto node, forwarding all 3 inputs (Background, Trace, Cache) one-to-one.
-	// This must run as a pre-pass before the recursive iteration below: replacing the outer Brush's network impl orphans its child paths, and the recursive iteration would log errors for those stale paths.
-	let brush_layers: Vec<(NodeId, Vec<NodeId>)> = document
-		.network_interface
-		.document_network()
-		.recursive_nodes()
-		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Brush".into()))).then_some((*node_id, path)))
-		.collect();
-	for (node_id, network_path) in &brush_layers {
-		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
-		// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
-		let _ = document.network_interface.outward_wires(network_path);
-		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER);
-		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
-		let mut node_template = definition.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
-			continue;
-		};
-		for (index, input) in old_inputs.iter().take(3).enumerate() {
-			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
-		}
-	}
-
 	// The "Transform" wrapper network was replaced with the `transform` proto node directly. Convert old `Network("Transform")` instances to the proto node, forwarding the 5 user-facing inputs (Value, Translation, Rotation, Scale, Skew) and dropping the legacy migration sentinels (Origin Offset, Scale Appearance) at indices 5 and 6 if present.
 	// Pre-pass for the same reason as the Brush migration above: replacing the outer Transform's network impl orphans its child paths.
 	let transform_layers: Vec<(NodeId, Vec<NodeId>, usize)> = document
@@ -1954,29 +1911,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-	}
-
-	// Old shape: [background, bounds, trace, cache]. Both "bounds" (input 1) and "cache" (input 3) are dropped, and "cache" is now stored as
-	// internal node state via `#[data]` on the brush node, so it is not a node input at all in the new shape.
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 4 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
-	}
-
-	// Old shape: [background, trace, cache]. The "cache" input is dropped because the brush node now stores its cache as internal `#[data]` state.
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 3 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 

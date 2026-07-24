@@ -378,7 +378,6 @@ dependencies = [
  "graphene-hash",
  "graphic-types",
  "node-macro",
- "raster-nodes",
  "raster-types",
  "serde",
  "tokio",
