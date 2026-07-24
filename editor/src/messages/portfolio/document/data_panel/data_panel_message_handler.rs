@@ -337,6 +337,7 @@ impl TableItemLayout for Graphic {
 			Self::Color(list) => list.identifier(),
 			Self::Gradient(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
+			Self::Stroke(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -352,6 +353,7 @@ impl TableItemLayout for Graphic {
 			Self::Color(list) => list.layout_with_breadcrumb(data),
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
+			Self::Stroke(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }
@@ -554,6 +556,19 @@ impl TableItemLayout for GradientStops {
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.value_widget(PathStep::Element(0), _data)];
 		vec![LayoutGroup::row(widgets)]
+	}
+}
+
+impl TableItemLayout for graphene_std::brush::Stroke {
+	fn type_name() -> &'static str {
+		"Stroke"
+	}
+	fn identifier(&self) -> String {
+		let samples = self.len();
+		format!("Stroke ({} sample{})", samples, if samples == 1 { "" } else { "s" })
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![TextAreaInput::new(format!("{self:#?}")).monospace(true).disabled(true).widget_instance()])]
 	}
 }
 
