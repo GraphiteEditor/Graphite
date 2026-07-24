@@ -1,7 +1,11 @@
+#[cfg(test)]
+mod characterization_tests;
 mod deserialization;
 mod memo_network;
 mod resolved_types;
 pub mod storage_metadata;
+#[cfg(test)]
+mod validation;
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
