@@ -1,7 +1,8 @@
 use crate::ast::{Literal, Node};
-use crate::constants::DEFAULT_FUNCTIONS;
+use crate::constants::builtin_function;
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
+use num_complex::Complex;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -24,21 +25,41 @@ impl Node {
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
-				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs))),
+				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs).ok_or(EvalError::TypeError)?)),
 			},
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
 				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
 			},
 			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
 			Node::FnCall { name, expr } => {
-				let values = expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
-				if let Some(function) = DEFAULT_FUNCTIONS.get(&name.as_str()) {
-					function(&values).ok_or(EvalError::TypeError)
-				} else if let Some(val) = context.run_function(name, &values) {
+				// Arguments land in a stack buffer when they fit (builtins take at most 5), avoiding a heap allocation per call
+				let mut stack_values = [Value::from_f64(0.); 5];
+				let heap_values: Vec<Value>;
+				let values: &[Value] = if expr.len() <= stack_values.len() {
+					for (slot, argument) in stack_values.iter_mut().zip(expr) {
+						*slot = argument.eval(context)?;
+					}
+					&stack_values[..expr.len()]
+				} else {
+					heap_values = expr.iter().map(|argument| argument.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
+					&heap_values
+				};
+
+				if let Some(function) = builtin_function(name) {
+					function(values).ok_or(EvalError::TypeError)
+				} else if let Some(val) = context.run_function(name, values) {
 					Ok(val)
 				} else {
 					context.get_value(name).ok_or_else(|| EvalError::MissingFunction(name.to_string()))
 				}
+			}
+			Node::Conditional { condition, if_block, else_block } => {
+				let condition = match condition.eval(context)? {
+					Value::Number(Number::Real(number)) => number != 0.0,
+					Value::Number(Number::Complex(number)) => number != Complex::ZERO,
+				};
+
+				if condition { if_block.eval(context) } else { else_block.eval(context) }
 			}
 		}
 	}
@@ -47,7 +68,7 @@ impl Node {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
-	use crate::context::{EvalContext, ValueMap};
+	use crate::context::EvalContext;
 	use crate::value::Value;
 
 	macro_rules! eval_tests {
