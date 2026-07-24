@@ -946,15 +946,11 @@ impl NodeNetworkInterface {
 					log::error!("Could not get reference for node in reference: {node_id:?}");
 					return None;
 				};
-				node_metadata
-					.persistent_metadata
-					.network_metadata
-					.as_ref()
-					.expect("Network metadata must exist for network node in reference")
-					.persistent_metadata
-					.reference
-					.clone()
-					.map(DefinitionIdentifier::Network)
+				let Some(network_metadata) = node_metadata.persistent_metadata.network_metadata.as_ref() else {
+					log::error!("Network metadata must exist for network node in reference: {node_id:?}");
+					return None;
+				};
+				network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network)
 			}
 			DocumentNodeImplementation::ProtoNode(protonode_id) => Some(DefinitionIdentifier::ProtoNode(protonode_id.clone())),
 			_ => None,
@@ -1185,12 +1181,16 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Whether the node is an Artboard node by identity, regardless of whether it currently participates in the scene.
+	/// Callers that care about scene membership should source their layers from the document structure or check connectivity separately.
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.reference(node_id, network_path)
-			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()) && self.connected_to_output(node_id, &[]))
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
 	}
 
+	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
+		// O(n * (nodes + wires)) since connected_to_output performs a graph walk per artboard candidate
 		self.document_network_metadata()
 			.persistent_metadata
 			.node_metadata
@@ -1454,7 +1454,7 @@ impl NodeNetworkInterface {
 				let mut node_metadata = DocumentNodeMetadata::default();
 
 				node.inputs = old_node.inputs;
-				node.call_argument = old_node.manual_composition.unwrap();
+				node.call_argument = old_node.manual_composition.unwrap_or_default();
 				node.visible = old_node.visible;
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
@@ -2106,39 +2106,28 @@ impl NodeNetworkInterface {
 			outward_wires.insert(OutputConnector::Import(import_index), Vec::new());
 		}
 		// Collect wires between all nodes and the Imports
+		// A missing entry means a wire references a node output or import that does not exist, so log it and register the connector anyway rather than crashing
+		let push_outward_wire = |outward_wires: &mut HashMap<OutputConnector, Vec<InputConnector>>, output_connector: OutputConnector, input_connector: InputConnector| {
+			let outward_wires_entry = outward_wires.entry(output_connector).or_insert_with(|| {
+				log::error!("Output connector {output_connector:?} should be initialized in load_outward_wires");
+				Vec::new()
+			});
+			outward_wires_entry.push(input_connector);
+		};
 		for (current_node_id, node) in network.nodes.iter() {
 			for (input_index, input) in node.inputs.iter().enumerate() {
 				if let NodeInput::Node { node_id, output_index, .. } = input {
-					// If this errors then there is an input to a node that does not exist
-					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).unwrap_or_else(|| {
-						panic!(
-							"Output connector {:?} should be initialized for each node output from a node",
-							OutputConnector::node(*node_id, *output_index)
-						)
-					});
-					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(&mut outward_wires, OutputConnector::node(*node_id, *output_index), InputConnector::node(*current_node_id, input_index));
 				} else if let NodeInput::Import { import_index, .. } = input {
-					let outward_wires_entry = outward_wires
-						.get_mut(&OutputConnector::Import(*import_index))
-						.unwrap_or_else(|| panic!("Output connector {:?} should be initialized for each import from a node", OutputConnector::Import(*import_index)));
-					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::node(*current_node_id, input_index));
 				}
 			}
 		}
 		for (export_index, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).unwrap_or_else(|| {
-					panic!(
-						"Output connector {:?} should be initialized for each node input from exports",
-						OutputConnector::node(*node_id, *output_index)
-					)
-				});
-				outward_wires_entry.push(InputConnector::Export(export_index));
+				push_outward_wire(&mut outward_wires, OutputConnector::node(*node_id, *output_index), InputConnector::Export(export_index));
 			} else if let NodeInput::Import { import_index, .. } = export {
-				let outward_wires_entry = outward_wires
-					.get_mut(&OutputConnector::Import(*import_index))
-					.unwrap_or_else(|| panic!("Output connector {:?} should be initialized between imports and exports", OutputConnector::Import(*import_index)));
-				outward_wires_entry.push(InputConnector::Export(export_index));
+				push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::Export(export_index));
 			}
 		}
 
@@ -3552,14 +3541,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
-		let Some(node) = self.network_mut(&[]).unwrap().nodes.get_mut(node_id) else {
+		let Some(node) = self.network_mut(&[]).and_then(|network| network.nodes.get_mut(node_id)) else {
 			log::error!("Could not get node in vector_modification");
 			return;
 		};
 		{
 			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
 			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
-				panic!("Path node does not have modification input");
+				log::error!("Path node {node_id} does not have a modification input");
+				return;
 			};
 
 			modification.modify(&modification_type);
@@ -3575,6 +3565,7 @@ impl NodeNetworkInterface {
 		};
 
 		let input = NodeInput::value(default_value, true);
+		let inserted_index = if insert_index == -1 { network.exports.len() } else { insert_index as usize };
 		if insert_index == -1 {
 			network.exports.push(input);
 		} else {
@@ -3623,7 +3614,7 @@ impl NodeNetworkInterface {
 		}
 
 		// If the export is inserted as the first input or second input, and the parent network is the document_network, then it may have affected the document metadata structure
-		if network_path.len() == 1 && (insert_index == 0 || insert_index == 1) {
+		if network_path.len() == 1 && inserted_index <= 1 {
 			self.load_structure();
 		}
 	}
@@ -3646,6 +3637,7 @@ impl NodeNetworkInterface {
 		};
 
 		let input = NodeInput::value(default_value, exposed);
+		let inserted_index = if insert_index == -1 { node.inputs.len() } else { insert_index as usize };
 		if insert_index == -1 {
 			node.inputs.push(input);
 		} else {
@@ -3678,7 +3670,7 @@ impl NodeNetworkInterface {
 		// Update the metadata for the encapsulating node
 		self.unload_node_click_targets(&node_id, &encapsulating_network_path);
 		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
-		if encapsulating_network_path.is_empty() && (insert_index == 0 || insert_index == 1) {
+		if encapsulating_network_path.is_empty() && inserted_index <= 1 {
 			self.load_structure();
 		}
 
@@ -4167,6 +4159,37 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		// Reject a change that would create a cycle before any side effects run (only Node connections can create cycles).
+		// The new input is swapped in just for this test, then restored so the disconnect and layout logic below sees the unmodified network.
+		if matches!(new_input, NodeInput::Node { .. }) {
+			let Some(network) = self.network_mut(network_path) else {
+				log::error!("Could not get nested network in set_input");
+				return;
+			};
+			fn get_input<'a>(network: &'a mut NodeNetwork, input_connector: &InputConnector) -> Option<&'a mut NodeInput> {
+				match input_connector {
+					InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
+					InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+				}
+			}
+
+			let Some(input) = get_input(network, input_connector) else {
+				log::error!("Could not get input in set_input");
+				return;
+			};
+			let old_input = std::mem::replace(input, new_input.clone());
+			let is_acyclic = network.is_acyclic();
+			let Some(input) = get_input(network, input_connector) else {
+				log::error!("Could not get input in set_input");
+				return;
+			};
+			*input = old_input;
+
+			if !is_acyclic {
+				return;
+			}
+		}
+
 		// When changing a NodeInput::Node to a NodeInput::Node, the input should first be disconnected to ensure proper side effects
 		if (matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. })) {
 			self.disconnect_input(input_connector, network_path);
@@ -4217,13 +4240,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Ensure the network is not cyclic (only Node connections can create cycles)
-		if matches!(new_input, NodeInput::Node { .. }) && !network.is_acyclic() {
-			self.set_input(input_connector, old_input, network_path);
-			return;
-		}
-
-		// It is necessary to ensure the grpah is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
+		// It is necessary to ensure the graph is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
 		let previous_metadata = match &previous_input {
 			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
 			_ => None,
@@ -4247,7 +4264,7 @@ impl NodeNetworkInterface {
 		// Side effects
 		match (&old_input, &new_input) {
 			// If a node input is exposed or hidden reload the click targets and update the bounding box for all nodes
-			(NodeInput::Value { exposed: new_exposed, .. }, NodeInput::Value { exposed: old_exposed, .. }) => {
+			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => {
 				if let InputConnector::Node { node_id, .. } = input_connector {
 					if new_exposed != old_exposed {
 						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
@@ -4653,7 +4670,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
 			return;
 		};
-		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
+		selected_nodes.retain_selected_nodes(|node_id| !delete_nodes.contains(node_id));
 	}
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
@@ -5062,11 +5079,10 @@ impl NodeNetworkInterface {
 					}
 				}
 			}
-			// The primary export is disconnected
+			// The primary export is disconnected, so preview the node with nothing to restore, which disconnects the export again when the preview ends
 			else {
-				// Set node as export and cancel any preview
 				new_export = Some(OutputConnector::node(toggle_id, 0));
-				self.start_previewing_without_restore(network_path);
+				new_previewing_state = Previewing::Yes { root_node_to_restore: None };
 			}
 		}
 		match new_export {
@@ -5419,8 +5435,8 @@ impl NodeNetworkInterface {
 						log::error!("Could not get outward wires in shift_selected_nodes");
 						return;
 					};
-					if let Some(upstream_node) = outward_wires.first()
-						&& node_ids.contains(&upstream_node.node_id().expect("Stack layer should have downstream layer"))
+					if let Some(downstream_node_id) = outward_wires.first().and_then(|input_connector| input_connector.node_id())
+						&& node_ids.contains(&downstream_node_id)
 					{
 						continue;
 					}
@@ -6570,13 +6586,11 @@ pub struct NodeNetworkPersistentMetadata {
 	pub previewing: Previewing,
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
-	/// Stack of selection snapshots for previous history states.
-	// TODO: Use `#[serde(skip)]` here instead? @TrueDoctor claims this isn't valid but hasn't satisfactorily explained how it differs from the situation where `#[serde(default)]` fills in the default value. From brief testing, skip seems to work without issue.
-	#[serde(default)]
+	/// Stack of selection snapshots for previous history states. Session state that is not persisted into saved documents.
+	#[serde(skip)]
 	pub selection_undo_history: VecDeque<SelectedNodes>,
 	/// Stack of selection snapshots for future history states.
-	// TODO: Use `#[serde(skip)]` here instead? See above.
-	#[serde(default)]
+	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 }
 
