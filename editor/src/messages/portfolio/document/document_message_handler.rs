@@ -2464,6 +2464,9 @@ impl DocumentMessageHandler {
 		let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		network_interface.set_document_to_viewport_transform(transform);
 
+		// Ensure document structure is loaded so that updating the selected nodes has the correct metadata
+		network_interface.load_structure();
+
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
