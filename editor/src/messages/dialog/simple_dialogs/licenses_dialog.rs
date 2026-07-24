@@ -46,11 +46,15 @@ impl LayoutHolder for LicensesDialog {
 		let year = &self.localized_commit_year;
 		let description = format!(
 			"
-			Graphite source code is copyright © {year} Graphite contrib-\nutors and is available under the Apache License 2.0. See\n\"Source Code License\" for details.\n\
+			Graphite source code is copyright © {year} Graphite contrib-\n\
+			utors and is available under both the MIT and Apache 2.0\n\
+			licenses. See \"Source Code License\" for details.\n\
 			\n\
-			The Graphite logo, icons, and visual identity are copyright ©\n{year} Graphite Labs, LLC. See \"Branding License\" for details.\n\
+			The Graphite logo, icons, and visual identity are copyright ©\n\
+			{year} Graphite Labs, LLC. See \"Branding License\" for details.\n\
 			\n\
-			Graphite is distributed with third-party open source code\ndependencies. See \"Dependency Licenses\" for details.
+			Graphite is distributed with third-party open source code\n\
+			dependencies. See \"Dependency Licenses\" for details.
 			"
 		);
 		let description = description.trim();
