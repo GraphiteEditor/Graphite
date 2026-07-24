@@ -382,6 +382,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "brush-types"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphene-hash",
+ "serde",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

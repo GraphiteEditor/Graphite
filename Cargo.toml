@@ -80,6 +80,7 @@ no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
 vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
+brush-types = { path = "node-graph/libraries/brush-types" }
 rendering = { path = "node-graph/libraries/rendering" }
 brush-nodes = { path = "node-graph/nodes/brush" }
 blending-nodes = { path = "node-graph/nodes/blending" }
