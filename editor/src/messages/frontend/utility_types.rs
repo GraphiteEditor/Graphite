@@ -64,6 +64,26 @@ impl FileType {
 			FileType::Svg => "image/svg+xml",
 		}
 	}
+
+	pub fn extension(self) -> &'static str {
+		match self {
+			FileType::Png => "png",
+			FileType::Jpg => "jpg",
+			FileType::Svg => "svg",
+		}
+	}
+
+	pub fn file_filter(self) -> FileFilter {
+		let name = match self {
+			FileType::Png => "PNG Image",
+			FileType::Jpg => "JPEG Image",
+			FileType::Svg => "SVG Image",
+		};
+		FileFilter {
+			name: name.into(),
+			extensions: vec![self.extension().into()],
+		}
+	}
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -90,4 +110,11 @@ pub struct RasterizedImage {
 	pub width: u32,
 	pub height: u32,
 	pub pixels: serde_bytes::ByteBuf,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FileFilter {
+	pub name: String,
+	pub extensions: Vec<String>,
 }
