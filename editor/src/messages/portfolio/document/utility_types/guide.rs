@@ -38,6 +38,14 @@ pub struct GuideLine {
 	pub position: f64,
 }
 
+impl std::hash::Hash for GuideLine {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.id.hash(state);
+		self.direction.hash(state);
+		self.position.to_bits().hash(state);
+	}
+}
+
 impl GuideLine {
 	pub fn new(direction: GuideLineDirection, position: f64) -> Self {
 		Self {
@@ -58,4 +66,10 @@ impl GuideLine {
 	pub fn vertical(x: f64) -> Self {
 		Self::new(GuideLineDirection::Vertical, x)
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuideLinesState {
+	pub guide_lines: Vec<GuideLine>,
+	pub guide_lines_visible: bool,
 }
