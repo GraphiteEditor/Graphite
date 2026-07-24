@@ -2,8 +2,8 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::Stroke;
 use brush_nodes::brush_stroke::BrushStroke;
+use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::transform::Footprint;
@@ -75,6 +75,7 @@ macro_rules! tagged_value {
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
 			Strokes(Vec<Stroke>),
+			BrushCache(BrushCache),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -118,6 +119,7 @@ macro_rules! tagged_value {
 					Self::Gradient(stops) => stops.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
+					Self::BrushCache(cache) => cache.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -169,6 +171,7 @@ macro_rules! tagged_value {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
+					Self::BrushCache(cache) => Box::new(cache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -223,6 +226,7 @@ macro_rules! tagged_value {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
+					Self::BrushCache(cache) => Arc::new(cache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -255,6 +259,7 @@ macro_rules! tagged_value {
 					Self::Gradient(_) => concrete!(List<GradientStops>),
 					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
 					Self::Strokes(_) => concrete!(List<Stroke>),
+					Self::BrushCache(_) => concrete!(BrushCache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -333,6 +338,8 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
+						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
+
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						macro_rules! check {
 							($type_default:ty) => {
@@ -363,6 +370,7 @@ macro_rules! tagged_value {
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
+					Self::BrushCache(cache) => format!("{cache:?}"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -625,7 +633,6 @@ impl TaggedValue {
 ///
 /// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
 ///
-/// - `BrushCache` → `TaggedValue::None` (purely runtime cache; no payload to preserve)
 /// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(descriptor!(List<Graphic>))`
 /// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(descriptor!(List<Artboard>))`
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
@@ -647,7 +654,6 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		&& let Some((tag, content)) = map.iter().next()
 	{
 		match tag.as_str() {
-			"BrushCache" => return Ok(MemoHash::new(TaggedValue::None)),
 			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Graphic>)))),
 			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(List<Artboard>)))),
 			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
