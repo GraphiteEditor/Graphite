@@ -1,6 +1,9 @@
 pub mod brush;
 mod brush_cache;
 pub mod brush_stroke;
+pub mod brush_strokes;
+
+pub use brush_types::*;
 
 pub mod migrations {
 	use crate::brush_stroke::BrushStroke;

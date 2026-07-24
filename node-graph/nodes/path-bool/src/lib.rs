@@ -321,6 +321,8 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						})
 						.collect::<Vec<_>>()
 				}
+				// Strokes have no vector outline representation; a brush node renders them to rasters
+				Graphic::Stroke(_) => Vec::new(),
 			}
 		})
 		.collect()
