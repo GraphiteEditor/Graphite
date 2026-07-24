@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
@@ -79,9 +78,17 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		modification_type: VectorModificationType,
 	},
-	Brush {
-		layer: LayerNodeIdentifier,
-		strokes: Vec<BrushStroke>,
+	/// Creates a styling-group layer whose chain is a fresh brush strokes node with the given
+	/// settings, stacked on top of `parent`'s group stack (a brush layer, so the stack feeds the
+	/// brush node's strokes input); drawing appends into the strokes list.
+	NewBrushGroupLayer {
+		id: NodeId,
+		strokes_node_id: NodeId,
+		parent: LayerNodeIdentifier,
+		color: Color,
+		diameter: f64,
+		hardness: f64,
+		flow: f64,
 	},
 	SetUpstreamToChain {
 		layer: LayerNodeIdentifier,

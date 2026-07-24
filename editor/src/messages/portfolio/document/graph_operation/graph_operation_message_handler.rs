@@ -2,6 +2,7 @@ use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -9,6 +10,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::descriptor;
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
@@ -126,10 +128,32 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.vector_modify(modification_type);
 				}
 			}
-			GraphOperationMessage::Brush { layer, strokes } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.brush_modify(strokes);
-				}
+			GraphOperationMessage::NewBrushGroupLayer {
+				id,
+				strokes_node_id,
+				parent,
+				color,
+				diameter,
+				hardness,
+				flow,
+			} => {
+				let layer = ModifyInputsContext::new(network_interface, responses).create_layer(id);
+
+				let strokes_node = resolve_proto_node_type(graphene_std::brush::brush_strokes::brush_strokes::IDENTIFIER)
+					.expect("Brush strokes node does not exist")
+					.node_template_input_override([
+						Some(NodeInput::value(TaggedValue::Strokes(Vec::new()), false)),
+						Some(NodeInput::value(TaggedValue::Color(Some(color)), false)),
+						Some(NodeInput::value(TaggedValue::F64(diameter), false)),
+						Some(NodeInput::value(TaggedValue::F64(hardness), false)),
+						Some(NodeInput::value(TaggedValue::F64(flow), false)),
+					]);
+				network_interface.insert_node(strokes_node_id, strokes_node, &[]);
+				network_interface.set_input(&InputConnector::node(layer.to_node(), 1), NodeInput::node(strokes_node_id, 0), &[]);
+
+				responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
+				responses.add(GraphOperationMessage::SetUpstreamToChain { layer });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
 				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[]) else {
