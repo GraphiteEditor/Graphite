@@ -2493,7 +2493,6 @@ impl DocumentMessageHandler {
 		}
 	}
 
-<<<<<<< HEAD
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
 	fn install_history_snapshot(&mut self, mut network_interface: NodeNetworkInterface, viewport: &ViewportMessageHandler) -> NodeNetworkInterface {
 		// Set the previous network navigation metadata to the current navigation metadata
