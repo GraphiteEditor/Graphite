@@ -75,6 +75,7 @@ impl DocumentHistory {
 	}
 
 	/// Drop the most recently pushed undo snapshot (used to cancel a transaction that ended up unmodified).
+	#[must_use]
 	pub fn discard_last_undo(&mut self) -> Option<GuideLinesState> {
 		self.legacy_undo_stack.pop_back();
 		self.guide_undo_stack.pop_back()
