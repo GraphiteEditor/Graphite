@@ -2,7 +2,6 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::brush_stroke::BrushStroke;
 use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -70,10 +69,6 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(GradientStops),
-			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
-			#[serde(alias = "BrushStrokeTable")]
-			BrushStrokes(Vec<BrushStroke>),
 			Strokes(Vec<Stroke>),
 			BrushCache(BrushCache),
 			// =======================
@@ -117,7 +112,6 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
-					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
 					Self::BrushCache(cache) => cache.cache_hash(state),
 					// =======================
@@ -163,10 +157,6 @@ macro_rules! tagged_value {
 						Box::new(list)
 					}
 					Self::Gradient(stops) => Box::new(List::<GradientStops>::new_from_element(stops)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
-					}
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
@@ -218,10 +208,6 @@ macro_rules! tagged_value {
 						Arc::new(list)
 					}
 					Self::Gradient(stops) => Arc::new(List::<GradientStops>::new_from_element(stops)),
-					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
-					}
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
@@ -257,7 +243,6 @@ macro_rules! tagged_value {
 					Self::F64Array(_) => concrete!(List<f64>),
 					Self::Color(_) => concrete!(List<Color>),
 					Self::Gradient(_) => concrete!(List<GradientStops>),
-					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
 					Self::Strokes(_) => concrete!(List<Stroke>),
 					Self::BrushCache(_) => concrete!(BrushCache),
 					// =======================
@@ -336,7 +321,6 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<List<GradientStops>>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
-						if name == std::any::type_name::<List<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
 
@@ -368,7 +352,6 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
-					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
 					Self::BrushCache(cache) => format!("{cache:?}"),
 					// =======================
