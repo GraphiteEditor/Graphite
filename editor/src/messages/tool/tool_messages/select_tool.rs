@@ -518,9 +518,6 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	dragging_guide_line_id: Option<GuideLineId>,
-	dragging_guide_line_direction: Option<GuideLineDirection>,
-	guide_line_drag_start_position: Option<f64>,
 }
 
 impl SelectToolData {
@@ -1186,11 +1183,6 @@ impl Fsm for SelectToolFsmState {
 					state
 				} else if let Some((guide_line_id, direction)) = document.guide_lines_message_handler.hit_test(input.mouse.position, document.metadata().document_to_viewport) {
 					responses.add(DocumentMessage::StartTransaction);
-					tool_data.dragging_guide_line_id = Some(guide_line_id);
-					tool_data.dragging_guide_line_direction = Some(direction);
-
-					let original_position = document.guide_lines_message_handler.guide_lines.iter().find(|g| g.id == guide_line_id).map(|g| g.position);
-					tool_data.guide_line_drag_start_position = original_position;
 					SelectToolFsmState::DraggingGuideLine { guide_line_id, direction }
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
@@ -1285,9 +1277,6 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingGuideLine { .. }, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.dragging_guide_line_id = None;
-				tool_data.dragging_guide_line_direction = None;
-				tool_data.guide_line_drag_start_position = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
@@ -1331,9 +1320,6 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-				tool_data.dragging_guide_line_id = None;
-				tool_data.dragging_guide_line_direction = None;
-				tool_data.guide_line_drag_start_position = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
