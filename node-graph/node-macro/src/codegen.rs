@@ -720,24 +720,18 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			)
 		));
 	}
-	let native = quote! {
-	#[cfg_attr(not(target_family = "wasm"), ctor)]
-	fn register_node() {
-		let mut registry = NODE_REGISTRY.lock().unwrap();
-		registry.insert(
-			#identifier(),
-			vec![
-				#(#constructors,)*
-			]
-		);
-	}
-	};
-	if cfg!(feature = "disable-registration") {
-		return Ok(native);
-	}
-
 	Ok(quote! {
-		#native
+		#[cfg_attr(not(target_family = "wasm"), ctor)]
+		fn register_node() {
+			let mut registry = NODE_REGISTRY.lock().unwrap();
+			registry.insert(
+				#identifier(),
+				vec![
+					#(#constructors,)*
+				]
+			);
+		}
+
 		#wasm_shim
 	})
 }
