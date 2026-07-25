@@ -1374,7 +1374,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			},
 			DocumentMessage::CancelTransaction => {
 				self.network_interface.finish_transaction();
-				self.history.discard_last_undo();
+				if let Some(guide_state) = self.history.discard_last_undo() {
+					self.guide_lines_message_handler.guide_lines = guide_state.guide_lines;
+					responses.add(OverlaysMessage::Draw);
+				}
 			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
@@ -1927,27 +1930,27 @@ impl DocumentMessageHandler {
 		use crate::messages::portfolio::document::utility_types::misc::SnapSource;
 		use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapTypeConfiguration};
 
-		let snap_constrained =
-			|snap_manager: &mut crate::messages::tool::common_functionality::snapping::SnapManager, document: &DocumentMessageHandler, raw_viewport: DVec2, direction: GuideLineDirection| -> DVec2 {
-				let document_to_viewport = document.metadata().document_to_viewport;
-				let raw_doc = document_to_viewport.inverse().transform_point2(raw_viewport);
-				let snap_data = SnapData::new(document, ipp, viewport);
-				let point = SnapCandidatePoint::new_source(raw_doc, SnapSource::None);
-				let constraint = match direction {
-					// Horizontal guide: position varies on Y, constrain snap search along Y
-					GuideLineDirection::Horizontal => SnapConstraint::Line { origin: raw_doc, direction: DVec2::Y },
-					// Vertical guide: position varies on X, constrain snap search along X
-					GuideLineDirection::Vertical => SnapConstraint::Line { origin: raw_doc, direction: DVec2::X },
-				};
-				let snapped = snap_manager.constrained_snap(&snap_data, &point, constraint, SnapTypeConfiguration::default());
-				snap_manager.update_indicator(snapped.clone());
-				document_to_viewport.transform_point2(snapped.snapped_point_document)
-			};
+		let mut snap_manager = std::mem::take(&mut self.guide_snap_manager);
 
-		match message {
+		let mut snap_constrained = |document: &DocumentMessageHandler, raw_viewport: DVec2, direction: GuideLineDirection| -> DVec2 {
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let raw_doc = document_to_viewport.inverse().transform_point2(raw_viewport);
+			let snap_data = SnapData::new(document, ipp, viewport);
+			let point = SnapCandidatePoint::new_source(raw_doc, SnapSource::None);
+			let constraint = match direction {
+				// Horizontal guide: position varies on Y, constrain snap search along Y
+				GuideLineDirection::Horizontal => SnapConstraint::Line { origin: raw_doc, direction: DVec2::Y },
+				// Vertical guide: position varies on X, constrain snap search along X
+				GuideLineDirection::Vertical => SnapConstraint::Line { origin: raw_doc, direction: DVec2::X },
+			};
+			let snapped = snap_manager.constrained_snap(&snap_data, &point, constraint, SnapTypeConfiguration::default());
+			snap_manager.update_indicator(snapped.clone());
+			document_to_viewport.transform_point2(snapped.snapped_point_document)
+		};
+
+		let result = match message {
 			GuideLineMessage::CreateGuideLine { id, direction, mouse_x, mouse_y } => {
-				let snap_manager = unsafe { &mut *(&mut self.guide_snap_manager as *mut _) };
-				let snapped = snap_constrained(snap_manager, self, DVec2::new(mouse_x, mouse_y), direction);
+				let snapped = snap_constrained(self, DVec2::new(mouse_x, mouse_y), direction);
 				GuideLineMessage::CreateGuideLine {
 					id,
 					direction,
@@ -1958,8 +1961,7 @@ impl DocumentMessageHandler {
 			GuideLineMessage::MoveGuideLine { id, mouse_x, mouse_y } => {
 				if let Some(guide_line) = self.guide_lines_message_handler.guide_lines.iter().find(|g| g.id == id) {
 					let direction = guide_line.direction;
-					let snap_manager = unsafe { &mut *(&mut self.guide_snap_manager as *mut _) };
-					let snapped = snap_constrained(snap_manager, self, DVec2::new(mouse_x, mouse_y), direction);
+					let snapped = snap_constrained(self, DVec2::new(mouse_x, mouse_y), direction);
 					GuideLineMessage::MoveGuideLine {
 						id,
 						mouse_x: snapped.x,
@@ -1970,7 +1972,10 @@ impl DocumentMessageHandler {
 				}
 			}
 			other => other,
-		}
+		};
+
+		self.guide_snap_manager = snap_manager;
+		result
 	}
 
 	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
@@ -2498,24 +2503,11 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.history.pop_undo()?;
-		let guide_lines_snapshot = self.history.pop_guide_undo();
-		let previous_network = self.install_history_snapshot(network_interface, viewport);
-
-		// Restore guide lines from the snapshot and stash the current state for redo
-		if let Some(guide_lines) = guide_lines_snapshot {
-			let current_guides = std::mem::replace(&mut self.guide_lines_message_handler.guide_lines, guide_lines);
-			self.history.push_guide_redo(current_guides);
-			responses.add(OverlaysMessage::Draw);
-=======
-	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		let network_snapshot = self.history.pop_undo();
 		let guide_snapshot = self.history.pop_guide_undo();
 
 		if network_snapshot.is_none() && guide_snapshot.is_none() {
 			return None;
->>>>>>> 6cf49e119 (Ai-Review)
 		}
 
 		if let Some(guide_state) = guide_snapshot {
@@ -2527,15 +2519,8 @@ impl DocumentMessageHandler {
 			responses.add(PortfolioMessage::UpdateDocumentWidgets);
 		}
 
-		let previous_network = if let Some(mut network_interface) = network_snapshot {
-			network_interface.copy_all_navigation_metadata(&self.network_interface);
-			std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
-
-			let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-			network_interface.set_document_to_viewport_transform(transform);
-
-			network_interface.load_structure();
-			Some(std::mem::replace(&mut self.network_interface, network_interface))
+		let previous_network = if let Some(network_interface) = network_snapshot {
+			Some(self.install_history_snapshot(network_interface, viewport))
 		} else {
 			None
 		};

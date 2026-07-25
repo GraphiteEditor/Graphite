@@ -75,9 +75,9 @@ impl DocumentHistory {
 	}
 
 	/// Drop the most recently pushed undo snapshot (used to cancel a transaction that ended up unmodified).
-	pub fn discard_last_undo(&mut self) {
+	pub fn discard_last_undo(&mut self) -> Option<GuideLinesState> {
 		self.legacy_undo_stack.pop_back();
-		let _ = self.guide_undo_stack.pop_back();
+		self.guide_undo_stack.pop_back()
 	}
 
 	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
