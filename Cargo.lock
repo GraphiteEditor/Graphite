@@ -2392,7 +2392,6 @@ dependencies = [
  "graphite-proc-macros",
  "js-sys",
  "log",
- "node-macro",
  "serde",
  "serde-wasm-bindgen",
  "serde_bytes",
