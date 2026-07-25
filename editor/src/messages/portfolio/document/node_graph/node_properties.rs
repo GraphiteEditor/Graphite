@@ -1896,7 +1896,9 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput::INDEX, true, context), NumberInput::default().min(1.));
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput::INDEX, true, context), NumberInput::default().min(1.));
 
-	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows)]);
+	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput::INDEX, true, context), CheckboxInput::default());
+
+	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows), LayoutGroup::row(connect_cells)]);
 
 	widgets
 }
