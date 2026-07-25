@@ -62,7 +62,9 @@ pub trait InjectRealTime {}
 pub trait InjectAnimationTime {}
 pub trait InjectPointerPosition {}
 pub trait InjectPosition {}
-pub trait InjectIndex {}
+pub trait InjectIndex {
+	fn set_index(&mut self, index: u64);
+}
 pub trait InjectVarArgs {}
 
 // ================
@@ -101,7 +103,6 @@ impl<T: Ctx> InjectRealTime for T {}
 impl<T: Ctx> InjectAnimationTime for T {}
 impl<T: Ctx> InjectPointerPosition for T {}
 impl<T: Ctx> InjectPosition for T {}
-impl<T: Ctx> InjectIndex for T {}
 impl<T: Ctx> InjectVarArgs for T {}
 
 // =============
