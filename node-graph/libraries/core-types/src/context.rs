@@ -1,8 +1,8 @@
+use crate::arena::Arena;
 use crate::transform::Footprint;
 use glam::DVec2;
 pub use no_std_types::context::{ArcCtx, Ctx};
 use std::any::Any;
-use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::panic::Location;
 use std::sync::Arc;
@@ -384,48 +384,6 @@ impl ExtractFootprint for () {
 	}
 }
 
-// =====================================
-// EXTRACT TRAIT IMPLS FOR `ContextImpl`
-// =====================================
-
-impl Ctx for ContextImpl<'_> {}
-
-impl ExtractFootprint for ContextImpl<'_> {
-	fn try_footprint(&self) -> Option<&Footprint> {
-		self.footprint
-	}
-}
-impl ExtractRealTime for ContextImpl<'_> {
-	fn try_real_time(&self) -> Option<f64> {
-		self.real_time
-	}
-}
-impl ExtractPosition for ContextImpl<'_> {
-	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
-		self.position.clone().map(|x| x.into_iter())
-	}
-}
-impl ExtractIndex for ContextImpl<'_> {
-	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
-		self.index.clone().map(|x| x.into_iter())
-	}
-}
-impl ExtractVarArgs for ContextImpl<'_> {
-	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
-		let Some(inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
-		inner.get(index).ok_or(VarArgsResult::IndexOutOfBounds).copied()
-	}
-
-	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
-		let Some(inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
-		Ok(inner.len())
-	}
-
-	fn hash_varargs(&self, _hasher: &mut dyn Hasher) {
-		todo!()
-	}
-}
-
 // ==========================================
 // EXTRACT TRAIT IMPLS FOR `OwnedContextImpl`
 // ==========================================
@@ -681,27 +639,276 @@ impl OwnedContextImpl {
 	}
 }
 
-#[derive(Default, Clone, dyn_any::DynAny)]
-pub struct ContextImpl<'a> {
-	pub(crate) footprint: Option<&'a Footprint>,
+pub type SourceId = u64;
+
+#[derive(Clone, Copy, Debug)]
+pub struct IndexLink<'a> {
+	pub index: u64,
+	pub outer: Option<&'a IndexLink<'a>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PositionLink<'a> {
+	pub position: DVec2,
+	pub outer: Option<&'a PositionLink<'a>>,
+}
+
+pub type DynSlot<'a> = &'a (dyn AnyHash + Send + Sync);
+
+#[derive(Clone, Copy)]
+pub struct VarArgLink<'a> {
+	pub args: &'a [DynSlot<'a>],
+	pub outer: Option<&'a VarArgLink<'a>>,
+}
+
+#[derive(Clone, Copy)]
+pub struct EvalScope<'a> {
 	real_time: Option<f64>,
-	position: Option<Vec<DVec2>>, // This could be converted into a single enum to save extra bytes
-	index: Option<Vec<usize>>,    // This could be converted into a single enum to save extra bytes
-	varargs: Option<&'a [DynRef<'a>]>,
+	animation_time: Option<f64>,
+	pointer_position: Option<DVec2>,
+	generations: &'a [(SourceId, u64)],
+	arena: &'a Arena,
+	hash: u64,
+}
+
+impl<'a> EvalScope<'a> {
+	pub fn new(real_time: Option<f64>, animation_time: Option<f64>, pointer_position: Option<DVec2>, generations: &'a [(SourceId, u64)], arena: &'a Arena) -> Self {
+		let mut scope = Self {
+			real_time,
+			animation_time,
+			pointer_position,
+			generations,
+			arena,
+			hash: 0,
+		};
+		scope.hash = scope.compute_hash(None);
+		scope
+	}
+
+	pub fn retained(&self, retain: &[SourceId]) -> EvalScope<'a> {
+		EvalScope {
+			hash: self.compute_hash(Some(retain)),
+			..*self
+		}
+	}
+
+	pub fn with_real_time(&self, real_time: Option<f64>) -> EvalScope<'a> {
+		let mut scope = EvalScope { real_time, ..*self };
+		scope.hash = scope.compute_hash(None);
+		scope
+	}
+
+	pub fn with_animation_time(&self, animation_time: Option<f64>) -> EvalScope<'a> {
+		let mut scope = EvalScope { animation_time, ..*self };
+		scope.hash = scope.compute_hash(None);
+		scope
+	}
+
+	fn compute_hash(&self, retain: Option<&[SourceId]>) -> u64 {
+		let mut hasher = std::hash::DefaultHasher::new();
+		self.real_time.map(f64::to_bits).hash(&mut hasher);
+		self.animation_time.map(f64::to_bits).hash(&mut hasher);
+		self.pointer_position.map(|position| (position.x.to_bits(), position.y.to_bits())).hash(&mut hasher);
+		for (source, generation) in self.generations {
+			if retain.is_none_or(|retain| retain.contains(source)) {
+				(source, generation).hash(&mut hasher);
+			}
+		}
+		hasher.finish()
+	}
+
+	pub fn generation(&self, source: SourceId) -> Option<u64> {
+		self.generations.iter().find(|(candidate, _)| *candidate == source).map(|(_, generation)| *generation)
+	}
+
+	pub fn generations(&self) -> &'a [(SourceId, u64)] {
+		self.generations
+	}
+
+	pub fn arena(&self) -> &'a Arena {
+		self.arena
+	}
+}
+
+pub trait ExtractArena {
+	type ArenaRef;
+	fn arena(&self) -> Self::ArenaRef;
+}
+
+#[derive(Clone, Copy)]
+pub struct ContextImpl<'a> {
+	index: IndexLink<'a>,
+	position: Option<&'a PositionLink<'a>>,
+	varargs: Option<&'a VarArgLink<'a>>,
+	footprint: Option<&'a Footprint>,
+	scope: &'a EvalScope<'a>,
 }
 
 impl<'a> ContextImpl<'a> {
-	pub fn with_footprint<'f>(&self, new_footprint: &'f Footprint, varargs: Option<&'f impl Borrow<[DynRef<'f>]>>) -> ContextImpl<'f>
+	pub fn root(scope: &'a EvalScope<'a>) -> Self {
+		Self {
+			index: IndexLink { index: 0, outer: None },
+			position: None,
+			varargs: None,
+			footprint: None,
+			scope,
+		}
+	}
+
+	pub fn scope(&self) -> &'a EvalScope<'a> {
+		self.scope
+	}
+
+	pub fn index_head(&self) -> IndexLink<'a> {
+		self.index
+	}
+
+	pub fn with_footprint<'s>(&self, footprint: &'s Footprint) -> ContextImpl<'s>
 	where
-		'a: 'f,
+		'a: 's,
+	{
+		ContextImpl { footprint: Some(footprint), ..*self }
+	}
+
+	pub fn with_scope<'s>(&self, scope: &'s EvalScope<'s>) -> ContextImpl<'s>
+	where
+		'a: 's,
+	{
+		ContextImpl { scope, ..*self }
+	}
+
+	pub fn with_varargs<'s>(&self, varargs: &'s VarArgLink<'s>) -> ContextImpl<'s>
+	where
+		'a: 's,
+	{
+		ContextImpl { varargs: Some(varargs), ..*self }
+	}
+
+	pub fn with_position<'s>(&self, position: &'s PositionLink<'s>) -> ContextImpl<'s>
+	where
+		'a: 's,
+	{
+		ContextImpl { position: Some(position), ..*self }
+	}
+
+	pub fn promoted<'s>(&self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> ContextImpl<'s>
+	where
+		'a: 's,
 	{
 		ContextImpl {
-			footprint: Some(new_footprint),
-			position: self.position.clone(),
-			index: self.index.clone(),
-			varargs: varargs.map(|x| x.borrow()),
+			index: IndexLink {
+				index: inner_index,
+				outer: Some(spilled_head),
+			},
 			..*self
 		}
+	}
+}
+
+impl Ctx for ContextImpl<'_> {}
+
+impl InjectIndex for ContextImpl<'_> {
+	fn set_index(&mut self, index: u64) {
+		self.index.index = index;
+	}
+}
+
+impl ExtractFootprint for ContextImpl<'_> {
+	fn try_footprint(&self) -> Option<&Footprint> {
+		self.footprint
+	}
+}
+impl ExtractRealTime for ContextImpl<'_> {
+	fn try_real_time(&self) -> Option<f64> {
+		self.scope.real_time
+	}
+}
+impl ExtractAnimationTime for ContextImpl<'_> {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.scope.animation_time
+	}
+}
+impl ExtractPointerPosition for ContextImpl<'_> {
+	fn try_pointer_position(&self) -> Option<DVec2> {
+		self.scope.pointer_position
+	}
+}
+impl ExtractIndex for ContextImpl<'_> {
+	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
+		Some(std::iter::successors(Some(&self.index), |link| link.outer).map(|link| link.index as usize))
+	}
+}
+impl ExtractPosition for ContextImpl<'_> {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
+		self.position.map(|head| std::iter::successors(Some(head), |link| link.outer).map(|link| link.position))
+	}
+}
+impl ExtractVarArgs for ContextImpl<'_> {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		let mut link = self.varargs.ok_or(VarArgsResult::NoVarArgs)?;
+		let mut remaining = index;
+		loop {
+			match link.args.get(remaining) {
+				Some(arg) => return Ok(*arg as DynRef<'_>),
+				None => {
+					remaining -= link.args.len();
+					link = link.outer.ok_or(VarArgsResult::IndexOutOfBounds)?;
+				}
+			}
+		}
+	}
+
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		let head = self.varargs.ok_or(VarArgsResult::NoVarArgs)?;
+		Ok(std::iter::successors(Some(head), |link| link.outer).map(|link| link.args.len()).sum())
+	}
+
+	fn hash_varargs(&self, hasher: &mut dyn Hasher) {
+		let mut count = 0u64;
+		let mut link = self.varargs;
+		while let Some(current) = link {
+			for arg in current.args {
+				arg.dyn_hash(&mut *hasher);
+				count += 1;
+			}
+			link = current.outer;
+		}
+		count.hash(&mut &mut *hasher);
+	}
+}
+impl<'a> ExtractArena for ContextImpl<'a> {
+	type ArenaRef = &'a Arena;
+	fn arena(&self) -> &'a Arena {
+		self.scope.arena
+	}
+}
+
+impl graphene_hash::CacheHash for ContextImpl<'_> {
+	fn cache_hash<H: Hasher>(&self, state: &mut H) {
+		match self.footprint {
+			Some(footprint) => {
+				1u8.hash(state);
+				footprint.cache_hash(state);
+			}
+			None => 0u8.hash(state),
+		}
+		let mut count = 0u64;
+		for link in std::iter::successors(Some(&self.index), |link| link.outer) {
+			link.index.hash(state);
+			count += 1;
+		}
+		count.hash(state);
+		count = 0;
+		let mut position = self.position;
+		while let Some(link) = position {
+			link.position.x.to_bits().hash(state);
+			link.position.y.to_bits().hash(state);
+			count += 1;
+			position = link.outer;
+		}
+		count.hash(state);
+		self.hash_varargs(state);
+		self.scope.hash.hash(state);
 	}
 }
 
@@ -709,4 +916,170 @@ impl<'a> ContextImpl<'a> {
 pub enum VarArgsResult {
 	IndexOutOfBounds,
 	NoVarArgs,
+}
+
+#[cfg(test)]
+mod context_impl_tests {
+	use super::*;
+	use crate::graphene_hash::CacheHash;
+
+	fn hash_of(ctx: &ContextImpl) -> u64 {
+		let mut hasher = std::hash::DefaultHasher::new();
+		ctx.cache_hash(&mut hasher);
+		hasher.finish()
+	}
+
+	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
+		EvalScope::new(Some(0.5), Some(1.5), None, generations, arena)
+	}
+
+	#[test]
+	fn equal_contexts_hash_equal() {
+		let arena = Arena::new(64);
+		let generations = [(0, 1), (1, 3)];
+		let scope = scope_fixture(&generations, &arena);
+		let a = ContextImpl::root(&scope);
+		let b = ContextImpl::root(&scope);
+		assert_eq!(hash_of(&a), hash_of(&b));
+	}
+
+	#[test]
+	fn each_axis_changes_the_hash() {
+		let arena = Arena::new(64);
+		let generations = [(0, 1)];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let footprint = Footprint::DEFAULT;
+
+		let mut indexed = root;
+		indexed.set_index(4);
+		let position_link = PositionLink {
+			position: DVec2::new(1.0, 2.0),
+			outer: None,
+		};
+		let time_scope = scope.with_real_time(Some(9.75));
+		let variants = [root.with_footprint(&footprint), indexed, root.with_position(&position_link), root.with_scope(&time_scope)];
+		let root_hash = hash_of(&root);
+		let mut hashes: Vec<u64> = variants.iter().map(hash_of).collect();
+		hashes.push(root_hash);
+		hashes.sort();
+		hashes.dedup();
+		assert_eq!(hashes.len(), variants.len() + 1, "every axis must contribute to the hash");
+	}
+
+	#[test]
+	fn index_level_order_matters() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+
+		let outer_one = IndexLink { index: 1, outer: None };
+		let mut one_two = root.promoted(&outer_one, 2);
+		let outer_two = IndexLink { index: 2, outer: None };
+		let mut two_one = root.promoted(&outer_two, 1);
+		assert_ne!(hash_of(&one_two), hash_of(&two_one));
+
+		one_two.set_index(7);
+		two_one.set_index(7);
+		assert_ne!(hash_of(&one_two), hash_of(&two_one), "outer levels must stay hashed after set_index");
+	}
+
+	#[test]
+	fn axis_boundaries_are_unambiguous() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+
+		let position = PositionLink {
+			position: DVec2::new(5.0, 5.0),
+			outer: None,
+		};
+		let spilled = root.index_head();
+		let mut deep_index = root.promoted(&spilled, 0);
+		deep_index.set_index(5);
+		let shallow_with_position = root.with_position(&position);
+		assert_ne!(hash_of(&deep_index), hash_of(&shallow_with_position), "index levels must not blur into position levels");
+	}
+
+	#[test]
+	fn retain_scopes_generation_invalidation() {
+		let arena = Arena::new(64);
+		let initial = [(0, 1), (1, 3)];
+		let bumped_unretained = [(0, 2), (1, 3)];
+		let bumped_retained = [(0, 1), (1, 4)];
+
+		let hash_with = |generations: &[(SourceId, u64)]| {
+			let scope = scope_fixture(generations, &arena).retained(&[1]);
+			let retained_scope_context = ContextImpl::root(&scope);
+			hash_of(&retained_scope_context)
+		};
+		assert_eq!(hash_with(&initial), hash_with(&bumped_unretained), "unretained source bumps must not invalidate");
+		assert_ne!(hash_with(&initial), hash_with(&bumped_retained), "retained source bumps must invalidate");
+	}
+
+	#[test]
+	fn unretained_scope_sees_every_bump() {
+		let arena = Arena::new(64);
+		let initial = [(0, 1)];
+		let bumped = [(0, 2)];
+		let hash_with = |generations: &[(SourceId, u64)]| {
+			let scope = scope_fixture(generations, &arena);
+			hash_of(&ContextImpl::root(&scope))
+		};
+		assert_ne!(hash_with(&initial), hash_with(&bumped));
+	}
+
+	#[test]
+	fn set_index_is_visible_and_keeps_outer_levels() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let spilled = root.index_head();
+		let mut ctx = root.promoted(&spilled, 0);
+		ctx.set_index(11);
+		let levels: Vec<usize> = ctx.try_index().unwrap().collect();
+		assert_eq!(levels, vec![11, 0]);
+	}
+
+	#[test]
+	fn vararg_chain_concatenates_innermost_first() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+
+		let outer_value = 7u32;
+		let outer_args: [DynSlot; 1] = [&outer_value];
+		let outer_link = VarArgLink { args: &outer_args, outer: None };
+		let outer_ctx = root.with_varargs(&outer_link);
+
+		let inner_value = String::from("inner");
+		let inner_args: [DynSlot; 1] = [&inner_value];
+		let inner_link = VarArgLink {
+			args: &inner_args,
+			outer: Some(&outer_link),
+		};
+		let inner_ctx = root.with_varargs(&inner_link);
+
+		assert_eq!(root.varargs_len(), Err(VarArgsResult::NoVarArgs));
+		assert_eq!(outer_ctx.varargs_len(), Ok(1));
+		assert_eq!(inner_ctx.varargs_len(), Ok(2));
+		assert!(inner_ctx.vararg(0).unwrap().downcast_ref::<String>().is_some());
+		assert!(inner_ctx.vararg(1).unwrap().downcast_ref::<u32>().is_some());
+		assert!(matches!(inner_ctx.vararg(2), Err(VarArgsResult::IndexOutOfBounds)));
+		assert_ne!(hash_of(&outer_ctx), hash_of(&inner_ctx));
+	}
+
+	#[test]
+	fn scope_arena_reaches_kernels_through_extract_arena() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let (value, _) = ExtractArena::arena(&ctx).alloc(41u32).unwrap();
+		assert_eq!(*value, 41);
+	}
 }
