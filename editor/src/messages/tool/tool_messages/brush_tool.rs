@@ -338,7 +338,7 @@ impl BrushToolData {
 			node_id = chain_node;
 		}
 		let reference = document.network_interface.reference(&node_id, &[]).ok_or(())?;
-		if reference != DefinitionIdentifier::ProtoNode(graphene_std::brush::brush_strokes::brush_strokes::IDENTIFIER) {
+		if reference != DefinitionIdentifier::ProtoNode(graphene_std::brush::brush_strokes::IDENTIFIER) {
 			return Err(());
 		}
 		let node = document.network_interface.document_network().nodes.get(&node_id).ok_or(())?;

@@ -139,7 +139,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			} => {
 				let layer = ModifyInputsContext::new(network_interface, responses).create_layer(id);
 
-				let strokes_node = resolve_proto_node_type(graphene_std::brush::brush_strokes::brush_strokes::IDENTIFIER)
+				let strokes_node = resolve_proto_node_type(graphene_std::brush::brush_strokes::IDENTIFIER)
 					.expect("Brush strokes node does not exist")
 					.node_template_input_override([
 						Some(NodeInput::value(TaggedValue::Strokes(Vec::new()), false)),
