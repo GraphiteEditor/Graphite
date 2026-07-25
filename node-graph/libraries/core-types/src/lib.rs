@@ -1,8 +1,10 @@
 extern crate log;
 
+pub mod arena;
 pub mod bounds;
 pub mod consts;
 pub mod context;
+pub mod frame_table;
 pub mod generic;
 pub mod gnode;
 pub mod gpoll;
