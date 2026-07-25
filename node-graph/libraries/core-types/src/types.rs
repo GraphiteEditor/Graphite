@@ -235,6 +235,7 @@ pub enum Type {
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
+	Ref(Box<Type>),
 }
 
 impl Default for Type {
@@ -308,6 +309,7 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+			Self::Ref(_) => None,
 		}
 	}
 
@@ -317,6 +319,7 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+			Self::Ref(_) => None,
 		}
 	}
 
@@ -326,6 +329,7 @@ impl Type {
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+			Self::Ref(inner) => inner.nested_type(),
 		}
 	}
 
@@ -338,6 +342,7 @@ impl Type {
 			Self::Concrete(_) => None,
 			Self::Fn(_, output) => output.replace_nested(f),
 			Self::Future(output) => output.replace_nested(f),
+			Self::Ref(inner) => inner.replace_nested(f),
 		}
 	}
 
@@ -347,6 +352,7 @@ impl Type {
 			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
 			Type::Future(ty) => ty.identifier_name(),
+			Type::Ref(ty) => ty.identifier_name(),
 		}
 	}
 }
@@ -441,6 +447,7 @@ impl std::fmt::Display for Type {
 			Type::Concrete(ty) => write!(f, "{ty}"),
 			Type::Fn(_, return_value) => write!(f, "{return_value}"),
 			Type::Future(ty) => write!(f, "{ty}"),
+			Type::Ref(ty) => write!(f, "{ty}"),
 		}
 	}
 }
