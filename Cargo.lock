@@ -3393,7 +3393,6 @@ version = "0.0.0"
 dependencies = [
  "chumsky",
  "criterion",
- "lazy_static",
  "num-complex",
  "thiserror 2.0.18",
 ]

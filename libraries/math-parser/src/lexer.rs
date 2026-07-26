@@ -1,14 +1,9 @@
 use crate::ast::Literal;
 use chumsky::input::{Input, ValueInput};
-use chumsky::prelude::*;
 use chumsky::span::SimpleSpan;
-use chumsky::text::{ident, int};
-use core::f64;
 use num_complex::Complex64;
 use std::fmt;
-use std::iter::Peekable;
 use std::ops::Range;
-use std::str::Chars;
 
 pub type Span = SimpleSpan;
 
@@ -40,6 +35,9 @@ pub enum Token<'src> {
 	EqEq,
 
 	If,
+
+	/// An unrecognized character; the parser never matches this, forcing a parse error rather than silently truncating the input.
+	Error,
 }
 
 impl<'src> fmt::Display for Token<'src> {
@@ -71,6 +69,8 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::EqEq => f.write_str("=="),
 
 			Token::If => f.write_str("if"),
+
+			Token::Error => f.write_str("<error>"),
 		}
 	}
 }
@@ -162,57 +162,64 @@ impl<'a> Lexer<'a> {
 		&self.input[start..self.pos]
 	}
 
-	fn lex_ident(&mut self) -> &'a str {
-		self.consume_while(|c| c.is_alphanumeric() || c == '_')
-	}
-
-	fn lex_uint(&mut self) -> Option<(u64, usize)> {
-		let mut v = 0u64;
+	fn consume_digits(&mut self) -> (usize, f64) {
+		let mut value = 0_f64;
 		let mut digits = 0;
 		while let Some(d) = self.peek().and_then(|c| c.to_digit(10)) {
-			v = v * 10 + d as u64;
+			value = value * 10. + d as f64;
 			digits += 1;
 			self.bump();
 		}
-		(digits > 0).then_some((v, digits))
+		(digits, value)
+	}
+
+	// A numeric literal cannot follow another operand across whitespace (`10 000`, `sqrt(4).5`), only constants/calls/parens may juxtapose
+	fn juxtaposes_with_preceding_operand(&self, literal_start: usize) -> bool {
+		let mut preceding = self.input[..literal_start].trim_end();
+
+		// A `!` run is postfix factorial only when an operand precedes it, otherwise it's a prefix logical not
+		while let Some(rest) = preceding.strip_suffix('!') {
+			preceding = rest.trim_end();
+		}
+
+		preceding.chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '.' || c == ')' || c == '∞')
 	}
 
 	fn lex_number(&mut self) -> Option<f64> {
 		let start_pos = self.pos;
-		let (int_val, int_digits) = self.lex_uint().unwrap_or((0, 0));
+		let (int_digits, int_value) = self.consume_digits();
 		let mut got_digit = int_digits > 0;
-		let mut num = int_val as f64;
+		let mut plain_integer = true;
 
 		if self.peek() == Some('.') {
 			self.bump();
-			if let Some((frac_val, frac_digits)) = self.lex_uint() {
-				num += (frac_val as f64) / 10f64.powi(frac_digits as i32);
-				got_digit = true;
-			}
+			plain_integer = false;
+			got_digit |= self.consume_digits().0 > 0;
 		}
 
-		if matches!(self.peek(), Some('e' | 'E')) {
+		if got_digit && matches!(self.peek(), Some('e' | 'E')) {
 			self.bump();
-			let sign = match self.peek() {
-				Some('+') => {
-					self.bump();
-					1
-				}
-				Some('-') => {
-					self.bump();
-					-1
-				}
-				_ => 1,
-			};
-			if let Some((exp_val, _)) = self.lex_uint() {
-				num *= 10f64.powi(sign * exp_val as i32);
-			} else {
+			plain_integer = false;
+			if matches!(self.peek(), Some('+' | '-')) {
+				self.bump();
+			}
+			if self.consume_digits().0 == 0 {
 				self.pos = start_pos;
 				return None;
 			}
 		}
 
-		got_digit.then_some(num)
+		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication
+		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.juxtaposes_with_preceding_operand(start_pos) {
+			self.pos = start_pos;
+			return None;
+		}
+
+		// Accumulation is exact up to 15 digits; longer or fractional literals get std's correctly-rounded parsing
+		if plain_integer && int_digits <= 15 {
+			return Some(int_value);
+		}
+		self.input[start_pos..self.pos].parse::<f64>().ok()
 	}
 
 	fn skip_ws(&mut self) {
@@ -231,7 +238,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					AndAnd
 				} else {
-					return None;
+					Error
 				}
 			}
 			'|' => {
@@ -239,7 +246,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					OrOr
 				} else {
-					return None;
+					Error
 				}
 			}
 
@@ -287,13 +294,29 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					return None;
+					Error
 				}
 			}
 
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
-				Float(self.lex_number()?)
+				match self.lex_number() {
+					Some(number) => Float(number),
+					// Consume the whole malformed numeric run so the error span covers it and lexing makes forward progress
+					None => {
+						self.pos = start;
+						let mut prev = '\0';
+						while let Some(c) = self.peek() {
+							let part_of_number = c.is_ascii_digit() || c == '.' || c == 'e' || c == 'E' || ((c == '+' || c == '-') && matches!(prev, 'e' | 'E'));
+							if !part_of_number {
+								break;
+							}
+							prev = c;
+							self.bump();
+						}
+						Error
+					}
+				}
 			}
 
 			_ => {
@@ -307,7 +330,7 @@ impl<'a> Lexer<'a> {
 				} else if ch.is_alphanumeric() {
 					Ident(ident)
 				} else {
-					return None;
+					Error
 				}
 			}
 		};
