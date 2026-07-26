@@ -426,8 +426,6 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
-	// /// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
-	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
@@ -704,8 +702,6 @@ impl NodeTypePersistentMetadata {
 /// All fields in LayerMetadata should automatically be updated by using the network interface API
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LayerPersistentMetadata {
-	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
-	// preview_click_target: Option<ClickTarget>,
 	/// Stores the position of a layer node, which can either be Absolute or Stack
 	pub position: LayerPosition,
 }
@@ -790,8 +786,6 @@ pub struct LayerClickTargets {
 	/// to skip the drill-into-subgraph behavior when the click lands on the name itself.
 	/// `None` for layers whose display name is empty.
 	pub name_click_target: Option<ClickTarget>,
-	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
-	// preview_click_target: ClickTarget,
 }
 
 pub enum LayerClickTargetTypes {
