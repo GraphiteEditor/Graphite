@@ -321,86 +321,78 @@ fn grid<T: GridSpacing>(
 	#[default(10)] columns: Item<u32>,
 	#[default(10)] rows: Item<u32>,
 	#[default(30., 30.)] angles: Item<DVec2>,
+	#[default(true)] connect_cells: Item<bool>,
 ) -> Item<Vector> {
-	let (grid_type, columns, rows, angles) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element());
+	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
 
 	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
+
+	// Isometric grid spacing based on the two skew angles. Unused for rectangular grids.
+	let tan_a = angle_a.to_radians().tan();
+	let tan_b = angle_b.to_radians().tan();
+	let isometric_spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
+
+	// The position of the grid point at column `x`, row `y`.
+	let position = |x: u32, y: u32| -> DVec2 {
+		match grid_type {
+			GridType::Rectangular => DVec2::new(x_spacing * x as f64, y_spacing * y as f64),
+			GridType::Isometric => {
+				// Odd columns are offset vertically so the cells skew into the isometric shape.
+				let a_angles_eaten = x.div_ceil(2) as f64;
+				let b_angles_eaten = (x / 2) as f64;
+				let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
+				DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
+			}
+		}
+	};
+
+	// When the cells aren't connected, each one is its own closed quadrilateral subpath.
+	// The vertices are ordered counter-clockwise to match the framework's fill winding.
+	if !connect_cells {
+		let mut cells = Vec::new();
+		for y in 0..rows.saturating_sub(1) {
+			for x in 0..columns.saturating_sub(1) {
+				cells.push(vec![position(x, y), position(x + 1, y), position(x + 1, y + 1), position(x, y + 1)]);
+			}
+		}
+		let mut vector = Vector::default();
+		crate::vector_nodes::replace_with_polygons(&mut vector, cells, connect_cells);
+		return Item::new_from_element(vector);
+	}
 
 	let mut vector = Vector::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 
-	match grid_type {
-		GridType::Rectangular => {
-			// Create rectangular grid points and connect them with line segments
-			for y in 0..rows {
-				for x in 0..columns {
-					// Add current point to the grid
-					let current_index = vector.point_domain.ids().len();
-					vector.point_domain.push(point_id.next_id(), DVec2::new(x_spacing * x as f64, y_spacing * y as f64));
+	for y in 0..rows {
+		for x in 0..columns {
+			// Add the current point to the grid.
+			let current_index = vector.point_domain.ids().len();
+			vector.point_domain.push(point_id.next_id(), position(x, y));
 
-					// Helper function to connect points with line segments
-					let mut push_segment = |to_index: Option<usize>| {
-						if let Some(other_index) = to_index {
-							vector
-								.segment_domain
-								.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
-						}
-					};
-
-					// Connect to the point to the left (horizontal connection)
-					push_segment((x > 0).then(|| current_index - 1));
-
-					// Connect to the point above (vertical connection)
-					push_segment(current_index.checked_sub(columns as usize));
+			// Helper function to connect points with line segments.
+			let mut push_segment = |to_index: Option<usize>| {
+				if let Some(other_index) = to_index {
+					vector
+						.segment_domain
+						.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
 				}
-			}
-		}
-		GridType::Isometric => {
-			// Calculate isometric grid spacing based on angles
-			let tan_a = angle_a.to_radians().tan();
-			let tan_b = angle_b.to_radians().tan();
-			let spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
+			};
 
-			// Create isometric grid points and connect them with line segments
-			for y in 0..rows {
-				for x in 0..columns {
-					// Add current point to the grid with offset for odd columns
-					let current_index = vector.point_domain.ids().len();
+			// Connect to the point to the left (horizontal connection).
+			push_segment((x > 0).then(|| current_index - 1));
 
-					let a_angles_eaten = x.div_ceil(2) as f64;
-					let b_angles_eaten = (x / 2) as f64;
+			// Connect to the point directly above (vertical connection).
+			push_segment(current_index.checked_sub(columns as usize));
 
-					let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
+			// Isometric grids additionally connect odd columns diagonally, splitting each cell into triangles.
+			if grid_type == GridType::Isometric && x % 2 == 1 {
+				// Connect to the point diagonally up-right (if not at the right edge).
+				push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
 
-					let position = DVec2::new(spacing.x * x as f64, spacing.y * y as f64 + offset_y_fraction * spacing.x);
-					vector.point_domain.push(point_id.next_id(), position);
-
-					// Helper function to connect points with line segments
-					let mut push_segment = |to_index: Option<usize>| {
-						if let Some(other_index) = to_index {
-							vector
-								.segment_domain
-								.push(segment_id.next_id(), other_index, current_index, subpath::BezierHandles::Linear, StrokeId::ZERO);
-						}
-					};
-
-					// Connect to the point to the left
-					push_segment((x > 0).then(|| current_index - 1));
-
-					// Connect to the point directly above
-					push_segment(current_index.checked_sub(columns as usize));
-
-					// Additional diagonal connections for odd columns (creates hexagonal pattern)
-					if x % 2 == 1 {
-						// Connect to the point diagonally up-right (if not at right edge)
-						push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
-
-						// Connect to the point diagonally up-left
-						push_segment(current_index.checked_sub(columns as usize + 1));
-					}
-				}
+				// Connect to the point diagonally up-left.
+				push_segment(current_index.checked_sub(columns as usize + 1));
 			}
 		}
 	}
@@ -419,11 +411,11 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), item(GridType::Isometric), item(0.), item(5_u32), item(5_u32), item((0., 0.).into()));
-		grid((), (), item(GridType::Isometric), item(90.), item(5_u32), item(5_u32), item((90., 90.).into()));
+		grid((), (), item(GridType::Isometric), item(0.), item(5_u32), item(5_u32), item((0., 0.).into()), item(true));
+		grid((), (), item(GridType::Isometric), item(90.), item(5_u32), item(5_u32), item((90., 90.).into()), item(true));
 
 		// Works properly
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((30., 30.).into()));
+		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((30., 30.).into()), item(true));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
@@ -438,7 +430,7 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((40., 30.).into()));
+		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_u32), item(5_u32), item((40., 30.).into()), item(true));
 		assert_eq!(grid.element().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element().segment_bezier_iter() {
@@ -446,6 +438,24 @@ mod tests {
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
+		}
+	}
+
+	#[test]
+	fn grid_disconnected_cells_test() {
+		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath with a fillable region.
+		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_u32), item(3_u32), item((30., 30.).into()), item(false));
+		let vector = grid.element();
+		assert_eq!(vector.region_domain.ids().len(), 4);
+		assert_eq!(vector.point_domain.ids().len(), 4 * 4);
+		assert_eq!(vector.segment_domain.ids().len(), 4 * 4);
+
+		// Each cell winds counter-clockwise (positive signed area), matching the shape generators.
+		for (group, closed) in vector.stroke_manipulator_groups() {
+			assert!(closed);
+			let anchors: Vec<DVec2> = group.iter().map(|g| g.anchor).collect();
+			let signed_area: f64 = (0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.;
+			assert!(signed_area > 0., "grid cell should wind counter-clockwise");
 		}
 	}
 
