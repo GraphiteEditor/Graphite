@@ -297,13 +297,18 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
-		let Some(mut node_ids) = self
+		let Some(node_ids) = self
 			.selected_nodes_in_nested_network(network_path)
 			.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>())
 		else {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
+		self.shift_nodes(node_ids, direction, shift_without_push, network_path);
+	}
+
+	pub(crate) fn shift_nodes(&mut self, mut node_ids: HashSet<NodeId>, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
+		let seed_nodes = node_ids.clone();
 		if !shift_without_push {
 			// The owned nodes of each layer are populated by the stack dependents load, which otherwise may not run until after this filter
 			self.try_load_stack_dependents(network_path);
@@ -432,16 +437,9 @@ impl NodeNetworkInterface {
 						shifted_nodes.insert(*node_id);
 						self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
 
-						let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-							log::error!("Could not get nested network_metadata in export_ports");
-							continue;
-						};
-						if let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut()
-							&& let Some(LayerOwner::None(offset)) = stack_dependents.get_mut(node_id)
-						{
-							*offset += shift_sign;
-							self.transaction_modified();
-						};
+						if self.with_stack_dependents(network_path, |stack_dependents| matches!(stack_dependents.get(node_id), Some(LayerOwner::None))) == Some(true) {
+							self.add_drag_offset(node_id, shift_sign, network_path);
+						}
 
 						// Shift the upstream layer so that it stays in the same place
 						if self.is_layer(node_id, network_path) {
@@ -470,24 +468,24 @@ impl NodeNetworkInterface {
 		let mut stack_dependents_with_position = stack_dependents
 			.iter()
 			.filter_map(|(node_id, owner)| {
-				let LayerOwner::None(offset) = owner else {
+				let LayerOwner::None = owner else {
 					return None;
 				};
-				if *offset == 0 {
+				let offset = self.drag_offset(node_id, network_path);
+				if offset == 0 {
 					return None;
 				}
-				if self.selected_nodes_in_nested_network(network_path).is_some_and(|selected_nodes| {
-					selected_nodes
-						.selected_nodes()
-						.any(|selected_node| selected_node == node_id || self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.contains(selected_node)) == Some(true))
-				}) {
+				if seed_nodes
+					.iter()
+					.any(|seed_node| seed_node == node_id || self.with_owned_nodes(node_id, network_path, |owned_nodes| owned_nodes.contains(seed_node)) == Some(true))
+				{
 					return None;
 				};
 				let Some(position) = self.position(node_id, network_path) else {
 					log::error!("Could not get position for node {node_id} in shift_selected_nodes");
 					return None;
 				};
-				Some((*node_id, *offset, position.y))
+				Some((*node_id, offset, position.y))
 			})
 			.collect::<Vec<(NodeId, i32, i32)>>();
 
@@ -533,29 +531,11 @@ impl NodeNetworkInterface {
 
 		self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in export_ports");
-			return;
-		};
-		let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() else {
-			log::error!("Stack dependents should be loaded in vertical_shift_with_push");
-			return;
-		};
-
-		let mut default_layer_owner = LayerOwner::None(0);
-		let layer_owner = stack_dependents.get_mut(node_id).unwrap_or_else(|| {
-			log::error!("Could not get layer owner in vertical_shift_with_push for node {node_id}");
-			&mut default_layer_owner
-		});
-
-		match layer_owner {
-			LayerOwner::None(offset) => {
-				*offset += shift_sign;
-				self.transaction_modified();
-			}
-			LayerOwner::Layer(_) => {
-				log::error!("Node being shifted with a push should not be owned");
-			}
+		match self.with_stack_dependents(network_path, |stack_dependents| stack_dependents.get(node_id).cloned()) {
+			Some(Some(LayerOwner::None)) => self.add_drag_offset(node_id, shift_sign, network_path),
+			Some(Some(LayerOwner::Layer(_))) => log::error!("Node being shifted with a push should not be owned"),
+			Some(None) => log::error!("Could not get layer owner in vertical_shift_with_push for node {node_id}"),
+			None => log::error!("Stack dependents should be loaded in vertical_shift_with_push"),
 		}
 
 		// Shift the upstream layer so that it stays in the same place
@@ -652,7 +632,7 @@ impl NodeNetworkInterface {
 				let layer_owner = *layer_owner;
 				self.shift_node_or_parent(&layer_owner, shift_sign, shifted_nodes, network_path)
 			}
-			LayerOwner::None(_) => self.vertical_shift_with_push(node_id, shift_sign, shifted_nodes, network_path),
+			LayerOwner::None => self.vertical_shift_with_push(node_id, shift_sign, shifted_nodes, network_path),
 		}
 	}
 
@@ -723,7 +703,7 @@ impl NodeNetworkInterface {
 			insert_index = 0;
 		}
 
-		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
+		let post_node = self.post_node_with_index(parent, insert_index, network_path);
 		let Some(post_node_input) = self.input_from_connector(&post_node, network_path).cloned() else {
 			log::error!("Could not get previous input in move_layer_to_stack_for_import");
 			return;
@@ -811,7 +791,7 @@ impl NodeNetworkInterface {
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), network_path);
 
-		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
+		let post_node = self.post_node_with_index(parent, insert_index, network_path);
 
 		// Get the previous input to the post node before inserting the layer
 		let Some(post_node_input) = self.input_from_connector(&post_node, network_path).cloned() else {
@@ -872,12 +852,9 @@ impl NodeNetworkInterface {
 
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
 		if let Some(upstream_node_id) = post_node_input.as_node() {
-			// Select the layer to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in move_layer_to_stack");
-				return;
-			};
-			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+			// Build the stack dependents from the upstream node rather than the selection so the shifting works correctly
+			self.unload_stack_dependents(network_path);
+			self.load_stack_dependents_for_nodes(vec![upstream_node_id], network_path);
 
 			// Create the minimum amount space for the moved layer
 			for _ in 0..STACK_VERTICAL_GAP {
@@ -886,6 +863,7 @@ impl NodeNetworkInterface {
 
 			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
 				log::error!("Could not get stack position in move_layer_to_stack");
+				self.unload_stack_dependents(network_path);
 				return;
 			};
 
@@ -896,7 +874,7 @@ impl NodeNetworkInterface {
 				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
 			}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			self.unload_stack_dependents(network_path);
 		}
 
 		// If true, this node should be inserted before the post node (toward root from the layer), and all outward wires from the pre node should be moved to its output.

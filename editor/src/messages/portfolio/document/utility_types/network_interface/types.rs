@@ -437,6 +437,8 @@ pub struct NodeNetworkTransientMetadata {
 
 	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
+	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
+	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
 }
 
 #[derive(Debug, Clone)]
@@ -459,8 +461,7 @@ pub struct NetworkEdgeDistance {
 pub enum LayerOwner {
 	// Used to get the layer that should be shifted when there is a collision.
 	Layer(NodeId),
-	// The vertical offset of a node from the start of its shift. Should be reset when the drag ends.
-	None(i32),
+	None,
 }
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]

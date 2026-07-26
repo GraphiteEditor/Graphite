@@ -1,7 +1,7 @@
 use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
 use glam::{DAffine2, DVec2, IVec2};
@@ -56,72 +56,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut document = Self::new(network_interface, responses);
 		document.layer_node = Some(layer);
 		Some(document)
-	}
-
-	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node InputConnector and pre node OutputConnector
-	/// Non layer nodes directly upstream of a layer are treated as part of that layer. See insert_index == 2 in the diagram
-	///       -----> Post node
-	///      |      if insert_index == 0, return (Post node, Some(Layer1))
-	/// -> Layer1
-	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
-	/// -> Layer2
-	///      ↑
-	/// -> NonLayerNode
-	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
-	/// -> Layer3
-	///             if insert_index == 3, return (Layer3, None)
-	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
-		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
-			InputConnector::Export(0)
-		} else {
-			InputConnector::node(parent.to_node(), 1)
-		};
-		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
-		let mut current_index = 0;
-
-		// Set the post node to the layer node at insert_index
-		loop {
-			if current_index == insert_index {
-				break;
-			}
-			let next_node_in_stack_id = network_interface
-				.input_from_connector(&post_node_input_connector, &[])
-				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
-
-			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
-				// Only increment index for layer nodes
-				if network_interface.is_layer(next_node_in_stack_id, &[]) {
-					current_index += 1;
-				}
-				// Input as a sibling to the Layer node above
-				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
-			} else {
-				log::error!("Error getting post node: insert_index out of bounds");
-				break;
-			};
-		}
-
-		let layer_input_connector = post_node_input_connector;
-
-		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
-		loop {
-			let pre_node_output_connector = network_interface.upstream_output_connector(&post_node_input_connector, &[]);
-
-			match pre_node_output_connector {
-				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
-					// Update post_node_input_connector for the next iteration
-					post_node_input_connector = InputConnector::node(pre_node_id, 0);
-					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
-					let primary_is_exposed = network_interface.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
-					if !primary_is_exposed {
-						return layer_input_connector;
-					}
-				}
-				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
-			}
-		}
-
-		post_node_input_connector
 	}
 
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
