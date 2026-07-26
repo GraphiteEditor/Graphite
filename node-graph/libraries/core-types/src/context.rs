@@ -849,6 +849,78 @@ impl<C: DeriveCtx> PositionScope<'_, C> {
 	}
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct CtxSnapshot {
+	footprint: Option<Footprint>,
+	real_time: Option<f64>,
+	animation_time: Option<f64>,
+	pointer_position: Option<DVec2>,
+	index: Vec<usize>,
+	positions: Vec<DVec2>,
+	generations: Vec<(SourceId, u64)>,
+}
+
+impl CtxSnapshot {
+	pub fn capture<C>(ctx: &C) -> Self
+	where
+		C: DeriveCtx + ExtractFootprint + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + ExtractIndex + ExtractPosition,
+	{
+		Self {
+			footprint: ctx.try_footprint().copied(),
+			real_time: ctx.try_real_time(),
+			animation_time: ctx.try_animation_time(),
+			pointer_position: ctx.try_pointer_position(),
+			index: ctx.try_index().map(|levels| levels.collect()).unwrap_or_default(),
+			positions: ctx.try_position().map(|positions| positions.collect()).unwrap_or_default(),
+			generations: ctx.scope().generations().to_vec(),
+		}
+	}
+
+	pub fn generations(&self) -> &[(SourceId, u64)] {
+		&self.generations
+	}
+
+	pub fn scope<'s>(&'s self, arena: &'s Arena) -> EvalScope<'s> {
+		EvalScope::new(self.real_time, self.animation_time, self.pointer_position, &self.generations, arena)
+	}
+}
+
+impl ExtractFootprint for CtxSnapshot {
+	fn try_footprint(&self) -> Option<&Footprint> {
+		self.footprint.as_ref()
+	}
+}
+
+impl ExtractRealTime for CtxSnapshot {
+	fn try_real_time(&self) -> Option<f64> {
+		self.real_time
+	}
+}
+
+impl ExtractAnimationTime for CtxSnapshot {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.animation_time
+	}
+}
+
+impl ExtractPointerPosition for CtxSnapshot {
+	fn try_pointer_position(&self) -> Option<DVec2> {
+		self.pointer_position
+	}
+}
+
+impl ExtractIndex for CtxSnapshot {
+	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
+		Some(self.index.iter().copied())
+	}
+}
+
+impl ExtractPosition for CtxSnapshot {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
+		Some(self.positions.iter().copied())
+	}
+}
+
 pub struct VarArgScope<'c, C> {
 	ctx: &'c C,
 	link: VarArgLink<'c>,

@@ -180,6 +180,7 @@ impl StatusCell {
 	pub fn merge<T>(self, poll: GPoll<T>) -> GPoll<T> {
 		match poll {
 			GPoll::Final(value) => self.finish(value),
+			GPoll::Partial(_) if self.no_partial => GPoll::Pending,
 			GPoll::Partial(value) => match self.finish(value) {
 				GPoll::Final(value) => GPoll::Partial(value),
 				other => other,
