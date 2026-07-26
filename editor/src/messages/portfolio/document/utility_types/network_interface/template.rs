@@ -276,14 +276,13 @@ impl NodeTemplateImplementation {
 /// Collects resource IDs referenced by a template and its nested networks.
 pub fn collect_template_resources(template: &NodeTemplate, out: &mut HashSet<ResourceId>) {
 	for input in &template.inputs {
-		if let NodeInput::Value { tagged_value, .. } = input
-			&& let TaggedValue::Resource(id) = &**tagged_value
-		{
-			out.insert(*id);
-		}
+		collect_input_resource(input, out);
 	}
 
 	if let NodeTemplateImplementation::Network(network_template) = &template.implementation {
+		for export in &network_template.exports {
+			collect_input_resource(export, out);
+		}
 		for nested_template in network_template.nodes.values() {
 			collect_template_resources(nested_template, out);
 		}

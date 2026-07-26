@@ -834,6 +834,9 @@ pub(crate) enum SoleDependentStep {
 }
 
 pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
+	for export in &network.exports {
+		collect_input_resource(export, out);
+	}
 	for node in network.nodes.values() {
 		collect_node_resources(node, out);
 	}
@@ -842,13 +845,18 @@ pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet
 /// Collects resource IDs referenced by a node and its nested networks.
 pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
 	for input in &node.inputs {
-		if let NodeInput::Value { tagged_value, .. } = input
-			&& let TaggedValue::Resource(id) = &**tagged_value
-		{
-			out.insert(*id);
-		}
+		collect_input_resource(input, out);
 	}
 	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
 		collect_network_resources(nested, out);
+	}
+}
+
+/// Records the resource ID held by a value input, covering node inputs and export slots alike.
+pub(crate) fn collect_input_resource(input: &NodeInput, out: &mut HashSet<ResourceId>) {
+	if let NodeInput::Value { tagged_value, .. } = input
+		&& let TaggedValue::Resource(id) = &**tagged_value
+	{
+		out.insert(*id);
 	}
 }
