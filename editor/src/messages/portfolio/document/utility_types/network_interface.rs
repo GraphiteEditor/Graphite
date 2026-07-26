@@ -63,7 +63,7 @@ pub struct NodeNetworkInterface {
 	network: MemoNetwork,
 	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	network_metadata: NodeNetworkMetadata,
-	// TODO: Wrap in TransientMetadata Option
+	// TODO: Wrap in a TransientCache
 	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	#[serde(skip)]
 	document_metadata: DocumentMetadata,
