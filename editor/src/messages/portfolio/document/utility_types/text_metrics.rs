@@ -1,8 +1,5 @@
 use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
-use std::sync::{LazyLock, Mutex};
-
-pub static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub fn text_width(text: &str, font_size: f64) -> f64 {
 	let typesetting = TypesettingConfig {
@@ -15,7 +12,5 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 		align: TextAlign::AlignLeft,
 	};
 
-	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-	let bounds = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
-	bounds.x
+	TextContext::with_thread_local(|text_context| text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false).x)
 }
