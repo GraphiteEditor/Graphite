@@ -226,34 +226,26 @@ impl NodeNetworkInterface {
 		self.unload_modify_import_export(network_path);
 	}
 
-	/// Disconnects every wire fed by the given import within the network.
-	pub(crate) fn disconnect_import_wires(&mut self, import_index: usize, network_path: &[NodeId]) {
-		let Some(wires_for_import) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::Import(import_index)).cloned()) else {
-			log::error!("Could not get outward wires in disconnect_import_wires");
-			return;
-		};
-		let Some(wires_for_import) = wires_for_import else {
-			log::error!("Could not get outward wires for import in disconnect_import_wires");
-			return;
-		};
-		for downstream_connection in wires_for_import {
-			self.disconnect_input(&downstream_connection, network_path);
-		}
+	/// Disconnects every wire fed by the given import within the network. Returns false without mutating if the import's wires cannot be resolved.
+	pub(crate) fn disconnect_import_wires(&mut self, import_index: usize, network_path: &[NodeId]) -> bool {
+		self.disconnect_output_wires(&OutputConnector::Import(import_index), network_path)
 	}
 
-	/// Disconnects every wire fed by the given output within the network.
-	pub(crate) fn disconnect_output_wires(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) {
+	/// Disconnects every wire fed by the given output within the network. Returns false without mutating if the output's wires cannot be resolved.
+	pub(crate) fn disconnect_output_wires(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> bool {
 		let Some(downstream_connections) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()) else {
 			log::error!("Could not get outward wires in disconnect_output_wires");
-			return;
+			return false;
 		};
 		let Some(downstream_connections) = downstream_connections else {
-			log::error!("Could not get downstream connections in disconnect_output_wires");
-			return;
+			log::error!("Could not get downstream connections for {output_connector:?} in disconnect_output_wires");
+			return false;
 		};
 		for downstream_connection in downstream_connections {
 			self.disconnect_input(&downstream_connection, network_path);
 		}
+
+		true
 	}
 
 	/// Refreshes the metadata invalidated when the encapsulating node's signature changes, demoting it from a layer if it is no longer eligible.
@@ -346,9 +338,11 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// Disconnect all upstream connections
-		self.disconnect_import_wires(import_index, network_path);
-		// Shift inputs connected to to imports at a higher index down one
+		// Disconnect all upstream connections, aborting before any mutation if the import's wires cannot be resolved
+		if !self.disconnect_import_wires(import_index, network_path) {
+			return;
+		}
+		// Shift inputs connected to imports at a higher index down one
 		for (output_connector, input_wire) in new_import_mapping {
 			self.create_wire(&output_connector, &input_wire, network_path);
 		}
@@ -1117,13 +1111,16 @@ impl NodeNetworkInterface {
 		}
 
 		// Layer membership is fixed during the expansion phase, so gather it once for the sole-dependent closure
-		let layer_nodes = self
-			.nested_network(network_path)
-			.map(|network| network.nodes.keys().copied().collect::<Vec<_>>())
-			.unwrap_or_default()
-			.into_iter()
-			.filter(|candidate| self.is_layer(candidate, network_path))
-			.collect::<HashSet<_>>();
+		let layer_nodes = if delete_children {
+			self.nested_network(network_path)
+				.map(|network| network.nodes.keys().copied().collect::<Vec<_>>())
+				.unwrap_or_default()
+				.into_iter()
+				.filter(|candidate| self.is_layer(candidate, network_path))
+				.collect::<HashSet<_>>()
+		} else {
+			HashSet::new()
+		};
 
 		let mut delete_nodes = HashSet::new();
 		for node_id in &nodes_to_delete {
@@ -1175,7 +1172,8 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			for input_index in 0..self.number_of_displayed_inputs(delete_node_id, network_path) {
+			// Disconnect every input by position, since hidden inputs make the displayed count undershoot the index of a later exposed wire
+			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
 				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
 			}
 
@@ -1203,6 +1201,15 @@ impl NodeNetworkInterface {
 			&& let Some(network_metadata) = self.network_metadata_mut(network_path)
 		{
 			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| surviving_nodes.contains(node_id));
+		}
+
+		// Purge the deleted nodes' cached wire paths, since the per-node unload can no longer reach them once the nodes are gone
+		if let Some(network_metadata) = self.network_metadata(network_path) {
+			network_metadata
+				.transient_metadata
+				.wires
+				.borrow_mut()
+				.retain(|connector, _| connector.node_id().is_none_or(|node_id| !delete_nodes.contains(&node_id)));
 		}
 
 		self.unload_all_nodes_bounding_box(network_path);
@@ -1312,22 +1319,6 @@ impl NodeNetworkInterface {
 		};
 		network_metadata.persistent_metadata.previewing = Previewing::No;
 	}
-
-	// /// Sets the root node only if a node is being previewed
-	// pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
-	// 	if let Previewing::Yes { root_node_to_restore } = self.previewing {
-	// 		// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
-	// 		if let Some(root_node_to_restore) = root_node_to_restore {
-	// 			if root_node_to_restore.id != node_id {
-	// 				self.start_previewing(node_id, output_index);
-	// 			} else {
-	// 				self.stop_preview();
-	// 			}
-	// 		} else {
-	// 			self.stop_preview();
-	// 		}
-	// 	}
-	// }
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
