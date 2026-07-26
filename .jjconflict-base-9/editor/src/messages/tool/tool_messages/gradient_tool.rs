@@ -2158,7 +2158,8 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				])),
+				]))
+				.into(),
 			})
 			.await;
 
@@ -2195,7 +2196,8 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				])),
+				]))
+				.into(),
 			})
 			.await;
 
@@ -2838,7 +2840,8 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				])),
+				]))
+				.into(),
 			})
 			.await;
 

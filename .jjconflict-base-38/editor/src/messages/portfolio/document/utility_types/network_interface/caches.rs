@@ -1106,12 +1106,12 @@ impl NodeNetworkInterface {
 			DocumentNodeClickTargets {
 				node_click_target,
 				port_click_targets,
-				node_type_metadata: NodeTypeClickTargets::Layer(LayerClickTargets {
+				node_type_metadata: NodeTypeClickTargets::Layer(Box::new(LayerClickTargets {
 					visibility_click_target,
 					lock_click_target,
 					grip_click_target,
 					name_click_target,
-				}),
+				})),
 			}
 		};
 

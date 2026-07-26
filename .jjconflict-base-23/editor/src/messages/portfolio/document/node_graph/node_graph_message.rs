@@ -157,7 +157,7 @@ pub enum NodeGraphMessage {
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
-		value: TaggedValue,
+		value: Box<TaggedValue>,
 	},
 	SetInput {
 		input_connector: InputConnector,

@@ -747,7 +747,7 @@ async fn none_fill_survives_document_reopen() {
 		.handle_message(NodeGraphMessage::SetInputValue {
 			node_id: fill_node_id,
 			input_index: graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX,
-			value: graph_craft::document::value::TaggedValue::no_paint(),
+			value: graph_craft::document::value::TaggedValue::no_paint().into(),
 		})
 		.await;
 	assert!(fill_paint_value(editor.active_document()).is_no_paint(), "the None pick should store as no_paint");

@@ -1762,7 +1762,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.any(|id| *r == DefinitionIdentifier::ProtoNode(id))
 				});
 
-				let input = NodeInput::value(value, false);
+				let input = NodeInput::value(*value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
