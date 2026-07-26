@@ -18,7 +18,16 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		Some(ctx_param) => ctx_param.ident.clone(),
 		None => format_ident!("__Ctx"),
 	};
-	let ctx_bounds: Vec<TokenStream2> = match ctx_param {
+	let async_source = parsed.is_async;
+	if async_source && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		return Ok(GNodeTokens {
+			in_mod: quote!(),
+			top_level: quote!(),
+		});
+	}
+	let snapshot_ctx = async_source && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
+
+	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
 		Some(ctx_param) => ctx_param
 			.bounds
 			.iter()
@@ -29,6 +38,20 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			.collect(),
 		None => vec![quote!(#core_types::Ctx)],
 	};
+	if async_source {
+		ctx_bounds.push(quote!(#core_types::CacheHash));
+	}
+	if snapshot_ctx {
+		ctx_bounds.extend([
+			quote!(#core_types::context::DeriveCtx),
+			quote!(#core_types::context::ExtractFootprint),
+			quote!(#core_types::context::ExtractRealTime),
+			quote!(#core_types::context::ExtractAnimationTime),
+			quote!(#core_types::context::ExtractPointerPosition),
+			quote!(#core_types::context::ExtractIndex),
+			quote!(#core_types::context::ExtractPosition),
+		]);
+	}
 
 	let derives = ctx_param.is_some_and(|ctx_param| {
 		ctx_param.bounds.iter().any(|bound| match bound {
@@ -120,6 +143,22 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			quote!(#node_generic: #bound)
 		}
 	});
+
+	let async_bounds = match async_source {
+		false => Vec::new(),
+		true => {
+			let output_clone = std::iter::once(quote!(#trait_output: Clone));
+			let value_clones = regular_fields.iter().filter_map(|field| match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
+				_ => None,
+			});
+			let data_clones = data_fields.iter().filter_map(|field| match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
+				_ => None,
+			});
+			output_clone.chain(value_clones).chain(data_clones).collect()
+		}
+	};
 
 	let clampable_bounds = regular_fields.iter().filter_map(|field| {
 		let ParsedFieldType::Regular(RegularParsedField { ty, number_hard_min, number_hard_max, .. }) = &field.ty else {
@@ -215,9 +254,39 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	let fn_where = &parsed.where_clause;
 	let body = &parsed.body;
 	let vis = &parsed.vis;
-	let kernel = quote! {
-		#[allow(clippy::too_many_arguments)]
-		#vis fn #fn_name<#(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #output_type #fn_where #body
+	let injected = |field: &&&ParsedField| async_source && (field.pat_ident.ident == "_runtime" || field.pat_ident.ident == "_source");
+	let kernel_fields: Vec<&&ParsedField> = regular_fields.iter().filter(|field| !injected(field)).collect();
+	let kernel = match async_source {
+		false => quote! {
+			#[allow(clippy::too_many_arguments)]
+			#vis fn #fn_name<#(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #output_type #fn_where #body
+		},
+		true => {
+			let kernel_generics = parsed.fn_generics.iter().filter(|param| match param {
+				GenericParam::Type(type_param) => Some(&type_param.ident) != ctx_param.map(|ctx_param| &ctx_param.ident),
+				_ => true,
+			});
+			let snapshot_param = snapshot_ctx.then(|| quote!(#ctx_pat: #core_types::context::CtxSnapshot)).into_iter();
+			let data_kernel_params = data_fields.iter().map(|field| {
+				let pat = &field.pat_ident;
+				let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
+					unreachable!("data fields are regular types");
+				};
+				quote!(#pat: #ty)
+			});
+			let value_kernel_params = kernel_fields.iter().map(|field| {
+				let pat = &field.pat_ident;
+				let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
+					unreachable!("async source fields are eager values");
+				};
+				quote!(#pat: #ty)
+			});
+			let params = snapshot_param.chain(data_kernel_params).chain(value_kernel_params);
+			quote! {
+				#[allow(clippy::too_many_arguments)]
+				#vis async fn #fn_name<#(#kernel_generics,)*>(#(#params),*) -> #output_type #fn_where #body
+			}
+		}
 	};
 	let cell_constructor = match parsed.attributes.no_partial {
 		true => quote!(#core_types::gnode::StatusCell::no_partial()),
@@ -233,6 +302,53 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		},
 		KernelKind::Poll(_) => quote!(__cell.merge(#kernel_call)),
 		KernelKind::Plain => quote!(__cell.finish(#kernel_call)),
+	};
+
+	let eval_tail = match async_source {
+		false => lift,
+		true => {
+			let kernel_value_names: Vec<&Ident> = kernel_fields.iter().map(|field| &field.pat_ident.ident).collect();
+			let inflight = match &parsed.attributes.placeholder {
+				Some(path) => quote!(__cell.merge(#core_types::gpoll::GPoll::Partial(#path(#(&#kernel_value_names),*)))),
+				None => quote!(#core_types::gpoll::GPoll::Pending),
+			};
+			let snapshot_binding = snapshot_ctx.then(|| quote!(let __snapshot = #core_types::context::CtxSnapshot::capture(__input);)).into_iter();
+			let snapshot_arg = snapshot_ctx.then(|| quote!(__snapshot)).into_iter();
+			let future_args = snapshot_arg
+				.chain(data_names.iter().map(|name| quote!(self.#name.clone())))
+				.chain(kernel_value_names.iter().map(|name| quote!(#name.clone())));
+			let completion = match kernel_kind(&parsed.output_type) {
+				KernelKind::Plain => quote!(#core_types::gpoll::GPoll::Final(__future.await)),
+				KernelKind::Poll(_) => quote!(__future.await),
+				KernelKind::Interrupt(_) => quote! {
+					match __future.await {
+						Ok(value) => #core_types::gpoll::GPoll::Final(value),
+						Err(interrupt) => interrupt.into(),
+					}
+				},
+			};
+			quote! {
+				let __key = #core_types::wire::cache_key(__input);
+				{
+					let __entries = self.slot.lock().unwrap();
+					if let Some(__state) = __entries.get(&__key) {
+						return match __state {
+							Some(value) => __cell.merge(value.clone()),
+							None => #inflight,
+						};
+					}
+				}
+				self.slot.lock().unwrap().insert(__key, None);
+				let __slot = std::sync::Arc::clone(&self.slot);
+				#(#snapshot_binding)*
+				let __future = self::#fn_name(#(#future_args),*);
+				_runtime.0.spawn(_source, Box::pin(async move {
+					let __value = #completion;
+					__slot.lock().unwrap().insert(__key, Some(__value));
+				}));
+				#inflight
+			}
+		}
 	};
 
 	let wire = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
@@ -258,6 +374,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		where
 			#(#node_bounds,)*
 			#(#clampable_bounds,)*
+			#(#async_bounds,)*
 			#(#where_predicates,)*
 		{
 			type Output = #trait_output;
@@ -266,7 +383,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 				let __cell = #cell_constructor;
 				#(#eval_values)*
 				#(#clamps)*
-				#lift
+				#eval_tail
 			}
 
 			#extent_impl
@@ -283,6 +400,13 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			#top_level
 		},
 	})
+}
+
+pub(crate) fn slot_value_type(output: &Type) -> Type {
+	match kernel_kind(output) {
+		KernelKind::Plain => output.clone(),
+		KernelKind::Poll(inner) | KernelKind::Interrupt(inner) => inner,
+	}
 }
 
 enum KernelKind {

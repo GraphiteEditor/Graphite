@@ -231,9 +231,9 @@ impl PerPixelAdjustCodegen<'_> {
 			description: "".to_string(),
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
-				ty: parse_quote!(&'a WgpuExecutor),
+				ty: parse_quote!(std::sync::Arc<WgpuExecutor>),
 				exposed: true,
-				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode")),
+				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorArcNode")),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,
@@ -305,7 +305,7 @@ impl PerPixelAdjustCodegen<'_> {
 			fn_name: self.shader_node_mod.clone(),
 			struct_name: format_ident!("{}", self.shader_node_mod.to_string().to_case(Case::Pascal)),
 			mod_name: self.shader_node_mod.clone(),
-			fn_generics: vec![parse_quote!('a: 'n)],
+			fn_generics: Vec::new(),
 			where_clause: None,
 			input: Input {
 				pat_ident: self.parsed.input.pat_ident.clone(),
@@ -320,6 +320,7 @@ impl PerPixelAdjustCodegen<'_> {
 			description: self.parsed.description.clone(),
 		};
 		parsed_node_fn.replace_impl_trait_in_input();
+		parsed_node_fn.inject_async_source_fields(self.crate_ident.gcore()?);
 		let gpu_node_impl = crate::codegen::generate_node_code(self.crate_ident, &parsed_node_fn)?;
 
 		// wrap node in `mod #gpu_node_mod`

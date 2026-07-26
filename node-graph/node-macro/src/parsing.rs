@@ -997,6 +997,10 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 	let crate_ident = CrateIdent::default();
 	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
+	if parsed_node.is_async {
+		let core_types = crate_ident.gcore()?.clone();
+		parsed_node.inject_async_source_fields(&core_types);
+	}
 	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation error:\n{e}")))?;
 	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code:\n{e}")))
 }
@@ -1023,6 +1027,43 @@ impl ParsedNodeFn {
 		if self.input.pat_ident.ident == "_" {
 			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
+	}
+
+	pub fn inject_async_source_fields(&mut self, core_types: &TokenStream2) {
+		let hidden_field = |name: &str, ty: Type, value_source: ParsedValueSource| ParsedField {
+			pat_ident: PatIdent {
+				attrs: Vec::new(),
+				by_ref: None,
+				mutability: None,
+				ident: Ident::new(name, proc_macro2::Span::call_site()),
+				subpat: None,
+			},
+			name: None,
+			description: String::new(),
+			widget_override: ParsedWidgetOverride::Hidden,
+			ty: ParsedFieldType::Regular(RegularParsedField {
+				ty,
+				exposed: false,
+				value_source,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
+				number_mode_range: false,
+				implementations: Default::default(),
+				gpu_image: false,
+			}),
+			number_display_decimal_places: None,
+			number_step: None,
+			unit: None,
+			is_data_field: false,
+		};
+		self.fields.push(hidden_field(
+			"_runtime",
+			parse_quote!(#core_types::runtime::RuntimeHandle),
+			ParsedValueSource::Scope(parse_quote!("graphene_std::runtime::RuntimeNode")),
+		));
+		self.fields.push(hidden_field("_source", parse_quote!(#core_types::SourceId), ParsedValueSource::None));
 	}
 }
 

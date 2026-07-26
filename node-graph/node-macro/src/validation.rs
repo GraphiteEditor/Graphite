@@ -11,6 +11,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_primary_input_expose,
 		validate_min_max,
 		validate_range_slider_bounds,
+		validate_async_source,
 	];
 
 	for validator in validators {
@@ -18,6 +19,40 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+fn validate_async_source(parsed: &ParsedNodeFn) {
+	let snapshot_ctx = matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
+	if !parsed.is_async {
+		if snapshot_ctx {
+			emit_error!(parsed.input.pat_ident.span(), "`CtxSnapshot` is the async source context; synchronous nodes take `impl Ctx` and read through extract bounds");
+		}
+		return;
+	}
+	for field in &parsed.fields {
+		if matches!(field.ty, ParsedFieldType::Node(_)) {
+			emit_error!(
+				field.pat_ident.span(),
+				"async source nodes cannot take `impl Node` inputs: the spawned future outlives any borrow of the graph, so it cannot evaluate other nodes; declare the input as an eager value instead"
+			);
+		}
+	}
+	let ctx_ident = match &parsed.input.ty {
+		Type::Path(path) => path.path.get_ident(),
+		_ => None,
+	};
+	for param in &parsed.fn_generics {
+		let GenericParam::Type(type_param) = param else { continue };
+		if Some(&type_param.ident) == ctx_ident {
+			continue;
+		}
+		if crate::codegen::type_contains_ident(&parsed.output_type, &type_param.ident) {
+			emit_error!(
+				parsed.output_type.span(),
+				"async source nodes do not support generic output types yet; the slot map needs the output type stated per implementation row, which is not wired up until a node requires it"
+			);
+		}
+	}
 }
 
 fn validate_min_max(parsed: &ParsedNodeFn) {

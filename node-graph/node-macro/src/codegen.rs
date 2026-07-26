@@ -15,6 +15,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		mod_name,
 		fn_generics,
 		input,
+		output_type,
+		is_async,
 		fields,
 		description,
 		..
@@ -109,7 +111,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! { pub(super) #name: #r#gen }
 	});
 
-	let struct_fields = data_field_defs.chain(regular_field_defs);
+	let slot_value_type = crate::gcodegen::slot_value_type(output_type);
+	let slot_field = is_async
+		.then(|| quote! { pub(super) slot: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, Option<gcore::gpoll::GPoll<#slot_value_type>>>>> })
+		.into_iter();
+	let struct_fields = data_field_defs.chain(regular_field_defs).chain(slot_field);
 
 	// Only regular fields have UI metadata (data fields are internal state)
 	let widget_override: Vec<_> = regular_fields
@@ -217,10 +223,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let regular_inits = regular_field_names.iter().map(|name| {
 		quote! { #name }
 	});
-	let all_field_inits = data_inits.chain(regular_inits);
+	let slot_init = is_async.then(|| quote! { slot: Default::default() }).into_iter();
+	let all_field_inits = data_inits.chain(regular_inits).chain(slot_init);
 
 	// Data fields may not implement Copy, PartialEq, etc., so only derive Debug and Clone
-	let struct_derives = if data_fields.is_empty() {
+	let struct_derives = if data_fields.is_empty() && !is_async {
 		quote!(#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)])
 	} else {
 		quote!(#[derive(Debug, Clone)])
