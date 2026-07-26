@@ -34,7 +34,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> List<GradientStops>,
 		Context -> List<String>,
 	)]
-	data: impl Node<Context<'static>, Output = T>,
+	data: impl Node<Context<'_>, Output = T>,
 ) -> RenderIntermediate {
 	let render_params = ctx
 		.vararg(0)
@@ -147,7 +147,7 @@ async fn render<'a: 'n>(
 async fn create_context<'a: 'n>(
 	// Context injections are defined in the wrap_network_in_scope function
 	render_config: RenderConfig,
-	data: impl Node<Context<'static>, Output = RenderOutput>,
+	data: impl Node<Context<'_>, Output = RenderOutput>,
 ) -> RenderOutput {
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,

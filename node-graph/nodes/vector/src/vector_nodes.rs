@@ -7,9 +7,10 @@ use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, 
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
+use core_types::gpoll::Interrupt;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color, Context,
+	Ctx, DeriveCtx,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -115,7 +116,7 @@ async fn assign_colors<T>(
 	repeat_every: u32,
 ) -> T
 where
-	T: VectorListIterMut + 'n + Send,
+	T: VectorListIterMut+ Send,
 {
 	let Some(row) = gradient.into_iter().next() else { return content };
 
@@ -156,7 +157,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send + 'static>(
+async fn fill<V: VectorListIterMut+ Send, F: IntoGraphicList+ Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(
@@ -251,7 +252,7 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
+async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList+ Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(
@@ -323,7 +324,7 @@ async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 	dash_offset: f64,
 ) -> List<V>
 where
-	List<V>: VectorListIterMut + 'n + Send,
+	List<V>: VectorListIterMut+ Send,
 {
 	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
 
@@ -356,7 +357,7 @@ where
 }
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
-async fn copy_to_points<I: 'n + Send + Clone>(
+async fn copy_to_points<I: Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
@@ -870,7 +871,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn pack_strips<T: 'n + Send + Clone>(
+async fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -1412,20 +1413,20 @@ async fn path_is_closed(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> List<Vector> {
+fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Node<Context<'_>, Output = DVec2>) -> Result<List<Vector>, Interrupt> {
+	let spilled = ctx.index_head();
 	let mut content = content;
 	let mut index = 0;
 
 	for vector in content.iter_element_values_mut() {
 		for (_, position) in vector.point_domain.positions_mut() {
-			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
+			let scoped = ctx.push_position(*position);
+			*position = mapped.eval(&scoped.ctx().promoted(&spilled, index))?;
 			index += 1;
-
-			*position = mapped.eval(owned_ctx.into_context()).await;
 		}
 	}
 
-	content
+	Ok(content)
 }
 
 // TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
@@ -3189,26 +3190,24 @@ async fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> f64 {
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let vector = content.eval(new_ctx).await;
+fn area(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = List<Vector>>) -> Result<f64, Interrupt> {
+	let vector = content.eval(&ctx.with_footprint(&Footprint::DEFAULT))?;
 
-	(0..vector.len())
+	Ok((0..vector.len())
 		.map(|index| {
 			let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let area_scale = transform.matrix2.determinant().abs();
 			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
 		})
-		.sum()
+		.sum())
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: CentroidType) -> DVec2 {
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let vector = content.eval(new_ctx).await;
+fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = List<Vector>>, centroid_type: CentroidType) -> Result<DVec2, Interrupt> {
+	let vector = content.eval(&ctx.with_footprint(&Footprint::DEFAULT))?;
 
 	if vector.is_empty() {
-		return DVec2::ZERO;
+		return Ok(DVec2::ZERO);
 	}
 
 	// All subpath centroid positions added together as if they were vectors from the origin.
@@ -3234,7 +3233,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	}
 
 	if sum > 0. {
-		centroid / sum
+		Ok(centroid / sum)
 	}
 	// Without a summed denominator, return the average of all positions instead
 	else {
@@ -3255,7 +3254,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 			.inspect(|_| count += 1)
 			.sum::<DVec2>();
 
-		if count != 0 { summed_positions / (count as f64) } else { DVec2::ZERO }
+		if count != 0 { Ok(summed_positions / (count as f64)) } else { Ok(DVec2::ZERO) }
 	}
 }
 

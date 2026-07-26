@@ -16,8 +16,8 @@ fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty
 }
 
 #[node_macro::node(category(""), skip_impl)]
-async fn convert<'i, T: 'i + Send + Convert<O, C>, O: 'i + Send, C: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, converter: C, _out_ty: PhantomData<O>) -> O {
-	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter).await
+fn convert<T: Send + Convert<O, C>, O: Send, C: Send>(ctx: impl Ctx + ExtractFootprint, value: T, converter: C, _out_ty: PhantomData<O>) -> O {
+	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter)
 }
 
 #[cfg(test)]

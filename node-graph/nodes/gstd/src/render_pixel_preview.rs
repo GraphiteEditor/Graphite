@@ -11,7 +11,7 @@ use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 pub async fn render_pixel_preview<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
-	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
+	data: impl Node<Context<'_>, Output = RenderOutput> + Send + Sync,
 ) -> RenderOutput {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");

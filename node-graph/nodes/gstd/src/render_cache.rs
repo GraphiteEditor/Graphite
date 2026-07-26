@@ -325,7 +325,7 @@ pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi,
-	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
+	data: impl Node<Context<'_>, Output = RenderOutput> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
@@ -409,7 +409,7 @@ async fn render_missing_region<F, Fut>(
 	viewport_origin_offset: &DVec2,
 ) -> CachedRegion
 where
-	F: Fn(Context<'static>) -> Fut,
+	F: Fn(Context<'_>) -> Fut,
 	Fut: std::future::Future<Output = RenderOutput>,
 {
 	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));

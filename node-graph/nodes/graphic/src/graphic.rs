@@ -2,7 +2,8 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::gpoll::Interrupt;
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, Color, Context, Ctx, DeriveCtx};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -108,8 +109,8 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 }
 
 #[node_macro::node(category("General"))]
-async fn map<Item: AnyHash + Send + Sync + CacheHash>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+fn map<Item: AnyHash + Send + Sync + CacheHash>(
+	ctx: impl Ctx + DeriveCtx,
 	#[implementations(
 		List<Graphic>,
 		List<Vector>,
@@ -127,23 +128,24 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<GradientStops>,
 		Context -> List<String>,
 	)]
-	mapped: impl Node<Context<'static>, Output = List<Item>>,
-) -> List<Item> {
+	mapped: impl Node<Context<'_>, Output = List<Item>>,
+) -> Result<List<Item>, Interrupt> {
+	let spilled = ctx.index_head();
 	let mut rows = List::new();
 
 	for (i, row) in content.into_iter().enumerate() {
-		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(List::new_from_item(row))).with_index(i);
-		let list = mapped.eval(owned_ctx.into_context()).await;
+		let item = List::new_from_item(row);
+		let scoped = ctx.push_vararg(&item);
+		let list = mapped.eval(&scoped.ctx().promoted(&spilled, i as u64))?;
 
 		rows.extend(list);
 	}
 
-	rows
+	Ok(rows)
 }
 
 #[node_macro::node(category("General"))]
-async fn mirror<T: 'n + Send + Clone>(
+fn mirror<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -229,8 +231,8 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: List<NodeId>) -> List<NodeId> {
 /// The value is type-erased into an `AttributeValueDyn` by an auto-inserted convert node, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
-async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	ctx: impl Ctx + DeriveCtx,
 	/// The `List` to set the named attribute on (one value per item).
 	#[implementations(
 		List<Artboard>,
@@ -252,15 +254,17 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	name: String,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
 	#[implementations(Context -> AttributeValueDyn)]
-	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
-) -> List<T> {
+	value: impl Node<Context<'_>, Output = AttributeValueDyn>,
+) -> Result<List<T>, Interrupt> {
+	let spilled = ctx.index_head();
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(List::new_from_item(row))).with_index(index);
-		let v = value.eval(owned_ctx.into_context()).await;
+		let item = List::new_from_item(row);
+		let scoped = ctx.push_vararg(&item);
+		let v = value.eval(&scoped.ctx().promoted(&spilled, index as u64))?;
 		content.set_attribute_value_dyn(&name, index, v);
 	}
-	content
+	Ok(content)
 }
 
 /// Sets a named attribute on the primary list, with each value taken from the corresponding item's element in the source list (paired by index, wrapping if the source has fewer items).
@@ -497,7 +501,7 @@ fn read_attribute_raster(
 
 /// Joins two `List`s of the same type, extending the base `List` with the items from the new `List`.
 #[node_macro::node(category("General"))]
-pub async fn extend<T: 'n + Send + Clone>(
+pub fn extend<T: Send + Clone>(
 	_: impl Ctx,
 	/// The `List` whose items will appear at the start of the extended `List`.
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
@@ -517,7 +521,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 /// Performs an obsolete function as part of a migration from an older document format.
 /// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
-pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
+pub fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
 	#[expose]
@@ -544,7 +548,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 /// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
-pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
+pub fn wrap_graphic<T: Into<Graphic>>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,

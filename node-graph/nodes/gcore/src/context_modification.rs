@@ -1,5 +1,6 @@
 use core::f64;
-use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
+use core_types::context::{Context, ContextFeatures, Ctx, DeriveCtx};
+use core_types::gpoll::GPoll;
 use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
@@ -12,8 +13,8 @@ use raster_types::{CPU, GPU, Raster};
 /// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
 #[node_macro::node(category(""))]
-async fn context_modification<T>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+fn context_modification<T>(
+	ctx: impl Ctx + DeriveCtx,
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
 		Context -> (),
@@ -41,13 +42,12 @@ async fn context_modification<T>(
 		Context -> AttributeValueDyn,
 		Context -> ListDyn,
 	)]
-	value: impl Node<Context<'static>, Output = T>,
+	value: impl Node<Context<'_>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
 	features_to_keep: ContextFeatures,
-) -> T {
-	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep);
-
-	value.eval(Some(new_context.into())).await
+) -> GPoll<T> {
+	let scope = ctx.scope().nullified(features_to_keep);
+	value.eval(&ctx.nullified(features_to_keep, &scope))
 }
 
 #[cfg(test)]

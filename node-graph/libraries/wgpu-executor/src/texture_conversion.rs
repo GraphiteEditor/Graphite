@@ -38,120 +38,17 @@ fn upload_to_texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Raster<
 	)
 }
 
-/// Converts a Raster<GPU> texture to Raster<CPU> by downloading the underlying texture data.
-///
-/// Assumptions:
-/// - 2D texture, mip level 0
-/// - 4 bytes-per-pixel RGBA8
-/// - Texture has COPY_SRC usage
-struct RasterGpuToRasterCpuConverter {
-	buffer: wgpu::Buffer,
-	width: u32,
-	height: u32,
-	unpadded_bytes_per_row: u32,
-	padded_bytes_per_row: u32,
-	_source: raster_types::Texture,
-}
-impl RasterGpuToRasterCpuConverter {
-	fn new(device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
-		let texture = data_gpu.data();
-		let width = texture.width();
-		let height = texture.height();
-		let bytes_per_pixel = 4; // RGBA8
-		let unpadded_bytes_per_row = width * bytes_per_pixel;
-		let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-		let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
-		let buffer_size = padded_bytes_per_row as u64 * height as u64;
-
-		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-			label: Some("texture_download_buffer"),
-			size: buffer_size,
-			usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-			mapped_at_creation: false,
-		});
-
-		encoder.copy_texture_to_buffer(
-			wgpu::TexelCopyTextureInfo {
-				texture,
-				mip_level: 0,
-				origin: wgpu::Origin3d::ZERO,
-				aspect: wgpu::TextureAspect::All,
-			},
-			wgpu::TexelCopyBufferInfo {
-				buffer: &buffer,
-				layout: wgpu::TexelCopyBufferLayout {
-					offset: 0,
-					bytes_per_row: Some(padded_bytes_per_row),
-					rows_per_image: Some(height),
-				},
-			},
-			Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-		);
-
-		Self {
-			buffer,
-			width,
-			height,
-			unpadded_bytes_per_row,
-			padded_bytes_per_row,
-			// Keep source texture alive
-			_source: data_gpu.texture.clone(),
-		}
-	}
-
-	async fn convert(self, device: &wgpu::Device) -> Result<Raster<CPU>, wgpu::BufferAsyncError> {
-		let buffer_slice = self.buffer.slice(..);
-		let (sender, receiver) = futures::channel::oneshot::channel();
-		buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-			let _ = sender.send(result);
-		});
-
-		let _ = device.poll(wgpu::wgt::PollType::wait_indefinitely());
-
-		receiver.await.expect("Failed to receive map result")?;
-
-		let view = buffer_slice.get_mapped_range();
-
-		let row_stride = self.padded_bytes_per_row as usize;
-		let row_bytes = self.unpadded_bytes_per_row as usize;
-		let mut cpu_data: Vec<Color> = Vec::with_capacity((self.width * self.height) as usize);
-		for row in 0..self.height as usize {
-			let start = row * row_stride;
-			let row_slice = &view[start..start + row_bytes];
-			for px in row_slice.chunks_exact(4) {
-				// `Image<Color>` pixels are stored linear-light with associated (premultiplied) alpha
-				let srgba = SRGBA8::new(px[0], px[1], px[2], px[3]);
-				cpu_data.push(Color::from(srgba).apply_opacity(px[3] as f32 / 255.));
-			}
-		}
-
-		drop(view);
-		self.buffer.unmap();
-		let cpu_image = Image {
-			data: cpu_data,
-			width: self.width,
-			height: self.height,
-			base64_string: None,
-		};
-
-		Ok(Raster::new_cpu(cpu_image))
-	}
-}
 
 /// Passthrough conversion for GPU `List`s - no conversion needed
 impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
-	async fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<GPU>> {
+	fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<GPU>> {
 		self
 	}
 }
 
 /// Converts a `List<Raster<CPU>>` to `List<Raster<GPU>>` by uploading each image to a texture
 impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
-	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
+	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
 		let device = &executor.context().device;
 		let queue = executor.context().queue.lock();
 		let list = self
@@ -171,7 +68,7 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 
 /// Converts single CPU raster to GPU by uploading to texture
 impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
-	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
+	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
 		let device = &executor.context().device;
 		let queue = executor.context().queue.lock();
 		let texture = upload_to_texture(device, &queue, &self);
@@ -183,79 +80,7 @@ impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 
 /// Passthrough conversion for CPU `List`s - no conversion needed
 impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
-	async fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<CPU>> {
+	fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<CPU>> {
 		self
 	}
-}
-
-/// Converts a `List<Raster<GPU>>` to `List<Raster<CPU>>` by downloading texture data in one go then asynchronously maps all buffers and processes the results.
-impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
-	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<CPU>> {
-		let device = &executor.context().device;
-		let queue = &executor.context().queue;
-
-		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-			label: Some("batch_texture_download_encoder"),
-		});
-
-		let mut converters = Vec::new();
-		let mut rows_meta = Vec::new();
-
-		for row in self {
-			let (element, attributes) = row.into_parts();
-			converters.push(RasterGpuToRasterCpuConverter::new(device, &mut encoder, element));
-			rows_meta.push(Item::from_parts((), attributes));
-		}
-
-		queue.submit([encoder.finish()]);
-
-		let mut map_futures = Vec::new();
-		for converter in converters {
-			map_futures.push(converter.convert(device));
-		}
-
-		let map_results = futures::future::try_join_all(map_futures)
-			.await
-			.map_err(|_| "Failed to receive map result")
-			.expect("Buffer mapping communication failed");
-
-		map_results
-			.into_iter()
-			.zip(rows_meta)
-			.map(|(element, row)| {
-				let (_, attributes) = row.into_parts();
-				Item::from_parts(element, attributes)
-			})
-			.collect()
-	}
-}
-
-/// Converts single GPU raster to CPU by downloading texture data
-impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
-	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<CPU> {
-		let device = &executor.context().device;
-		let queue = &executor.context().queue;
-
-		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-			label: Some("single_texture_download_encoder"),
-		});
-
-		let converter = RasterGpuToRasterCpuConverter::new(device, &mut encoder, self);
-
-		queue.submit([encoder.finish()]);
-
-		converter.convert(device).await.expect("Failed to download texture data")
-	}
-}
-
-/// Uploads an raster texture from the CPU to the GPU. This is now deprecated and the Convert node should be used in the future.
-///
-/// Accepts either individual raster data or a `List` of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
-#[node_macro::node(category(""))]
-pub async fn upload_texture<'a: 'n, T: Convert<List<Raster<GPU>>, &'a WgpuExecutor>>(
-	_: impl Ctx,
-	#[implementations(List<Raster<CPU>>, List<Raster<GPU>>)] input: T,
-	executor: &'a WgpuExecutor,
-) -> List<Raster<GPU>> {
-	input.convert(Footprint::DEFAULT, executor).await
 }
