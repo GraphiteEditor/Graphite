@@ -1,0 +1,227 @@
+use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::persistent_state::PersistentStateMessage;
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
+use crate::messages::prelude::*;
+use graphene_std::Color;
+use graphene_std::raster::Image;
+use std::path::PathBuf;
+
+#[impl_message(Message, Portfolio)]
+#[derive(derivative::Derivative, serde::Serialize, serde::Deserialize)]
+#[derivative(Clone, Debug, PartialEq)]
+pub enum PortfolioMessage {
+	// Sub-messages
+	#[child]
+	Document(DocumentMessage),
+	#[child]
+	Fonts(FontsMessage),
+	#[child]
+	PersistentState(PersistentStateMessage),
+
+	// Messages
+	Init,
+	DocumentPassMessage {
+		document_id: DocumentId,
+		message: DocumentMessage,
+	},
+	AutoSaveActiveDocument,
+	AutoSaveAllDocuments,
+	AutoSaveDocument {
+		document_id: DocumentId,
+	},
+	CloseActiveDocumentWithConfirmation,
+	CloseAllDocuments,
+	CloseAllDocumentsWithConfirmation,
+	CloseDocument {
+		document_id: DocumentId,
+	},
+	CloseDocumentWithConfirmation {
+		document_id: DocumentId,
+	},
+	DeleteDocument {
+		document_id: DocumentId,
+	},
+	/// Delivers an asynchronously-built `Gdd` working copy into its document, emitted by the mount future
+	/// spawned in `load_document`. The `gdd` payload is non-serializable and a clone carries none
+	/// (`clone_to_none`), so it travels exactly once. `reopened` is true when an existing working copy was
+	/// opened: the persisted cursor is trusted as-is and the mount-time re-commit is skipped, since
+	/// re-committing would stack a spurious interaction on the restored cursor and make the first undo a no-op.
+	DocumentStorageMounted {
+		document_id: DocumentId,
+		reopened: bool,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		gdd: Option<document_format::GddV1>,
+	},
+	DestroyAllDocuments,
+	EditorPreferences,
+	GarbageCollectResources,
+	ResolveDocumentResources {
+		document_id: DocumentId,
+	},
+	ResolveResources,
+	LoadPersistedState {
+		state: PersistedState,
+	},
+	LoadDocumentContent {
+		document_id: DocumentId,
+		document_serialized_content: String,
+	},
+	// TODO: Eventually remove this document upgrade code
+	ShowFailedToLoadDocumentsDialog,
+	// TODO: Eventually remove this document upgrade code
+	DiscardFailedToLoadDocuments,
+	// TODO: Eventually remove this document upgrade code
+	DownloadFailedToLoadDocuments,
+	MoveAllPanelTabs {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
+	},
+	MovePanelTab {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
+	},
+	NewDocumentWithName {
+		name: String,
+	},
+	NextDocument,
+	Open,
+	Import,
+	OpenFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	OpenDocumentFile {
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
+		document_serialized_content: String,
+	},
+	/// Open a `.gdd` document container (archive bytes), building the runtime from its stored registry.
+	OpenGddDocument {
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
+		content: Vec<u8>,
+	},
+	/// Delivers a document built asynchronously from a `.gdd` archive (registry → runtime, working copy
+	/// mounted) into the portfolio. Travels once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).
+	GddDocumentLoaded {
+		document_id: DocumentId,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		document: Option<Box<DocumentMessageHandler>>,
+	},
+	/// Delivers the interface rebuilt from the `Gdd` undo/redo cursor so the async rebuild can swap into the
+	/// live document. `interface` is `None` if the rebuild failed (logged at the source). `had_oracle` records
+	/// whether the legacy snapshot applied synchronously, so the swap can debug-compare against it. Travels
+	/// once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).
+	GddUndoRedoRebuilt {
+		document_id: DocumentId,
+		had_oracle: bool,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		interface: Option<Box<crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface>>,
+	},
+	LoadDocument {
+		document_id: DocumentId,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
+		document_is_auto_saved: bool,
+		document_is_saved: bool,
+		document_serialized_content: String,
+	},
+	OpenImage {
+		name: Option<String>,
+		image: Image<Color>,
+	},
+	OpenSvg {
+		name: Option<String>,
+		svg: String,
+	},
+	InsertImage {
+		name: Option<String>,
+		image: Image<Color>,
+		mouse: Option<(f64, f64)>,
+		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
+	},
+	InsertSvg {
+		name: Option<String>,
+		svg: String,
+		mouse: Option<(f64, f64)>,
+		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
+	},
+	CenterLayers {
+		layers: Vec<LayerNodeIdentifier>,
+	},
+	PrevDocument,
+	ReorderDocument {
+		document_id: DocumentId,
+		new_index: usize,
+	},
+	ReorderPanelGroupTab {
+		group: PanelGroupId,
+		old_index: usize,
+		new_index: usize,
+	},
+	RequestWelcomeScreenButtonsLayout,
+	RequestStatusBarInfoLayout,
+	SetPanelGroupActiveTab {
+		group: PanelGroupId,
+		tab_index: usize,
+	},
+	SplitPanelGroup {
+		target_group: PanelGroupId,
+		direction: DockingSplitDirection,
+		tabs: Vec<PanelType>,
+		active_tab_index: usize,
+	},
+	SelectDocument {
+		document_id: DocumentId,
+	},
+	RenameDocument {
+		new_name: String,
+	},
+	SubmitDocumentExport {
+		name: String,
+		file_type: FileType,
+		scale_factor: f64,
+		bounds: ExportBounds,
+		artboard_name: Option<String>,
+		artboard_count: usize,
+	},
+	SubmitActiveGraphRender,
+	SubmitGraphRender {
+		document_id: DocumentId,
+		ignore_hash: bool,
+	},
+	SubmitEyedropperPreviewRender,
+	ToggleResetNodesToDefinitionsOnOpen,
+	ToggleFocusDocument,
+	ToggleDataPanelOpen,
+	TogglePropertiesPanelOpen,
+	ToggleLayersPanelOpen,
+	ToggleRulers,
+	UpdateDocumentWidgets,
+	UpdateOpenDocumentsList,
+	UpdateWorkspacePanelLayout,
+	ResetWorkspaceLayout,
+	SetPanelGroupSizes {
+		/// Path of child indices from the root to the split node whose children's sizes are being set.
+		split_path: Vec<usize>,
+		/// New sizes for the children at that split node.
+		sizes: Vec<f64>,
+	},
+}
+
+/// Clone helper for the non-serializable `gdd` payload: a cloned mount message carries no `Gdd`.
+fn clone_to_none<T>(_: &Option<T>) -> Option<T> {
+	None
+}

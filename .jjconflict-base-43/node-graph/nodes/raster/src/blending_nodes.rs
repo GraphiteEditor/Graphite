@@ -1,16 +1,12 @@
 use crate::adjust::Adjust;
-#[cfg(feature = "std")]
-use core_types::list::Item;
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
-#[cfg(not(feature = "std"))]
-use no_std_types::list::ShaderItem as Item;
 use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::{Gradient, GradientStop};
+use vector_types::{GradientStop, GradientStops};
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -31,7 +27,6 @@ mod blend_std {
 	impl Blend<Color> for Raster<CPU> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let data = self.data.iter().zip(under.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
-
 			Raster::new_cpu(Image {
 				data,
 				width: self.width,
@@ -40,7 +35,8 @@ mod blend_std {
 			})
 		}
 	}
-	impl Blend<Color> for Gradient {
+
+	impl Blend<Color> for GradientStops {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut combined_stops = self.position.iter().chain(under.position.iter()).copied().collect::<Vec<_>>();
 			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
@@ -51,7 +47,7 @@ mod blend_std {
 				let color = blend_fn(over_color, under_color);
 				GradientStop { position, midpoint: 0.5, color }
 			});
-			Gradient::new(stops)
+			GradientStops::new(stops)
 		}
 	}
 }
@@ -115,28 +111,22 @@ fn mix<T: Blend<Color> + Clone + Send + Sync + core_types::CacheHash + 'static>(
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		Gradient,
+		GradientStops,
 	)]
 	#[gpu_image]
-	over: Item<T>,
+	over: T,
 	#[expose]
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		Gradient,
+		GradientStops,
 	)]
 	#[gpu_image]
-	under: Item<T>,
-	blend_mode: Item<BlendMode>,
-	#[default(100.)] opacity: Item<PercentageF32>,
-) -> Item<T> {
-	let mut over = over;
-	let blend_mode = blend_mode.into_element();
-	let opacity = opacity.into_element();
-
-	let blended = over.element().blend(under.element(), |a, b| blend_colors(a, b, blend_mode, opacity / 100.));
-	*over.element_mut() = blended;
-	over
+	under: T,
+	blend_mode: BlendMode,
+	#[default(100.)] opacity: PercentageF32,
+) -> T {
+	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
@@ -145,22 +135,17 @@ fn color_overlay<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context:
 	#[implementations(
 		Raster<CPU>,
 		Color,
-		Gradient,
+		GradientStops,
 	)]
 	#[gpu_image]
-	image: Item<T>,
-	#[default(Color::BLACK)] color: Item<Color>,
-	blend_mode: Item<BlendMode>,
-	#[default(100.)] opacity: Item<PercentageF32>,
-) -> Item<T> {
-	let mut image = image;
-	let color = color.into_element();
-	let blend_mode = blend_mode.into_element();
-	let opacity = opacity.into_element();
-
+	mut image: T,
+	#[default(Color::BLACK)] color: Color,
+	blend_mode: BlendMode,
+	#[default(100.)] opacity: PercentageF32,
+) -> T {
 	let opacity = (opacity / 100.).clamp(0., 1.);
 
-	image.element_mut().adjust(|pixel| {
+	image.adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
 
 		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
@@ -176,7 +161,6 @@ fn color_overlay<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context:
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;
-	use core_types::list::Item;
 	use raster_types::Image;
 	use raster_types::Raster;
 
@@ -191,14 +175,7 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100.;
 
-		let result = super::color_overlay(
-			(),
-			Item::new_from_element(Raster::new_cpu(image.clone())),
-			overlay_color.into(),
-			BlendMode::Multiply.into(),
-			opacity.into(),
-		);
-		let result = result.into_element();
+		let result = super::color_overlay(&(), Raster::new_cpu(image.clone()), overlay_color, BlendMode::Multiply, opacity);
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
