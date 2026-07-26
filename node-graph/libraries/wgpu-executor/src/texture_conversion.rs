@@ -84,3 +84,15 @@ impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 		self
 	}
 }
+
+/// Uploads an raster texture from the CPU to the GPU. This is now deprecated and the Convert node should be used in the future.
+///
+/// Accepts either individual raster data or a `List` of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
+#[node_macro::node(category(""))]
+pub fn upload_texture<'a, T: Convert<List<Raster<GPU>>, &'a WgpuExecutor>>(
+	_: impl Ctx,
+	#[implementations(List<Raster<CPU>>, List<Raster<GPU>>)] input: T,
+	executor: &'a WgpuExecutor,
+) -> List<Raster<GPU>> {
+	input.convert(Footprint::DEFAULT, executor)
+}
