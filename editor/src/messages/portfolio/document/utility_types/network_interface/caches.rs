@@ -79,7 +79,7 @@ impl NodeNetworkInterface {
 		self.try_get_stack_dependents(network_path)
 	}
 
-	pub(crate) fn try_load_stack_dependents(&mut self, network_path: &[NodeId]) {
+	pub(crate) fn try_load_stack_dependents(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in stack_dependents");
 			return;
@@ -90,12 +90,17 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub(crate) fn try_get_stack_dependents(&self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+	/// Reads the stack dependents through &self if they are already loaded.
+	pub(crate) fn with_stack_dependents<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<NodeId, LayerOwner>) -> R) -> Option<R> {
+		self.network_metadata(network_path)?.transient_metadata.stack_dependents.with_loaded(read)
+	}
+
+	pub(crate) fn try_get_stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in try_get_stack_dependents");
 			return None;
 		};
-		let TransientMetadata::Loaded(stack_dependents) = &network_metadata.transient_metadata.stack_dependents else {
+		let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() else {
 			log::error!("could not load stack_dependents");
 			return None;
 		};
@@ -103,7 +108,7 @@ impl NodeNetworkInterface {
 	}
 
 	// This function always has to be in sync with the selected nodes.
-	fn load_stack_dependents(&mut self, network_path: &[NodeId]) {
+	fn load_stack_dependents(&self, network_path: &[NodeId]) {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in load_stack_dependents");
 			return;
@@ -134,15 +139,19 @@ impl NodeNetworkInterface {
 					stack_tops.insert(current_node);
 					break;
 				};
-				let Some(outward_wires) = self.outward_wires(network_path) else {
+				let Some(first_downstream_input) = self.with_outward_wires(network_path, |outward_wires| {
+					outward_wires
+						.get(&OutputConnector::node(current_node, 0))
+						.map(|layer_outward_wires| layer_outward_wires.first().copied())
+				}) else {
 					log::error!("Cannot load outward wires in load_stack_dependents");
 					return;
 				};
-				let Some(layer_outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+				let Some(first_downstream_input) = first_downstream_input else {
 					log::error!("Could not get outward_wires for layer {current_node}");
 					break;
 				};
-				match layer_outward_wires.first() {
+				match first_downstream_input {
 					Some(downstream_input) => {
 						let Some(downstream_node) = downstream_input.node_id() else {
 							log::error!("Node connected to export should be absolute");
@@ -174,15 +183,11 @@ impl NodeNetworkInterface {
 						owned_sole_dependents.insert(*layer_sole_dependent);
 						new_owned_nodes.insert(*layer_sole_dependent);
 					}
-					let Some(layer_node) = self.node_metadata_mut(&upstream_layer, network_path) else {
+					let Some(layer_node) = self.node_metadata(&upstream_layer, network_path) else {
 						log::error!("Could not get layer node in load_stack_dependents");
 						continue;
 					};
-					let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &mut layer_node.persistent_metadata.node_type_metadata else {
-						log::error!("upstream layer should be a layer");
-						return;
-					};
-					*owned_nodes = TransientMetadata::Loaded(new_owned_nodes);
+					layer_node.transient_metadata.owned_nodes.store(new_owned_nodes);
 				}
 			}
 		}
@@ -222,12 +227,12 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get current network in load_export_ports");
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get current network in load_stack_dependents");
 			return;
 		};
 
-		network_metadata.transient_metadata.stack_dependents = TransientMetadata::Loaded(stack_dependents);
+		network_metadata.transient_metadata.stack_dependents.store(stack_dependents);
 	}
 
 	pub fn unload_stack_dependents(&mut self, network_path: &[NodeId]) {
@@ -245,7 +250,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents {
+		if let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() {
 			for layer_owner in stack_dependents.values_mut() {
 				if let LayerOwner::None(offset) = layer_owner {
 					*offset = 0;
@@ -255,26 +260,36 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in export_ports");
-			return None;
-		};
-		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
-			self.load_import_export_ports(network_path);
-		}
+		self.try_load_import_export_ports(network_path);
 
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
 			return None;
 		};
-		let TransientMetadata::Loaded(ports) = &network_metadata.transient_metadata.import_export_ports else {
+		let Some(ports) = network_metadata.transient_metadata.import_export_ports.get_loaded_mut() else {
 			log::error!("could not load import ports");
 			return None;
 		};
 		Some(ports)
 	}
 
-	pub fn load_import_export_ports(&mut self, network_path: &[NodeId]) {
+	/// Reads the import/export ports through &self, loading them first if needed.
+	pub(crate) fn with_import_export_ports<R>(&self, network_path: &[NodeId], read: impl FnOnce(&Ports) -> R) -> Option<R> {
+		self.try_load_import_export_ports(network_path);
+		self.network_metadata(network_path)?.transient_metadata.import_export_ports.with_loaded(read)
+	}
+
+	fn try_load_import_export_ports(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in export_ports");
+			return;
+		};
+		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
+			self.load_import_export_ports(network_path);
+		}
+	}
+
+	pub fn load_import_export_ports(&self, network_path: &[NodeId]) {
 		let Some(import_export_position) = self.import_export_position(network_path) else {
 			log::error!("Could not get import_export_position");
 			return;
@@ -294,12 +309,12 @@ impl NodeNetworkInterface {
 			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., export_index as f64 * 24.));
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
 
-		network_metadata.transient_metadata.import_export_ports = TransientMetadata::Loaded(import_export_ports);
+		network_metadata.transient_metadata.import_export_ports.store(import_export_ports);
 	}
 
 	pub(crate) fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
@@ -342,74 +357,75 @@ impl NodeNetworkInterface {
 		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
 			self.load_modify_import_export(network_path);
 		}
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in modify_import_export");
 			return None;
 		};
-		let TransientMetadata::Loaded(click_targets) = &network_metadata.transient_metadata.modify_import_export else {
+		let Some(click_targets) = network_metadata.transient_metadata.modify_import_export.get_loaded_mut() else {
 			log::error!("could not load modify import export ports");
 			return None;
 		};
 		Some(click_targets)
 	}
 
-	pub fn load_modify_import_export(&mut self, network_path: &[NodeId]) {
+	pub fn load_modify_import_export(&self, network_path: &[NodeId]) {
 		let mut reorder_imports_exports = Ports::new();
 		let mut remove_imports_exports = Ports::new();
 
 		if !network_path.is_empty() {
-			let Some(import_exports) = self.import_export_ports(network_path) else {
+			let ports_built = self.with_import_export_ports(network_path, |import_exports| {
+				for (import_index, import_click_target) in import_exports.output_ports() {
+					let Some(import_bounding_box) = import_click_target.bounding_box() else {
+						log::error!("Could not get export bounding box in load_modify_import_export");
+						continue;
+					};
+					let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
+
+					if *import_index == 0 {
+						let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
+						let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+					} else {
+						let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
+						let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+						let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+						reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
+						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+					}
+				}
+
+				for (export_index, export_click_target) in import_exports.input_ports() {
+					let Some(export_bounding_box) = export_click_target.bounding_box() else {
+						log::error!("Could not get export bounding box in load_modify_import_export");
+						continue;
+					};
+					let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
+
+					if *export_index == 0 {
+						let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
+						let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+					} else {
+						let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
+						let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+						let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+						reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
+						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
+					}
+				}
+			});
+			if ports_built.is_none() {
 				log::error!("Could not get import_export_ports in load_modify_import_export");
 				return;
-			};
-
-			for (import_index, import_click_target) in import_exports.output_ports() {
-				let Some(import_bounding_box) = import_click_target.bounding_box() else {
-					log::error!("Could not get export bounding box in load_modify_import_export");
-					continue;
-				};
-				let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
-
-				if *import_index == 0 {
-					let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
-					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-				} else {
-					let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
-					let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-					reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
-					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-				}
-			}
-
-			for (export_index, export_click_target) in import_exports.input_ports() {
-				let Some(export_bounding_box) = export_click_target.bounding_box() else {
-					log::error!("Could not get export bounding box in load_modify_import_export");
-					continue;
-				};
-				let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
-
-				if *export_index == 0 {
-					let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
-					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-				} else {
-					let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
-					let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-					reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
-					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-				}
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get current network in load_modify_import_export");
 			return;
 		};
 
-		network_metadata.transient_metadata.modify_import_export = TransientMetadata::Loaded(ModifyImportExportClickTarget {
+		network_metadata.transient_metadata.modify_import_export.store(ModifyImportExportClickTarget {
 			remove_imports_exports,
 			reorder_imports_exports,
 		});
@@ -423,18 +439,16 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.modify_import_export.unload();
 	}
 
-	pub(crate) fn owned_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&HashSet<NodeId>> {
+	/// Reads the owned nodes of a layer through &self if they are loaded.
+	pub(crate) fn with_owned_nodes<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
 		let layer_node = self.node_metadata(node_id, network_path)?;
-		let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &layer_node.persistent_metadata.node_type_metadata else {
+		if !layer_node.persistent_metadata.is_layer() {
 			return None;
-		};
-		let TransientMetadata::Loaded(owned_nodes) = owned_nodes else {
-			return None;
-		};
-		Some(owned_nodes)
+		}
+		layer_node.transient_metadata.owned_nodes.with_loaded(read)
 	}
 
-	pub fn all_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<&[DVec2; 2]> {
+	pub fn all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in all_nodes_bounding_box");
 			return None;
@@ -444,17 +458,14 @@ impl NodeNetworkInterface {
 			self.load_all_nodes_bounding_box(network_path);
 		}
 
-		let network_metadata = self.network_metadata(network_path)?;
-
-		let TransientMetadata::Loaded(bounding_box) = &network_metadata.transient_metadata.all_nodes_bounding_box else {
+		let bounding_box = self.network_metadata(network_path)?.transient_metadata.all_nodes_bounding_box.with_loaded(|bounds| *bounds);
+		if bounding_box.is_none() {
 			log::error!("could not load all nodes bounding box");
-			return None;
-		};
-
-		Some(bounding_box)
+		}
+		bounding_box
 	}
 
-	pub fn load_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
+	pub fn load_all_nodes_bounding_box(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in load_all_nodes_bounding_box");
 			return;
@@ -463,15 +474,12 @@ impl NodeNetworkInterface {
 
 		let all_nodes_bounding_box = nodes
 			.iter()
-			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
-			})
+			.filter_map(|node_id| self.node_bounding_box(node_id, network_path))
 			.reduce(Quad::combine_bounds)
 			.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
-		network_metadata.transient_metadata.all_nodes_bounding_box = TransientMetadata::Loaded(all_nodes_bounding_box);
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
+		network_metadata.transient_metadata.all_nodes_bounding_box.store(all_nodes_bounding_box);
 	}
 
 	pub fn unload_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
@@ -484,18 +492,13 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		self.try_load_outward_wires(network_path);
+
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in outward_wires");
 			return None;
 		};
-
-		if !network_metadata.transient_metadata.outward_wires.is_loaded() {
-			self.load_outward_wires(network_path);
-		}
-
-		let network_metadata = self.network_metadata(network_path)?;
-
-		let TransientMetadata::Loaded(outward_wires) = &network_metadata.transient_metadata.outward_wires else {
+		let Some(outward_wires) = network_metadata.transient_metadata.outward_wires.get_loaded_mut() else {
 			log::error!("could not load outward wires");
 			return None;
 		};
@@ -503,7 +506,23 @@ impl NodeNetworkInterface {
 		Some(outward_wires)
 	}
 
-	fn load_outward_wires(&mut self, network_path: &[NodeId]) {
+	/// Reads the outward wires through &self, loading them first if needed.
+	pub(crate) fn with_outward_wires<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<OutputConnector, Vec<InputConnector>>) -> R) -> Option<R> {
+		self.try_load_outward_wires(network_path);
+		self.network_metadata(network_path)?.transient_metadata.outward_wires.with_loaded(read)
+	}
+
+	fn try_load_outward_wires(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in outward_wires");
+			return;
+		};
+		if !network_metadata.transient_metadata.outward_wires.is_loaded() {
+			self.load_outward_wires(network_path);
+		}
+	}
+
+	fn load_outward_wires(&self, network_path: &[NodeId]) {
 		let mut outward_wires = HashMap::new();
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in load_outward_wires");
@@ -546,13 +565,13 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
 
-		network_metadata.transient_metadata.outward_wires = TransientMetadata::Loaded(outward_wires);
+		network_metadata.transient_metadata.outward_wires.store(outward_wires);
 	}
 
 	pub(crate) fn unload_outward_wires(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_outward_wires");
 			return;
 		};
@@ -566,7 +585,7 @@ impl NodeNetworkInterface {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			return;
 		};
-		let TransientMetadata::Loaded(outward_wires) = &mut network_metadata.transient_metadata.outward_wires else {
+		let Some(outward_wires) = network_metadata.transient_metadata.outward_wires.get_loaded_mut() else {
 			return;
 		};
 
@@ -583,7 +602,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+	pub fn layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in layer_width");
 			return None;
@@ -593,29 +612,15 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		let layer_width_loaded = if let NodeTypeTransientMetadata::Layer(layer_metadata) = &node_metadata.transient_metadata.node_type_metadata {
-			layer_metadata.layer_width.is_loaded()
-		} else {
-			false
-		};
-		if !layer_width_loaded {
+		if !node_metadata.transient_metadata.layer_width.is_loaded() {
 			self.load_layer_width(node_id, network_path);
 		}
 
 		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let NodeTypeTransientMetadata::Layer(layer_metadata) = &node_metadata.transient_metadata.node_type_metadata else {
-			log::error!("Transient metadata should be layer metadata when getting layer width");
-			return None;
-		};
-		let TransientMetadata::Loaded(layer_width) = layer_metadata.layer_width else {
-			log::error!("Transient metadata was not loaded when getting layer width");
-			return None;
-		};
-
-		Some(layer_width)
+		node_metadata.transient_metadata.layer_width.with_loaded(|layer_width| *layer_width)
 	}
 
-	pub fn load_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub fn load_layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		const GAP_WIDTH: f64 = 8.;
 		const FONT_SIZE: f64 = 14.;
 		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
@@ -632,21 +637,14 @@ impl NodeNetworkInterface {
 		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + lock_icon_width + icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in load_layer_width");
 			return;
 		};
 
 		// Ensure layer width is not loaded for a non layer node
 		if node_metadata.persistent_metadata.is_layer() {
-			if let NodeTypeTransientMetadata::Layer(layer_metadata) = &mut node_metadata.transient_metadata.node_type_metadata {
-				layer_metadata.layer_width = TransientMetadata::Loaded(layer_width);
-			} else {
-				// Set the entire transient node type metadata to be a layer, in case it was previously a node
-				node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata {
-					layer_width: TransientMetadata::Loaded(layer_width),
-				});
-			}
+			node_metadata.transient_metadata.layer_width.store(layer_width);
 		} else {
 			log::warn!("Tried loading layer width for non layer node");
 		}
@@ -661,95 +659,68 @@ impl NodeNetworkInterface {
 		};
 
 		// If the node is a layer, then the width and click targets need to be recalculated
-		if is_layer && let NodeTypeTransientMetadata::Layer(layer_metadata) = &mut node_metadata.transient_metadata.node_type_metadata {
-			layer_metadata.layer_width.unload();
+		if is_layer {
+			node_metadata.transient_metadata.layer_width.unload();
 		}
 	}
 
-	pub fn get_input_center(&mut self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		let (ports, index) = match input {
+	pub fn get_input_center(&self, input: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
+		fn port_center(ports: &Ports, index: usize) -> Option<DVec2> {
+			ports
+				.input_ports
+				.iter()
+				.find_map(|(input_index, click_target)| if index == *input_index { click_target.bounding_box_center() } else { None })
+		}
+
+		match input {
 			InputConnector::Node { node_id, input_index } => {
-				let node_click_target = self.node_click_targets(node_id, network_path)?;
-				(&node_click_target.port_click_targets, input_index)
+				self.try_load_node_click_targets(node_id, network_path);
+				self.with_node_click_targets(node_id, network_path, |click_targets| port_center(&click_targets.port_click_targets, *input_index))
+					.flatten()
 			}
-			InputConnector::Export(export_index) => {
-				let ports = self.import_export_ports(network_path)?;
-				(ports, export_index)
-			}
-		};
-		ports
-			.input_ports
-			.iter()
-			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
+			InputConnector::Export(export_index) => self.with_import_export_ports(network_path, |ports| port_center(ports, *export_index)).flatten(),
+		}
 	}
 
-	pub fn get_output_center(&mut self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
-		let (ports, index) = match output {
+	pub fn get_output_center(&self, output: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
+		fn port_center(ports: &Ports, index: usize) -> Option<DVec2> {
+			ports
+				.output_ports
+				.iter()
+				.find_map(|(output_index, click_target)| if index == *output_index { click_target.bounding_box_center() } else { None })
+		}
+
+		match output {
 			OutputConnector::Node { node_id, output_index } => {
-				let node_click_target = self.node_click_targets(node_id, network_path)?;
-				(&node_click_target.port_click_targets, output_index)
+				self.try_load_node_click_targets(node_id, network_path);
+				self.with_node_click_targets(node_id, network_path, |click_targets| port_center(&click_targets.port_click_targets, *output_index))
+					.flatten()
 			}
-			OutputConnector::Import(import_index) => {
-				let ports = self.import_export_ports(network_path)?;
-				(ports, import_index)
-			}
-		};
-		ports
-			.output_ports
-			.iter()
-			.find_map(|(input_index, click_target)| if index == input_index { click_target.bounding_box_center() } else { None })
+			OutputConnector::Import(import_index) => self.with_import_export_ports(network_path, |ports| port_center(ports, *import_index)).flatten(),
+		}
 	}
 
-	pub fn newly_loaded_input_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	pub fn newly_loaded_input_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		if !self.wire_is_loaded(input, network_path) {
 			self.load_wire(input, graph_wire_style, network_path);
 		} else {
 			return None;
 		}
 
-		let wire = match input {
-			InputConnector::Node { node_id, input_index } => {
-				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
-				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
-					log::error!("Could not load wire for input: {input:?}");
-					return None;
-				};
-				wire.clone()
-			}
-			InputConnector::Export(export_index) => {
-				let network_metadata = self.network_metadata(network_path)?;
-				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
-					log::error!("Could not load wire for input: {input:?}");
-					return None;
-				};
-				wire.clone()
-			}
+		let network_metadata = self.network_metadata(network_path)?;
+		let Some(wire) = network_metadata.transient_metadata.wires.borrow().get(input).cloned() else {
+			log::error!("Could not load wire for input: {input:?}");
+			return None;
 		};
 		Some(wire)
 	}
 
-	pub fn wire_is_loaded(&mut self, input: &InputConnector, network_path: &[NodeId]) -> bool {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(input_metadata) = self.transient_input_metadata(node_id, *input_index, network_path) else {
-					log::error!("Input metadata should always exist for input");
-					return false;
-				};
-				input_metadata.wire.is_loaded()
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata(network_path) else {
-					return false;
-				};
-				match network_metadata.transient_metadata.wires.get(*export_index) {
-					Some(wire) => wire.is_loaded(),
-					None => false,
-				}
-			}
-		}
+	pub fn wire_is_loaded(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		self.network_metadata(network_path)
+			.is_some_and(|network_metadata| network_metadata.transient_metadata.wires.borrow().contains_key(input))
 	}
 
-	fn load_wire(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
+	fn load_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
 		let dashed = match self.previewing(network_path) {
 			Previewing::Yes { .. } => match input {
 				InputConnector::Node { .. } => false,
@@ -761,36 +732,18 @@ impl NodeNetworkInterface {
 			log::error!("Could not load wire path from input");
 			return;
 		};
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					// log::warn!("Node metadata must exist on node: {input:?}");
-					return;
-				};
-				let wire_update = WirePathUpdate {
-					id: *node_id,
-					input_index: *input_index,
-					wire_path_update: Some(wire),
-				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Loaded(wire_update);
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
-				if *export_index >= network_metadata.transient_metadata.wires.len() {
-					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
-				}
-				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
-					return;
-				};
-				let wire_update = WirePathUpdate {
-					id: NodeId(u64::MAX),
-					input_index: *export_index,
-					wire_path_update: Some(wire),
-				};
-				*input_metadata = TransientMetadata::Loaded(wire_update);
-			}
-		}
+		let (id, input_index) = match input {
+			InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
+			InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
+		};
+		let wire_update = WirePathUpdate {
+			id,
+			input_index,
+			wire_path_update: Some(wire),
+		};
+
+		let Some(network_metadata) = self.network_metadata(network_path) else { return };
+		network_metadata.transient_metadata.wires.borrow_mut().insert(*input, wire_update);
 	}
 
 	pub fn all_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
@@ -851,34 +804,14 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn unload_wire(&mut self, input: &InputConnector, network_path: &[NodeId]) {
-		match input {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-					return;
-				};
-				let Some(input_metadata) = node_metadata.persistent_metadata.input_metadata.get_mut(*input_index) else {
-					// log::warn!("Node metadata must exist on node: {input:?}");
-					return;
-				};
-				input_metadata.transient_metadata.wire = TransientMetadata::Unloaded;
-			}
-			InputConnector::Export(export_index) => {
-				let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-					return;
-				};
-				if *export_index >= network_metadata.transient_metadata.wires.len() {
-					network_metadata.transient_metadata.wires.resize(export_index + 1, TransientMetadata::Unloaded);
-				}
-				let Some(input_metadata) = network_metadata.transient_metadata.wires.get_mut(*export_index) else {
-					return;
-				};
-				*input_metadata = TransientMetadata::Unloaded;
-			}
-		}
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			return;
+		};
+		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
 	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	pub fn wire_to_root(&self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
 		let current_export = self.upstream_output_connector(&input, network_path)?;
 
@@ -927,7 +860,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the wire subpath, its thick center-line subpath, and whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
+	pub fn vector_wire_from_input(&self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {input:?}");
 			return None;
@@ -948,7 +881,7 @@ impl NodeNetworkInterface {
 		Some((vector_wire, center_line, thick))
 	}
 
-	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
+	pub fn wire_path_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
 		let (vector_wire, center_line, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
@@ -971,10 +904,16 @@ impl NodeNetworkInterface {
 
 	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
 		self.try_load_node_click_targets(node_id, network_path);
-		self.try_get_node_click_targets(node_id, network_path)
+
+		let node_metadata = self.node_metadata_mut(node_id, network_path)?;
+		let Some(click_targets) = node_metadata.transient_metadata.click_targets.get_loaded_mut() else {
+			log::error!("Could not load node type metadata when getting click targets");
+			return None;
+		};
+		Some(click_targets)
 	}
 
-	fn try_load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub(crate) fn try_load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in node_click_targets");
 			return;
@@ -984,16 +923,35 @@ impl NodeNetworkInterface {
 		};
 	}
 
-	fn try_get_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
-		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let TransientMetadata::Loaded(click_target) = &node_metadata.transient_metadata.click_targets else {
-			log::error!("Could not load node type metadata when getting click targets");
-			return None;
-		};
-		Some(click_target)
+	/// Loads the node click targets if needed, then reads them through &self.
+	pub(crate) fn with_loaded_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
+		self.try_load_node_click_targets(node_id, network_path);
+		self.with_node_click_targets(node_id, network_path, read)
 	}
 
-	pub fn load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+	/// Reads the modify import/export click targets through &self, loading them first if needed.
+	pub(crate) fn with_modify_import_export<R>(&self, network_path: &[NodeId], read: impl FnOnce(&ModifyImportExportClickTarget) -> R) -> Option<R> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in modify_import_export");
+			return None;
+		};
+		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
+			self.load_modify_import_export(network_path);
+		}
+		self.network_metadata(network_path)?.transient_metadata.modify_import_export.with_loaded(read)
+	}
+
+	/// Reads the node click targets through &self if they are already loaded.
+	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
+		let node_metadata = self.node_metadata(node_id, network_path)?;
+		let result = node_metadata.transient_metadata.click_targets.with_loaded(read);
+		if result.is_none() {
+			log::error!("Could not load node type metadata when getting click targets");
+		}
+		result
+	}
+
+	pub fn load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_position) = self.position_from_downstream_node(node_id, network_path) else {
 			log::error!("Could not get node position in load_node_click_targets for node {node_id}");
 			return;
@@ -1157,24 +1115,24 @@ impl NodeNetworkInterface {
 			}
 		};
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in load_node_click_targets");
 			return;
 		};
-		node_metadata.transient_metadata.click_targets = TransientMetadata::Loaded(document_node_click_targets);
+		node_metadata.transient_metadata.click_targets.store(document_node_click_targets);
 	}
 
-	pub fn node_bounding_box(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.node_click_targets(node_id, network_path)
-			.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
+	pub fn node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		self.try_load_node_click_targets(node_id, network_path);
+		self.try_get_node_bounding_box(node_id, network_path)
 	}
 
 	pub fn try_get_node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.try_get_node_click_targets(node_id, network_path)
-			.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
+		self.with_node_click_targets(node_id, network_path, |click_targets| click_targets.node_click_target.bounding_box())
+			.flatten()
 	}
 
-	pub fn try_load_all_node_click_targets(&mut self, network_path: &[NodeId]) {
+	pub fn try_load_all_node_click_targets(&self, network_path: &[NodeId]) {
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in load_all_node_click_targets");
 			return;
@@ -1185,7 +1143,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the top left position in node graph coordinates for a node by recursively iterating downstream through cached positions, which means the iteration can be broken once a known position is reached.
-	pub fn position_from_downstream_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+	pub fn position_from_downstream_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in position_from_downstream_node");
 			return None;
@@ -1196,9 +1154,8 @@ impl NodeNetworkInterface {
 					LayerPosition::Absolute(position) => Some(position),
 					LayerPosition::Stack(y_offset) => {
 						let Some(downstream_node_connectors) = self
-							.outward_wires(network_path)
-							.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
-							.cloned()
+							.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned())
+							.flatten()
 						else {
 							log::error!("Could not get downstream node in position_from_downstream_node");
 							return None;
@@ -1231,9 +1188,8 @@ impl NodeNetworkInterface {
 						loop {
 							// TODO: Use root node to restore if previewing
 							let Some(downstream_node_connectors) = self
-								.outward_wires(network_path)
-								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(current_node_id, 0)))
-								.cloned()
+								.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(current_node_id, 0)).cloned())
+								.flatten()
 							else {
 								log::error!("Could not get downstream node for node {node_id} with Position::Chain");
 								return None;

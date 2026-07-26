@@ -1498,7 +1498,6 @@ impl NodeNetworkInterface {
 		node_metadata.persistent_metadata.node_type_metadata = if is_layer {
 			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Absolute(position),
-				owned_nodes: TransientMetadata::Unloaded,
 			})
 		} else {
 			NodeTypePersistentMetadata::Node(NodePersistentMetadata {
@@ -1521,15 +1520,11 @@ impl NodeNetworkInterface {
 		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
 			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Stack((position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32),
-				owned_nodes: TransientMetadata::Unloaded,
 			})
 		}
 
-		if is_layer {
-			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata::default());
-		} else {
-			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Node;
-		}
+		node_metadata.transient_metadata.layer_width.unload();
+		node_metadata.transient_metadata.owned_nodes.unload();
 
 		self.transaction_modified();
 		self.unload_stack_dependents(network_path);

@@ -103,27 +103,38 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
-	pub fn downstream_layer_for_chain_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+	pub fn downstream_layer_for_chain_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
 		let mut id = *node_id;
 		while !self.is_layer(&id, network_path) {
-			id = self.outward_wires(network_path)?.get(&OutputConnector::node(id, 0))?.first()?.node_id()?;
+			id = self.with_outward_wires(network_path, |outward_wires| {
+				outward_wires
+					.get(&OutputConnector::node(id, 0))
+					.and_then(|connections| connections.first())
+					.and_then(|connector| connector.node_id())
+			})??;
 		}
 		Some(id)
 	}
 
 	/// Returns all downstream layers (inclusive) from a node. If the node is a layer, it will return itself.
-	pub fn downstream_layers(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
+	pub fn downstream_layers(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
 		let mut stack = vec![*node_id];
 		let mut layers = Vec::new();
 		while let Some(current_node) = stack.pop() {
 			if self.is_layer(&current_node, network_path) {
 				layers.push(current_node);
 			} else {
-				let Some(outward_wires) = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(&OutputConnector::node(current_node, 0))) else {
+				let downstream_found = self.with_outward_wires(network_path, |outward_wires| {
+					let Some(connections) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+						return false;
+					};
+					stack.extend(connections.iter().filter_map(|input_connector| input_connector.node_id()));
+					true
+				});
+				if downstream_found != Some(true) {
 					log::error!("Could not get outward wires in downstream_layer");
 					return Vec::new();
-				};
-				stack.extend(outward_wires.iter().filter_map(|input_connector| input_connector.node_id()));
+				}
 			}
 		}
 		layers
@@ -167,18 +178,22 @@ impl NodeNetworkInterface {
 
 	/// Creates a copy for each node by disconnecting nodes which are not connected to other copied nodes.
 	/// Returns an iterator of all persistent metadata for a node and their ids
-	pub fn copy_nodes<'a>(&'a mut self, new_ids: &'a HashMap<NodeId, NodeId>, network_path: &'a [NodeId]) -> impl Iterator<Item = (NodeId, NodeTemplate)> + 'a {
+	pub fn copy_nodes<'a>(&'a self, new_ids: &'a HashMap<NodeId, NodeId>, network_path: &'a [NodeId]) -> impl Iterator<Item = (NodeId, NodeTemplate)> + 'a {
 		let mut new_nodes = new_ids
 			.iter()
 			.filter_map(|(node_id, &new)| {
 				self.create_node_template(node_id, network_path).and_then(|mut node_template| {
-					let Some(outward_wires) = self.outward_wires(network_path) else {
+					// TODO: Get downstream connections from all outputs
+					let Some(has_selected_node_downstream) = self.with_outward_wires(network_path, |outward_wires| {
+						outward_wires.get(&OutputConnector::node(*node_id, 0)).is_some_and(|outputs| {
+							outputs
+								.iter()
+								.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)))
+						})
+					}) else {
 						log::error!("Could not get outward wires in copy_nodes");
 						return None;
 					};
-					// TODO: Get downstream connections from all outputs
-					let mut downstream_connections = outward_wires.get(&OutputConnector::node(*node_id, 0)).map_or([].iter(), |outputs| outputs.iter());
-					let has_selected_node_downstream = downstream_connections.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)));
 					// If the copied node does not have a downstream connection to another copied node, then set the position to absolute
 					if !has_selected_node_downstream {
 						let Some(position) = self.position(node_id, network_path) else {
@@ -247,7 +262,7 @@ impl NodeNetworkInterface {
 	/// Converts all node id inputs to a new id based on a HashMap.
 	///
 	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
-	pub fn map_ids(&mut self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
+	pub fn map_ids(&self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
 		for (input_index, input) in node_template.inputs.iter_mut().enumerate() {
 			if let &mut NodeInput::Node { node_id: id, output_index } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
@@ -278,16 +293,14 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn position(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		let top_left_position = self
-			.node_click_targets(node_id, network_path)
-			.and_then(|click_targets| click_targets.node_click_target.bounding_box())
-			.map(|mut bounding_box| {
-				if !self.is_layer(node_id, network_path) {
-					bounding_box[0] -= DVec2::new(0., 12.);
-				}
-				(bounding_box[0] / 24.).as_ivec2()
-			});
+	pub fn position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+		self.try_load_node_click_targets(node_id, network_path);
+		let top_left_position = self.try_get_node_bounding_box(node_id, network_path).map(|mut bounding_box| {
+			if !self.is_layer(node_id, network_path) {
+				bounding_box[0] -= DVec2::new(0., 12.);
+			}
+			(bounding_box[0] / 24.).as_ivec2()
+		});
 		top_left_position.map(|position| {
 			if self.is_layer(node_id, network_path) {
 				position + IVec2::new(self.chain_width(node_id, network_path) as i32, 0)
@@ -301,7 +314,7 @@ impl NodeNetworkInterface {
 		collect_network_resources(self.document_network(), target);
 	}
 
-	pub fn frontend_imports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
+	pub fn frontend_imports(&self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
 		match network_path.split_last() {
 			Some((node_id, encapsulating_network_path)) => {
 				let Some(node) = self.document_node(node_id, encapsulating_network_path) else {
@@ -321,7 +334,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn frontend_exports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphInput>> {
+	pub fn frontend_exports(&self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphInput>> {
 		let Some(network) = self.nested_network(network_path) else { return Vec::new() };
 		let mut frontend_exports = ((0..network.exports.len()).map(|export_index| self.frontend_input_from_connector(&InputConnector::Export(export_index), network_path))).collect::<Vec<_>>();
 		if frontend_exports.is_empty() {
@@ -330,8 +343,8 @@ impl NodeNetworkInterface {
 		frontend_exports
 	}
 
-	pub fn import_export_position(&mut self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
-		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path).cloned() else {
+	pub fn import_export_position(&self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
+		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path) else {
 			log::error!("Could not get all nodes bounding box in load_export_ports");
 			return None;
 		};
@@ -408,7 +421,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns None if there is an error, it is a hidden primary export, or a hidden input
-	pub fn frontend_input_from_connector(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<FrontendGraphInput> {
+	pub fn frontend_input_from_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<FrontendGraphInput> {
 		// Return None if it is a hidden input
 		if self.input_from_connector(input_connector, network_path).is_some_and(|input| !input.is_exposed()) {
 			return None;
@@ -471,7 +484,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns None if there is an error, it is the document network, a hidden primary output or import
-	pub fn frontend_output_from_connector(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<FrontendGraphOutput> {
+	pub fn frontend_output_from_connector(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<FrontendGraphOutput> {
 		let output_type = self.output_type(output_connector, network_path);
 		let (name, description) = match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
@@ -512,9 +525,8 @@ impl NodeNetworkInterface {
 		let data_type = output_type.displayed_type();
 		let resolved_type = output_type.resolved_type_node_string();
 		let mut connected_to = self
-			.outward_wires(network_path)
-			.and_then(|outward_wires| outward_wires.get(output_connector))
-			.cloned()
+			.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned())
+			.flatten()
 			.unwrap_or_default()
 			.iter()
 			.map(|input| match input {
@@ -539,10 +551,10 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	pub fn height_from_click_target(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+	pub fn height_from_click_target(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
+		self.try_load_node_click_targets(node_id, network_path);
 		let mut node_height: Option<u32> = self
-			.node_click_targets(node_id, network_path)
-			.and_then(|click_targets: &DocumentNodeClickTargets| click_targets.node_click_target.bounding_box())
+			.try_get_node_bounding_box(node_id, network_path)
 			.map(|bounding_box| ((bounding_box[1].y - bounding_box[0].y) / 24.) as u32);
 		if !self.is_layer(node_id, network_path) {
 			node_height = node_height.map(|height| height + 1);
@@ -552,7 +564,7 @@ impl NodeNetworkInterface {
 
 	/// Returns whether every downstream path from the node's outputs stays within the dependent set defined by `classify`, meaning nothing else in the graph depends on this node.
 	/// Reaching an export or a dead end (a walked node with no outward wires) always escapes. O(nodes + wires) per call.
-	pub(crate) fn is_sole_dependent(&mut self, node_id: NodeId, network_path: &[NodeId], classify: impl Fn(NodeId, usize) -> SoleDependentStep) -> bool {
+	pub(crate) fn is_sole_dependent(&self, node_id: NodeId, network_path: &[NodeId], classify: impl Fn(NodeId, usize) -> SoleDependentStep) -> bool {
 		let mut visited = HashSet::new();
 		let mut stack = vec![node_id];
 
@@ -561,47 +573,54 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			let number_of_outputs = self.number_of_outputs(&current_node, network_path);
-			let Some(outward_wires) = self.outward_wires(network_path) else {
-				log::error!("Could not get outward wires in is_sole_dependent");
-				return false;
-			};
-
 			// Classify every downstream connection of this node, collecting the ones to keep walking through
-			let mut has_downstream_connections = false;
-			let mut nodes_to_walk_through = Vec::new();
-			for output_index in 0..number_of_outputs {
-				let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(current_node, output_index)) else {
-					continue;
-				};
-				for downstream_connection in downstream_connections {
-					has_downstream_connections = true;
-					let InputConnector::Node {
-						node_id: downstream_node,
-						input_index,
-					} = downstream_connection
-					else {
-						return false;
+			let number_of_outputs = self.number_of_outputs(&current_node, network_path);
+			let keeps_within_set = self.with_outward_wires(network_path, |outward_wires| {
+				let mut has_downstream_connections = false;
+				let mut nodes_to_walk_through = Vec::new();
+				for output_index in 0..number_of_outputs {
+					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(current_node, output_index)) else {
+						continue;
 					};
-					match classify(*downstream_node, *input_index) {
-						SoleDependentStep::Terminate => {}
-						SoleDependentStep::Continue => nodes_to_walk_through.push(*downstream_node),
-						SoleDependentStep::Escape => return false,
+					for downstream_connection in downstream_connections {
+						has_downstream_connections = true;
+						let InputConnector::Node {
+							node_id: downstream_node,
+							input_index,
+						} = downstream_connection
+						else {
+							return false;
+						};
+						match classify(*downstream_node, *input_index) {
+							SoleDependentStep::Terminate => {}
+							SoleDependentStep::Continue => nodes_to_walk_through.push(*downstream_node),
+							SoleDependentStep::Escape => return false,
+						}
 					}
 				}
-			}
 
-			if !has_downstream_connections {
-				return false;
+				if !has_downstream_connections {
+					return false;
+				}
+				stack.extend(nodes_to_walk_through);
+				true
+			});
+
+			match keeps_within_set {
+				Some(true) => {}
+				Some(false) => return false,
+				None => {
+					log::error!("Could not get outward wires in is_sole_dependent");
+					return false;
+				}
 			}
-			stack.extend(nodes_to_walk_through);
 		}
 
 		true
 	}
 
 	// All chain nodes and branches from the chain which are sole dependents of the layer
-	pub fn upstream_nodes_below_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
+	pub fn upstream_nodes_below_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
 		// Every upstream node below layer must be a sole dependent
 		let mut upstream_nodes_below_layer = HashSet::new();
 
@@ -712,10 +731,6 @@ impl NodeNetworkInterface {
 		self.view(network_path).ok().and_then(|view| view.persistent_input_metadata(node_id, index).ok())
 	}
 
-	pub(crate) fn transient_input_metadata(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&InputTransientMetadata> {
-		self.view(network_path).ok().and_then(|view| view.transient_input_metadata(node_id, index).ok())
-	}
-
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
 		let Some(metadata) = self
 			.node_metadata_mut(node_id, network_path)
@@ -728,7 +743,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
-	pub fn displayed_input_name_and_description(&mut self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
+	pub fn displayed_input_name_and_description(&self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
 		let Some(input_metadata) = self.persistent_input_metadata(node_id, input_index, network_path) else {
 			log::warn!("input metadata not found in displayed_input_name_and_description");
 			return (String::new(), String::new());
@@ -775,12 +790,12 @@ impl NodeNetworkInterface {
 		self.query(network_path, "is_layer", |view| view.is_layer(node_id)).unwrap_or_default()
 	}
 
-	pub fn primary_output_connected_to_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let Some(outward_wires) = self.outward_wires(network_path) else {
+	pub fn primary_output_connected_to_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let Some(downstream_connectors) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned()) else {
 			log::error!("Could not get outward_wires in primary_output_connected_to_layer");
 			return false;
 		};
-		let Some(downstream_connectors) = outward_wires.get(&OutputConnector::node(*node_id, 0)) else {
+		let Some(downstream_connectors) = downstream_connectors else {
 			log::error!("Could not get downstream_connectors in primary_output_connected_to_layer");
 			return false;
 		};
@@ -1086,7 +1101,6 @@ impl NodeNetworkInterface {
 				node_metadata.persistent_metadata.node_type_metadata = if old_node.is_layer {
 					NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 						position: LayerPosition::Absolute(old_node.metadata.position),
-						owned_nodes: TransientMetadata::Unloaded,
 					})
 				} else {
 					NodeTypePersistentMetadata::Node(NodePersistentMetadata {

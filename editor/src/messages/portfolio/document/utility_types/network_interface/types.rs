@@ -377,26 +377,66 @@ impl<T> TransientMetadata<T> {
 	}
 }
 
+/// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
+#[derive(Debug, Clone)]
+pub(crate) struct TransientCache<T>(std::cell::RefCell<TransientMetadata<T>>);
+
+impl<T> Default for TransientCache<T> {
+	fn default() -> Self {
+		TransientCache(std::cell::RefCell::new(TransientMetadata::Unloaded))
+	}
+}
+
+impl<T> TransientCache<T> {
+	pub(crate) fn is_loaded(&self) -> bool {
+		self.0.borrow().is_loaded()
+	}
+
+	pub(crate) fn store(&self, value: T) {
+		*self.0.borrow_mut() = TransientMetadata::Loaded(value);
+	}
+
+	pub(crate) fn unload(&self) {
+		*self.0.borrow_mut() = TransientMetadata::Unloaded;
+	}
+
+	/// Runs `read` on the cached value if it is loaded.
+	pub(crate) fn with_loaded<R>(&self, read: impl FnOnce(&T) -> R) -> Option<R> {
+		match &*self.0.borrow() {
+			TransientMetadata::Loaded(value) => Some(read(value)),
+			TransientMetadata::Unloaded => None,
+		}
+	}
+
+	/// Direct access without runtime borrow tracking, for callers already holding exclusive access.
+	pub(crate) fn get_loaded_mut(&mut self) -> Option<&mut T> {
+		match self.0.get_mut() {
+			TransientMetadata::Loaded(value) => Some(value),
+			TransientMetadata::Unloaded => None,
+		}
+	}
+}
+
 /// If some network calculation is too slow to compute for every usage, cache the data here
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
 	pub selected_nodes: SelectedNodes,
 	/// Sole dependents of the top of the stacks of all selected nodes. Used to determine which nodes are checked for collision when shifting.
 	/// The LayerOwner is used to determine whether the collided node should be shifted, or the layer that owns it.
-	pub stack_dependents: TransientMetadata<HashMap<NodeId, LayerOwner>>,
+	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
-	pub all_nodes_bounding_box: TransientMetadata<[DVec2; 2]>,
+	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
 	// /// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
-	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
+	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
-	pub import_export_ports: TransientMetadata<Ports>,
+	pub(crate) import_export_ports: TransientCache<Ports>,
 	/// Click targets for adding, removing, and moving import/export ports
-	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
+	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
-	// Wires from the exports
-	pub wires: Vec<TransientMetadata<WirePathUpdate>>,
+	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
+	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 }
 
 #[derive(Debug, Clone)]
@@ -576,13 +616,6 @@ impl InputPersistentMetadata {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct InputTransientMetadata {
-	pub(crate) wire: TransientMetadata<WirePathUpdate>,
-	// downstream_protonode: populated for all inputs after each compile
-	// types: populated for each protonode after each
-}
-
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -613,20 +646,9 @@ impl DocumentNodePersistentMetadata {
 	}
 }
 
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadata {
 	pub persistent_metadata: InputPersistentMetadata,
-	#[serde(skip)]
-	pub(crate) transient_metadata: InputTransientMetadata,
-}
-
-impl Clone for InputMetadata {
-	fn clone(&self) -> Self {
-		InputMetadata {
-			persistent_metadata: self.persistent_metadata.clone(),
-			transient_metadata: Default::default(),
-		}
-	}
 }
 
 impl PartialEq for InputMetadata {
@@ -641,7 +663,6 @@ impl From<(&str, &str)> for InputMetadata {
 			persistent_metadata: InputPersistentMetadata::default()
 				.with_name(input_name_and_description.0)
 				.with_description(input_name_and_description.1),
-			..Default::default()
 		}
 	}
 }
@@ -650,7 +671,6 @@ impl InputMetadata {
 	pub fn with_name_description_override(input_name: &str, description: &str, widget_override: WidgetOverride) -> Self {
 		InputMetadata {
 			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(description).with_override(widget_override),
-			..Default::default()
 		}
 	}
 }
@@ -676,7 +696,6 @@ impl NodeTypePersistentMetadata {
 	pub fn layer(position: IVec2) -> NodeTypePersistentMetadata {
 		NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 			position: LayerPosition::Absolute(position),
-			owned_nodes: TransientMetadata::default(),
 		})
 	}
 }
@@ -688,9 +707,6 @@ pub struct LayerPersistentMetadata {
 	// preview_click_target: Option<ClickTarget>,
 	/// Stores the position of a layer node, which can either be Absolute or Stack
 	pub position: LayerPosition,
-	/// All nodes that should be moved when the layer is moved.
-	#[serde(skip)]
-	pub owned_nodes: TransientMetadata<HashSet<NodeId>>,
 }
 
 impl PartialEq for LayerPersistentMetadata {
@@ -736,9 +752,11 @@ pub enum NodePosition {
 #[derive(Debug, Default, Clone)]
 pub struct DocumentNodeTransientMetadata {
 	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
-	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
-	// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_metadata: NodeTypeTransientMetadata,
+	pub(crate) click_targets: TransientCache<DocumentNodeClickTargets>,
+	/// All nodes that should be moved when this layer is moved, kept here since only layers own nodes.
+	pub(crate) owned_nodes: TransientCache<HashSet<NodeId>>,
+	/// Width in grid units from the left edge of the layer's thumbnail to its left end, cached since text measurement is slow. Only loaded for layers.
+	pub(crate) layer_width: TransientCache<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -750,23 +768,6 @@ pub struct DocumentNodeClickTargets {
 	pub port_click_targets: Ports,
 	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	pub node_type_metadata: NodeTypeClickTargets,
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum NodeTypeTransientMetadata {
-	Layer(LayerTransientMetadata),
-	#[default]
-	Node, // No transient data is stored exclusively for nodes
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct LayerTransientMetadata {
-	// Stores the width in grid units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the left end of the node
-	/// This is necessary since calculating the layer width through web_sys is very slow
-	pub layer_width: TransientMetadata<u32>,
-	// Should not be a performance concern to calculate when needed with chain_width.
-	// Stores the width in grid units for layer nodes from the left edge of the thumbnail to the end of the chain
-	// chain_width: u32,
 }
 
 #[derive(Debug, Clone)]
