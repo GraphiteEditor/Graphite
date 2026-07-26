@@ -182,13 +182,8 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let mut resource_ids = HashSet::new();
 				for item in &items {
 					match item {
-						ClipboardItem::Layer(entry) => entry
-							.nodes
-							.iter()
-							.for_each(|(_, template)| network_interface::collect_node_resources(&template.document_node, &mut resource_ids)),
-						ClipboardItem::Nodes(nodes) => nodes
-							.iter()
-							.for_each(|(_, template)| network_interface::collect_node_resources(&template.document_node, &mut resource_ids)),
+						ClipboardItem::Layer(entry) => entry.nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
+						ClipboardItem::Nodes(nodes) => nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
 						ClipboardItem::Vector(_) | ClipboardItem::Resource(_) => {}
 					}
 				}

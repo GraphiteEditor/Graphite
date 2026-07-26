@@ -193,40 +193,20 @@ impl NodeNetworkInterface {
 			let mut not_sole_dependents = HashSet::new();
 			sole_dependents.insert(*stack_top);
 			for upstream_node in self.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
-				let mut stack = vec![upstream_node];
-				let mut is_sole_dependent = true;
-				while let Some(current_node) = stack.pop() {
-					if not_sole_dependents.contains(&current_node) {
-						is_sole_dependent = false;
-						break;
-					}
-					if !sole_dependents.contains(&current_node) {
-						let mut has_outward_wire = false;
-						for output_index in 0..self.number_of_outputs(&current_node, network_path) {
-							let Some(outward_wires) = self.outward_wires(network_path) else {
-								log::error!("Cannot load outward wires in load_stack_dependents");
-								continue;
-							};
-							let Some(outward_wires) = outward_wires.get(&OutputConnector::node(current_node, output_index)) else {
-								log::error!("Cannot load outward wires in load_stack_dependents");
-								continue;
-							};
-							for downstream_input in outward_wires {
-								has_outward_wire = true;
-								match downstream_input {
-									InputConnector::Node { node_id, .. } => stack.push(*node_id),
-									InputConnector::Export(_) => is_sole_dependent = false,
-								}
-							}
-						}
-						if !has_outward_wire {
-							is_sole_dependent = false;
-						}
-					}
-					if !is_sole_dependent {
-						break;
-					}
+				if sole_dependents.contains(&upstream_node) || not_sole_dependents.contains(&upstream_node) {
+					continue;
 				}
+
+				// A path terminates at an already-verified sole dependent, and fails fast through a known non-sole node
+				let is_sole_dependent = self.is_sole_dependent(upstream_node, network_path, |downstream_node, _| {
+					if not_sole_dependents.contains(&downstream_node) {
+						SoleDependentStep::Escape
+					} else if sole_dependents.contains(&downstream_node) {
+						SoleDependentStep::Terminate
+					} else {
+						SoleDependentStep::Continue
+					}
+				});
 
 				if is_sole_dependent {
 					sole_dependents.insert(upstream_node);
