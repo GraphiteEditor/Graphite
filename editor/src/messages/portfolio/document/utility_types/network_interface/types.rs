@@ -814,14 +814,6 @@ pub struct NavigationMetadata {
 	pub node_graph_width: f64,
 }
 
-// PartialEq required by message handlers
-/// All persistent editor and Graphene data for a node. Used to serialize and deserialize a node, pass it through the editor, and create definitions.
-#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NodeTemplate {
-	pub document_node: DocumentNode,
-	pub persistent_node_metadata: DocumentNodePersistentMetadata,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TransactionStatus {
 	Started,
@@ -830,7 +822,21 @@ pub enum TransactionStatus {
 	Finished,
 }
 
+/// How [`NodeNetworkInterface::is_sole_dependent`] should treat a downstream connector it encounters.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SoleDependentStep {
+	/// The downstream path ends here, inside the dependent set.
+	Terminate,
+	/// Keep walking downstream through this node.
+	Continue,
+	/// The path leaves the dependent set, so the candidate is not a sole dependent.
+	Escape,
+}
+
 pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
+	for export in &network.exports {
+		collect_input_resource(export, out);
+	}
 	for node in network.nodes.values() {
 		collect_node_resources(node, out);
 	}
@@ -839,13 +845,18 @@ pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet
 /// Collects resource IDs referenced by a node and its nested networks.
 pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
 	for input in &node.inputs {
-		if let NodeInput::Value { tagged_value, .. } = input
-			&& let TaggedValue::Resource(id) = &**tagged_value
-		{
-			out.insert(*id);
-		}
+		collect_input_resource(input, out);
 	}
 	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
 		collect_network_resources(nested, out);
+	}
+}
+
+/// Records the resource ID held by a value input, covering node inputs and export slots alike.
+pub(crate) fn collect_input_resource(input: &NodeInput, out: &mut HashSet<ResourceId>) {
+	if let NodeInput::Value { tagged_value, .. } = input
+		&& let TaggedValue::Resource(id) = &**tagged_value
+	{
+		out.insert(*id);
 	}
 }

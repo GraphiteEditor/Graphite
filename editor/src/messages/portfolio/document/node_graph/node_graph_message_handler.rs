@@ -301,7 +301,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// A freshly added Text node carries no font, so give it the default font (registered like the Text tool does)
 				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) {
 					let font_resource_id = graph_craft::application_io::resource::ResourceId::new();
-					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
+					if let Some(font_input) = node_template.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
 						*font_input = NodeInput::value(TaggedValue::Resource(font_resource_id), false);
 					}
 					responses.add(DocumentMessage::Resource(ResourceMessage::AddFont {
@@ -336,7 +336,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 
 					// Ensure connection is to correct input of new node. If it does not have an input then do not connect
-					if let Some((input_index, _)) = node_template.document_node.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
+					if let Some((input_index, _)) = node_template.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
 						responses.add(NodeGraphMessage::CreateWire {
 							output_connector: *output_connector,
 							input_connector: InputConnector::node(node_id, input_index),
@@ -693,7 +693,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				let center_of_selected_nodes_grid_space = IVec2::new((center_of_selected_nodes.x / 24. + 0.5).floor() as i32, (center_of_selected_nodes.y / 24. + 0.5).floor() as i32);
-				default_node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
+				default_node_template.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id: encapsulating_node_id,
