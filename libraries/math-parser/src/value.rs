@@ -1,6 +1,4 @@
 use crate::ast::{BinaryOp, UnaryOp};
-use num_complex::ComplexFloat;
-use std::f64::consts::PI;
 
 pub type Complex = num_complex::Complex<f64>;
 
@@ -56,15 +54,18 @@ impl Number {
 		match (self, other) {
 			(Number::Real(lhs), Number::Real(rhs)) => {
 				let result = match op {
+					// NaN operands poison logic ops so invalid values aren't silently treated as booleans
 					BinaryOp::And => {
-						let l = lhs != 0.;
-						let r = rhs != 0.;
-						if l && r { 1. } else { 0. }
+						if lhs.is_nan() || rhs.is_nan() {
+							return Some(Number::Real(f64::NAN));
+						}
+						if lhs != 0. && rhs != 0. { 1. } else { 0. }
 					}
 					BinaryOp::Or => {
-						let l = lhs != 0.;
-						let r = rhs != 0.;
-						if l || r { 1. } else { 0. }
+						if lhs.is_nan() || rhs.is_nan() {
+							return Some(Number::Real(f64::NAN));
+						}
+						if lhs != 0. || rhs != 0. { 1. } else { 0. }
 					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
@@ -86,11 +87,17 @@ impl Number {
 			(Number::Complex(lhs), Number::Complex(rhs)) => {
 				let result = match op {
 					BinaryOp::And => {
+						if lhs.re.is_nan() || lhs.im.is_nan() || rhs.re.is_nan() || rhs.im.is_nan() {
+							return Some(Number::Real(f64::NAN));
+						}
 						let l = lhs != Complex::new(0., 0.);
 						let r = rhs != Complex::new(0., 0.);
 						return Some(Number::Real(if l && r { 1. } else { 0. }));
 					}
 					BinaryOp::Or => {
+						if lhs.re.is_nan() || lhs.im.is_nan() || rhs.re.is_nan() || rhs.im.is_nan() {
+							return Some(Number::Real(f64::NAN));
+						}
 						let l = lhs != Complex::new(0., 0.);
 						let r = rhs != Complex::new(0., 0.);
 						return Some(Number::Real(if l || r { 1. } else { 0. }));
@@ -165,7 +172,12 @@ impl Number {
 					if truncated < 0. || (real - truncated).abs() > f64::EPSILON {
 						return Number::Real(f64::NAN);
 					}
+
+					// 171! already overflows f64, so skip the loop for anything larger
 					let n = truncated as u64;
+					if n > 170 {
+						return Number::Real(f64::INFINITY);
+					}
 					let mut acc = 1_f64;
 					for k in 1..=n {
 						acc *= k as f64;
@@ -173,8 +185,10 @@ impl Number {
 					Number::Real(acc)
 				}
 				UnaryOp::Not => {
-					let is_zero = real == 0.;
-					Number::Real(if is_zero { 1. } else { 0. })
+					if real.is_nan() {
+						return Number::Real(f64::NAN);
+					}
+					Number::Real(if real == 0. { 1. } else { 0. })
 				}
 			},
 
@@ -183,8 +197,10 @@ impl Number {
 				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
 				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
 				UnaryOp::Not => {
-					let is_zero = complex == Complex::new(0., 0.);
-					Number::Real(if is_zero { 1. } else { 0. })
+					if complex.re.is_nan() || complex.im.is_nan() {
+						return Number::Real(f64::NAN);
+					}
+					Number::Real(if complex == Complex::new(0., 0.) { 1. } else { 0. })
 				}
 			},
 		}

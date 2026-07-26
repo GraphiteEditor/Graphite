@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 pub mod ast;
 mod constants;
 pub mod context;
@@ -8,8 +6,7 @@ pub mod lexer;
 pub mod parser;
 pub mod value;
 
-use ast::Unit;
-use context::{EvalContext, ValueMap};
+use context::EvalContext;
 use executer::EvalError;
 use parser::ParseError;
 use value::Value;
@@ -23,25 +20,38 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use ast::Unit;
 	use value::Number;
 
 	const EPSILON: f64 = 1e-10_f64;
+
+	#[test]
+	fn malformed_juxtaposed_numbers_fail_to_parse() {
+		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication).
+		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn unrecognized_characters_fail_to_parse() {
+		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix.
+		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
 
 	fn run_end_to_end_test(input: &str, expected_value: Value) {
 		let expr = match ast::Node::try_parse_from_str(input) {
 			Ok(expr) => expr,
 			Err(err) => panic!("failed to parse `{input}`: {err}"),
 		};
-		dbg!(&expr);
 		let context = EvalContext::default();
 
 		let actual_value = match expr.eval(&context) {
 			Ok(v) => v,
-			Err(err) => panic!("failed to evaluate {input} becuase of error {err}"),
+			Err(err) => panic!("failed to evaluate `{input}` because of error {err}"),
 		};
 
-		// compare
 		match (actual_value, expected_value) {
 			(Value::Number(Number::Complex(a)), Value::Number(Number::Complex(e))) => {
 				// real part
@@ -128,6 +138,17 @@ mod tests {
 		exponent_single: "2^3" => 8.,
 		exponent_mixed_operations: "2^3 + 4^2" => 24.,
 		exponent_nested: "2^(3+1)" => 16.,
+		exponent_right_associative: "2^2^3" => 256.,
+		exponent_unary_operand: "2^-1" => 0.5,
+
+		// Implicit multiplication binds like `*`/`/`: tighter than `+`, looser than `^`, left to right
+		implicit_multiplication_constant: "2pi" => 2. * std::f64::consts::PI,
+		implicit_multiplication_before_addition: "2pi + 1" => 2. * std::f64::consts::PI + 1.,
+		implicit_multiplication_shares_division: "1/2pi" => std::f64::consts::PI / 2.,
+		implicit_multiplication_left_to_right: "6/2pi" => 3. * std::f64::consts::PI,
+		implicit_multiplication_power_operand: "2pi^2" => 2. * std::f64::consts::PI.powi(2),
+		implicit_multiplication_function: "2sqrt(4)" => 4.,
+		implicit_multiplication_excludes_unary_minus: "2 -3" => -1.,
 
 		// Factorial (postfix !)
 		factorial_simple: "5!" => 120.,
@@ -275,5 +296,24 @@ mod tests {
 
 		// Complex nested expressions
 		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1), 3 + 4 * 2, 5 - 2 / 1)" => 11.,
+
+		// Overflow-safe evaluation
+		factorial_overflows_to_infinity: "171!" => f64::INFINITY,
+		factorial_huge_input: "10000000000000000000000!" => f64::INFINITY,
+		lcm_huge_no_overflow: "lcm(1099511627776, 1099511627775)" => 1099511627776. * 1099511627775.,
+		gcd_non_finite: "gcd(inf, 6)" => f64::NAN,
+		long_literal: "10000000000000000000000" => 1e22,
+		huge_exponent_saturates: "1e4294967296" => f64::INFINITY,
+
+		// Odd integer roots of negative values are real
+		root_negative_odd: "root(-8, 3)" => -2.,
+		root_negative_odd_reciprocal: "root(-8, -3)" => -0.5,
+		root_negative_even: "root(-4, 2)" => f64::NAN,
+
+		// NaN poisons conditions and logic instead of acting as a boolean
+		if_nan_condition: "if(sqrt(-1), 1, 2)" => f64::NAN,
+		nan_and: "sqrt(-1) && 1" => f64::NAN,
+		nan_or: "sqrt(-1) || 1" => f64::NAN,
+		nan_not: "!sqrt(-1)" => f64::NAN,
 	}
 }

@@ -1,14 +1,9 @@
 use crate::ast::Literal;
 use chumsky::input::{Input, ValueInput};
-use chumsky::prelude::*;
 use chumsky::span::SimpleSpan;
-use chumsky::text::{ident, int};
-use core::f64;
 use num_complex::Complex64;
 use std::fmt;
-use std::iter::Peekable;
 use std::ops::Range;
-use std::str::Chars;
 
 pub type Span = SimpleSpan;
 
@@ -40,6 +35,9 @@ pub enum Token<'src> {
 	EqEq,
 
 	If,
+
+	/// An unrecognized character; the parser never matches this, forcing a parse error rather than silently truncating the input.
+	Error,
 }
 
 impl<'src> fmt::Display for Token<'src> {
@@ -71,6 +69,8 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::EqEq => f.write_str("=="),
 
 			Token::If => f.write_str("if"),
+
+			Token::Error => f.write_str("<error>"),
 		}
 	}
 }
@@ -162,15 +162,12 @@ impl<'a> Lexer<'a> {
 		&self.input[start..self.pos]
 	}
 
-	fn lex_ident(&mut self) -> &'a str {
-		self.consume_while(|c| c.is_alphanumeric() || c == '_')
-	}
-
-	fn lex_uint(&mut self) -> Option<(u64, usize)> {
-		let mut v = 0u64;
+	// Digit runs accumulate in f64 so arbitrarily long literals approximate instead of overflowing an integer type
+	fn lex_uint(&mut self) -> Option<(f64, usize)> {
+		let mut v = 0_f64;
 		let mut digits = 0;
 		while let Some(d) = self.peek().and_then(|c| c.to_digit(10)) {
-			v = v * 10 + d as u64;
+			v = v * 10. + d as f64;
 			digits += 1;
 			self.bump();
 		}
@@ -179,14 +176,14 @@ impl<'a> Lexer<'a> {
 
 	fn lex_number(&mut self) -> Option<f64> {
 		let start_pos = self.pos;
-		let (int_val, int_digits) = self.lex_uint().unwrap_or((0, 0));
+		let (int_val, int_digits) = self.lex_uint().unwrap_or((0., 0));
 		let mut got_digit = int_digits > 0;
-		let mut num = int_val as f64;
+		let mut num = int_val;
 
 		if self.peek() == Some('.') {
 			self.bump();
 			if let Some((frac_val, frac_digits)) = self.lex_uint() {
-				num += (frac_val as f64) / 10f64.powi(frac_digits as i32);
+				num += frac_val / 10f64.powi(frac_digits as i32);
 				got_digit = true;
 			}
 		}
@@ -212,6 +209,12 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
+		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication.
+		if got_digit && self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) {
+			self.pos = start_pos;
+			return None;
+		}
+
 		got_digit.then_some(num)
 	}
 
@@ -231,7 +234,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					AndAnd
 				} else {
-					return None;
+					Error
 				}
 			}
 			'|' => {
@@ -239,7 +242,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					OrOr
 				} else {
-					return None;
+					Error
 				}
 			}
 
@@ -287,13 +290,21 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					return None;
+					Error
 				}
 			}
 
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
-				Float(self.lex_number()?)
+				match self.lex_number() {
+					Some(number) => Float(number),
+					// `lex_number` resets `pos` on failure, so advance past one character to guarantee forward progress.
+					None => {
+						self.pos = start;
+						self.bump();
+						Error
+					}
+				}
 			}
 
 			_ => {
@@ -307,7 +318,7 @@ impl<'a> Lexer<'a> {
 				} else if ch.is_alphanumeric() {
 					Ident(ident)
 				} else {
-					return None;
+					Error
 				}
 			}
 		};
