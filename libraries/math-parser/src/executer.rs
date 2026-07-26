@@ -1,8 +1,7 @@
-use crate::ast::{Literal, Node};
+use crate::ast::{BinaryOp, Literal, Node};
 use crate::constants::builtin_function;
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
-use num_complex::Complex;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -53,26 +52,19 @@ impl Node {
 					function(values).ok_or(EvalError::TypeError)
 				} else if let Some(val) = context.run_function(name, values) {
 					Ok(val)
+				} else if let Some(Value::Number(value)) = context.get_value(name)
+					&& let [Value::Number(argument)] = values
+				{
+					// A known value applied to one argument is implicit multiplication, so `x(2)` matches `2(3)` and `i(16)`
+					Ok(Value::Number(value.binary_op(BinaryOp::Mul, *argument).ok_or(EvalError::OperatorTypeError)?))
 				} else {
-					context.get_value(name).ok_or_else(|| EvalError::MissingFunction(name.to_string()))
+					Err(EvalError::MissingFunction(name.to_string()))
 				}
 			}
 			Node::Conditional { condition, if_block, else_block } => {
 				// A NaN condition yields NaN rather than arbitrarily picking a branch
-				let condition = match condition.eval(context)? {
-					Value::Number(Number::Real(number)) => {
-						if number.is_nan() {
-							return Ok(Value::from_f64(f64::NAN));
-						}
-						number != 0.
-					}
-					Value::Number(Number::Complex(number)) => {
-						if number.re.is_nan() || number.im.is_nan() {
-							return Ok(Value::from_f64(f64::NAN));
-						}
-						number != Complex::ZERO
-					}
-				};
+				let Value::Number(number) = condition.eval(context)?;
+				let Some(condition) = number.as_bool() else { return Ok(Value::from_f64(f64::NAN)) };
 
 				if condition { if_block.eval(context) } else { else_block.eval(context) }
 			}
@@ -83,8 +75,36 @@ impl Node {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
-	use crate::context::EvalContext;
+	use crate::context::{EvalContext, NothingMap, ValueProvider};
 	use crate::value::Value;
+
+	struct SingleValue(f64);
+
+	impl ValueProvider for SingleValue {
+		fn get_value(&self, name: &str) -> Option<Value> {
+			(name == "x").then(|| Value::from_f64(self.0))
+		}
+	}
+
+	#[test]
+	fn known_value_with_one_argument_multiplies() {
+		// `x(2)` juxtaposes like `2(3)` and `i(16)` instead of silently discarding the argument
+		let call = Node::FnCall {
+			name: "x".to_string(),
+			expr: vec![Node::Lit(Literal::Float(2.))],
+		};
+		let result = call.eval(&EvalContext::new(SingleValue(5.), NothingMap)).unwrap();
+		assert_eq!(result, Value::from_f64(10.));
+	}
+
+	#[test]
+	fn known_value_with_multiple_arguments_is_an_error() {
+		let call = Node::FnCall {
+			name: "x".to_string(),
+			expr: vec![Node::Lit(Literal::Float(1.)), Node::Lit(Literal::Float(2.))],
+		};
+		assert!(call.eval(&EvalContext::new(SingleValue(5.), NothingMap)).is_err());
+	}
 
 	macro_rules! eval_tests {
 		($($name:ident: $expected:expr_2021 => $expr:expr_2021),* $(,)?) => {

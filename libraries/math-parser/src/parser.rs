@@ -94,7 +94,7 @@ where
 			expr: Box::new(expr),
 		});
 
-		// Exponentiation is right-associative (`2^2^3` is `2^(2^3)`); the exponent may carry unary signs like `2^-3`.
+		// Exponentiation is right-associative (`2^2^3` is `2^(2^3)`) and the exponent may carry unary signs like `2^-3`
 		let pow = recursive(|pow| {
 			let exponent = unary_op.clone().repeated().foldr(pow, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
 			postfix.clone().then(pow_op.ignore_then(exponent).or_not()).map(|(base, exponent)| match exponent {
@@ -107,10 +107,10 @@ where
 			})
 		});
 
-		let unary = unary_op.repeated().foldr(pow.clone(), |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
+		let unary = unary_op.clone().repeated().foldr(pow.clone(), |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
 
 		// Juxtaposed factors like `2pi` or `2sqrt(4)` multiply implicitly at the same precedence as `*` and `/`.
-		// The implicit right operand is a `pow`, not a full unary, so a following `-` stays a subtraction (`2 -3` means `2 - 3`).
+		// The implicit operand is a `pow`, not a full unary, so `2 -3` stays a subtraction; the lexer rejects a bare number as the right operand (`10 000` is not `10*000`).
 		let implicit_mul = pow.map(|rhs| (BinaryOp::Mul, rhs));
 		let product = unary.clone().foldl(choice((mul_op.then(unary), implicit_mul)).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),

@@ -26,7 +26,7 @@ mod tests {
 
 	#[test]
 	fn malformed_juxtaposed_numbers_fail_to_parse() {
-		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication).
+		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication)
 		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
@@ -34,10 +34,25 @@ mod tests {
 
 	#[test]
 	fn unrecognized_characters_fail_to_parse() {
-		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix.
+		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix
 		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
+	}
+
+	#[test]
+	fn juxtaposed_numbers_fail_to_parse() {
+		// Adjacent number literals like digit-grouped `10 000` must not silently multiply
+		for input in ["2 3", "10 000", "1 .5", "sqrt(4).5", "2 3 + 1"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn extremely_long_fraction_parses() {
+		let input = format!("0.{}", "1".repeat(320));
+		let value = evaluate(&input).unwrap().unwrap();
+		assert_eq!(value.as_real(), Some(1. / 9.));
 	}
 
 	fn run_end_to_end_test(input: &str, expected_value: Value) {
@@ -315,5 +330,18 @@ mod tests {
 		nan_and: "sqrt(-1) && 1" => f64::NAN,
 		nan_or: "sqrt(-1) || 1" => f64::NAN,
 		nan_not: "!sqrt(-1)" => f64::NAN,
+
+		// Logic and equality span real and complex operands
+		mixed_equality: "1 == i" => 0.,
+		complex_equality: "i == i" => 1.,
+		mixed_and: "1 && i" => 1.,
+		mixed_nan_and: "sqrt(-1) && i" => f64::NAN,
+
+		// Correctly rounded literals via std parsing
+		seventeen_digit_literal: "999999999999999999" => 1e18,
+		long_fraction_literal: "0.1111111111111111111111111111111111111111" => 1. / 9.,
+
+		// Integer functions reject inputs beyond f64's exact integer range
+		gcd_beyond_exact_integers: "gcd(10000000000000000000, 2)" => f64::NAN,
 	}
 }

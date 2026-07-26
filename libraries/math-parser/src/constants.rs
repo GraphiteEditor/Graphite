@@ -4,6 +4,25 @@ use std::f64::consts::{LN_2, PI};
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
+/// Truncates both operands to nonnegative integers for `gcd`/`lcm`, or `None` when either is non-finite or beyond f64's exactly-representable integer range.
+fn integer_operands(a: f64, b: f64) -> Option<(u64, u64)> {
+	// The largest magnitude below which every integer is exactly representable in f64
+	const EXACT_INTEGER_LIMIT: f64 = (1_u64 << f64::MANTISSA_DIGITS) as f64;
+
+	let (a, b) = (a.trunc(), b.trunc());
+	if !a.is_finite() || !b.is_finite() || a.abs() > EXACT_INTEGER_LIMIT || b.abs() > EXACT_INTEGER_LIMIT {
+		return None;
+	}
+	Some(((a as i64).unsigned_abs(), (b as i64).unsigned_abs()))
+}
+
+fn euclidean_gcd(mut x: u64, mut y: u64) -> u64 {
+	while y != 0 {
+		(x, y) = (y, x % y);
+	}
+	x
+}
+
 /// Looks up a built-in math function by name, returning a plain function pointer so dispatch avoids hashing and dynamic allocation.
 pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 	Some(match name {
@@ -332,43 +351,23 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 
 		"gcd" => |values| match values {
 			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
-				if !a.is_finite() || !b.is_finite() {
-					return Some(Value::Number(Number::Real(f64::NAN)));
-				}
-				let mut x = (a.trunc() as i64).unsigned_abs();
-				let mut y = (b.trunc() as i64).unsigned_abs();
-				while y != 0 {
-					let r = x % y;
-					x = y;
-					y = r;
-				}
-				Some(Value::Number(Number::Real(x as f64)))
+				let gcd = integer_operands(*a, *b).map_or(f64::NAN, |(x, y)| euclidean_gcd(x, y) as f64);
+				Some(Value::Number(Number::Real(gcd)))
 			}
 			_ => None,
 		},
 
 		"lcm" => |values| match values {
 			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
-				if !a.is_finite() || !b.is_finite() {
+				let Some((x, y)) = integer_operands(*a, *b) else {
 					return Some(Value::Number(Number::Real(f64::NAN)));
-				}
-				let x = (a.trunc() as i64).unsigned_abs();
-				let y = (b.trunc() as i64).unsigned_abs();
+				};
 				if x == 0 || y == 0 {
 					return Some(Value::Number(Number::Real(0.)));
 				}
 
-				// gcd
-				let mut gx = x;
-				let mut gy = y;
-				while gy != 0 {
-					let r = gx % gy;
-					gx = gy;
-					gy = r;
-				}
-
-				// Multiply in f64 so huge inputs can't overflow the integer range
-				let lcm = (x / gx) as f64 * y as f64;
+				// Multiply in f64 so huge results can't overflow the integer range
+				let lcm = (x / euclidean_gcd(x, y)) as f64 * y as f64;
 				Some(Value::Number(Number::Real(lcm)))
 			}
 			_ => None,
