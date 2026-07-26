@@ -110,15 +110,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn is_eligible_to_be_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let Some(node) = self.document_node(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in is_eligible_to_be_layer");
-			return false;
-		};
-		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed()).count();
-		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed());
-		let output_count = self.number_of_outputs(node_id, network_path);
-
-		!self.hidden_primary_output(node_id, network_path) && output_count == 1 && (input_count <= 2) && parameters_hidden
+		self.query(network_path, "is_eligible_to_be_layer", |view| view.is_eligible_to_be_layer(node_id)).unwrap_or_default()
 	}
 
 	pub fn node_graph_ptz(&self, network_path: &[NodeId]) -> Option<&PTZ> {
