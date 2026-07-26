@@ -25,15 +25,15 @@ fn opacity<T>(
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	#[default(true)]
-	has_opacity: Item<bool>,
+	has_opacity: bool,
 	/// How visible the content should be, including any content clipped to it.
 	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	opacity: Item<Percentage>,
+	opacity: Percentage,
 	/// Whether the *Fill* property is enabled, multiplying the existing fill by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
-	has_fill: Item<bool>,
+	has_fill: bool,
 	/// How visible the content should be, independent of any content clipped to it.
 	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]

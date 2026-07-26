@@ -3,6 +3,8 @@
 use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
+#[cfg(feature = "std")]
+use core_types::list::List;
 use glam::Vec3;
 use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
@@ -14,7 +16,7 @@ use num_traits::float::Float;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 // TODO: Implement the following:
 // Color Balance
@@ -48,12 +50,12 @@ pub enum LuminanceCalculation {
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn luminance<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -73,12 +75,12 @@ fn luminance<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cac
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn gamma_correction<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -95,12 +97,12 @@ fn gamma_correction<T: Adjust<Color> + Clone + Send + Sync + no_std_types::conte
 }
 
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
-fn extract_channel<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -119,12 +121,12 @@ fn extract_channel<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 }
 
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
-fn make_opaque<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -141,12 +143,12 @@ fn make_opaque<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::C
 // TODO: Remove this once GPU shader nodes are able to support the non-classic algorithm
 // TODO: Maybe re-add the "Raster: Adjustment" category to make this user-facing if we care to make this not just for testing
 #[node_macro::node(name("Brightness/Contrast Classic"), category(""), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
-fn brightness_contrast_classic<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn brightness_contrast_classic<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -172,12 +174,12 @@ fn brightness_contrast_classic<T: Adjust<Color> + Clone + Send + Sync + no_std_t
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
 #[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
-fn brightness_contrast<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn brightness_contrast<T: Adjust<Color>>(
 	_ctx: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -253,12 +255,12 @@ fn brightness_contrast<T: Adjust<Color> + Clone + Send + Sync + no_std_types::co
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
 #[node_macro::node(category("Raster: Adjustment"), properties("levels_properties"), shader_node(PerPixelAdjust))]
-fn levels<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -332,12 +334,12 @@ fn levels<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheH
 // Works the same for gamma and linear color
 // TODO: Currently the un-List-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
 #[node_macro::node(name("Black & White"), category(""), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
-fn black_and_white<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -415,12 +417,12 @@ fn black_and_white<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), properties("hue_saturation_properties"), shader_node(PerPixelAdjust))]
-fn hue_saturation<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -447,12 +449,12 @@ fn hue_saturation<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn invert<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -468,12 +470,12 @@ fn invert<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheH
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
 #[node_macro::node(category("Raster: Adjustment"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
-fn threshold<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -514,12 +516,12 @@ fn threshold<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cac
 // When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
 // (Except for some noise probably due to rounding error.)
 #[node_macro::node(category("Raster: Adjustment"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
-fn vibrance<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -716,12 +718,12 @@ pub enum DomainWarpType {
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
 #[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
-fn channel_mixer<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -848,12 +850,12 @@ pub enum SelectiveColorChoice {
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
 #[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
-fn selective_color<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -992,12 +994,12 @@ fn selective_color<T: Adjust<Color> + Clone + Send + Sync + no_std_types::contex
 // https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
-fn posterize<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -1021,12 +1023,12 @@ fn posterize<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::Cac
 // Algorithm based on:
 // https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"), shader_node(PerPixelAdjust))]
-fn exposure<T: Adjust<Color> + Clone + Send + Sync + no_std_types::context::CacheHash + 'static>(
+fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Raster<CPU>,
-		Color,
-		GradientStops,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<Gradient>,
 	)]
 	#[gpu_image]
 	mut input: T,

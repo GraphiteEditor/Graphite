@@ -1,9 +1,11 @@
-use core_types::attribute::Attr;
-use core_types::gpoll::{GraphError, Interrupt};
+use core_types::Context;
+use core_types::list::List;
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
-use core_types::{Color, Ctx, ExtractIndex, InjectIndex, num_traits};
+use core_types::{Color, Ctx, num_traits};
 use glam::{DAffine2, DVec2};
+use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -11,8 +13,7 @@ use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Div, Mul, Rem, Sub};
-use vector_types::GradientStops;
-use vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod as SpreadMethodAttr};
+use vector_types::Gradient;
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -739,8 +740,49 @@ fn logical_not(
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
-fn switch<T>(ctx: impl Ctx + Copy, condition: bool, #[expose] if_true: impl Node<Context<'_>, Output = T>, #[expose] if_false: impl Node<Context<'_>, Output = T>) -> Result<T, Interrupt> {
-	if condition { if_true.eval(ctx) } else { if_false.eval(ctx) }
+async fn switch<T, C: Send + 'n + Clone>(
+	#[implementations(Context)] ctx: C,
+	condition: bool,
+	#[expose]
+	#[implementations(
+		Context -> String,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> DAffine2,
+		Context -> List<Artboard>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+	)]
+	if_true: impl Node<C, Output = T>,
+	#[expose]
+	#[implementations(
+		Context -> String,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> DAffine2,
+		Context -> List<Artboard>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+	)]
+	if_false: impl Node<C, Output = T>,
+) -> T {
+	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }
 
 /// Constructs a bool value which may be set to true or false.
@@ -769,82 +811,85 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Color) -> Color {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: List<Color>) -> List<Color> {
 	color
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> Color {
+fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
 	let red = (red as f32).clamp(0., 1.);
 	let green = (green as f32).clamp(0., 1.);
 	let blue = (blue as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
-	Color::from_gamma_srgb_channels(red, green, blue, alpha)
+	List::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
 }
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> Color {
+fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
 	let hue = (hue as f32) - (hue as f32).floor();
 	let saturation = (saturation as f32).clamp(0., 1.);
 	let value = (value as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	Color::from_hsva(hue, saturation, value, alpha)
+	List::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
 }
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSLA to Color"))]
-fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> Color {
+fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> List<Color> {
 	let hue = (hue as f32) - (hue as f32).floor();
 	let saturation = (saturation as f32).clamp(0., 1.);
 	let lightness = (lightness as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	Color::from_hsla(hue, saturation, lightness, alpha)
+	List::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce no color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
-fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: String) -> Result<IList<Color>, Interrupt> {
-	// An invalid input serves an empty level: no color
-	match (core_types::misc::parse_css_color(&hex_code), ctx.index()) {
-		(Some(color), 0) => Ok(color),
-		_ => Err(GraphError::past_end().into()),
+fn hex_to_color(_: impl Ctx, hex_code: String) -> List<Color> {
+	match core_types::misc::parse_css_color(&hex_code) {
+		Some(color) => List::new_from_element(color),
+		None => List::new(),
 	}
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
+fn gradient_value(_: impl Ctx, _primary: (), gradient: List<Gradient>) -> List<Gradient> {
 	gradient
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Color"))]
-fn gradient_type(_: impl Ctx, gradient: GradientStops, gradient_type: vector_types::GradientType) -> (GradientStops, Attr<GradientTypeAttr>) {
-	(gradient, Attr(gradient_type))
+fn gradient_type(_: impl Ctx, mut gradient: List<Gradient>, gradient_type: vector_types::GradientType) -> List<Gradient> {
+	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientType>(core_types::ATTR_GRADIENT_TYPE) {
+		*value = gradient_type;
+	}
+	gradient
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
-fn spread_method(_: impl Ctx, gradient: GradientStops, spread_method: vector_types::GradientSpreadMethod) -> (GradientStops, Attr<SpreadMethodAttr>) {
-	(gradient, Attr(spread_method))
+fn spread_method(_: impl Ctx, mut gradient: List<Gradient>, spread_method: vector_types::GradientSpreadMethod) -> List<Gradient> {
+	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientSpreadMethod>(core_types::ATTR_SPREAD_METHOD) {
+		*value = spread_method;
+	}
+	gradient
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
-	// An unwired gradient serves an empty level: no color
-	if gradient.is_empty() || ctx.index() != 0 {
-		return Err(GraphError::past_end().into());
-	}
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: List<Gradient>, position: Fraction) -> List<Color> {
+	let Some(gradient) = gradient.element(0) else { return List::new() };
 
 	let position = position.clamp(0., 1.);
-	Ok(gradient.element_ref(0).evaluate(position))
+	let color = gradient.evaluate(position);
+	List::new_from_element(color)
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
@@ -943,348 +988,74 @@ fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core_types::Node;
+	use core_types::generic::FnNode;
 
 	#[test]
 	pub fn dot_product_function() {
 		let vector_a = DVec2::new(1., 2.);
 		let vector_b = DVec2::new(3., 4.);
-		assert_eq!(dot_product(&(), vector_a, vector_b, false), 11.);
+		assert_eq!(dot_product((), vector_a, vector_b, false), 11.);
 	}
 
 	#[test]
 	pub fn length_function() {
 		let vector = DVec2::new(3., 4.);
-		assert_eq!(length(&(), vector), 5.);
+		assert_eq!(length((), vector), 5.);
 	}
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math(&(), 0., "2 + 2".to_string(), 0.);
+		let result = math((), 0., "2 + 2".to_string(), 0.);
 		assert_eq!(result, 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math(&(), 0., "(5 * 3) + (10 / 2)".to_string(), 0.);
+		let result = math((), 0., "(5 * 3) + (10 / 2)".to_string(), 0.);
 		assert_eq!(result, 20.);
 	}
 
 	#[test]
 	fn test_default_expression() {
-		let result = math(&(), 0., "0".to_string(), 0.);
+		let result = math((), 0., "0".to_string(), 0.);
 		assert_eq!(result, 0.);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math(&(), 0., "invalid".to_string(), 0.);
+		let result = math((), 0., "invalid".to_string(), 0.);
 		assert_eq!(result, 0.);
 	}
 
 	#[test]
+	pub fn foo() {
+		let fnn = FnNode::new(|(a, b)| (b, a));
+		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
+	}
+
+	#[test]
 	pub fn add_vectors() {
-		assert_eq!(super::add(&(), DVec2::ONE, DVec2::ONE), DVec2::ONE * 2.);
+		assert_eq!(super::add((), DVec2::ONE, DVec2::ONE), DVec2::ONE * 2.);
 	}
 
 	#[test]
 	pub fn subtract_f64() {
-		assert_eq!(super::subtract(&(), 5_f64, 3_f64), 2.);
+		assert_eq!(super::subtract((), 5_f64, 3_f64), 2.);
 	}
 
 	#[test]
 	pub fn divide_vectors() {
-		assert_eq!(super::divide(&(), DVec2::ONE, 2_f64), DVec2::ONE / 2.);
+		assert_eq!(super::divide((), DVec2::ONE, 2_f64), DVec2::ONE / 2.);
 	}
 
 	#[test]
 	pub fn modulo_positive() {
-		assert_eq!(super::modulo(&(), -5_f64, 2_f64, true), 1_f64);
+		assert_eq!(super::modulo((), -5_f64, 2_f64, true), 1_f64);
 	}
 
 	#[test]
 	pub fn modulo_negative() {
-		assert_eq!(super::modulo(&(), -5_f64, 2_f64, false), -1_f64);
-	}
-}
-
-#[cfg(test)]
-mod graphene_test {
-	use super::*;
-	use core_types::arena::Arena;
-	use core_types::context::{ContextImpl, EvalScope};
-	use core_types::gpoll::{Finality, GPoll};
-	use core_types::node::{BatchStatus, Node};
-	use core_types::record::{Layout, LiftedSource, RecordValue, serve_input};
-	use core_types::registry::{ErasedRecordNode, construct};
-	use core_types::value::record_value_source;
-	use std::mem::MaybeUninit;
-
-	fn scope_fixture(arena: &Arena) -> EvalScope<'_> {
-		EvalScope::new(None, None, None, &[], arena)
-	}
-
-	fn frames_for(layouts: &[&Layout]) -> core_types::record::Frames<'static> {
-		core_types::record::test_frames(layouts.iter().map(|layout| layout.frame_bytes()).sum::<usize>().max(1 << 12))
-	}
-
-	/// Lifts a plain-element test source onto a record input, returned beside its
-	/// element-only layout for the generated node's constructor.
-	fn lifted<T, F>(kernel: F) -> (LiftedSource<T, F>, Layout)
-	where
-		T: Clone + Send + Sync + core_types::StaticTypeSized + 'static,
-		<T as core_types::StaticTypeSized>::Static: Clone + Send + Sync,
-		F: for<'c> Fn(&ContextImpl<'c>) -> GPoll<T>,
-	{
-		let lift = LiftedSource::<T, _>::new(kernel);
-		let layout = Node::<ContextImpl>::layout(&lift).clone();
-		(lift, layout)
-	}
-
-	fn element<T: Copy>(layout: &Layout, value: &RecordValue<'_>) -> T {
-		unsafe { layout.rec(value).element::<T>() }
-	}
-
-	fn out_layout<T: Clone + Send + Sync + core_types::StaticTypeSized>() -> Layout
-	where
-		<T as core_types::StaticTypeSized>::Static: Clone + Send + Sync,
-	{
-		Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[])
-	}
-
-	fn installed<N: Node<ContextImpl<'static>>>(mut node: N, layout: &Layout) -> N {
-		node.set_layout(core_types::record::RecordLayout {
-			frame_bytes: layout.frame_bytes(),
-			plan: Vec::new(),
-			layout: layout.clone(),
-			lane_invariant: u32::MAX,
-		});
-		node
-	}
-
-	#[test]
-	fn generated_add_evaluates_through_the_node_path() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let (a, la) = lifted(|_: &ContextImpl| GPoll::Final(1.0f64));
-		let (b, lb) = lifted(|_: &ContextImpl| GPoll::Final(2.0f64));
-		let out = out_layout::<f64>();
-		let graph = installed(AddNode::<_, _, f64, f64>::new(a, b, &la, &lb), &out);
-		let frames = frames_for(&[&la, &lb, &out]);
-
-		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
-			panic!("expected a final record");
-		};
-		assert_eq!(element::<f64>(&out, &value), 3.0);
-	}
-
-	#[test]
-	fn generated_add_batches_through_the_erased_edge() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let (index, li) = lifted(|input: &ContextImpl| GPoll::Final(core_types::ExtractIndex::<0>::index(input) as f64));
-		let (src, ls) = lifted(|_: &ContextImpl| GPoll::Final(10.0f64));
-		let out = out_layout::<f64>();
-		let node = installed(AddNode::<_, _, f64, f64>::new(index, src, &li, &ls), &out);
-		let frames = frames_for(&[&li, &ls, &out]);
-
-		let erased: Box<ErasedRecordNode> = Box::new(node);
-		// One u64 word per lane at the element-only layout.
-		let mut scratch = [const { MaybeUninit::uninit() }; 4];
-		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch), &frames);
-		let BatchStatus::Filled(batch, finality, _) = status else {
-			panic!("expected filled, got {status:?}");
-		};
-		let mut got = Vec::new();
-		batch.share().for_each(|_, lane| got.push(unsafe { lane.element::<f64>() }));
-		assert_eq!(got, vec![12.0, 13.0, 14.0, 15.0]);
-		assert_eq!(finality, Finality::AllFinal);
-	}
-
-	#[test]
-	fn generated_wire_constructor_resolves_and_wires() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let entries = super::_logical_or_mod::logical_or_entries();
-		let mut wired = construct(&entries[0], vec![record_value_source(true), record_value_source(false)]).unwrap();
-		let layout = out_layout::<bool>();
-		wired.set_layout(core_types::record::RecordLayout {
-			frame_bytes: layout.frame_bytes(),
-			plan: Vec::new(),
-			layout: layout.clone(),
-			lane_invariant: u32::MAX,
-		});
-		let edge = wired.downcast_record::<bool>().unwrap();
-		let frames = frames_for(&[&layout]);
-
-		let GPoll::Final(value) = serve_input(&edge, &ctx, &frames) else {
-			panic!("expected a final record");
-		};
-		assert!(element::<bool>(&layout, &value));
-	}
-
-	#[test]
-	fn ctor_registration_populates_the_node_registry() {
-		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
-		let rows = registry
-			.iter()
-			.find_map(|(id, rows)| id.as_str().ends_with("::AddNode").then_some(rows))
-			.expect("AddNode rows registered at startup");
-		assert_eq!(rows.len(), 6);
-	}
-
-	#[test]
-	fn generic_add_registers_one_entry_per_implementation() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let entries = super::_add_mod::add_entries();
-		assert_eq!(entries.len(), 6);
-		assert_eq!(
-			entries[0].io.inputs,
-			vec![core_types::registry::record_source_type::<f64>(), core_types::registry::record_source_type::<f64>()]
-		);
-		assert_eq!(entries[0].io.return_value, core_types::registry::record_type::<f64>());
-		assert_eq!(
-			entries[3].io.inputs,
-			vec![core_types::registry::record_source_type::<DVec2>(), core_types::registry::record_source_type::<DVec2>()]
-		);
-		assert_eq!(entries[3].io.return_value, core_types::registry::record_type::<DVec2>());
-
-		let mut wired = construct(&entries[0], vec![record_value_source(1.5f64), record_value_source(2.5f64)]).unwrap();
-		let layout = out_layout::<f64>();
-		wired.set_layout(core_types::record::RecordLayout {
-			frame_bytes: layout.frame_bytes(),
-			plan: Vec::new(),
-			layout: layout.clone(),
-			lane_invariant: u32::MAX,
-		});
-		let edge = wired.downcast_record::<f64>().unwrap();
-		let frames = frames_for(&[&layout]);
-
-		let GPoll::Final(value) = serve_input(&edge, &ctx, &frames) else {
-			panic!("expected a final record");
-		};
-		assert_eq!(element::<f64>(&layout, &value), 4.0);
-	}
-
-	#[test]
-	fn switch_registers_one_erased_row() {
-		// Routing forwards the whole record, so the branch types need no rows.
-		let entries = super::_switch_mod::switch_entries();
-		assert_eq!(entries.len(), 1);
-		assert_eq!(entries[0].io.inputs[0], core_types::registry::record_source_type::<bool>());
-		assert!(matches!(&entries[0].io.return_value, core_types::Type::Record(element) if matches!(**element, core_types::Type::Generic(_))));
-		assert_eq!(entries[0].io.inputs.len(), 3);
-	}
-
-	#[test]
-	fn converted_switch_evaluates_only_the_taken_branch() {
-		use std::sync::Arc;
-		use std::sync::atomic::{AtomicU32, Ordering};
-
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let taken = Arc::new(AtomicU32::new(0));
-		let untaken = Arc::new(AtomicU32::new(0));
-		let (cond, lc) = lifted(|_: &ContextImpl| GPoll::Final(true));
-		let (if_true, lt) = lifted({
-			let runs = taken.clone();
-			move |_: &ContextImpl| {
-				runs.fetch_add(1, Ordering::Relaxed);
-				GPoll::Final(1.0)
-			}
-		});
-		let (if_false, lf) = lifted({
-			let runs = untaken.clone();
-			move |_: &ContextImpl| {
-				runs.fetch_add(1, Ordering::Relaxed);
-				GPoll::Final(2.0)
-			}
-		});
-		let union = core_types::record::Layout::union(&[&lt, &lf]);
-		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
-		let out = Node::<ContextImpl>::layout(&graph).clone();
-		let frames = frames_for(&[&lc, &lt, &lf, &out]);
-
-		let GPoll::Final(value) = serve_input(&graph, &ctx, &frames) else {
-			panic!("expected a final record");
-		};
-		assert_eq!(element::<f64>(&out, &value), 1.0);
-		assert_eq!(taken.load(Ordering::Relaxed), 1);
-		assert_eq!(untaken.load(Ordering::Relaxed), 0);
-	}
-
-	#[test]
-	fn converted_switch_passes_branch_status_through() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let (c1, lc1) = lifted(|_: &ContextImpl| GPoll::Final(true));
-		let (p1, lp1) = lifted(|_: &ContextImpl| GPoll::<f64>::Pending);
-		let (pa1, lpa1) = lifted(|_: &ContextImpl| GPoll::Partial(7.0f64));
-		let pending = SwitchNode::new(c1, p1, pa1, &core_types::record::Layout::union(&[&lp1, &lpa1]), &lc1);
-
-		let (c2, lc2) = lifted(|_: &ContextImpl| GPoll::Final(false));
-		let (p2, lp2) = lifted(|_: &ContextImpl| GPoll::<f64>::Pending);
-		let (pa2, lpa2) = lifted(|_: &ContextImpl| GPoll::Partial(7.0f64));
-		let partial = SwitchNode::new(c2, p2, pa2, &core_types::record::Layout::union(&[&lp2, &lpa2]), &lc2);
-		let out = Node::<ContextImpl>::layout(&partial).clone();
-		let frames = frames_for(&[&lc1, &lp1, &lpa1, &lc2, &lp2, &lpa2, &out]);
-
-		assert!(matches!(serve_input(&pending, &ctx, &frames), GPoll::Pending));
-		let GPoll::Partial(value) = serve_input(&partial, &ctx, &frames) else {
-			panic!("expected a partial record");
-		};
-		assert_eq!(element::<f64>(&out, &value), 7.0);
-	}
-
-	#[test]
-	fn converted_switch_merges_condition_status_into_the_branch_result() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let (cond, lc) = lifted(|_: &ContextImpl| GPoll::Partial(true));
-		let (if_true, lt) = lifted(|_: &ContextImpl| GPoll::Final(1.0f64));
-		let (if_false, lf) = lifted(|_: &ContextImpl| GPoll::Final(2.0f64));
-		let union = core_types::record::Layout::union(&[&lt, &lf]);
-		let graph = SwitchNode::new(cond, if_true, if_false, &union, &lc);
-		let out = Node::<ContextImpl>::layout(&graph).clone();
-		let frames = frames_for(&[&lc, &lt, &lf, &out]);
-
-		let GPoll::Partial(value) = serve_input(&graph, &ctx, &frames) else {
-			panic!("expected a partial record");
-		};
-		assert_eq!(element::<f64>(&out, &value), 1.0);
-	}
-
-	#[test]
-	fn generated_eval_computes_on_stand_in_and_traces_fallback() {
-		let arena = Arena::new(64).unwrap();
-		let scope = scope_fixture(&arena);
-		let ctx = ContextImpl::root(&scope);
-
-		let (fallback, lfb) = lifted(|_: &ContextImpl| GPoll::fallback(0.0f64, "upstream failed"));
-		let (src, ls) = lifted(|_: &ContextImpl| GPoll::Final(5.0f64));
-		let out = out_layout::<f64>();
-		let graph = installed(AddNode::<_, _, f64, f64>::new(fallback, src, &lfb, &ls), &out);
-		let frames = frames_for(&[&lfb, &ls, &out]);
-
-		let GPoll::Fallback(boxed) = serve_input(&graph, &ctx, &frames) else {
-			panic!("fallback must propagate with the computed stand-in");
-		};
-		assert_eq!(element::<f64>(&out, &boxed.0), 5.0);
-		assert!(boxed.1.kind == "upstream failed");
-		assert_eq!(boxed.1.trace, vec![0]);
+		assert_eq!(super::modulo((), -5_f64, 2_f64, false), -1_f64);
 	}
 }

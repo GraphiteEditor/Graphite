@@ -1,42 +1,45 @@
-use core_types::attribute::{Attr, Background, Clip, Dimensions, Location};
-use core_types::extent::{ExtentIn, LevelIn, ValueIn};
-use core_types::gpoll::{Extent, GPoll, Interrupt};
+use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
-use core_types::{Color, Ctx, DeriveCtx, ModifyFootprint};
-use glam::DVec2;
-use graphic_types::Artboard;
-use graphic_types::graphic::Graphic;
+use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use glam::{DAffine2, DVec2};
+use graphic_types::graphic::{Graphic, IntoGraphicList};
+use graphic_types::{Artboard, Vector};
+use raster_types::{CPU, GPU, Raster};
+use vector_types::Gradient;
 
-/// Evaluates the content within a footprint translated by `offset`, so the
-/// content culls and resolves against its position inside the artboard.
-#[node_macro::node(category(""), extent(translate_footprint_extent))]
-pub fn translate_footprint<T>(ctx: impl Ctx + DeriveCtx + ModifyFootprint, content: impl Node<Context<'_>, Output = T>, offset: DVec2) -> Result<T, Interrupt> {
-	let translated = ctx.modify_footprint(|footprint| footprint.translate(offset));
-	content.eval(&translated.ctx())
-}
-
-fn translate_footprint_extent(content: ExtentIn<'_>, _offset: ValueIn<'_, DVec2>, level: LevelIn) -> GPoll<Extent> {
-	content.at(level)
-}
-
-/// Constructs an artboard element with the given content and metadata stored as attributes.
+/// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
-pub fn create_artboard<'e>(
-	_: impl Ctx,
+pub async fn create_artboard<T: IntoGraphicList>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// Graphics to include within the artboard.
-	content: IList<Graphic<'e>>,
+	#[implementations(
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<String>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+		Context -> DAffine2,
+	)]
+	content: impl Node<Context<'static>, Output = T>,
 	/// Coordinate of the top-left corner of the artboard within the document.
 	location: DVec2,
 	/// Width and height of the artboard within the document.
 	dimensions: DVec2,
 	/// Color of the artboard background.
-	background: IList<Color>,
+	background: List<Color>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: bool,
-) -> (Artboard<'e>, Attr<Location>, Attr<Dimensions>, Attr<Background>, Attr<Clip>) {
-	let item = content.as_group_item();
-	let content = core_types::list::List::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: item }));
+) -> List<Artboard> {
+	let footprint = ctx.try_footprint().copied();
+	let mut new_ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		footprint.translate(location);
+		new_ctx = new_ctx.with_footprint(footprint);
+	}
+	let content = content.eval(new_ctx.into_context()).await.into_graphic_list();
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
@@ -44,11 +47,14 @@ pub fn create_artboard<'e>(
 	let normalized_location = location.min(location + dimensions);
 	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
-	let background = match background.len() {
-		0 => Color::WHITE,
-		_ => background.get(0),
-	};
+	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	(Artboard::new(content), Attr(normalized_location), Attr(normalized_dimensions), Attr(background), Attr(clip))
+	List::new_from_item(
+		Item::new_from_element(Artboard::new(content))
+			.with_attribute(ATTR_LOCATION, normalized_location)
+			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
+			.with_attribute(ATTR_BACKGROUND, background)
+			.with_attribute(ATTR_CLIP, clip),
+	)
 }

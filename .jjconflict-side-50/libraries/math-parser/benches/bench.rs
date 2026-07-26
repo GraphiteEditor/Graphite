@@ -9,7 +9,7 @@ macro_rules! generate_benchmarks {
 			$(
 				c.bench_function(concat!("parse ", $input), |b| {
 					b.iter(|| {
-						let _ = black_box(ast::Node::try_parse_from_str($input)).unwrap();
+						let _ = black_box(ast::Node::try_parse_from_str($input));
 					});
 				});
 			)*
@@ -17,7 +17,10 @@ macro_rules! generate_benchmarks {
 
 		fn evaluation_bench(c: &mut Criterion) {
 			$(
-				let expr = ast::Node::try_parse_from_str($input).unwrap().0;
+				let expr = match ast::Node::try_parse_from_str($input) {
+					Ok(expr) => expr,
+					Err(err) => panic!("failed to parse `{}`: {err}", $input),
+				};
 				let context = EvalContext::default();
 
 				c.bench_function(concat!("eval ", $input), |b| {

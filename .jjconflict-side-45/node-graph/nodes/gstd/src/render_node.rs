@@ -8,7 +8,7 @@ use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
-use vector_types::GradientStops;
+use vector_types::Gradient;
 use wgpu_executor::{RenderContext, WgpuExecutor};
 
 #[derive(Clone, dyn_any::DynAny)]
@@ -31,7 +31,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> List<Vector>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> List<Gradient>,
 		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,

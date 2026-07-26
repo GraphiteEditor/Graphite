@@ -6,13 +6,11 @@ use canvas_utils::{Canvas, CanvasHandle};
 use core_types::attribute::{Attr, OwnedAttr, Transform};
 use core_types::color::SRGBA8;
 use core_types::gpoll::GPoll;
-use core_types::list::Item;
 #[cfg(target_family = "wasm")]
 use core_types::list::List;
 
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
-use core_types::ops::Convert;
 use core_types::runtime::SourceFuture;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
@@ -33,11 +31,12 @@ use graphic_types::Vector;
 #[cfg(target_family = "wasm")]
 use graphic_types::markers::EditorMergedLayers;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{CPU, Raster};
 #[cfg(target_family = "wasm")]
 use graphic_types::vector_types::gradient::Gradient;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use std::sync::Arc;
 
 fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -60,14 +59,11 @@ async fn get_request(
 	_primary: (),
 	/// The web address to send the GET request to.
 	#[name("URL")]
-	url: Item<String>,
+	url: String,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
-	discard_result: Item<bool>,
-	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
-) -> Item<String> {
-	let (url, headers) = (url.into_element(), headers.into_element());
-	let discard_result = *discard_result.element();
-
+	discard_result: bool,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
+) -> String {
 	let header_map = parse_headers(&headers);
 	let request = reqwest::Client::new().get(url).headers(header_map);
 
@@ -80,13 +76,13 @@ async fn get_request(
 		tokio::spawn(async move {
 			let _ = request.send().await;
 		});
-		return Item::default();
+		return String::new();
 	}
 
 	let Ok(response) = request.send().await else {
-		return Item::default();
+		return String::new();
 	};
-	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+	response.text().await.ok().unwrap_or_default()
 }
 
 /// Sends an HTTP POST request to a specified URL with the provided binary data and optionally waits for the response (unless discarded) which is output as a string.
@@ -96,19 +92,16 @@ async fn post_request(
 	_primary: (),
 	/// The web address to send the POST request to.
 	#[name("URL")]
-	url: Item<String>,
+	url: String,
 	/// The binary data to include in the body of the POST request.
-	body: Item<Resource>,
+	body: Arc<[u8]>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
-	discard_result: Item<bool>,
-	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
-) -> Item<String> {
-	let (url, headers) = (url.into_element(), headers.into_element());
-	let discard_result = *discard_result.element();
-
+	discard_result: bool,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
+) -> String {
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let body_bytes: Vec<u8> = body.element().as_ref().to_vec();
+	let body_bytes: Vec<u8> = body.to_vec();
 	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
@@ -120,26 +113,29 @@ async fn post_request(
 		tokio::spawn(async move {
 			let _ = request.send().await;
 		});
-		return Item::default();
+		return String::new();
 	}
 
 	let Ok(response) = request.send().await else {
-		return Item::default();
+		return String::new();
 	};
-	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+	response.text().await.ok().unwrap_or_default()
 }
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
-	Item::new_from_element(Resource::new(string.into_element().into_bytes()))
+fn string_to_bytes(_: impl Ctx, string: String) -> Arc<[u8]> {
+	Arc::from(string.into_bytes())
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
+fn image_to_bytes(_: impl Ctx, image: IList<Raster<CPU>>) -> Arc<[u8]> {
+	if image.is_empty() {
+		return Arc::from(Vec::new());
+	}
 	let bytes: Vec<u8> = image
-		.element()
+		.element_ref(0)
 		.data
 		.iter()
 		.flat_map(|color| {
@@ -147,15 +143,13 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 			[red, green, blue, alpha]
 		})
 		.collect();
-
-	Item::new_from_element(Resource::new(bytes))
+	Arc::from(bytes)
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
-	let url = url.into_element();
-	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
+async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Arc<[u8]> {
+	let placeholder = || -> Arc<[u8]> { Arc::from(Vec::<u8>::new()) };
 
 	let response = match reqwest::Client::new().get(&url).send().await {
 		Ok(response) => response,
@@ -166,7 +160,7 @@ async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<Strin
 	};
 
 	match response.bytes().await {
-		Ok(bytes) => Item::new_from_element(Resource::new(bytes)),
+		Ok(bytes) => Arc::from(bytes.to_vec()),
 		Err(error) => {
 			log::error!("Failed to read HTTP response for `{url}`: {error}");
 			placeholder()
@@ -178,10 +172,10 @@ async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<Strin
 ///
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
-	let data = data.into_element();
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Raster<CPU> {
+	// A zero-size raster renders as nothing, matching the legacy empty list
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return Item::default();
+		return Raster::new_cpu(Image::default());
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -198,13 +192,13 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 		..Default::default()
 	};
 
-	Item::new_from_element(Raster::new_cpu(image))
+	Raster::new_cpu(image)
 }
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
-	Item::new_from_element(CanvasHandle::new())
+fn create_canvas(_: impl Ctx) -> CanvasHandle {
+	CanvasHandle::new()
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
@@ -220,18 +214,14 @@ async fn rasterize<T: WasmNotSend + Clone>(
 		List<Color>,
 		List<Gradient>,
 	)]
-	data: List<T>,
-	footprint: Item<Footprint>,
-	canvas: Item<CanvasHandle>,
+	mut data: List<T>,
+	footprint: Footprint,
+	mut canvas: CanvasHandle,
 ) -> (Raster<CPU>, Attr<Transform>, OwnedAttr<EditorMergedLayers>)
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
-	let mut data = data;
-	let mut canvas = canvas.into_element();
 	use glam::{DAffine2, DVec2};
-
-	let footprint = footprint.into_element();
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
@@ -284,48 +274,37 @@ where
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Arc<PlatformEditorApi>> {
+pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Arc<PlatformEditorApi>) -> Arc<PlatformEditorApi> {
 	editor_api
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(
-	_: impl Ctx,
-	/// The scope-provided editor API giving access to the platform's resource storage.
-	#[scope(editor_api::IDENTIFIER)]
-	editor_api: Item<&'a PlatformEditorApi>,
-	/// The content hash identifying which stored resource to load.
-	hash: Item<ResourceHash>,
-) -> Item<Resource> {
-	let hash = hash.into_element();
-	let application_io = editor_api.into_element().application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	let resource = application_io.load_resource(hash).await.unwrap_or_else(|| panic!("Resource {hash} not found"));
-	Item::new_from_element(resource)
+pub fn resource(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> SourceFuture<GPoll<Resource>> {
+	let application_io = editor_api.application_io.clone();
+	Box::pin(async move {
+		let Some(application_io) = application_io else {
+			return GPoll::error("ApplicationIo not available");
+		};
+		match application_io.load_resource(hash).await {
+			Some(resource) => GPoll::Final(resource),
+			None => GPoll::error("resource not found"),
+		}
+	})
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
-	let executor = editor_api
-		.into_element()
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not available")
-		.gpu_executor()
-		.expect("GPU executor not available");
-	Item::new_from_element(executor)
+pub fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> ::wgpu_executor::WgpuExecutorHandle {
+	::wgpu_executor::WgpuExecutorHandle(
+		editor_api
+			.application_io
+			.as_ref()
+			.expect("ApplicationIo not not available")
+			.gpu_executor_arc()
+			.expect("GPU executor not available"),
+	)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
-	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor());
-	Item::new_from_element(executor)
-}
-
-/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Debug"), memoize)]
-pub async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
-	let executor = executor.into_element();
-	let (raster, attributes) = content.into_parts();
-
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor).await, attributes)
+pub fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> Option<::wgpu_executor::WgpuExecutorHandle> {
+	editor_api.application_io.as_ref()?.gpu_executor_arc().map(::wgpu_executor::WgpuExecutorHandle)
 }

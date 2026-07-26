@@ -4,19 +4,18 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, concrete};
+use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
-use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, GPU, Image, Raster};
+use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientSpreadMethod, GradientType, PointId, SegmentId, VectorModificationType};
-use graphene_std::{Color, Graphic};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -101,21 +100,21 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		delete_children: false,
 	});
 
-	// Add a Flatten Path node after the merge
-	let flatten_node_id = NodeId::new();
-	let flatten_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::flatten_path::IDENTIFIER)
-		.expect("Failed to create flatten node")
+	// Add a Combine Paths node after the merge
+	let combine_paths_node_id = NodeId::new();
+	let combine_paths_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::combine_paths::IDENTIFIER)
+		.expect("Failed to create combine paths node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
-		node_id: flatten_node_id,
-		node_template: Box::new(flatten_node),
+		node_id: combine_paths_node_id,
+		node_template: Box::new(combine_paths_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
-		node_id: flatten_node_id,
+		node_id: combine_paths_node_id,
 		parent: first_layer,
 	});
 
-	// Add a path node after the flatten node
+	// Add a path node after the combine paths node
 	let path_node_id = NodeId::new();
 	let path_node = document_node_definitions::resolve_network_node_type("Path")
 		.expect("Failed to create path node")
@@ -275,14 +274,14 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 pub fn get_fill_node_id_with_direct_fill_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	matches!(fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?, NodeInput::Value { .. }).then_some(fill_node_id)
+	matches!(fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?, NodeInput::Value { .. }).then_some(fill_node_id)
 }
 
 /// Determine the input connector where the gradient chain enters the layer.
 /// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
 pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
 	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
-		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)
+		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX)
 	} else {
 		InputConnector::node(layer.to_node(), 1)
 	}
@@ -303,7 +302,7 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)? else {
+	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)? else {
 		return None;
 	};
 	Some(*node_id)
@@ -317,7 +316,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			.document_network()
 			.nodes
 			.get(&fill_node_id)
-			.and_then(|node| node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX))
+			.and_then(|node| node.inputs.get(graphene_std::vector::fill::FillInput::INDEX))
 			.and_then(|input| input.as_value())
 			.and_then(|value| if let TaggedValue::Gradient(gradient) = value { Some(gradient.clone()) } else { None });
 	}
@@ -363,7 +362,7 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+	let TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(*color)
@@ -638,7 +637,7 @@ pub struct FillNodeGradient {
 pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<FillNodeGradient> {
 	use graphene_std::vector::fill;
 
-	let TaggedValue::Gradient(stops) = fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+	let TaggedValue::Gradient(stops) = fill_node.inputs.get(fill::FillInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
@@ -667,7 +666,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 }
 /// Returns the stroke color from a layer's upstream Stroke node.
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
-	let color_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
+	let color_index = graphene_std::vector::stroke::PaintInput::INDEX;
 	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), color_index)?;
 	match tagged {
 		TaggedValue::Color(color) => Some(Some(*color)),
@@ -693,7 +692,7 @@ pub struct SelectedStrokeState {
 }
 
 /// Reads the fill state across all selected non-artboard layers, including whether their enabled states or colors differ.
-/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is [`FillChoice::None`].
+/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is the no-paint choice.
 /// Unticked means there is no Fill node. Returns `None` only when no layer is selected.
 pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
 	let selected_nodes = document.network_interface.selected_nodes();
@@ -705,7 +704,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 		let fill_choice = (|| {
 			let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-			match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
+			match fill_node.inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? {
 				TaggedValue::Color(color) => Some(FillChoice::Solid(*color)),
 				TaggedValue::Gradient(stops) => Some(FillChoice::Gradient(stops.clone())),
 				value if value.is_no_paint() => Some(FillChoice::None),
@@ -832,7 +831,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			let input_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
+			let input_index = graphene_std::vector::stroke::PaintInput::INDEX;
 			let value = color.map_or_else(TaggedValue::no_paint, TaggedValue::Color);
 			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
 		} else {
@@ -984,6 +983,6 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
 
-		layer_input_type.compiled_nested_type() == Some(&concrete!(List<Raster<CPU>>)) || layer_input_type.compiled_nested_type() == Some(&concrete!(List<Raster<GPU>>))
+		matches!(layer_input_type.compiled_element_name().as_deref(), Some("Raster<CPU>" | "Raster<GPU>"))
 	}
 }

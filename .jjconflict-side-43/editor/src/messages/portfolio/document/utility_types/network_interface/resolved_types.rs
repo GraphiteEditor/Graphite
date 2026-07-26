@@ -4,7 +4,11 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
+use graphene_std::list::List;
+use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::Vector;
+use graphene_std::{Artboard, Graphic};
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -52,26 +56,26 @@ impl TypeSource {
 			return FrontendGraphDataType::Invalid;
 		};
 		match self.compiled_nested_type() {
-			Some(nested_type) => FrontendGraphDataType::from_type(nested_type),
+			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
+				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => {
+					FrontendGraphDataType::Number
+				}
+				TaggedValue::Color(_) => FrontendGraphDataType::Color,
+				TaggedValue::LegacyGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
+				TaggedValue::String(_) => FrontendGraphDataType::Typography,
+				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
+				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Graphic>>()) => FrontendGraphDataType::Graphic,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Artboard>>()) => FrontendGraphDataType::Artboard,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Raster<CPU>>>()) => FrontendGraphDataType::Raster,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<Vector>>()) => FrontendGraphDataType::Vector,
+					n if n == graphene_std::core_types::normalize_type_name(std::any::type_name::<List<String>>()) => FrontendGraphDataType::Typography,
+					_ => FrontendGraphDataType::General,
+				},
+				_ => FrontendGraphDataType::General,
+			},
 			None => FrontendGraphDataType::General,
 		}
-	}
-
-	/// Whether the compiled type is a rank-1 `List<T>`, as opposed to a rank-0 `Item<T>` or a bare value.
-	/// A bundled cell carrying a whole list displays as the list it carries.
-	pub fn is_list(&self) -> bool {
-		self.compiled_nested_type().is_some_and(|ty| matches!(ty, Type::List(_)) || ty.bundle_element_name().is_some())
-	}
-
-	/// The element type's identifier name with any rank-0 `Item` or rank-1 `List` wrapper peeled, so semantic type checks can be rank-agnostic.
-	pub fn compiled_element_name(&self) -> Option<String> {
-		let nested_type = self.compiled_nested_type()?;
-		// A rank-0 `Item` or rank-1 `List` peels to its element; a bare value reports itself
-		let element = match nested_type {
-			Type::Item(element) | Type::List(element) => element.as_ref(),
-			other => other,
-		};
-		Some(element.identifier_name())
 	}
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
@@ -111,7 +115,7 @@ impl TypeSource {
 }
 
 impl NodeNetworkInterface {
-	fn input_has_error(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+	fn input_has_error(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(implementation) = self.implementation(node_id, network_path) else {
@@ -121,9 +125,9 @@ impl NodeNetworkInterface {
 				let node_path = [network_path, &[*node_id]].concat();
 				match implementation {
 					DocumentNodeImplementation::Network(_) => {
-						let outward_wires = self.with_outward_wires(&node_path, |map| map.get(&OutputConnector::Import(*input_index)).cloned()).flatten();
-						let Some(outward_wires) = outward_wires else { return false };
-						outward_wires.iter().any(|connector| match connector {
+						let Some(map) = self.outward_wires(&node_path) else { return false };
+						let Some(outward_wires) = map.get(&OutputConnector::Import(*input_index)) else { return false };
+						outward_wires.clone().iter().any(|connector| match connector {
 							InputConnector::Node { node_id, input_index } => self.input_has_error(&InputConnector::node(*node_id, *input_index), &node_path),
 							InputConnector::Export(_) => false,
 						})
@@ -143,7 +147,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn input_type_not_invalid(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
+	pub fn input_type_not_invalid(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
 		let Some(input) = self.input_from_connector(input_connector, network_path) else {
 			return TypeSource::Error("Could not get input from connector");
 		};
@@ -171,7 +175,7 @@ impl NodeNetworkInterface {
 
 	/// Get the [`TypeSource`] for any InputConnector.
 	/// If the input is not compiled, then an Unknown or default from the definition is returned.
-	pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
+	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
 		// First check if there is an error with this node or any protonodes it is connected to
 		if self.input_has_error(input_connector, network_path) {
 			return TypeSource::Invalid;
@@ -180,7 +184,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Gets the default tagged value for an input. If its not compiled, then it tries to get a valid type. If there are no valid types, then it picks a random implementation.
-	pub fn tagged_value_from_input(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
+	pub fn tagged_value_from_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
 		let guaranteed_type = match self.input_type(input_connector, network_path) {
 			TypeSource::Compiled(compiled) => compiled,
 			TypeSource::TaggedValue(value) => value,
@@ -202,24 +206,11 @@ impl NodeNetworkInterface {
 				concrete!(())
 			}
 		};
-
-		// A List-typed default drops to its Item counterpart (when that has a default value and the connector accepts rank 0),
-		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0
-		if let Some(element) = guaranteed_type.nested_type().list_element()
-			&& let Some(item_type) = self
-				.potential_valid_input_types(input_connector, network_path)
-				.into_iter()
-				.find(|ty| matches!(ty.nested_type(), Type::Item(item_element) if item_element.as_ref() == element))
-			&& let Some(item_default) = TaggedValue::from_type(&item_type)
-		{
-			return item_default;
-		}
-
 		TaggedValue::from_type_or_none(&guaranteed_type)
 	}
 
 	/// A list of all valid input types for this specific node.
-	pub fn potential_valid_input_types(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
+	pub fn potential_valid_input_types(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		let InputConnector::Node { node_id, input_index } = input_connector else {
 			// An export can have any type connected to it
 			return vec![graph_craft::generic!(T)];
@@ -231,15 +222,17 @@ impl NodeNetworkInterface {
 		match implementation {
 			DocumentNodeImplementation::Network(_) => {
 				let nested_path = [network_path, &[*node_id]].concat();
-				let inputs_from_import = self
-					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
-					.flatten();
-				let Some(inputs_from_import) = inputs_from_import else {
+				let Some(outward_wires) = self.outward_wires(&nested_path) else {
+					log::error!("Could not get outward wires in potential_valid_input_types");
+					return Vec::new();
+				};
+				let Some(inputs_from_import) = outward_wires.get(&OutputConnector::Import(*input_index)) else {
 					log::error!("Could not get inputs from import in potential_valid_input_types");
 					return Vec::new();
 				};
 
 				let intersection: HashSet<Type> = inputs_from_import
+					.clone()
 					.iter()
 					.map(|input_connector| self.potential_valid_input_types(input_connector, &nested_path).into_iter().collect::<HashSet<_>>())
 					.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
@@ -284,7 +277,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Performs a downstream traversal to ensure input type will work in the full context of the graph.
-	pub fn complete_valid_input_types(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
+	pub fn complete_valid_input_types(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(implementation) = self.implementation(node_id, network_path) else {
@@ -339,22 +332,15 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
+	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
-				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
-				if *output_index == 0 && !self.is_visible(node_id, network_path) {
-					return self.input_type(&InputConnector::node(*node_id, 0), network_path);
-				}
-
 				// First try iterating upstream to the first protonode and try get its compiled type
 				let Some(implementation) = self.implementation(node_id, network_path) else {
 					return TypeSource::Error("Could not get implementation");
 				};
 				match implementation {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
-					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
-					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => self.input_type(&InputConnector::node(*node_id, 0), network_path),
 					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
 						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
 						None => TypeSource::Unknown,
@@ -376,14 +362,18 @@ impl NodeNetworkInterface {
 	}
 
 	/// The valid output types are all types that are valid for each downstream connection.
-	fn valid_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
-		let inputs_from_import = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()).flatten();
-		let Some(inputs_from_import) = inputs_from_import else {
+	fn valid_output_types(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
+		let Some(outward_wires) = self.outward_wires(network_path) else {
+			log::error!("Could not get outward wires in valid_output_types");
+			return Vec::new();
+		};
+		let Some(inputs_from_import) = outward_wires.get(output_connector) else {
 			log::error!("Could not get inputs from import in valid_output_types");
 			return Vec::new();
 		};
 
 		let intersection = inputs_from_import
+			.clone()
 			.iter()
 			.map(|input_connector| self.potential_valid_input_types(input_connector, network_path).into_iter().collect::<HashSet<_>>())
 			.fold(None, |acc: Option<HashSet<Type>>, set| match acc {

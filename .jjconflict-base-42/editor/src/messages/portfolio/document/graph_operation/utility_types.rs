@@ -1,14 +1,14 @@
 use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, list};
+use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
@@ -58,6 +58,72 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(document)
 	}
 
+	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node InputConnector and pre node OutputConnector
+	/// Non layer nodes directly upstream of a layer are treated as part of that layer. See insert_index == 2 in the diagram
+	///       -----> Post node
+	///      |      if insert_index == 0, return (Post node, Some(Layer1))
+	/// -> Layer1
+	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
+	/// -> Layer2
+	///      ↑
+	/// -> NonLayerNode
+	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
+	/// -> Layer3
+	///             if insert_index == 3, return (Layer3, None)
+	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
+		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
+			InputConnector::Export(0)
+		} else {
+			InputConnector::node(parent.to_node(), 1)
+		};
+		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
+		let mut current_index = 0;
+
+		// Set the post node to the layer node at insert_index
+		loop {
+			if current_index == insert_index {
+				break;
+			}
+			let next_node_in_stack_id = network_interface
+				.input_from_connector(&post_node_input_connector, &[])
+				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
+
+			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
+				// Only increment index for layer nodes
+				if network_interface.is_layer(next_node_in_stack_id, &[]) {
+					current_index += 1;
+				}
+				// Input as a sibling to the Layer node above
+				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
+			} else {
+				log::error!("Error getting post node: insert_index out of bounds");
+				break;
+			};
+		}
+
+		let layer_input_connector = post_node_input_connector;
+
+		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
+		loop {
+			let pre_node_output_connector = network_interface.upstream_output_connector(&post_node_input_connector, &[]);
+
+			match pre_node_output_connector {
+				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
+					// Update post_node_input_connector for the next iteration
+					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
+					let primary_is_exposed = network_interface.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
+					if !primary_is_exposed {
+						return layer_input_connector;
+					}
+				}
+				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
+			}
+		}
+
+		post_node_input_connector
+	}
+
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
 	pub fn create_layer(&mut self, new_id: NodeId) -> LayerNodeIdentifier {
 		let new_merge_node = resolve_network_node_type("Merge").expect("Merge node").default_node_template();
@@ -68,8 +134,8 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network.
 	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: DVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_network_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::type_default(list!(Artboard), true)),
-			Some(NodeInput::type_default(list!(Graphic), true)),
+			Some(NodeInput::type_default(descriptor!(List<Artboard>), true)),
+			Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(background), false)),
@@ -83,7 +149,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let boolean = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)
 			.expect("Boolean node does not exist")
 			.node_template_input_override([
-				Some(NodeInput::type_default(list!(Graphic), true)),
+				Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 				Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 			]);
 
@@ -95,7 +161,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
 		let blend = resolve_network_node_type("Blend")
 			.expect("Blend node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
 
 		let blend_id = NodeId::new();
 		self.network_interface.insert_node(blend_id, blend, &[]);
@@ -107,7 +173,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		let morph = resolve_proto_node_type(graphene_std::vector::morph::IDENTIFIER)
 			.expect("Morph node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
 
 		let morph_id = NodeId::new();
 		self.network_interface.insert_node(morph_id, morph, &[]);
@@ -367,17 +433,17 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 
-		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
+		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
-			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
-				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
-					log::error!("Combine Paths does not exist in ModifyInputsContext::existing_node_id");
+			if layer_input_type.compiled_nested_type() == Some(&concrete!(List<Graphic>)) {
+				let Some(flatten_path_definition) = resolve_proto_node_type(graphene_std::vector_nodes::flatten_path::IDENTIFIER) else {
+					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
 				};
 				let node_id = NodeId::new();
-				self.network_interface.insert_node(node_id, combine_paths_definition.default_node_template(), &[]);
+				self.network_interface.insert_node(node_id, flatten_path_definition.default_node_template(), &[]);
 				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
 			}
 		}
@@ -391,7 +457,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX);
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX);
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
 
 		// The backup remembers the last solid color, so the red-slash "none" choice leaves it untouched
@@ -412,7 +478,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::INDEX),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
 			NodeInput::value(TaggedValue::Gradient(gradient), false),
 			true,
 		);
@@ -427,13 +493,8 @@ impl<'a> ModifyInputsContext<'a> {
 			.is_some_and(|input| input.as_value().is_some());
 		if transform_is_value {
 			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX),
-				NodeInput::value(TaggedValue::Bool(true), false),
-				true,
-			);
-			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
-				NodeInput::value(TaggedValue::DAffine2(transform), false),
+				NodeInput::value(TaggedValue::OptionalDAffine2(Some(transform)), false),
 				true,
 			);
 		}
@@ -658,7 +719,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
@@ -672,8 +733,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths.into()), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::<graphene_std::list::List<f64>>::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
