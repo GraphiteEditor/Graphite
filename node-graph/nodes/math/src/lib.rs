@@ -48,10 +48,10 @@ fn math<T: num_traits::float::Float>(
 	#[default(1.)]
 	operand_b: T,
 ) -> T {
-	let (node, _unit) = match ast::Node::try_parse_from_str(&expression) {
+	let node = match ast::Node::try_parse_from_str(&expression) {
 		Ok(expr) => expr,
 		Err(e) => {
-			warn!("Invalid expression: `{expression}`\n{e:?}");
+			warn!("Invalid expression: `{expression}`\n{e}");
 			return T::from(0.).unwrap();
 		}
 	};
