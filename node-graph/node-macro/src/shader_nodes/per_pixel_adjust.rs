@@ -146,7 +146,7 @@ impl PerPixelAdjustCodegen<'_> {
 				ParamType::Uniform => quote!(uniform.#ident),
 			})
 			.collect::<Vec<_>>();
-		let context = quote!(());
+		let context = quote!(&());
 
 		let entry_point_mod = &self.entry_point_mod;
 		let entry_point_name = &self.entry_point_name_ident;

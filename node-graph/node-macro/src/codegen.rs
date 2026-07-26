@@ -1,28 +1,21 @@
 use crate::parsing::*;
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{ToTokens, format_ident, quote, quote_spanned};
+use quote::{ToTokens, format_ident, quote};
 use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token::Comma;
-use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
+use syn::{Ident, PatIdent};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
-		vis,
 		attributes,
 		fn_name,
 		struct_name,
 		mod_name,
 		fn_generics,
-		where_clause,
 		input,
-		output_type,
-		is_async,
 		fields,
-		body,
 		description,
 		..
 	} = parsed;
@@ -80,13 +73,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// Combined struct generic parameters with bounds for struct definition
 	// struct MemoizeNode<T: Clone, Node0>
 	let struct_generic_params: Vec<TokenStream2> = data_field_generics.iter().map(|gp| quote!(#gp)).chain(node_generics.iter().map(|id| quote!(#id))).collect();
-	let input_ident = &input.pat_ident;
-
 	let context_features = &input.context_features;
 
 	// Regular field idents and names (for function parameters)
 	let field_idents: Vec<_> = regular_fields.iter().map(|f| &f.pat_ident).collect();
-	let field_names: Vec<_> = field_idents.iter().map(|pat_ident| &pat_ident.ident).collect();
 	let regular_field_names: Vec<_> = regular_fields.iter().map(|f| &f.pat_ident.ident).collect();
 	let data_field_names: Vec<_> = data_fields.iter().map(|f| &f.pat_ident.ident).collect();
 
@@ -120,33 +110,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 
 	let struct_fields = data_field_defs.chain(regular_field_defs);
-
-	let mut future_idents = Vec::new();
-
-	// Data fields get passed as references to the underlying function
-	let data_field_idents: Vec<_> = data_fields.iter().map(|f| &f.pat_ident).collect();
-	let data_field_types: Vec<_> = data_fields
-		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
-				let ty = ty.clone();
-				quote!(&#ty)
-			}
-			_ => unreachable!("Data fields must be Regular types, not Node types"),
-		})
-		.collect();
-
-	// Regular fields have types passed to the function
-	let field_types: Vec<_> = regular_fields
-		.iter()
-		.map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
-			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match parsed.is_async {
-				true => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
-				false => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = #output_type>),
-			},
-		})
-		.collect();
 
 	// Only regular fields have UI metadata (data fields are internal state)
 	let widget_override: Vec<_> = regular_fields
@@ -233,39 +196,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 
 	// Only eval regular fields (data fields are accessed directly as self.field_name)
-	let eval_args = regular_fields.iter().map(|field| {
-		let name = &field.pat_ident.ident;
-		match &field.ty {
-			ParsedFieldType::Regular { .. } => {
-				quote! { let #name = self.#name.eval(__input.clone()).await; }
-			}
-			ParsedFieldType::Node { .. } => {
-				quote! { let #name = &self.#name; }
-			}
-		}
-	});
-
-	// Only regular fields can have min/max constraints
-	let min_max_args = regular_fields.iter().map(|field| match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { number_hard_min, number_hard_max, .. }) => {
-			let name = &field.pat_ident.ident;
-			let mut tokens = quote!();
-			if let Some(min) = number_hard_min {
-				tokens.extend(quote_spanned! {min.span()=>
-					let #name = #core_types::misc::Clampable::clamp_hard_min(#name, #min);
-				});
-			}
-
-			if let Some(max) = number_hard_max {
-				tokens.extend(quote_spanned! {max.span()=>
-					let #name = #core_types::misc::Clampable::clamp_hard_max(#name, #max);
-				});
-			}
-			tokens
-		}
-		ParsedFieldType::Node { .. } => quote!(),
-	});
-
 	let all_implementation_types = fields.iter().flat_map(|field| match &field.ty {
 		ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => implementations.iter().cloned().collect::<Vec<_>>(),
 		ParsedFieldType::Node(NodeParsedField { implementations, .. }) => implementations
@@ -274,61 +204,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.collect(),
 	});
 	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
-
-	let input_type = &parsed.input.ty;
-	let mut clauses = Vec::new();
-	let mut clampable_clauses = Vec::new();
-
-	for (field, name) in regular_fields.iter().zip(node_generics.iter()) {
-		clauses.push(match (&field.ty, *is_async) {
-			(
-				ParsedFieldType::Regular(RegularParsedField {
-					ty, number_hard_min, number_hard_max, ..
-				}),
-				_,
-			) => {
-				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
-				let id = future_idents.len();
-				let fut_ident = format_ident!("F{}", id);
-				future_idents.push(fut_ident.clone());
-
-				// Add Clampable bound if this field uses hard_min or hard_max
-				if number_hard_min.is_some() || number_hard_max.is_some() {
-					// The bound applies to the Output type of the future, which is #ty
-					clampable_clauses.push(quote!(#ty: #core_types::misc::Clampable));
-				}
-
-				quote!(
-					#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
-					for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
-					#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
-				)
-			}
-			(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
-				let id = future_idents.len();
-				let fut_ident = format_ident!("F{}", id);
-				future_idents.push(fut_ident.clone());
-
-				quote!(
-					#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
-					#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
-				)
-			}
-			(ParsedFieldType::Node { .. }, false) => unreachable!("Found node which takes an impl Node<> input but is not async"),
-		});
-	}
-	let where_clause = where_clause.clone().unwrap_or(WhereClause {
-		where_token: Token![where](output_type.span()),
-		predicates: Default::default(),
-	});
-
-	let mut struct_where_clause = where_clause.clone();
-	let extra_where: Punctuated<WherePredicate, Comma> = parse_quote!(
-		#(#clauses,)*
-		#(#clampable_clauses,)*
-		#output_type: 'n,
-	);
-	struct_where_clause.predicates.extend(extra_where);
 
 	// Only regular fields are parameters to new()
 	let new_args = node_generics.iter().zip(regular_field_names.iter()).map(|(r#gen, name)| {
@@ -344,42 +219,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 	let all_field_inits = data_inits.chain(regular_inits);
 
-	let async_keyword = is_async.then(|| quote!(async));
-	let await_keyword = is_async.then(|| quote!(.await));
-
 	// Data fields may not implement Copy, PartialEq, etc., so only derive Debug and Clone
 	let struct_derives = if data_fields.is_empty() {
 		quote!(#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)])
 	} else {
 		quote!(#[derive(Debug, Clone)])
-	};
-
-	// Generate serialize method if serialize attribute is specified
-	let serialize_impl = if let Some(serialize_fn) = &parsed.attributes.serialize {
-		let data_field_refs = data_field_names.iter().map(|name| quote!(&self.#name));
-		quote! {
-			fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-				#serialize_fn(#(#data_field_refs),*)
-			}
-		}
-	} else {
-		quote!()
-	};
-
-	let eval_impl = quote! {
-		type Output = #core_types::registry::DynFuture<'n, #output_type>;
-		#[inline]
-		fn eval(&'n self, __input: #input_type) -> Self::Output {
-			Box::pin(async move {
-				use #core_types::misc::Clampable;
-
-				#(#eval_args)*
-				#(#min_max_args)*
-				self::#fn_name(__input #(, &self.#data_field_names)* #(, #regular_field_names)*) #await_keyword
-			})
-		}
-
-		#serialize_impl
 	};
 
 	let identifier = format_ident!("{}_proto_ident", fn_name);
@@ -391,8 +235,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		None => quote!(std::module_path!()),
 	};
 
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
+	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
+	let register_node_impl = quote! {
+		#[cfg(target_family = "wasm")]
+		#[unsafe(no_mangle)]
+		extern "C" fn #registry_name() {
+			register_metadata();
+		}
+	};
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
+	let gnode = crate::gcodegen::generate_gnode_code(crate_ident, parsed)?;
+	let gnode_in_mod = gnode.in_mod;
+	let gnode_top_level = gnode.top_level;
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
@@ -428,17 +282,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	Ok(quote! {
 		#(#description_doc_attrs)*
-		#[inline]
-		#[allow(clippy::too_many_arguments)]
-		#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
-
-		#cfg
-		#[automatically_derived]
-		impl<'n, #(#fn_generics,)* #(#node_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_type_params,)*>
-		#struct_where_clause
-		{
-			#eval_impl
-		}
+		#gnode_top_level
 
 		#cfg
 		const fn #identifier() -> #core_types::ProtoNodeIdentifier {
@@ -458,10 +302,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		mod #mod_name {
 			use super::*;
 			use #core_types as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
-			use gcore::value::ClonedNode;
-			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
+			use gcore::{ContextFeature, concrete};
+			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_METADATA, RegistryValueSource, RegistryWidgetOverride};
 			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
@@ -483,6 +325,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 			}
+
+			#gnode_in_mod
 
 			#register_node_impl
 
@@ -619,161 +463,10 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 	(fn_generic_params, phantom_data_declerations)
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
-	// On native, `register_node` and `register_metadata` run automatically via `#[ctor]`.
-	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
-	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
-	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-	let register_node_call = if parsed.attributes.skip_impl { quote!() } else { quote!(register_node();) };
-	let wasm_shim = quote! {
-		#[cfg(target_family = "wasm")]
-		#[unsafe(no_mangle)]
-		extern "C" fn #registry_name() {
-			#register_node_call
-			register_metadata();
-		}
-	};
-
-	if parsed.attributes.skip_impl {
-		return Ok(wasm_shim);
-	}
-
-	let mut constructors = Vec::new();
-	let unit = parse_quote!(gcore::Context);
-
-	let regular_fields: Vec<_> = parsed.fields.iter().filter(|f| !f.is_data_field).collect();
-
-	let parameter_types: Vec<_> = regular_fields
-		.iter()
-		.map(|field| {
-			match &field.ty {
-				ParsedFieldType::Regular(RegularParsedField { implementations, ty, .. }) => {
-					if !implementations.is_empty() {
-						implementations.iter().map(|ty| (&unit, ty)).collect()
-					} else {
-						vec![(&unit, ty)]
-					}
-				}
-				ParsedFieldType::Node(NodeParsedField {
-					implementations,
-					input_type,
-					output_type,
-					..
-				}) => {
-					if !implementations.is_empty() {
-						implementations.iter().map(|impl_| (&impl_.input, &impl_.output)).collect()
-					} else {
-						vec![(input_type, output_type)]
-					}
-				}
-			}
-			.into_iter()
-			.map(|(input, out)| (substitute_lifetimes(input.clone(), "_"), substitute_lifetimes(out.clone(), "_")))
-			.collect::<Vec<_>>()
-		})
-		.collect();
-
-	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
-
-	for i in 0..max_implementations.unwrap_or(0) {
-		let mut temp_constructors = Vec::new();
-		let mut temp_node_io = Vec::new();
-		let mut panic_node_types = Vec::new();
-
-		for (j, types) in parameter_types.iter().enumerate() {
-			let field_name = field_names[j];
-			let (input_type, output_type) = &types[i.min(types.len() - 1)];
-
-			let node = matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
-
-			let downcast_node = quote!(
-				let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
-			);
-			if node && !parsed.is_async {
-				return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
-			}
-			temp_constructors.push(downcast_node);
-			temp_node_io.push(quote!(fn_type_fut!(#input_type, #output_type, alias: #output_type)));
-			panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
-		}
-		let input_type = match parsed.input.implementations.is_empty() {
-			true => parsed.input.ty.clone(),
-			false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
-		};
-		constructors.push(quote!(
-			(
-				|args| {
-					Box::pin(async move {
-						#(#temp_constructors;)*
-						let node = #struct_name::new(#(#field_names,)*);
-						// try polling futures
-						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox<'_>
-					})
-				}, {
-					let node = #struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
-					let params = vec![#(#temp_node_io,)*];
-					let mut node_io = NodeIO::<'_, #input_type>::to_async_node_io(&node, params);
-					node_io
-
-				}
-			)
-		));
-	}
-	Ok(quote! {
-		#[cfg_attr(not(target_family = "wasm"), ctor)]
-		fn register_node() {
-			let mut registry = NODE_REGISTRY.lock().unwrap();
-			registry.insert(
-				#identifier(),
-				vec![
-					#(#constructors,)*
-				]
-			);
-		}
-
-		#wasm_shim
-	})
-}
-
 use crate::crate_ident::CrateIdent;
 use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
-use syn::{GenericArgument, Lifetime, Type};
-
-struct LifetimeReplacer(&'static str);
-
-impl VisitMut for LifetimeReplacer {
-	fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
-		lifetime.ident = Ident::new(self.0, lifetime.ident.span());
-	}
-
-	fn visit_type_mut(&mut self, ty: &mut Type) {
-		match ty {
-			Type::Reference(type_reference) => {
-				if let Some(lifetime) = &mut type_reference.lifetime {
-					self.visit_lifetime_mut(lifetime);
-				}
-				self.visit_type_mut(&mut type_reference.elem);
-			}
-			_ => syn::visit_mut::visit_type_mut(self, ty),
-		}
-	}
-
-	fn visit_generic_argument_mut(&mut self, arg: &mut GenericArgument) {
-		if let GenericArgument::Lifetime(lifetime) = arg {
-			self.visit_lifetime_mut(lifetime);
-		} else {
-			syn::visit_mut::visit_generic_argument_mut(self, arg);
-		}
-	}
-}
-
-#[must_use]
-fn substitute_lifetimes(mut ty: Type, lifetime: &'static str) -> Type {
-	LifetimeReplacer(lifetime).visit_type_mut(&mut ty);
-	ty
-}
+use syn::{Lifetime, Type};
 
 /// Get only the necessary generics.
 struct FilterUsedGenerics {
@@ -856,7 +549,7 @@ impl FilterUsedGenerics {
 }
 
 /// Check if a type contains a reference to a specific identifier (e.g., a generic type parameter)
-fn type_contains_ident(ty: &Type, ident: &Ident) -> bool {
+pub(crate) fn type_contains_ident(ty: &Type, ident: &Ident) -> bool {
 	struct IdentChecker<'a> {
 		target: &'a Ident,
 		found: bool,

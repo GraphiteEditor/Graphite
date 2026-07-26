@@ -36,6 +36,9 @@ pub trait ExtractPosition {
 }
 pub trait ExtractIndex {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>>;
+	fn innermost_index(&self) -> u64 {
+		self.try_index().and_then(|mut indices| indices.next()).unwrap_or(0) as u64
+	}
 }
 pub trait ExtractVarArgs {
 	// TODO: Consider returning a slice or something like that
@@ -466,7 +469,8 @@ impl CloneVarArgs for Arc<OwnedContextImpl> {
 // TYPES `Context` AND `OwnedContextImpl`
 // ======================================
 
-pub type Context<'a> = Option<Arc<OwnedContextImpl>>;
+pub type OwnedContext = Option<Arc<OwnedContextImpl>>;
+pub type Context<'a> = ContextImpl<'a>;
 type DynRef<'a> = &'a (dyn Any + Send + Sync);
 type DynBox = Box<dyn AnyHash + Send + Sync>;
 
@@ -656,8 +660,38 @@ pub struct PositionLink<'a> {
 pub type DynSlot<'a> = &'a (dyn AnyHash + Send + Sync);
 
 #[derive(Clone, Copy)]
+pub enum VarArgSlots<'a> {
+	Single(DynSlot<'a>),
+	Slice(&'a [DynSlot<'a>]),
+}
+
+impl<'a> VarArgSlots<'a> {
+	pub fn get(&self, index: usize) -> Option<DynSlot<'a>> {
+		match self {
+			VarArgSlots::Single(slot) => (index == 0).then_some(*slot),
+			VarArgSlots::Slice(slots) => slots.get(index).copied(),
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		match self {
+			VarArgSlots::Single(_) => 1,
+			VarArgSlots::Slice(slots) => slots.len(),
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = DynSlot<'a>> + '_ {
+		(0..self.len()).filter_map(move |index| self.get(index))
+	}
+}
+
+#[derive(Clone, Copy)]
 pub struct VarArgLink<'a> {
-	pub args: &'a [DynSlot<'a>],
+	pub args: VarArgSlots<'a>,
 	pub outer: Option<&'a VarArgLink<'a>>,
 }
 
@@ -704,6 +738,17 @@ impl<'a> EvalScope<'a> {
 		scope
 	}
 
+	pub fn nullified(&self, keep: ContextFeatures) -> EvalScope<'a> {
+		let mut scope = EvalScope {
+			real_time: self.real_time.filter(|_| keep.contains(ContextFeatures::REAL_TIME)),
+			animation_time: self.animation_time.filter(|_| keep.contains(ContextFeatures::ANIMATION_TIME)),
+			pointer_position: self.pointer_position.filter(|_| keep.contains(ContextFeatures::POINTER_POSITION)),
+			..*self
+		};
+		scope.hash = scope.compute_hash(None);
+		scope
+	}
+
 	fn compute_hash(&self, retain: Option<&[SourceId]>) -> u64 {
 		let mut hasher = std::hash::DefaultHasher::new();
 		self.real_time.map(f64::to_bits).hash(&mut hasher);
@@ -733,6 +778,106 @@ impl<'a> EvalScope<'a> {
 pub trait ExtractArena {
 	type ArenaRef;
 	fn arena(&self) -> Self::ArenaRef;
+}
+
+pub trait CtxFamily {
+	type Ctx<'s>: Ctx + DeriveCtx<Family = Self>;
+}
+
+pub type Derived<'s, C> = <<C as DeriveCtx>::Family as CtxFamily>::Ctx<'s>;
+
+pub trait DeriveCtx {
+	type Family: CtxFamily;
+	fn derived(&self) -> Derived<'_, Self>;
+	fn index_head(&self) -> IndexLink<'_>;
+	fn scope(&self) -> &EvalScope<'_>;
+	fn position_head(&self) -> Option<&PositionLink<'_>>;
+	fn varargs_head(&self) -> Option<&VarArgLink<'_>>;
+	fn promoted<'s>(&'s self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> Derived<'s, Self>;
+	fn with_footprint<'s>(&'s self, footprint: &'s Footprint) -> Derived<'s, Self>;
+	fn with_varargs<'s>(&'s self, varargs: &'s VarArgLink<'s>) -> Derived<'s, Self>;
+	fn with_position<'s>(&'s self, position: &'s PositionLink<'s>) -> Derived<'s, Self>;
+	fn with_scope<'s>(&'s self, scope: &'s EvalScope<'s>) -> Derived<'s, Self>;
+	fn nullified<'s>(&'s self, keep: ContextFeatures, scope: &'s EvalScope<'s>) -> Derived<'s, Self>;
+
+	fn modify_footprint(&self, modify: impl FnOnce(&mut Footprint)) -> ModifiedFootprint<'_, Self>
+	where
+		Self: ExtractFootprint + Sized,
+	{
+		let mut footprint = self.try_footprint().copied();
+		if let Some(footprint) = &mut footprint {
+			modify(footprint);
+		}
+		ModifiedFootprint { ctx: self, footprint }
+	}
+
+	fn push_vararg<'s>(&'s self, arg: DynSlot<'s>) -> VarArgScope<'s, Self>
+	where
+		Self: Sized,
+	{
+		VarArgScope {
+			ctx: self,
+			link: VarArgLink {
+				args: VarArgSlots::Single(arg),
+				outer: self.varargs_head(),
+			},
+		}
+	}
+
+	fn push_position(&self, position: DVec2) -> PositionScope<'_, Self>
+	where
+		Self: Sized,
+	{
+		PositionScope {
+			ctx: self,
+			link: PositionLink {
+				position,
+				outer: self.position_head(),
+			},
+		}
+	}
+}
+
+pub struct PositionScope<'c, C> {
+	ctx: &'c C,
+	link: PositionLink<'c>,
+}
+
+impl<C: DeriveCtx> PositionScope<'_, C> {
+	pub fn ctx(&self) -> Derived<'_, C> {
+		self.ctx.with_position(&self.link)
+	}
+}
+
+pub struct VarArgScope<'c, C> {
+	ctx: &'c C,
+	link: VarArgLink<'c>,
+}
+
+impl<C: DeriveCtx> VarArgScope<'_, C> {
+	pub fn ctx(&self) -> Derived<'_, C> {
+		self.ctx.with_varargs(&self.link)
+	}
+}
+
+pub struct ModifiedFootprint<'c, C> {
+	ctx: &'c C,
+	footprint: Option<Footprint>,
+}
+
+impl<C: DeriveCtx> ModifiedFootprint<'_, C> {
+	pub fn ctx(&self) -> Derived<'_, C> {
+		match &self.footprint {
+			Some(footprint) => self.ctx.with_footprint(footprint),
+			None => self.ctx.derived(),
+		}
+	}
+}
+
+pub struct ContextImplFamily;
+
+impl CtxFamily for ContextImplFamily {
+	type Ctx<'s> = ContextImpl<'s>;
 }
 
 #[derive(Clone, Copy)]
@@ -789,6 +934,22 @@ impl<'a> ContextImpl<'a> {
 		'a: 's,
 	{
 		ContextImpl { position: Some(position), ..*self }
+	}
+
+	pub fn nullified<'s>(&self, keep: ContextFeatures, scope: &'s EvalScope<'s>) -> ContextImpl<'s>
+	where
+		'a: 's,
+	{
+		ContextImpl {
+			index: match keep.contains(ContextFeatures::INDEX) {
+				true => self.index,
+				false => IndexLink { index: 0, outer: None },
+			},
+			position: self.position.filter(|_| keep.contains(ContextFeatures::POSITION)),
+			varargs: self.varargs.filter(|_| keep.contains(ContextFeatures::VARARGS)),
+			footprint: self.footprint.filter(|_| keep.contains(ContextFeatures::FOOTPRINT)),
+			scope,
+		}
 	}
 
 	pub fn promoted<'s>(&self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> ContextImpl<'s>
@@ -849,7 +1010,7 @@ impl ExtractVarArgs for ContextImpl<'_> {
 		let mut remaining = index;
 		loop {
 			match link.args.get(remaining) {
-				Some(arg) => return Ok(*arg as DynRef<'_>),
+				Some(arg) => return Ok(arg as DynRef<'_>),
 				None => {
 					remaining -= link.args.len();
 					link = link.outer.ok_or(VarArgsResult::IndexOutOfBounds)?;
@@ -867,7 +1028,7 @@ impl ExtractVarArgs for ContextImpl<'_> {
 		let mut count = 0u64;
 		let mut link = self.varargs;
 		while let Some(current) = link {
-			for arg in current.args {
+			for arg in current.args.iter() {
 				arg.dyn_hash(&mut *hasher);
 				count += 1;
 			}
@@ -880,6 +1041,54 @@ impl<'a> ExtractArena for ContextImpl<'a> {
 	type ArenaRef = &'a Arena;
 	fn arena(&self) -> &'a Arena {
 		self.scope.arena
+	}
+}
+
+impl<'a> DeriveCtx for ContextImpl<'a> {
+	type Family = ContextImplFamily;
+
+	fn derived(&self) -> ContextImpl<'_> {
+		*self
+	}
+
+	fn index_head(&self) -> IndexLink<'_> {
+		self.index
+	}
+
+	fn scope(&self) -> &EvalScope<'_> {
+		self.scope
+	}
+
+	fn position_head(&self) -> Option<&PositionLink<'_>> {
+		self.position
+	}
+
+	fn varargs_head(&self) -> Option<&VarArgLink<'_>> {
+		self.varargs
+	}
+
+	fn promoted<'s>(&'s self, spilled_head: &'s IndexLink<'s>, inner_index: u64) -> ContextImpl<'s> {
+		ContextImpl::promoted(self, spilled_head, inner_index)
+	}
+
+	fn with_footprint<'s>(&'s self, footprint: &'s Footprint) -> ContextImpl<'s> {
+		ContextImpl::with_footprint(self, footprint)
+	}
+
+	fn with_varargs<'s>(&'s self, varargs: &'s VarArgLink<'s>) -> ContextImpl<'s> {
+		ContextImpl::with_varargs(self, varargs)
+	}
+
+	fn with_position<'s>(&'s self, position: &'s PositionLink<'s>) -> ContextImpl<'s> {
+		ContextImpl::with_position(self, position)
+	}
+
+	fn with_scope<'s>(&'s self, scope: &'s EvalScope<'s>) -> ContextImpl<'s> {
+		ContextImpl::with_scope(self, scope)
+	}
+
+	fn nullified<'s>(&'s self, keep: ContextFeatures, scope: &'s EvalScope<'s>) -> ContextImpl<'s> {
+		ContextImpl::nullified(self, keep, scope)
 	}
 }
 
@@ -1053,13 +1262,15 @@ mod context_impl_tests {
 
 		let outer_value = 7u32;
 		let outer_args: [DynSlot; 1] = [&outer_value];
-		let outer_link = VarArgLink { args: &outer_args, outer: None };
+		let outer_link = VarArgLink {
+			args: VarArgSlots::Slice(&outer_args),
+			outer: None,
+		};
 		let outer_ctx = root.with_varargs(&outer_link);
 
 		let inner_value = String::from("inner");
-		let inner_args: [DynSlot; 1] = [&inner_value];
 		let inner_link = VarArgLink {
-			args: &inner_args,
+			args: VarArgSlots::Single(&inner_value),
 			outer: Some(&outer_link),
 		};
 		let inner_ctx = root.with_varargs(&inner_link);

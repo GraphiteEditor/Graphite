@@ -44,13 +44,13 @@ impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Nod
 pub trait Convert<T, C>: Sized {
 	/// Converts this type into the (usually inferred) output type.
 	#[must_use]
-	fn convert(self, footprint: Footprint, converter: C) -> impl Future<Output = T> + Send;
+	fn convert(self, footprint: Footprint, converter: C) -> T;
 }
 
 impl<T: ToString + Send> Convert<String, ()> for T {
 	/// Converts this type into a `String` using its `ToString` implementation.
 	#[inline]
-	async fn convert(self, _: Footprint, _converter: ()) -> String {
+	fn convert(self, _: Footprint, _converter: ()) -> String {
 		self.to_string()
 	}
 }
@@ -60,7 +60,7 @@ pub trait ListConvert<U> {
 }
 
 impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> List<U> {
+	fn convert(self, _: Footprint, _: ()) -> List<U> {
 		let list: List<U> = self
 			.into_iter()
 			.map(|row| {
@@ -76,7 +76,7 @@ impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
 /// from any `List<U>` express their signature as `AttributeDyn` and avoid monomorphizing
 /// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
 impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
+	fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
 		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
 		AttributeDyn(Box::new(Attribute(values)))
 	}
@@ -86,7 +86,7 @@ impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash 
 /// (such as `write_attribute`'s value-producing input) be generic over the destination list type
 /// alone, with the compiler-inserted convert handling each concrete value type at the wire level.
 impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeValueDyn, ()> for T {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
+	fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
 		AttributeValueDyn(Box::new(self))
 	}
 }
@@ -95,13 +95,13 @@ impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash 
 /// only need attribute access (such as the `read_attribute_*` family) take a single `ListDyn` input
 /// instead of monomorphizing over every possible carrier list type.
 impl<T: Send> Convert<ListDyn, ()> for List<T> {
-	async fn convert(self, _: Footprint, _: ()) -> ListDyn {
+	fn convert(self, _: Footprint, _: ()) -> ListDyn {
 		self.into()
 	}
 }
 
 impl Convert<DVec2, ()> for DVec2 {
-	async fn convert(self, _: Footprint, _: ()) -> DVec2 {
+	fn convert(self, _: Footprint, _: ()) -> DVec2 {
 		self
 	}
 }
@@ -115,7 +115,7 @@ pub trait FromAnchorPosition {
 
 // Converts a position into a vector path composed of a single anchor point
 impl<T: FromAnchorPosition + Send> Convert<List<T>, ()> for DVec2 {
-	async fn convert(self, _: Footprint, _: ()) -> List<T> {
+	fn convert(self, _: Footprint, _: ()) -> List<T> {
 		List::new_from_item(Item::new_from_element(T::from_anchor_position(self)))
 	}
 }
@@ -124,7 +124,7 @@ impl<T: FromAnchorPosition + Send> Convert<List<T>, ()> for DVec2 {
 macro_rules! impl_convert {
 	($from:ty, $to:ty) => {
 		impl Convert<$to, ()> for $from {
-			async fn convert(self, _: Footprint, _: ()) -> $to {
+			fn convert(self, _: Footprint, _: ()) -> $to {
 				self as $to
 			}
 		}
@@ -146,7 +146,7 @@ macro_rules! impl_convert {
 		impl_convert!(usize, $to);
 
 		impl Convert<DVec2, ()> for $to {
-			async fn convert(self, _: Footprint, _: ()) -> DVec2 {
+			fn convert(self, _: Footprint, _: ()) -> DVec2 {
 				DVec2::splat(self as f64)
 			}
 		}

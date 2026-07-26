@@ -7,6 +7,7 @@ mod buffer_struct;
 mod codegen;
 mod crate_ident;
 mod derive_choice_type;
+mod gcodegen;
 mod parsing;
 mod shader_nodes;
 mod validation;

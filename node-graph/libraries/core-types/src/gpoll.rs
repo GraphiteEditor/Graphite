@@ -23,6 +23,11 @@ impl GraphError {
 			trace: Vec::new(),
 		}
 	}
+
+	pub fn traced(mut self, input_index: usize) -> Self {
+		self.trace.push(input_index);
+		self
+	}
 }
 
 #[derive(Clone, Debug, PartialEq)]

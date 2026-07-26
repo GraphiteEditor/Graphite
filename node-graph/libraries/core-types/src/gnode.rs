@@ -1,5 +1,6 @@
 use crate::context::InjectIndex;
-use crate::gpoll::{Extent, Finality, GPoll, GraphError};
+use crate::gpoll::{Extent, Finality, GPoll, GraphError, Interrupt};
+use std::cell::Cell;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 
@@ -115,6 +116,123 @@ where
 		Input: InjectIndex + Copy,
 	{
 		(**self).eval_batch(input, range, scratch)
+	}
+}
+
+pub struct StatusCell {
+	finality: Cell<Finality>,
+	error: Cell<Option<GraphError>>,
+	no_partial: bool,
+}
+
+impl Default for StatusCell {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl StatusCell {
+	pub fn new() -> Self {
+		Self {
+			finality: Cell::new(Finality::AllFinal),
+			error: Cell::new(None),
+			no_partial: false,
+		}
+	}
+
+	pub fn no_partial() -> Self {
+		Self {
+			no_partial: true,
+			..Self::new()
+		}
+	}
+
+	pub fn eval_input<Input, N: GNode<Input>>(&self, input_index: usize, node: &N, input: &Input) -> Result<N::Output, Interrupt> {
+		match node.eval(input) {
+			GPoll::Final(value) => Ok(value),
+			GPoll::Partial(_) if self.no_partial => Err(Interrupt::Pending),
+			GPoll::Partial(value) => {
+				self.finality.set(Finality::Partial);
+				Ok(value)
+			}
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				let first = self.error.take();
+				self.error.set(first.or(Some(error.traced(input_index))));
+				Ok(value)
+			}
+			GPoll::Pending => Err(Interrupt::Pending),
+			GPoll::Error(mut error) => {
+				error.trace.push(input_index);
+				Err(Interrupt::Error(error))
+			}
+		}
+	}
+
+	pub fn finish<T>(self, value: T) -> GPoll<T> {
+		match (self.error.take(), self.finality.get()) {
+			(Some(error), _) => GPoll::Fallback(Box::new((value, error))),
+			(None, Finality::AllFinal) => GPoll::Final(value),
+			(None, Finality::Partial) => GPoll::Partial(value),
+		}
+	}
+
+	pub fn merge<T>(self, poll: GPoll<T>) -> GPoll<T> {
+		match poll {
+			GPoll::Final(value) => self.finish(value),
+			GPoll::Partial(value) => match self.finish(value) {
+				GPoll::Final(value) => GPoll::Partial(value),
+				other => other,
+			},
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				let first = self.error.take().unwrap_or(error);
+				GPoll::Fallback(Box::new((value, first)))
+			}
+			interrupted => interrupted,
+		}
+	}
+}
+
+#[derive(Clone, Copy)]
+pub struct LazyInput<'a, N> {
+	node: &'a N,
+	cell: &'a StatusCell,
+	input_index: usize,
+}
+
+impl<'a, N> LazyInput<'a, N> {
+	pub fn new(node: &'a N, cell: &'a StatusCell, input_index: usize) -> Self {
+		Self { node, cell, input_index }
+	}
+
+	pub fn eval<Input>(&self, ctx: &Input) -> Result<N::Output, Interrupt>
+	where
+		N: GNode<Input>,
+	{
+		self.cell.eval_input(self.input_index, self.node, ctx)
+	}
+}
+
+impl<'a, Input, N> GNode<Input> for LazyInput<'a, N>
+where
+	N: GNode<Input>,
+{
+	type Output = N::Output;
+
+	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
+		self.node.eval(input)
+	}
+
+	fn extent(&self, input: &Input) -> GPoll<Extent> {
+		self.node.extent(input)
+	}
+
+	fn eval_batch<'b>(&self, input: &'b Input, range: Range<u64>, scratch: Option<&'b mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'b, Self::Output>
+	where
+		Input: InjectIndex + Copy,
+	{
+		self.node.eval_batch(input, range, scratch)
 	}
 }
 

@@ -56,6 +56,14 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) memoize: bool,
 	/// Whether this node provides a scope
 	pub(crate) inject_scope: bool,
+	/// Function producing a stand-in value while an async source node's real value is in flight
+	pub(crate) placeholder: Option<Path>,
+	/// Function overriding the generated `extent` method
+	pub(crate) extent: Option<Path>,
+	/// Function overriding the generated `eval_batch` method
+	pub(crate) batch: Option<Path>,
+	/// Whether partial upstream values are mapped to `Pending` instead of flowing into this node
+	pub(crate) no_partial: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -311,6 +319,10 @@ impl Parse for NodeFnAttributes {
 		let mut serialize = None;
 		let mut memoize = false;
 		let mut inject_scope = false;
+		let mut placeholder = None;
+		let mut extent = None;
+		let mut batch = None;
+		let mut no_partial = false;
 
 		let content = input;
 		// let content;
@@ -453,13 +465,63 @@ impl Parse for NodeFnAttributes {
 					}
 					inject_scope = true;
 				}
+				// Function producing a stand-in value for an async source node while the spawned future is in flight.
+				// The node reports `Partial` with the stand-in until the real value lands; without a placeholder it reports `Pending`.
+				//
+				// Example usage:
+				// #[node_macro::node(..., placeholder(empty_image), ...)]
+				"placeholder" => {
+					let meta = meta.require_list()?;
+					if placeholder.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'placeholder' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'placeholder', e.g., placeholder(empty_image)"))?;
+					placeholder = Some(parsed_path);
+				}
+				// Function overriding the generated `extent` method, replacing the default meet over the node's inputs.
+				//
+				// Example usage:
+				// #[node_macro::node(..., extent(my_extent), ...)]
+				"extent" => {
+					let meta = meta.require_list()?;
+					if extent.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'extent' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent', e.g., extent(my_extent)"))?;
+					extent = Some(parsed_path);
+				}
+				// Function overriding the generated `eval_batch` method, replacing the trait's per-lane spec loop.
+				//
+				// Example usage:
+				// #[node_macro::node(..., batch(my_batch), ...)]
+				"batch" => {
+					let meta = meta.require_list()?;
+					if batch.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'batch' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'batch', e.g., batch(my_batch)"))?;
+					batch = Some(parsed_path);
+				}
+				// Instructs the generated eval to report `Pending` instead of passing partial upstream values into this node.
+				//
+				// Example usage:
+				// #[node_macro::node(..., no_partial, ...)]
+				"no_partial" => {
+					let path = meta.require_path_only()?;
+					if no_partial {
+						return Err(Error::new_spanned(path, "Multiple 'no_partial' attributes are not allowed"));
+					}
+					no_partial = true;
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', 'extent', 'batch', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -493,6 +555,10 @@ impl Parse for NodeFnAttributes {
 			serialize,
 			memoize,
 			inject_scope,
+			placeholder,
+			extent,
+			batch,
+			no_partial,
 		})
 	}
 }
@@ -1082,6 +1148,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1152,6 +1222,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1236,6 +1310,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1302,6 +1380,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1380,6 +1462,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1461,6 +1547,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1527,6 +1617,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
