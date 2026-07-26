@@ -387,6 +387,5 @@ fn input_metadata_entry_to_runtime(entry: InputMetadataEntry) -> InputMetadata {
 			widget_override: entry.widget_override,
 			input_data: entry.input_data,
 		},
-		..Default::default()
 	}
 }
