@@ -1,6 +1,4 @@
 use crate::ast::{BinaryOp, UnaryOp};
-use num_complex::ComplexFloat;
-use std::f64::consts::PI;
 
 pub type Complex = num_complex::Complex<f64>;
 
@@ -52,20 +50,38 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
+	/// The value's truthiness for conditions and logic operators, or `None` for NaN values, which poison the result rather than acting as a boolean.
+	pub fn as_bool(self) -> Option<bool> {
+		match self {
+			Number::Real(real) => (!real.is_nan()).then_some(real != 0.),
+			Number::Complex(complex) => (!complex.re.is_nan() && !complex.im.is_nan()).then_some(complex != Complex::ZERO),
+		}
+	}
+
 	pub fn binary_op(self, op: BinaryOp, other: Number) -> Option<Number> {
+		// Logic and equality work uniformly across real and complex operands
+		match op {
+			BinaryOp::And | BinaryOp::Or => {
+				let (Some(lhs), Some(rhs)) = (self.as_bool(), other.as_bool()) else {
+					return Some(Number::Real(f64::NAN));
+				};
+				let result = if matches!(op, BinaryOp::And) { lhs && rhs } else { lhs || rhs };
+				return Some(Number::Real(result as u8 as f64));
+			}
+			BinaryOp::Eq | BinaryOp::Neq => {
+				let equal = match (self, other) {
+					(Number::Real(lhs), Number::Real(rhs)) => lhs == rhs,
+					(Number::Complex(lhs), Number::Complex(rhs)) => lhs == rhs,
+					(Number::Real(real), Number::Complex(complex)) | (Number::Complex(complex), Number::Real(real)) => complex == Complex::new(real, 0.),
+				};
+				return Some(Number::Real((equal != matches!(op, BinaryOp::Neq)) as u8 as f64));
+			}
+			_ => {}
+		}
+
 		match (self, other) {
 			(Number::Real(lhs), Number::Real(rhs)) => {
 				let result = match op {
-					BinaryOp::And => {
-						let l = lhs != 0.;
-						let r = rhs != 0.;
-						if l && r { 1. } else { 0. }
-					}
-					BinaryOp::Or => {
-						let l = lhs != 0.;
-						let r = rhs != 0.;
-						if l || r { 1. } else { 0. }
-					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
@@ -76,8 +92,7 @@ impl Number {
 					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
 					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
 					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
-					BinaryOp::Neq => (lhs != rhs) as u8 as f64,
-					BinaryOp::Eq => (lhs == rhs) as u8 as f64,
+					BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled above"),
 				};
 
 				Some(Number::Real(result))
@@ -85,16 +100,6 @@ impl Number {
 
 			(Number::Complex(lhs), Number::Complex(rhs)) => {
 				let result = match op {
-					BinaryOp::And => {
-						let l = lhs != Complex::new(0., 0.);
-						let r = rhs != Complex::new(0., 0.);
-						return Some(Number::Real(if l && r { 1. } else { 0. }));
-					}
-					BinaryOp::Or => {
-						let l = lhs != Complex::new(0., 0.);
-						let r = rhs != Complex::new(0., 0.);
-						return Some(Number::Real(if l || r { 1. } else { 0. }));
-					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
@@ -104,20 +109,7 @@ impl Number {
 					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
 						return None;
 					}
-					BinaryOp::Neq => {
-						if lhs != rhs {
-							return Some(Number::Real(1.));
-						} else {
-							return Some(Number::Real(0.));
-						}
-					}
-					BinaryOp::Eq => {
-						if lhs == rhs {
-							return Some(Number::Real(1.));
-						} else {
-							return Some(Number::Real(0.));
-						}
-					}
+					BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled above"),
 				};
 				Some(Number::Complex(result))
 			}
@@ -151,6 +143,13 @@ impl Number {
 	}
 
 	pub fn unary_op(self, op: UnaryOp) -> Number {
+		if matches!(op, UnaryOp::Not) {
+			return match self.as_bool() {
+				Some(boolean) => Number::Real(!boolean as u8 as f64),
+				None => Number::Real(f64::NAN),
+			};
+		}
+
 		match self {
 			Number::Real(real) => match op {
 				UnaryOp::Neg => Number::Real(-real),
@@ -165,27 +164,26 @@ impl Number {
 					if truncated < 0. || (real - truncated).abs() > f64::EPSILON {
 						return Number::Real(f64::NAN);
 					}
+
+					// Return infinity above 170! since that overflows f64, which also keeps huge inputs from spinning the loop
 					let n = truncated as u64;
+					if n > 170 {
+						return Number::Real(f64::INFINITY);
+					}
 					let mut acc = 1_f64;
 					for k in 1..=n {
 						acc *= k as f64;
 					}
 					Number::Real(acc)
 				}
-				UnaryOp::Not => {
-					let is_zero = real == 0.;
-					Number::Real(if is_zero { 1. } else { 0. })
-				}
+				UnaryOp::Not => unreachable!("handled above"),
 			},
 
 			Number::Complex(complex) => match op {
 				UnaryOp::Neg => Number::Complex(-complex),
 				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
 				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
-				UnaryOp::Not => {
-					let is_zero = complex == Complex::new(0., 0.);
-					Number::Real(if is_zero { 1. } else { 0. })
-				}
+				UnaryOp::Not => unreachable!("handled above"),
 			},
 		}
 	}
