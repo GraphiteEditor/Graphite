@@ -4,6 +4,8 @@ mod characterization_tests;
 mod deserialization;
 mod hit_tests;
 mod journal;
+#[cfg(test)]
+mod journal_tests;
 mod layout;
 mod memo_network;
 mod mutations;
