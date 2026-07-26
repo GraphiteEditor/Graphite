@@ -305,6 +305,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 		if !shift_without_push {
+			// The owned nodes of each layer are populated by the stack dependents load, which otherwise may not run until after this filter
+			self.try_load_stack_dependents(network_path);
 			for node_id in node_ids.clone() {
 				if self.is_layer(&node_id, network_path) {
 					self.with_owned_nodes(&node_id, network_path, |owned_nodes| {
