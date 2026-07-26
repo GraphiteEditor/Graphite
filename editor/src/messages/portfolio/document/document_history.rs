@@ -17,9 +17,9 @@ use super::utility_types::network_interface::storage_metadata::{StorageMetadataV
 #[derivative(Clone, Debug, Default)]
 pub struct DocumentHistory {
 	/// Stack of document network snapshots for previous history states.
-	lagacy_undo_stack: VecDeque<NodeNetworkInterface>,
+	legacy_undo_stack: VecDeque<NodeNetworkInterface>,
 	/// Stack of document network snapshots for future history states.
-	lagacy_redo_stack: VecDeque<NodeNetworkInterface>,
+	legacy_redo_stack: VecDeque<NodeNetworkInterface>,
 	/// The `Gdd` working copy: owns the CRDT `Session` and mirrors edits to disk. `None` until the mount
 	/// future built by `load_document` resolves.
 	#[derivative(Debug = "ignore")]
@@ -31,38 +31,38 @@ impl DocumentHistory {
 
 	/// Push a snapshot onto the undo stack, evicting the oldest entry past the history cap.
 	pub fn push_undo(&mut self, snapshot: NodeNetworkInterface) {
-		Self::push_capped(&mut self.lagacy_undo_stack, snapshot);
+		Self::push_capped(&mut self.legacy_undo_stack, snapshot);
 	}
 
 	/// Push a snapshot onto the redo stack, evicting the oldest entry past the history cap.
 	pub fn push_redo(&mut self, snapshot: NodeNetworkInterface) {
-		Self::push_capped(&mut self.lagacy_redo_stack, snapshot);
+		Self::push_capped(&mut self.legacy_redo_stack, snapshot);
 	}
 
 	/// Pop the most recent undo snapshot, or `None` when the stack is empty.
 	pub fn pop_undo(&mut self) -> Option<NodeNetworkInterface> {
-		self.lagacy_undo_stack.pop_back()
+		self.legacy_undo_stack.pop_back()
 	}
 
 	/// Pop the most recent redo snapshot, or `None` when the stack is empty.
 	pub fn pop_redo(&mut self) -> Option<NodeNetworkInterface> {
-		self.lagacy_redo_stack.pop_back()
+		self.legacy_redo_stack.pop_back()
 	}
 
 	/// Drop the most recently pushed undo snapshot (used to cancel a transaction that ended up unmodified).
 	pub fn discard_last_undo(&mut self) {
-		self.lagacy_undo_stack.pop_back();
+		self.legacy_undo_stack.pop_back();
 	}
 
 	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
 	pub fn clear_redo(&mut self) {
-		self.lagacy_redo_stack.clear();
+		self.legacy_redo_stack.clear();
 	}
 
 	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
 	/// history-only resources stay alive for legacy undo/redo.
 	pub fn collect_used_resources(&self, resources: &mut HashSet<ResourceId>) {
-		for interface in self.lagacy_undo_stack.iter().chain(&self.lagacy_redo_stack) {
+		for interface in self.legacy_undo_stack.iter().chain(&self.legacy_redo_stack) {
 			interface.collect_used_resources(resources);
 		}
 	}
