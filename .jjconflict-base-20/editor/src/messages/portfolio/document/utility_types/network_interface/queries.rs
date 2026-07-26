@@ -1,5 +1,8 @@
 use super::*;
 
+/// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
+pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
+
 impl NodeNetworkInterface {
 	/// Runs a query against a resolved [`NetworkView`], logging any error at this message-boundary wrapper and mapping it to None.
 	pub(crate) fn query<'a, 'p, T>(&'a self, network_path: &'p [NodeId], caller: &str, query: impl FnOnce(NetworkView<'a, 'p>) -> Result<T, NetworkError>) -> Option<T> {
@@ -619,6 +622,61 @@ impl NodeNetworkInterface {
 		true
 	}
 
+	/// The input connector into which a layer should be inserted for the given parent and stack index.
+	pub(crate) fn post_node_with_index(&self, parent: LayerNodeIdentifier, insert_index: usize, network_path: &[NodeId]) -> InputConnector {
+		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
+			InputConnector::Export(0)
+		} else {
+			InputConnector::node(parent.to_node(), 1)
+		};
+		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
+		let mut current_index = 0;
+
+		// Set the post node to the layer node at insert_index
+		loop {
+			if current_index == insert_index {
+				break;
+			}
+			let next_node_in_stack_id = self
+				.input_from_connector(&post_node_input_connector, network_path)
+				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
+
+			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
+				// Only increment index for layer nodes
+				if self.is_layer(next_node_in_stack_id, network_path) {
+					current_index += 1;
+				}
+				// Input as a sibling to the Layer node above
+				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
+			} else {
+				log::error!("Error getting post node: insert_index out of bounds");
+				break;
+			};
+		}
+
+		let layer_input_connector = post_node_input_connector;
+
+		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
+		loop {
+			let pre_node_output_connector = self.upstream_output_connector(&post_node_input_connector, network_path);
+
+			match pre_node_output_connector {
+				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !self.is_layer(&pre_node_id, network_path) => {
+					// Update post_node_input_connector for the next iteration
+					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
+					let primary_is_exposed = self.input_from_connector(&post_node_input_connector, network_path).is_some_and(|input| input.is_exposed());
+					if !primary_is_exposed {
+						return layer_input_connector;
+					}
+				}
+				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
+			}
+		}
+
+		post_node_input_connector
+	}
+
 	// All chain nodes and branches from the chain which are sole dependents of the layer
 	pub fn upstream_nodes_below_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
 		// Every upstream node below layer must be a sole dependent
@@ -885,27 +943,30 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document(layer))
+	}
+
+	fn combined_document_bounds(&self, include_artboards: bool, layer_bounds: impl Fn(&DocumentMetadata, LayerNodeIdentifier) -> Option<[DVec2; 2]>) -> Option<[DVec2; 2]> {
 		self.document_metadata
 			.all_layers()
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
+				// A layer clipped by its artboard contributes only the intersection of the two bounds
 				if !self.is_artboard(&layer.to_node(), &[])
 					&& let Some(artboard_node_identifier) = layer
 						.ancestors(self.document_metadata())
 						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
+					&& let Some(clip_input) = artboard.inputs.get(ARTBOARD_CLIP_INPUT_INDEX)
+					&& let NodeInput::Value { tagged_value, .. } = clip_input
+					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
 				{
-					let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
-					let clip_input = artboard.unwrap().inputs.get(5).unwrap();
-					if let NodeInput::Value { tagged_value, .. } = clip_input
-						&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
-					{
-						return Some(Quad::clip(
-							self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
-							self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
-						));
-					}
+					return Some(Quad::clip(
+						layer_bounds(&self.document_metadata, layer).unwrap_or_default(),
+						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
+					));
 				}
-				self.document_metadata.bounding_box_document(layer)
+				layer_bounds(&self.document_metadata, layer)
 			})
 			// Skip any layer bounds containing NaN to avoid poisoning the combined result
 			.filter(|[min, max]| min.is_finite() && max.is_finite())
@@ -922,29 +983,7 @@ impl NodeNetworkInterface {
 	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
 	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
 	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.document_metadata
-			.all_layers()
-			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| {
-				if !self.is_artboard(&layer.to_node(), &[])
-					&& let Some(artboard_node_identifier) = layer
-						.ancestors(self.document_metadata())
-						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
-					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
-					&& let Some(clip_input) = artboard.inputs.get(5)
-					&& let NodeInput::Value { tagged_value, .. } = clip_input
-					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
-				{
-					return Some(Quad::clip(
-						self.document_metadata.bounding_box_document_with_stroke(layer).unwrap_or_default(),
-						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
-					));
-				}
-				self.document_metadata.bounding_box_document_with_stroke(layer)
-			})
-			// Skip any layer bounds containing NaN to avoid poisoning the combined result
-			.filter(|[min, max]| min.is_finite() && max.is_finite())
-			.reduce(Quad::combine_bounds)
+		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
 	}
 
 	/// Calculates the selected layer bounds in document space
