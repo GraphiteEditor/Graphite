@@ -226,6 +226,55 @@ impl NodeNetworkInterface {
 		self.unload_modify_import_export(network_path);
 	}
 
+	/// Disconnects every wire fed by the given import within the network.
+	pub(crate) fn disconnect_import_wires(&mut self, import_index: usize, network_path: &[NodeId]) {
+		let Some(wires_for_import) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::Import(import_index)).cloned()) else {
+			log::error!("Could not get outward wires in disconnect_import_wires");
+			return;
+		};
+		let Some(wires_for_import) = wires_for_import else {
+			log::error!("Could not get outward wires for import in disconnect_import_wires");
+			return;
+		};
+		for downstream_connection in wires_for_import {
+			self.disconnect_input(&downstream_connection, network_path);
+		}
+	}
+
+	/// Disconnects every wire fed by the given output within the network.
+	pub(crate) fn disconnect_output_wires(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) {
+		let Some(downstream_connections) = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()) else {
+			log::error!("Could not get outward wires in disconnect_output_wires");
+			return;
+		};
+		let Some(downstream_connections) = downstream_connections else {
+			log::error!("Could not get downstream connections in disconnect_output_wires");
+			return;
+		};
+		for downstream_connection in downstream_connections {
+			self.disconnect_input(&downstream_connection, network_path);
+		}
+	}
+
+	/// Refreshes the metadata invalidated when the encapsulating node's signature changes, demoting it from a layer if it is no longer eligible.
+	fn finish_signature_edit(&mut self, parent_id: NodeId, encapsulating_network_path: &[NodeId], network_path: &[NodeId]) {
+		// Update the metadata for the encapsulating node
+		self.unload_outward_wires(encapsulating_network_path);
+		self.unload_node_click_targets(&parent_id, encapsulating_network_path);
+		self.unload_all_nodes_bounding_box(encapsulating_network_path);
+		if !self.is_eligible_to_be_layer(&parent_id, encapsulating_network_path) && self.is_layer(&parent_id, encapsulating_network_path) {
+			self.set_to_node_or_layer(&parent_id, encapsulating_network_path, false);
+		}
+		if encapsulating_network_path.is_empty() {
+			self.load_structure();
+		}
+
+		// Unload the metadata for the nested network
+		self.unload_outward_wires(network_path);
+		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
+	}
+
 	// First disconnects the export, then removes it
 	pub fn remove_export(&mut self, export_index: usize, network_path: &[NodeId]) {
 		let mut encapsulating_network_path = network_path.to_vec();
@@ -271,21 +320,7 @@ impl NodeNetworkInterface {
 			network_metadata.persistent_metadata.reference = None;
 		}
 
-		// Update the metadata for the encapsulating node
-		self.unload_outward_wires(&encapsulating_network_path);
-		self.unload_node_click_targets(&parent_id, &encapsulating_network_path);
-		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
-		if !self.is_eligible_to_be_layer(&parent_id, &encapsulating_network_path) && self.is_layer(&parent_id, &encapsulating_network_path) {
-			self.set_to_node_or_layer(&parent_id, &encapsulating_network_path, false);
-		}
-		if encapsulating_network_path.is_empty() {
-			self.load_structure();
-		}
-
-		// Unload the metadata for the nested network
-		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
 	}
 
 	// First disconnects the import, then removes it
@@ -300,10 +335,6 @@ impl NodeNetworkInterface {
 			log::error!("Could not get outward wires in remove_import");
 			return;
 		};
-		let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(import_index)).cloned() else {
-			log::error!("Could not get outward wires for import in remove_import");
-			return;
-		};
 		let mut new_import_mapping = Vec::new();
 		for i in (import_index + 1)..number_of_inputs {
 			let Some(outward_wires_for_import) = outward_wires.get(&OutputConnector::Import(i)).cloned() else {
@@ -316,9 +347,7 @@ impl NodeNetworkInterface {
 		}
 
 		// Disconnect all upstream connections
-		for outward_wire in outward_wires_for_import {
-			self.disconnect_input(&outward_wire, network_path);
-		}
+		self.disconnect_import_wires(import_index, network_path);
 		// Shift inputs connected to to imports at a higher index down one
 		for (output_connector, input_wire) in new_import_mapping {
 			self.create_wire(&output_connector, &input_wire, network_path);
@@ -347,21 +376,7 @@ impl NodeNetworkInterface {
 			network_metadata.persistent_metadata.reference = None;
 		}
 
-		// Update the metadata for the encapsulating node
-		self.unload_outward_wires(encapsulating_network_path);
-		self.unload_node_click_targets(parent_id, encapsulating_network_path);
-		self.unload_all_nodes_bounding_box(encapsulating_network_path);
-		if !self.is_eligible_to_be_layer(parent_id, encapsulating_network_path) && self.is_layer(parent_id, encapsulating_network_path) {
-			self.set_to_node_or_layer(parent_id, encapsulating_network_path, false);
-		}
-		if encapsulating_network_path.is_empty() {
-			self.load_structure();
-		}
-
-		// Unload the metadata for the nested network
-		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.finish_signature_edit(*parent_id, encapsulating_network_path, network_path);
 	}
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
@@ -1252,24 +1267,20 @@ impl NodeNetworkInterface {
 			};
 			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
 
-			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>();
+			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<HashSet<_>>();
 
-			// Select the reconnect node to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in remove_references_from_network");
-				return false;
-			};
-
-			let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+			// Build the stack dependents from the reconnected flow rather than the selection so the shifting works correctly
+			self.unload_stack_dependents(network_path);
+			self.load_stack_dependents_for_nodes(upstream_nodes.iter().copied().collect(), network_path);
 
 			// Shift up until there is either a collision or the disconnected node position is reached
 			let mut current_shift_distance = 0;
 			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
-				self.shift_selected_nodes(Direction::Up, false, network_path);
+				self.shift_nodes(upstream_nodes.clone(), Direction::Up, false, network_path);
 				current_shift_distance += 1;
 			}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			self.unload_stack_dependents(network_path);
 		}
 
 		true

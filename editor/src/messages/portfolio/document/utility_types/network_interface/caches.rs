@@ -113,8 +113,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in load_stack_dependents");
 			return;
 		};
+		self.load_stack_dependents_for_nodes(selected_nodes.selected_nodes().cloned().collect(), network_path);
+	}
 
-		let mut selected_layers = selected_nodes.selected_nodes().filter(|node_id| self.is_layer(node_id, network_path)).cloned().collect::<HashSet<_>>();
+	/// Builds the stack dependents as if `seed_nodes` were the selection, for shifts driven by a node set other than the selection.
+	pub(crate) fn load_stack_dependents_for_nodes(&self, seed_nodes: Vec<NodeId>, network_path: &[NodeId]) {
+		let mut selected_layers = seed_nodes.iter().filter(|node_id| self.is_layer(node_id, network_path)).copied().collect::<HashSet<_>>();
 
 		// Deselect all layers that are upstream of other selected layers
 		let mut removed_layers = Vec::new();
@@ -222,7 +226,7 @@ impl NodeNetworkInterface {
 
 			for sole_dependent in sole_dependents {
 				if !owned_sole_dependents.contains(&sole_dependent) {
-					stack_dependents.insert(sole_dependent, LayerOwner::None(0));
+					stack_dependents.insert(sole_dependent, LayerOwner::None);
 				}
 			}
 		}
@@ -241,22 +245,32 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.stack_dependents.unload();
+
+		// Drag offsets are only meaningful relative to the stack dependents snapshot they were accumulated against, so they must not outlive it
+		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
 	}
 
-	/// Resets all the offsets for nodes with no LayerOwner when the drag ends
-	pub fn unload_stack_dependents_y_offset(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_stack_dependents_y_offset");
+	/// The vertical distance the node has been pushed from its resting position during the current drag.
+	pub(crate) fn drag_offset(&self, node_id: &NodeId, network_path: &[NodeId]) -> i32 {
+		self.network_metadata(network_path)
+			.map_or(0, |network_metadata| network_metadata.transient_metadata.drag_offsets.borrow().get(node_id).copied().unwrap_or(0))
+	}
+
+	pub(crate) fn add_drag_offset(&self, node_id: &NodeId, delta: i32, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in add_drag_offset");
 			return;
 		};
+		*network_metadata.transient_metadata.drag_offsets.borrow_mut().entry(*node_id).or_insert(0) += delta;
+	}
 
-		if let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() {
-			for layer_owner in stack_dependents.values_mut() {
-				if let LayerOwner::None(offset) = layer_owner {
-					*offset = 0;
-				}
-			}
-		}
+	/// Discards all drag offsets when the drag ends.
+	pub fn clear_drag_offsets(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in clear_drag_offsets");
+			return;
+		};
+		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
@@ -1081,7 +1095,7 @@ impl NodeNetworkInterface {
 				let name_left = node_top_left.x + NAME_LEFT_OFFSET;
 				let icons_reserve = VISIBILITY_INSET_FROM_LAYER_RIGHT + icons_width + GRIP_WIDTH;
 				let name_right_max = node_top_left.x + width as f64 - icons_reserve;
-				let text_w = crate::messages::portfolio::document::overlays::utility_functions::text_width(&display_name, FONT_SIZE);
+				let text_w = text_width(&display_name, FONT_SIZE);
 				let name_right = (name_left + text_w).min(name_right_max);
 				if name_right > name_left {
 					// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.

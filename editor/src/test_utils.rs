@@ -324,11 +324,19 @@ impl EditorTestUtils {
 	}
 
 	pub async fn create_node_by_name(&mut self, node_type: DefinitionIdentifier) -> NodeId {
+		self.create_node(node_type, None).await
+	}
+
+	pub async fn create_node_by_name_at(&mut self, node_type: DefinitionIdentifier, x: i32, y: i32) -> NodeId {
+		self.create_node(node_type, Some((x, y))).await
+	}
+
+	async fn create_node(&mut self, node_type: DefinitionIdentifier, xy: Option<(i32, i32)>) -> NodeId {
 		let node_id = NodeId::new();
 		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(node_id),
 			node_type,
-			xy: None,
+			xy,
 			add_transaction: true,
 		})
 		.await;
