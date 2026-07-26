@@ -108,7 +108,7 @@ fn replace_transform<T>(
 // TODO: Figure out how this node should behave once #2982 is implemented.
 /// Obtains the transform of the first item in the input `List`, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-async fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
+fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
 	content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default()
 }
 

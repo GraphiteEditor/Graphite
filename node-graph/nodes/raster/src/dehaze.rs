@@ -8,7 +8,7 @@ use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentage) -> List<Raster<CPU>> {
+fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentage) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {

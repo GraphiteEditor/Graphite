@@ -321,7 +321,7 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 }
 
 #[node_macro::node(category(""))]
-pub async fn render_output_cache<'a: 'n>(
+pub async fn render_output_cache<'a>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi,

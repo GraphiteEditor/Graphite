@@ -1,7 +1,7 @@
+use core_types::gpoll::Interrupt;
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
-use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractVarArgs, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -23,8 +23,8 @@ pub struct RenderIntermediate {
 }
 
 #[node_macro::node(category(""))]
-async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
+fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
+	ctx: impl Ctx + ExtractVarArgs + DeriveCtx,
 	#[implementations(
 		Context -> List<Artboard>,
 		Context -> List<Graphic>,
@@ -35,20 +35,18 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> List<String>,
 	)]
 	data: impl Node<Context<'_>, Output = T>,
-) -> RenderIntermediate {
+) -> Result<RenderIntermediate, Interrupt> {
+	let data = data.eval(&ctx.derived())?;
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let data = data.eval(ctx).await;
-
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
-	match &render_params.render_output_type {
+	Ok(match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
 
@@ -70,11 +68,11 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 				metadata,
 			}
 		}
-	}
+	})
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(
+fn render<'a>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	data: RenderIntermediate,
@@ -144,7 +142,7 @@ async fn render<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn create_context<'a: 'n>(
+fn create_context<'a>(
 	// Context injections are defined in the wrap_network_in_scope function
 	render_config: RenderConfig,
 	data: impl Node<Context<'_>, Output = RenderOutput>,

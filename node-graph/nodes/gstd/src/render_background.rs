@@ -12,7 +12,7 @@ use wgpu::util::DeviceExt;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-async fn render_background<'a: 'n>(
+fn render_background<'a>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
 	data: RenderOutput,
@@ -121,7 +121,7 @@ async fn render_background<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn composite_background_pipeline<'a: 'n>(
+fn composite_background_pipeline<'a>(
 	_ctx: impl Ctx,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,

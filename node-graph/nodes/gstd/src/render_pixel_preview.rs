@@ -8,7 +8,7 @@ use vector_types::vector::style::RenderMode;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-pub async fn render_pixel_preview<'a: 'n>(
+pub async fn render_pixel_preview<'a>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
 	data: impl Node<Context<'_>, Output = RenderOutput> + Send + Sync,
@@ -75,7 +75,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn pixel_preview_pipeline<'a: 'n>(
+fn pixel_preview_pipeline<'a>(
 	_ctx: impl Ctx,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
