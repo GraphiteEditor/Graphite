@@ -141,22 +141,6 @@ impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)>
 	}
 }
 
-pub trait InputAccessorSource<'a, T>: InputAccessorSourceIdentifier + std::fmt::Debug {
-	fn get_input(&'a self, index: usize) -> Option<&'a T>;
-	fn set_input(&'a mut self, index: usize, value: T);
-}
-
-pub trait InputAccessorSourceIdentifier {
-	fn has_identifier(&self, identifier: &str) -> bool;
-}
-
-pub trait InputAccessor<'n, Source: 'n>
-where
-	Self: Sized,
-{
-	fn new_with_source(source: &'n Source) -> Option<Self>;
-}
-
 pub trait NodeInputDecleration {
 	const INDEX: usize;
 	fn identifier() -> ProtoNodeIdentifier;
