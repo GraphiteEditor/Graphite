@@ -102,7 +102,7 @@ pub struct DocumentNodeDefinition {
 	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
-	/// All data required to construct a [`DocumentNode`] and [`DocumentNodeMetadata`]
+	/// The default [`NodeTemplate`] this definition instantiates.
 	pub node_template: NodeTemplate,
 
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
