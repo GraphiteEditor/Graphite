@@ -129,6 +129,12 @@ impl Session {
 		Ok(revs)
 	}
 
+	/// Stages ops computed outside the session (an incremental runtime projection) as hot ops, the
+	/// same way `stage_from_runtime` stages a diff's ops.
+	pub fn stage_computed_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+		self.stage_ops(ops)
+	}
+
 	/// Apply each op as a hot op with a freshly-ticked timestamp, returning the staged frames in
 	/// order. Each tick is strictly later than the last, so the final frame carries the latest
 	/// timestamp, which is what the caller passes to `retire`.
