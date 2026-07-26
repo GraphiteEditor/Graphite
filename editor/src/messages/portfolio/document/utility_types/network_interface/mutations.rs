@@ -100,7 +100,7 @@ impl NodeNetworkInterface {
 
 			modification.modify(&modification_type);
 		}
-		self.transaction_modified();
+		self.record_input_change(&InputConnector::node(*node_id, 1), &[]);
 	}
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
@@ -118,7 +118,10 @@ impl NodeNetworkInterface {
 			network.exports.insert(insert_index as usize, input);
 		}
 
-		self.transaction_modified();
+		self.record_network_change(network_path);
+		if let Some((parent_id, encapsulating_network_path)) = network_path.split_last() {
+			self.record_node_change(parent_id, encapsulating_network_path);
+		}
 
 		let mut encapsulating_path = network_path.to_vec();
 		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
@@ -190,7 +193,8 @@ impl NodeNetworkInterface {
 			node.inputs.insert(insert_index as usize, input);
 		}
 
-		self.transaction_modified();
+		self.record_network_change(network_path);
+		self.record_node_change(&node_id, &encapsulating_network_path);
 
 		// Set the node to be a non layer if it is no longer eligible to be a layer
 		if !self.is_eligible_to_be_layer(&node_id, &encapsulating_network_path) && self.is_layer(&node_id, &encapsulating_network_path) {
@@ -301,7 +305,8 @@ impl NodeNetworkInterface {
 		};
 		network.exports.remove(export_index);
 
-		self.transaction_modified();
+		self.record_network_change(network_path);
+		self.record_node_change(&parent_id, &encapsulating_network_path);
 
 		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
 			log::error!("Could not get encapsulating node metadata in remove_export");
@@ -358,7 +363,8 @@ impl NodeNetworkInterface {
 
 		node.inputs.remove(import_index);
 
-		self.transaction_modified();
+		self.record_network_change(network_path);
+		self.record_node_change(parent_id, encapsulating_network_path);
 
 		// There will not be an encapsulating node if the network is the document network
 		let Some(encapsulating_node_metadata) = self.node_metadata_mut(parent_id, encapsulating_network_path) else {
@@ -391,7 +397,8 @@ impl NodeNetworkInterface {
 		let export = network.exports.remove(start_index);
 		network.exports.insert(end_index, export);
 
-		self.transaction_modified();
+		self.record_network_change(network_path);
+		self.record_node_change(&parent_id, &encapsulating_network_path);
 
 		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
 			log::error!("Could not get encapsulating network_metadata in reorder_export");
@@ -485,7 +492,8 @@ impl NodeNetworkInterface {
 		let import = encapsulating_node.inputs.remove(start_index);
 		encapsulating_node.inputs.insert(end_index, import);
 
-		self.transaction_modified();
+		self.record_network_change(network_path);
+		self.record_node_change(&parent_id, &encapsulating_network_path);
 
 		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
 			log::error!("Could not get encapsulating network_metadata in reorder_import");
@@ -573,6 +581,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		metadata.persistent_metadata.network_metadata = new_network_metadata;
+		self.journal_node_change(node_id, network_path);
 	}
 
 	/// Replaces the inputs and corresponding metadata.
@@ -593,6 +602,7 @@ impl NodeNetworkInterface {
 		};
 		let new_metadata = std::mem::take(&mut new_template.input_metadata);
 		let _ = std::mem::replace(&mut metadata.persistent_metadata.input_metadata, new_metadata);
+		self.journal_node_change(node_id, network_path);
 		Some(old_inputs)
 	}
 
@@ -610,6 +620,7 @@ impl NodeNetworkInterface {
 			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 			metadata.persistent_metadata.input_metadata.push(input_metadata.unwrap_or_default());
 		}
+		self.journal_node_change(node_id, network_path);
 	}
 
 	// When opening an old document to ensure the output names match the number of exports
@@ -621,6 +632,7 @@ impl NodeNetworkInterface {
 				return;
 			};
 			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
+			self.journal_node_change(node_id, network_path);
 		}
 	}
 
@@ -635,6 +647,11 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node_network_metadata.persistent_metadata.reference = reference_name;
+
+		// The reference is stored on the network inside this node
+		let mut nested_network_path = network_path.to_vec();
+		nested_network_path.push(*node_id);
+		self.journal_network_change(&nested_network_path);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -648,6 +665,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.call_argument = call_argument;
+		self.journal_node_change(node_id, network_path);
 	}
 
 	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
@@ -660,6 +678,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.context_features = context_features;
+		self.journal_node_change(node_id, network_path);
 	}
 
 	/// Lightweight version of `set_input` for bulk import operations.
@@ -698,7 +717,7 @@ impl NodeNetworkInterface {
 			}
 		};
 
-		self.transaction_modified();
+		self.record_input_change(input_connector, network_path);
 		self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 	}
 
@@ -800,7 +819,7 @@ impl NodeNetworkInterface {
 			_ => None,
 		};
 
-		self.transaction_modified();
+		self.record_input_change(input_connector, network_path);
 
 		// Ensure layer is toggled to non layer if it is no longer eligible to be a layer
 		let layer_node_path = match input_connector {
@@ -1050,7 +1069,7 @@ impl NodeNetworkInterface {
 			};
 
 			network.nodes.insert(node_id, document_node);
-			self.transaction_modified();
+			self.record_node_change(&node_id, network_path);
 
 			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 				log::error!("Network not found in insert_node");
@@ -1083,7 +1102,7 @@ impl NodeNetworkInterface {
 		};
 
 		let previous_node = network.nodes.insert(node_id, document_node);
-		self.transaction_modified();
+		self.record_node_change(&node_id, network_path);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Network not found in insert_node");
@@ -1183,7 +1202,7 @@ impl NodeNetworkInterface {
 			};
 
 			network.nodes.remove(delete_node_id);
-			self.transaction_modified();
+			self.record_node_change(delete_node_id, network_path);
 
 			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 				log::error!("Could not get nested network_metadata in delete_nodes");
@@ -1332,7 +1351,7 @@ impl NodeNetworkInterface {
 
 		node_metadata.persistent_metadata.display_name = display_name;
 
-		self.transaction_modified();
+		self.record_node_change(node_id, network_path);
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
 	}
@@ -1362,8 +1381,8 @@ impl NodeNetworkInterface {
 				*export_name != name
 			}
 		};
-		if name_changed {
-			self.transaction_modified();
+		if name_changed && let Some((parent_id, encapsulating_network_path)) = network_path.split_last() {
+			self.record_node_change(parent_id, encapsulating_network_path);
 		}
 	}
 
@@ -1387,7 +1406,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		self.transaction_modified();
+		self.record_node_change(node_id, network_path);
 	}
 
 	/// Reorders a pinned node within its network's Properties panel display order so it ends up at `insert_index` among the
@@ -1411,6 +1430,7 @@ impl NodeNetworkInterface {
 		};
 		network_metadata.persistent_metadata.pinned_node_order = new_order;
 
+		// No change record: the pinned display order is editor-only metadata that storage does not persist
 		self.transaction_modified();
 	}
 
@@ -1424,7 +1444,7 @@ impl NodeNetworkInterface {
 		};
 
 		node.visible = is_visible;
-		self.transaction_modified();
+		self.record_node_change(node_id, network_path);
 	}
 
 	pub fn set_locked(&mut self, node_id: &NodeId, network_path: &[NodeId], locked: bool) {
@@ -1434,7 +1454,7 @@ impl NodeNetworkInterface {
 		};
 
 		node_metadata.persistent_metadata.locked = locked;
-		self.transaction_modified();
+		self.record_node_change(node_id, network_path);
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
 	}
@@ -1528,7 +1548,7 @@ impl NodeNetworkInterface {
 		node_metadata.transient_metadata.layer_width.unload();
 		node_metadata.transient_metadata.owned_nodes.unload();
 
-		self.transaction_modified();
+		self.record_node_change(node_id, network_path);
 		self.unload_stack_dependents(network_path);
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);

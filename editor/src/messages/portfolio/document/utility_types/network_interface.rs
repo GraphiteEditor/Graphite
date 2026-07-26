@@ -3,6 +3,7 @@ mod caches;
 mod characterization_tests;
 mod deserialization;
 mod hit_tests;
+mod journal;
 mod layout;
 mod memo_network;
 mod mutations;
@@ -16,6 +17,7 @@ mod types;
 mod validation;
 mod view;
 
+pub use journal::{DeltaJournal, RecordedChange};
 pub use template::*;
 pub use types::*;
 pub use view::{NetworkError, NetworkView};
@@ -73,6 +75,9 @@ pub struct NodeNetworkInterface {
 	pub resolved_types: ResolvedDocumentNodeTypes,
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
+	/// The entities mutated since the last storage staging; see [`DeltaJournal`].
+	#[serde(skip)]
+	journal: DeltaJournal,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -83,6 +88,7 @@ impl Clone for NodeNetworkInterface {
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
+			journal: Default::default(),
 		}
 	}
 }

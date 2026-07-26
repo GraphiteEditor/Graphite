@@ -23,6 +23,7 @@ impl NodeNetworkInterface {
 		self.network.network()
 	}
 	pub fn document_network_mut(&mut self) -> &mut NodeNetwork {
+		self.mark_journal_desynced("raw document network access");
 		self.network.network_mut()
 	}
 
@@ -1170,6 +1171,7 @@ impl NodeNetworkInterface {
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
 			transaction_status: TransactionStatus::Finished,
+			journal: DeltaJournal::default(),
 		}
 	}
 }
@@ -1177,7 +1179,7 @@ impl NodeNetworkInterface {
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
 	pub(crate) fn network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
-		self.document_network_mut().nested_network_mut(network_path)
+		self.network.network_mut().nested_network_mut(network_path)
 	}
 
 	pub(crate) fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
