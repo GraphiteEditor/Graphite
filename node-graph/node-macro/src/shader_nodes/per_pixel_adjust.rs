@@ -287,7 +287,7 @@ impl PerPixelAdjustCodegen<'_> {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
-				}, #gpu_image, #uniform_buffer).await
+				}, #gpu_image, #uniform_buffer)
 			}
 		};
 
@@ -314,13 +314,12 @@ impl PerPixelAdjustCodegen<'_> {
 				context_features: self.parsed.input.context_features.clone(),
 			},
 			output_type: raster_gpu,
-			is_async: true,
+			is_async: false,
 			fields,
 			body,
 			description: self.parsed.description.clone(),
 		};
 		parsed_node_fn.replace_impl_trait_in_input();
-		parsed_node_fn.inject_async_source_fields(self.crate_ident.gcore()?);
 		let gpu_node_impl = crate::codegen::generate_node_code(self.crate_ident, &parsed_node_fn)?;
 
 		// wrap node in `mod #gpu_node_mod`

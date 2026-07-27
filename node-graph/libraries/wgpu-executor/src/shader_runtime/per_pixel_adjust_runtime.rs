@@ -2,7 +2,7 @@ use crate::WgpuContext;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
 use core_types::list::{Item, List};
 use core_types::shaders::buffer_struct::BufferStruct;
-use futures::lock::Mutex;
+use std::sync::Mutex;
 use raster_types::{GPU, Raster};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -33,8 +33,8 @@ impl PerPixelAdjustShaderRuntime {
 }
 
 impl ShaderRuntime {
-	pub async fn run_per_pixel_adjust<T: BufferStruct>(&self, shaders: &Shaders<'_>, textures: List<Raster<GPU>>, args: Option<&T>) -> List<Raster<GPU>> {
-		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
+	pub fn run_per_pixel_adjust<T: BufferStruct>(&self, shaders: &Shaders<'_>, textures: List<Raster<GPU>>, args: Option<&T>) -> List<Raster<GPU>> {
+		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().unwrap();
 		let pipeline = cache
 			.entry(shaders.fragment_shader_name.to_owned())
 			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(&self.context, shaders));

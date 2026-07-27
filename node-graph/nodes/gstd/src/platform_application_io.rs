@@ -10,6 +10,8 @@ use core_types::math::bbox::Bbox;
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
+use core_types::gpoll::GPoll;
+use core_types::runtime::SourceFuture;
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -267,10 +269,16 @@ pub fn editor_api<'a>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a Platfo
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Resource {
-	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	application_io.load_resource(hash).await.unwrap_or_else(|| {
-		panic!("Resource {hash} not found");
+pub fn resource<'a>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> SourceFuture<GPoll<Resource>> {
+	let application_io = editor_api.application_io.clone();
+	Box::pin(async move {
+		let Some(application_io) = application_io else {
+			return GPoll::error("ApplicationIo not available");
+		};
+		match application_io.load_resource(hash).await {
+			Some(resource) => GPoll::Final(resource),
+			None => GPoll::error("resource not found"),
+		}
 	})
 }
 
