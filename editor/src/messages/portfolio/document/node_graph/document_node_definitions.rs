@@ -56,6 +56,8 @@ impl NodePropertiesContext<'_> {
 pub const ARTBOARD_LOCATION_INPUT_INDEX: usize = 2;
 /// Input position of the dimensions parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
 pub const ARTBOARD_DIMENSIONS_INPUT_INDEX: usize = 3;
+/// Input position of the control path parameter on the "Blend" network node template.
+pub const BLEND_PATH_INPUT_INDEX: usize = 4;
 
 /// The key used to access definitions for a network node or proto node.
 /// For proto nodes, this is their [`ProtoNodeIdentifier`].

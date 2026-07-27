@@ -2,6 +2,7 @@ use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::BLEND_PATH_INPUT_INDEX;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -13,7 +14,7 @@ use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Gradient, GradientSpreadMethod, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::{Artboard, Color, NodeParameter};
+use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -211,11 +212,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 
-				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided
-				let (chain_node_id, layer_alias, path_alias) = if let Some(count) = blend_count {
-					(modify_inputs.insert_blend_data(layer, count as f64), "Blend", "Blend Path")
+				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided, referencing
+				// its control path input by the Blend template's named position or the Morph proto node's parameter symbol
+				let (path_input_connector, layer_alias, path_alias) = if let Some(count) = blend_count {
+					let blend_node_id = modify_inputs.insert_blend_data(layer, count as f64);
+					(InputConnector::node_at_index(blend_node_id, BLEND_PATH_INPUT_INDEX), "Blend", "Blend Path")
 				} else {
-					(modify_inputs.insert_morph_data(layer), "Morph", "Morph Path")
+					let morph_node_id = modify_inputs.insert_morph_data(layer);
+					(InputConnector::node(morph_node_id, graphene_std::vector::morph::PathInput), "Morph", "Morph Path")
 				};
 
 				// Create the control path layer (Path → Auto-Tangents → Origins to Polyline)
@@ -225,13 +229,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(control_path_layer, parent, insert_index, &[]);
 				network_interface.move_layer_to_stack(layer, parent, insert_index + 1, &[]);
 
-				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend).
+				// Connect the Path node's output to the chain node's control path input.
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.
-				network_interface.set_input(
-					&InputConnector::node_at_index(chain_node_id, graphene_std::vector::morph::PathInput::INDEX),
-					NodeInput::node(path_node_id, 0),
-					&[],
-				);
+				network_interface.set_input(&path_input_connector, NodeInput::node(path_node_id, 0), &[]);
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
