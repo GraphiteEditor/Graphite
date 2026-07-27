@@ -1,6 +1,7 @@
+use super::convert::Convert;
 use super::region::{Crop, Region};
-use super::{CUTOFF_SIGMA, MAX_EDGE_SHIFT, MIN_SIGMA};
-use brush_types::{BrushCache, BrushStyle, Sample, Stroke};
+use super::stroke::{CUTOFF_SIGMA, Edge, Walk, bounds as stroke_bounds, edges, scissor, union, walk as walk_stroke};
+use brush_types::{BrushCache, BrushStyle, Stroke};
 use bytemuck::{Pod, Zeroable};
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::Footprint;
@@ -9,16 +10,6 @@ use glam::{DAffine2, DVec2, UVec2};
 use raster_types::{Texture, WeakTexture};
 use std::hash::Hasher;
 use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
-
-/// One segment of a stroke's centerline, the per-instance vertex data of the scatter pass.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct Edge {
-	a: [f32; 2],
-	b: [f32; 2],
-	sigma: f32,
-	weight: f32,
-}
 
 /// Mirrors `Uniforms` in `scatter.wgsl`.
 #[repr(C)]
@@ -69,10 +60,9 @@ fn resolve_uniform(executor: &WgpuExecutor, color: Color, crop: &Crop) -> Buffer
 pub struct AirbrushPipeline {
 	density_pipeline: wgpu::RenderPipeline,
 	resolve_pipeline: wgpu::RenderPipeline,
-	convert_pipeline: wgpu::RenderPipeline,
 	density_bind_group_layout: wgpu::BindGroupLayout,
 	resolve_bind_group_layout: wgpu::BindGroupLayout,
-	convert_bind_group_layout: wgpu::BindGroupLayout,
+	convert: Convert,
 }
 
 /// Premultiplied linear-light, so "over" between groups of different colors is correct; the
@@ -133,186 +123,6 @@ fn style_hash(style: &BrushStyle) -> u64 {
 	hasher.finish()
 }
 
-/// A sample resolved for rendering, in document units.
-#[derive(Clone, Copy)]
-struct Dab {
-	position: DVec2,
-	sigma: f32,
-	weight: f32,
-}
-
-fn dab(sample: &Sample, style: &BrushStyle) -> Dab {
-	let pressure = sample.pressure.clamp(0., 1.);
-	let hardness = style.hardness.clamp(0., 1.) as f32;
-	Dab {
-		position: sample.position,
-		sigma: style.diameter.max(0.) as f32 * pressure / 4.,
-		// ~17x buildup at the default hardness saturates the core to near-solid.
-		weight: style.flow.clamp(0., 1.) as f32 * (1. + hardness * hardness * 24.) * pressure,
-	}
-}
-
-/// The document-space square a dab's scatter quad can reach. Sigma clamps like the shader's
-/// ([`MIN_SIGMA`] texels), otherwise the pad undershoots strokes thinner than a texel.
-fn dab_pad(dab: Dab, scale: f64) -> AxisAlignedBbox {
-	let sigma = (dab.sigma as f64).max(MIN_SIGMA as f64 / scale);
-	let pad = DVec2::splat(CUTOFF_SIGMA as f64 * sigma + 1f64.max(1. / scale));
-	AxisAlignedBbox {
-		start: dab.position - pad,
-		end: dab.position + pad,
-	}
-}
-
-fn union(bounds: &mut Option<AxisAlignedBbox>, other: AxisAlignedBbox) {
-	*bounds = Some(match bounds.take() {
-		Some(existing) => existing.union(&other),
-		None => other,
-	});
-}
-
-/// Union of every raw sample's pad — the stroke's renderable bounds. Decimation-free, so it is a
-/// pure function of the stroke and style and cache hits and misses derive the same crop.
-fn stroke_pad_bounds(stroke: &Stroke, style: &BrushStyle, scale: f64) -> AxisAlignedBbox {
-	let mut bounds = None;
-	for index in 0..stroke.len() {
-		let sample = stroke.sample(index);
-		union(&mut bounds, dab_pad(dab(&sample, style), scale));
-	}
-	bounds.unwrap_or(AxisAlignedBbox::ZERO)
-}
-
-/// A stroke's decimation-walk state. The walk is causal — each decision depends only on earlier
-/// samples — so advancing over newly appended samples never re-decides the kept prefix.
-#[derive(Clone)]
-struct Walk {
-	/// Narrowest sigma seen so far; sets the decimation step.
-	sigma_min: f32,
-	kept_last: Option<Dab>,
-	kept: usize,
-	/// Raw samples consumed so far.
-	consumed: usize,
-}
-
-impl Default for Walk {
-	fn default() -> Self {
-		Self {
-			sigma_min: f32::MAX,
-			kept_last: None,
-			kept: 0,
-			consumed: 0,
-		}
-	}
-}
-
-impl Walk {
-	/// Decimates the centerline — sub-sigma detail is invisible, and fewer samples means fewer
-	/// scatter quads. Keeps any sample at least half the narrowest sigma from the last kept one.
-	fn advance(&mut self, stroke: &Stroke, style: &BrushStyle, scale: f64) -> Vec<Dab> {
-		let mut kept = Vec::new();
-		for index in self.consumed..stroke.len() {
-			let sample = stroke.sample(index);
-			let dab = dab(&sample, style);
-			self.sigma_min = self.sigma_min.min(dab.sigma);
-			let min_step = (self.sigma_min as f64 * 0.5).max(0.5 / scale);
-			if self.kept_last.is_none_or(|last| last.position.distance(dab.position) >= min_step) {
-				kept.push(dab);
-				self.kept_last = Some(dab);
-				self.kept += 1;
-			}
-		}
-		self.consumed = stroke.len();
-		kept
-	}
-
-	/// The provisional closing segment from the last kept dab to the stroke's final sample, so
-	/// the stroke ends where the user lifted. Never committed to the kept chain — the next
-	/// advance may supersede it. A single-sample stroke closes with the zero-length lone-dab
-	/// segment; `None` when the kept chain already ends at the final sample.
-	fn tail(&self, stroke: &Stroke, style: &BrushStyle) -> Option<(Dab, Dab)> {
-		let kept_last = self.kept_last?;
-		let sample = stroke.sample(stroke.len() - 1);
-		let dab = dab(&sample, style);
-		if dab.position == kept_last.position {
-			return (self.kept == 1).then_some((kept_last, kept_last));
-		}
-		Some((kept_last, dab))
-	}
-}
-
-fn texel(region: &Region, p: DVec2) -> [f32; 2] {
-	[((p.x - region.min.x) * region.scale) as f32, ((p.y - region.min.y) * region.scale) as f32]
-}
-
-/// Sigma and weight interpolate as endpoint averages over the segment; the shader renders a
-/// zero-length edge as a lone Gaussian dab.
-fn edge(region: &Region, a: Dab, b: Dab) -> Edge {
-	Edge {
-		a: texel(region, a.position),
-		b: texel(region, b.position),
-		sigma: ((a.sigma + b.sigma) / 2. * region.scale as f32).max(MIN_SIGMA),
-		weight: (a.weight + b.weight) / 2.,
-	}
-}
-
-fn mix(a: Dab, b: Dab, t: f32) -> Dab {
-	Dab {
-		position: a.position.lerp(b.position, t as f64),
-		sigma: a.sigma + (b.sigma - a.sigma) * t,
-		weight: a.weight + (b.weight - a.weight) * t,
-	}
-}
-
-/// An edge renders with constant sigma and weight, so a sigma step shifts the stroke's visible
-/// boundary — which sits up to [`CUTOFF_SIGMA`] sigmas out — while the edge gradient it hides in
-/// is only as wide as the local sigma (floored at one texel of raster antialiasing). A segment
-/// splits until each piece shifts the boundary by at most [`MAX_EDGE_SHIFT`] of that gradient:
-/// thin crisp strokes subdivide finely, soft wide ones stay coarse. The piece cap bounds the
-/// quads' end-cap overdraw at extreme zoom.
-fn segment_edges(edges: &mut Vec<Edge>, region: &Region, a: Dab, b: Dab) {
-	let scale = region.scale as f32;
-	let gradient = (a.sigma.min(b.sigma) * scale).max(1.);
-	let shift = (b.sigma - a.sigma).abs() * scale * CUTOFF_SIGMA;
-	let pieces = (shift / (MAX_EDGE_SHIFT * gradient)).ceil().clamp(1., 64.) as usize;
-	let mut previous = a;
-	for piece in 1..=pieces {
-		let next = if piece == pieces { b } else { mix(a, b, piece as f32 / pieces as f32) };
-		edges.push(edge(region, previous, next));
-		previous = next;
-	}
-}
-
-/// The edges linking `prev` (when present), the `kept` dabs, and the closing `tail` in sequence.
-fn edges(region: &Region, prev: Option<Dab>, kept: &[Dab], tail: Option<(Dab, Dab)>) -> Vec<Edge> {
-	let mut edges = Vec::with_capacity(kept.len() + 1);
-	let mut last = prev;
-	for &dab in kept {
-		if let Some(previous) = last {
-			segment_edges(&mut edges, region, previous, dab);
-		}
-		last = Some(dab);
-	}
-	if let Some((a, b)) = tail {
-		segment_edges(&mut edges, region, a, b);
-	}
-	edges
-}
-
-/// Texel-space (origin, size) of `bounds` within the crop window.
-fn scissor(region: &Region, crop: &Crop, bounds: AxisAlignedBbox) -> (UVec2, UVec2) {
-	let clamp = |texels: UVec2| texels.max(crop.origin).min(crop.origin + crop.size) - crop.origin;
-	let min = ((bounds.start - region.min) * region.scale).floor().max(DVec2::ZERO).as_uvec2().min(region.size);
-	let max = ((bounds.end - region.min) * region.scale).ceil().max(DVec2::ZERO).as_uvec2().min(region.size);
-	(clamp(min), clamp(max) - clamp(min))
-}
-
-/// Walks a whole stroke, yielding its kept dabs and provisional tail.
-fn walk_stroke(stroke: &Stroke, style: &BrushStyle, scale: f64) -> (Vec<Dab>, Option<(Dab, Dab)>) {
-	let mut walk = Walk::default();
-	let kept = walk.advance(stroke, style, scale);
-	let tail = walk.tail(stroke, style);
-	(kept, tail)
-}
-
 pub struct AirbrushPipelineArgs<'a> {
 	pub(super) footprint: Footprint,
 	/// Every stroke with its style, in composite order; the last is the actively drawn one.
@@ -328,7 +138,6 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		let device = &executor.context().device;
 		let scatter_shader = device.create_shader_module(wgpu::include_wgsl!("scatter.wgsl"));
 		let resolve_shader = device.create_shader_module(wgpu::include_wgsl!("resolve.wgsl"));
-		let convert_shader = device.create_shader_module(wgpu::include_wgsl!("convert.wgsl"));
 
 		let uniform_entry = |binding, visibility| wgpu::BindGroupLayoutEntry {
 			binding,
@@ -359,11 +168,6 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 			label: Some("airbrush_resolve_bind_group_layout"),
 			entries: &[uniform_entry(0, wgpu::ShaderStages::FRAGMENT), texture_entry(1)],
 		});
-		let convert_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-			label: Some("airbrush_convert_bind_group_layout"),
-			entries: &[texture_entry(0)],
-		});
-
 		let density_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("airbrush_density_pipeline_layout"),
 			bind_group_layouts: &[Some(&density_bind_group_layout)],
@@ -374,12 +178,6 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 			bind_group_layouts: &[Some(&resolve_bind_group_layout)],
 			immediate_size: 0,
 		});
-		let convert_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-			label: Some("airbrush_convert_pipeline_layout"),
-			bind_group_layouts: &[Some(&convert_bind_group_layout)],
-			immediate_size: 0,
-		});
-
 		let instance_layout = wgpu::VertexBufferLayout {
 			array_stride: std::mem::size_of::<Edge>() as wgpu::BufferAddress,
 			step_mode: wgpu::VertexStepMode::Instance,
@@ -473,38 +271,12 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 			cache: None,
 		});
 
-		let convert_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some("airbrush_convert_pipeline"),
-			layout: Some(&convert_pipeline_layout),
-			vertex: wgpu::VertexState {
-				module: &convert_shader,
-				entry_point: Some("vs_main"),
-				compilation_options: Default::default(),
-				buffers: &[],
-			},
-			fragment: Some(wgpu::FragmentState {
-				module: &convert_shader,
-				entry_point: Some("fs_main"),
-				compilation_options: Default::default(),
-				targets: &[Some(wgpu::TextureFormat::Rgba8Unorm.into())],
-			}),
-			primitive: wgpu::PrimitiveState {
-				topology: wgpu::PrimitiveTopology::TriangleList,
-				..Default::default()
-			},
-			depth_stencil: None,
-			multisample: wgpu::MultisampleState::default(),
-			multiview_mask: None,
-			cache: None,
-		});
-
 		Self {
 			density_pipeline,
 			resolve_pipeline,
-			convert_pipeline,
 			density_bind_group_layout,
 			resolve_bind_group_layout,
-			convert_bind_group_layout,
+			convert: Convert::new(device),
 		}
 	}
 
@@ -531,8 +303,8 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		let prefix = slot.strokes.len() <= keys.len() && slot.strokes.iter().zip(&keys).all(|((key, _), new)| key == new);
 		let known = if prefix { slot.strokes.len() } else { 0 };
 		let mut bounds: Vec<AxisAlignedBbox> = if prefix { slot.strokes.iter().map(|(_, bounds)| bounds.clone()).collect() } else { Vec::new() };
-		bounds.extend(finished[known..].iter().map(|(style, stroke)| stroke_pad_bounds(stroke, style, scale)));
-		let active_bounds = stroke_pad_bounds(active, active_style, scale);
+		bounds.extend(finished[known..].iter().map(|(style, stroke)| stroke_bounds(stroke, style, scale)));
+		let active_bounds = stroke_bounds(active, active_style, scale);
 		let mut content = None;
 		for stroke_bounds in &bounds {
 			union(&mut content, stroke_bounds.clone());
@@ -658,7 +430,7 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		self.resolve_pass(&mut encoder, &composite_view, active_bind, scissor(&region, &crop, active_bounds));
 
 		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
-		self.convert_pass(&mut encoder, &output_view, &self.convert_bind(device, &composite_view));
+		self.convert.encode(device, &mut encoder, &composite_view, &output_view);
 
 		queue.submit([encoder.finish()]);
 		args.cache.store(
@@ -708,17 +480,6 @@ impl AirbrushPipeline {
 					resource: wgpu::BindingResource::TextureView(source),
 				},
 			],
-		})
-	}
-
-	fn convert_bind(&self, device: &wgpu::Device, source: &wgpu::TextureView) -> wgpu::BindGroup {
-		device.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some("airbrush_convert_bind_group"),
-			layout: &self.convert_bind_group_layout,
-			entries: &[wgpu::BindGroupEntry {
-				binding: 0,
-				resource: wgpu::BindingResource::TextureView(source),
-			}],
 		})
 	}
 
@@ -775,26 +536,6 @@ impl AirbrushPipeline {
 		pass.set_pipeline(&self.resolve_pipeline);
 		pass.set_bind_group(0, bind, &[]);
 		pass.set_scissor_rect(origin.x, origin.y, size.x, size.y);
-		pass.draw(0..3, 0..1);
-	}
-
-	/// Encode the premultiplied linear composite into a straight-alpha sRGB target.
-	fn convert_pass(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, bind: &wgpu::BindGroup) {
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("airbrush_convert_pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view,
-				resolve_target: None,
-				ops: wgpu::Operations {
-					load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-					store: wgpu::StoreOp::Store,
-				},
-				depth_slice: None,
-			})],
-			..Default::default()
-		});
-		pass.set_pipeline(&self.convert_pipeline);
-		pass.set_bind_group(0, bind, &[]);
 		pass.draw(0..3, 0..1);
 	}
 }

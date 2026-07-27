@@ -1,5 +1,7 @@
+mod convert;
 mod helpers;
 mod region;
+mod stroke;
 
 use brush_types::{BrushCache, BrushStyle};
 use core_types::list::{ATTR_BRUSH_STYLE, Item, List};
@@ -8,11 +10,6 @@ use graphic_types::Graphic;
 use helpers::{AirbrushPipeline, AirbrushPipelineArgs};
 use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
-
-// TODO: decide if we want this to be 0.5 to keep strokes always anialiased
-const MIN_SIGMA: f32 = f32::EPSILON;
-const CUTOFF_SIGMA: f32 = 5.;
-const MAX_EDGE_SHIFT: f32 = 0.25;
 
 #[node_macro::node(category("Raster: Brush"))]
 pub async fn airbrush<'a: 'n>(ctx: impl Ctx + ExtractFootprint, strokes: List<Graphic>, cache: BrushCache, #[scope(airbrush_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache) -> List<Raster<GPU>> {
