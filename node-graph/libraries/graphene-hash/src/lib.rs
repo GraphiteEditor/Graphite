@@ -68,6 +68,7 @@ impl_via_hash! {
 #[cfg(feature = "std")]
 impl_via_hash! {
 	String,
+	core::time::Duration,
 }
 
 impl<'a> CacheHash for std::borrow::Cow<'a, str> {

@@ -61,7 +61,7 @@ pub trait GetEditorPreferences {
 	fn max_render_region_area(&self) -> u32;
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExportFormat {
 	#[default]
@@ -69,14 +69,14 @@ pub enum ExportFormat {
 	Raster,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TimingInformation {
 	pub time: f64,
 	pub animation_time: Duration,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderConfig {
 	pub viewport: Footprint,

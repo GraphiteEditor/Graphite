@@ -225,7 +225,7 @@ mod tests {
 		);
 
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
-		assert_eq!(runtime.drain(), vec![], "an interrupted prologue must not spawn or claim the slot");
+		assert_eq!(runtime.drain(), Vec::<SourceId>::new(), "an interrupted prologue must not spawn or claim the slot");
 		gate.store(true, Ordering::Relaxed);
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), vec![9]);

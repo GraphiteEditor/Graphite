@@ -770,6 +770,12 @@ impl<'a> EvalScope<'a> {
 		scope
 	}
 
+	pub fn with_pointer_position(&self, pointer_position: Option<DVec2>) -> EvalScope<'a> {
+		let mut scope = EvalScope { pointer_position, ..*self };
+		scope.hash = scope.compute_hash(None);
+		scope
+	}
+
 	pub fn nullified(&self, keep: ContextFeatures) -> EvalScope<'a> {
 		let mut scope = EvalScope {
 			real_time: self.real_time.filter(|_| keep.contains(ContextFeatures::REAL_TIME)),

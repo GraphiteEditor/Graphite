@@ -1,7 +1,7 @@
 use core_types::gpoll::Interrupt;
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractVarArgs, OwnedContextImpl, WasmNotSend};
+use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -141,11 +141,13 @@ fn render<'a>(
 }
 
 #[node_macro::node(category(""))]
-fn create_context<'a>(
-	// Context injections are defined in the wrap_network_in_scope function
-	render_config: RenderConfig,
-	data: impl Node<Context<'_>, Output = RenderOutput>,
-) -> RenderOutput {
+fn create_context(ctx: impl Ctx + ExtractVarArgs + DeriveCtx, data: impl Node<Context<'_>, Output = RenderOutput>) -> Result<RenderOutput, Interrupt> {
+	let render_config = *ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderConfig>()
+		.expect("Downcasting render config yielded invalid type");
+
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
@@ -166,16 +168,78 @@ fn create_context<'a>(
 		..Default::default()
 	};
 
-	let ctx = OwnedContextImpl::default()
-		.with_footprint(footprint)
-		.with_real_time(render_config.time.time)
-		.with_animation_time(render_config.time.animation_time.as_secs_f64())
-		.with_pointer_position(render_config.pointer)
-		.with_vararg(Box::new(render_params))
-		.into_context();
-
-	let mut result = data.eval(ctx).await;
+	let scope = ctx
+		.scope()
+		.with_real_time(Some(render_config.time.time))
+		.with_animation_time(Some(render_config.time.animation_time.as_secs_f64()))
+		.with_pointer_position(Some(render_config.pointer));
+	let varargs = VarArgLink {
+		args: VarArgSlots::Single(&render_params),
+		outer: None,
+	};
+	let scoped = ctx.with_scope(&scope);
+	let with_params = scoped.with_varargs(&varargs);
+	let mut result = data.eval(&with_params.with_footprint(&footprint))?;
 
 	result.metadata.apply_transform(glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_config.scale)));
-	result
+	Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::arena::Arena;
+	use core_types::context::{ContextImpl, EvalScope, VarArgsResult};
+	use core_types::gnode::GNode;
+	use core_types::gpoll::GPoll;
+	use core_types::{ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
+	use graphene_application_io::TimingInformation;
+
+	struct ProbeNode;
+
+	impl<'a> GNode<ContextImpl<'a>> for ProbeNode {
+		type Output = RenderOutput;
+
+		fn eval(&self, ctx: &ContextImpl<'a>) -> GPoll<RenderOutput> {
+			let render_params = ctx.vararg(0).unwrap().downcast_ref::<RenderParams>().expect("the vararg chain must start with RenderParams");
+			assert_eq!(render_params.scale, 2.0);
+			assert!(matches!(ctx.vararg(1), Err(VarArgsResult::IndexOutOfBounds)), "the RenderConfig must not leak downstream");
+			assert_eq!(ctx.footprint().transform, glam::DAffine2::from_scale(glam::DVec2::splat(2.0)) * Footprint::DEFAULT.transform);
+			assert_eq!(ctx.try_real_time(), Some(1.5));
+			assert_eq!(ctx.try_animation_time(), Some(2.0));
+			assert_eq!(ctx.try_pointer_position(), Some(glam::DVec2::new(3.0, 4.0)));
+			GPoll::Final(RenderOutput {
+				data: RenderOutputType::Buffer { data: Vec::new(), width: 0, height: 0 },
+				metadata: RenderMetadata::default(),
+			})
+		}
+	}
+
+	#[test]
+	fn create_context_builds_the_render_context_from_the_root_vararg() {
+		let arena = Arena::new(256);
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let render_config = RenderConfig {
+			scale: 2.0,
+			time: TimingInformation {
+				time: 1.5,
+				animation_time: std::time::Duration::from_secs(2),
+			},
+			pointer: glam::DVec2::new(3.0, 4.0),
+			..Default::default()
+		};
+		let varargs = VarArgLink {
+			args: VarArgSlots::Single(&render_config),
+			outer: None,
+		};
+		let ctx = root.with_varargs(&varargs);
+
+		let graph = CreateContextNode::new(ProbeNode);
+		let GPoll::Final(result) = <CreateContextNode<ProbeNode> as GNode<ContextImpl>>::eval(&graph, &ctx) else {
+			panic!("create_context must complete synchronously");
+		};
+		assert_eq!(result.data, RenderOutputType::Buffer { data: Vec::new(), width: 0, height: 0 });
+	}
 }
