@@ -16,17 +16,21 @@ impl TextureCache {
 		}
 	}
 
-	pub fn request_texture(&mut self, device: &wgpu::Device, size: UVec2) -> Texture {
+	pub fn request_texture(&mut self, device: &wgpu::Device, size: UVec2, format: wgpu::TextureFormat) -> Texture {
 		let size = size.max(UVec2::ONE);
 
-		if let Some(pos) = self.textures.iter().position(|texture| UVec2::new(texture.width(), texture.height()) == size && !texture.is_shared()) {
+		if let Some(pos) = self
+			.textures
+			.iter()
+			.position(|texture| UVec2::new(texture.width(), texture.height()) == size && texture.format() == format && !texture.is_shared())
+		{
 			let entry = self.textures.remove(pos).unwrap();
 			let texture = entry.clone();
 			self.textures.push_back(entry);
 			return texture;
 		}
 
-		let incoming_bytes = size.x as u64 * size.y as u64 * 4;
+		let incoming_bytes = size.x as u64 * size.y as u64 * format.block_copy_size(None).unwrap_or(4) as u64;
 		self.evict_until_fits(incoming_bytes);
 
 		let texture: Texture = device
@@ -40,12 +44,14 @@ impl TextureCache {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				format: wgpu::TextureFormat::Rgba8Unorm,
-				usage: wgpu::TextureUsages::COPY_SRC
-					| wgpu::TextureUsages::COPY_DST
-					| wgpu::TextureUsages::TEXTURE_BINDING
-					| wgpu::TextureUsages::STORAGE_BINDING
-					| wgpu::TextureUsages::RENDER_ATTACHMENT,
+				format,
+				usage: {
+					let common = wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT;
+					match format {
+						wgpu::TextureFormat::Rgba8Unorm => common | wgpu::TextureUsages::STORAGE_BINDING,
+						_ => common,
+					}
+				},
 				view_formats: &[],
 			})
 			.into();
@@ -87,6 +93,6 @@ trait TextureMemoryCostEstimateExt {
 
 impl TextureMemoryCostEstimateExt for wgpu::Texture {
 	fn memory_size_estimate(&self) -> u64 {
-		self.width() as u64 * self.height() as u64 * 4
+		self.width() as u64 * self.height() as u64 * self.format().block_copy_size(None).unwrap_or(4) as u64
 	}
 }
