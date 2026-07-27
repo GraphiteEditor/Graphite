@@ -993,10 +993,20 @@ pub struct ProtoNodeParameters<'a> {
 }
 
 impl<'a> ProtoNodeParameters<'a> {
-	/// The input slot of the given parameter.
+	/// The input slot of the given parameter, or `None` if the parameter belongs to a different node than this view was built from.
 	pub fn input(&self, parameter: impl Into<ParameterRef>) -> Option<&'a NodeInput> {
 		let parameter = parameter.into();
-		debug_assert_eq!(parameter.node_identifier, self.identifier, "a parameter of one node was read from the inputs of another node");
+
+		// A mismatched symbol would otherwise read whatever sits at that index on the wrong node, so crash under tests but only log and read nothing in the running app
+		if parameter.node_identifier != self.identifier {
+			let message = format!("A parameter of {} was read from the inputs of {}", parameter.node_identifier, self.identifier);
+			if cfg!(test) {
+				panic!("{message}")
+			}
+			log::error!("{message}");
+			return None;
+		}
+
 		self.inputs.get(parameter.input_index)
 	}
 
