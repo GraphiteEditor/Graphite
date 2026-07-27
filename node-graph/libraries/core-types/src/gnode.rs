@@ -119,6 +119,28 @@ where
 	}
 }
 
+impl<Input, N> GNode<Input> for std::sync::Arc<N>
+where
+	N: GNode<Input> + ?Sized,
+{
+	type Output = N::Output;
+
+	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
+		(**self).eval(input)
+	}
+
+	fn extent(&self, input: &Input) -> GPoll<Extent> {
+		(**self).extent(input)
+	}
+
+	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
+	where
+		Input: InjectIndex + Copy,
+	{
+		(**self).eval_batch(input, range, scratch)
+	}
+}
+
 pub struct StatusCell {
 	finality: Cell<Finality>,
 	error: Cell<Option<GraphError>>,

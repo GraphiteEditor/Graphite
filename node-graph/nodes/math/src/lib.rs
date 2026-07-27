@@ -1070,6 +1070,7 @@ mod graphene_test {
 	use core_types::gpoll::{Finality, GPoll};
 	use core_types::registry::{EdgeHandle, ErasedGNode, construct};
 	use std::mem::MaybeUninit;
+	use std::sync::Arc;
 
 	struct SourceNode<T>(T);
 
@@ -1128,8 +1129,8 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let entries = logical_or_entries();
-		let value = EdgeHandle::new(Box::new(SourceNode(true)) as Box<ErasedGNode<bool>>);
-		let other_value = EdgeHandle::new(Box::new(SourceNode(false)) as Box<ErasedGNode<bool>>);
+		let value = EdgeHandle::new(Arc::new(SourceNode(true)) as Arc<ErasedGNode<bool>>);
+		let other_value = EdgeHandle::new(Arc::new(SourceNode(false)) as Arc<ErasedGNode<bool>>);
 		let wired = construct(&entries[0], vec![value, other_value]).unwrap().downcast::<bool>().unwrap();
 
 		assert_eq!(GNode::eval(&wired, &ctx), GPoll::Final(true));
@@ -1148,8 +1149,8 @@ mod graphene_test {
 		assert_eq!(entries[3].io.inputs, vec![core_types::concrete!(DVec2), core_types::concrete!(DVec2)]);
 		assert_eq!(entries[3].io.output, core_types::concrete!(DVec2));
 
-		let augend = EdgeHandle::new(Box::new(SourceNode(1.5f64)) as Box<ErasedGNode<f64>>);
-		let addend = EdgeHandle::new(Box::new(SourceNode(2.5f64)) as Box<ErasedGNode<f64>>);
+		let augend = EdgeHandle::new(Arc::new(SourceNode(1.5f64)) as Arc<ErasedGNode<f64>>);
+		let addend = EdgeHandle::new(Arc::new(SourceNode(2.5f64)) as Arc<ErasedGNode<f64>>);
 		let wired = construct(&entries[0], vec![augend, addend]).unwrap().downcast::<f64>().unwrap();
 
 		assert_eq!(GNode::eval(&wired, &ctx), GPoll::Final(4.0));

@@ -83,8 +83,61 @@ pub enum ConstructionError {
 	Type { expected: Type, found: Type },
 }
 
+pub struct SharedEdge<N: ?Sized> {
+	ptr: std::ptr::NonNull<N>,
+	own: std::sync::Arc<N>,
+}
+
+impl<N: ?Sized> SharedEdge<N> {
+	pub fn new(own: std::sync::Arc<N>) -> Self {
+		Self {
+			ptr: std::ptr::NonNull::from(&*own),
+			own,
+		}
+	}
+
+	pub fn share(&self) -> Self {
+		Self {
+			ptr: self.ptr,
+			own: self.own.clone(),
+		}
+	}
+}
+
+impl<Input, N> GNode<Input> for SharedEdge<N>
+where
+	N: GNode<Input> + ?Sized,
+{
+	type Output = N::Output;
+
+	fn eval(&self, input: &Input) -> crate::gpoll::GPoll<Self::Output> {
+		// SAFETY: `own` keeps the payload alive for `self`'s lifetime and Arc
+		// payloads are address stable.
+		unsafe { self.ptr.as_ref() }.eval(input)
+	}
+
+	fn extent(&self, input: &Input) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.extent(input)
+	}
+
+	fn eval_batch<'a>(
+		&self,
+		input: &'a Input,
+		range: std::ops::Range<u64>,
+		scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>,
+	) -> crate::gnode::BatchStatus<'a, Self::Output>
+	where
+		Input: crate::context::InjectIndex + Copy,
+	{
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.eval_batch(input, range, scratch)
+	}
+}
+
 pub struct EdgeHandle {
 	node: Box<dyn std::any::Any>,
+	share: fn(&dyn std::any::Any) -> Box<dyn std::any::Any>,
 	ty: Type,
 }
 
@@ -95,39 +148,48 @@ impl std::fmt::Debug for EdgeHandle {
 }
 
 impl EdgeHandle {
-	pub fn new<T: 'static>(node: Box<ErasedGNode<T>>) -> Self {
+	pub fn new<T: 'static>(node: std::sync::Arc<ErasedGNode<T>>) -> Self {
 		Self::new_erased(node, concrete!(T))
 	}
 
-	pub fn new_ref<T: 'static>(node: Box<ErasedLendGNode<T>>) -> Self {
+	pub fn new_ref<T: 'static>(node: std::sync::Arc<ErasedLendGNode<T>>) -> Self {
 		Self::new_erased(node, Type::Ref(Box::new(concrete!(T))))
 	}
 
-	pub fn new_erased<N: ?Sized>(node: Box<N>, ty: Type) -> Self
-	where
-		Box<N>: std::any::Any,
-	{
-		Self { node: Box::new(node), ty }
+	pub fn new_erased<N: ?Sized + 'static>(node: std::sync::Arc<N>, ty: Type) -> Self {
+		Self {
+			node: Box::new(SharedEdge::new(node)),
+			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
+			ty,
+		}
 	}
 
 	pub fn ty(&self) -> &Type {
 		&self.ty
 	}
 
-	pub fn downcast<T: 'static>(self) -> Result<Box<ErasedGNode<T>>, ConstructionError> {
+	pub fn duplicate(&self) -> Self {
+		Self {
+			node: (self.share)(&*self.node),
+			share: self.share,
+			ty: self.ty.clone(),
+		}
+	}
+
+	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedGNode<T>>, ConstructionError> {
 		self.downcast_erased(concrete!(T))
 	}
 
-	pub fn downcast_lend<T: 'static>(self) -> Result<Box<ErasedLendGNode<T>>, ConstructionError> {
+	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendGNode<T>>, ConstructionError> {
 		self.downcast_erased(Type::Ref(Box::new(concrete!(T))))
 	}
 
-	pub fn downcast_erased<N: ?Sized>(self, expected: Type) -> Result<Box<N>, ConstructionError>
-	where
-		Box<N>: std::any::Any,
-	{
+	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
 		let found = self.ty;
-		self.node.downcast::<Box<N>>().map(|node| *node).map_err(|_| ConstructionError::Type { expected, found })
+		self.node
+			.downcast::<SharedEdge<N>>()
+			.map(|edge| *edge)
+			.map_err(|_| ConstructionError::Type { expected, found })
 	}
 }
 
@@ -397,6 +459,18 @@ mod tests {
 	use crate::arena::Arena;
 	use crate::context::{Ctx, EvalScope, ExtractArena};
 	use crate::gpoll::GPoll;
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicU32, Ordering};
+
+	struct CountingNode(AtomicU32);
+
+	impl<Input> GNode<Input> for CountingNode {
+		type Output = u32;
+
+		fn eval(&self, _input: &Input) -> GPoll<u32> {
+			GPoll::Final(self.0.fetch_add(1, Ordering::Relaxed) + 1)
+		}
+	}
 
 	struct ValueNode<T>(T);
 
@@ -452,9 +526,9 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let lending = EdgeHandle::new_ref(Box::new(LendNode("held".to_string())) as Box<ErasedLendGNode<String>>);
+		let lending = EdgeHandle::new_ref(Arc::new(LendNode("held".to_string())) as Arc<ErasedLendGNode<String>>);
 		let upstream = lending.downcast_lend::<String>().unwrap();
-		let node: Box<ErasedSplitEdge> = Box::new(SplitNode { content: upstream });
+		let node: Arc<ErasedSplitEdge> = Arc::new(SplitNode { content: upstream });
 		let handle = EdgeHandle::new_erased(node, concrete!(SplitBorrow<'static>));
 		assert_eq!(*handle.ty(), concrete!(SplitBorrow<'static>));
 
@@ -574,7 +648,7 @@ mod tests {
 			let mut args = args.into_iter();
 			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast::<String>()?;
 			drop(value);
-			Ok(EdgeHandle::new(Box::new(ValueNode(0u32)) as Box<ErasedGNode<u32>>))
+			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedGNode<u32>>))
 		}
 		let entry = RegistryEntry {
 			io: NodeIoRecord {
@@ -584,12 +658,12 @@ mod tests {
 			constructor: construct_strlen,
 		};
 
-		let owned = EdgeHandle::new(Box::new(ValueNode("typed".to_string())) as Box<ErasedGNode<String>>);
+		let owned = EdgeHandle::new(Arc::new(ValueNode("typed".to_string())) as Arc<ErasedGNode<String>>);
 		assert!(construct(&entry, vec![owned]).is_ok());
 
 		assert_eq!(construct(&entry, vec![]).unwrap_err(), ConstructionError::Arity { expected: 1, got: 0 });
 
-		let mistyped = EdgeHandle::new(Box::new(ValueNode(1.0f64)) as Box<ErasedGNode<f64>>);
+		let mistyped = EdgeHandle::new(Arc::new(ValueNode(1.0f64)) as Arc<ErasedGNode<f64>>);
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {
@@ -598,7 +672,7 @@ mod tests {
 			}
 		);
 
-		let lent = EdgeHandle::new_ref(Box::new(LendNode("typed".to_string())) as Box<ErasedLendGNode<String>>);
+		let lent = EdgeHandle::new_ref(Arc::new(LendNode("typed".to_string())) as Arc<ErasedLendGNode<String>>);
 		assert_eq!(
 			construct(&entry, vec![lent]).unwrap_err(),
 			ConstructionError::Type {
@@ -606,5 +680,25 @@ mod tests {
 				found: Type::Ref(Box::new(concrete!(String))),
 			}
 		);
+	}
+
+	#[test]
+	fn duplicated_edges_share_one_instance_and_outlive_each_other() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let handle = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedGNode<u32>>);
+		let duplicate = handle.duplicate();
+		assert_eq!(*duplicate.ty(), concrete!(u32));
+
+		let first = handle.downcast::<u32>().unwrap();
+		let second = duplicate.downcast::<u32>().unwrap();
+		assert_eq!(first.eval(&ctx), GPoll::Final(1));
+		assert_eq!(second.eval(&ctx), GPoll::Final(2));
+
+		drop(first);
+		assert_eq!(second.eval(&ctx), GPoll::Final(3));
 	}
 }

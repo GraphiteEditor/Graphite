@@ -597,8 +597,8 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 
 	let entries = rows.iter().map(|row| {
 		let types = row.iter();
-		let boxed_types = row.iter().map(|ty| quote!(::std::boxed::Box<gcore::registry::ErasedGNode<#ty>>));
-		let output = quote!(<#struct_name<#(#boxed_types),*> as gcore::gnode::GNode<gcore::context::ContextImpl<'static>>>::Output);
+		let edge_types = row.iter().map(|ty| quote!(gcore::registry::SharedEdge<gcore::registry::ErasedGNode<#ty>>));
+		let output = quote!(<#struct_name<#(#edge_types),*> as gcore::gnode::GNode<gcore::context::ContextImpl<'static>>>::Output);
 		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| {
 			quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;)
 		});
@@ -614,7 +614,7 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					Ok(gcore::registry::EdgeHandle::new(::std::boxed::Box::new(#struct_name::new(#(#names),*)) as ::std::boxed::Box<gcore::registry::ErasedGNode<#output>>))
+					Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedGNode<#output>>))
 				},
 			}
 		}

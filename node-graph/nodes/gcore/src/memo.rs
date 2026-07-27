@@ -219,8 +219,8 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let edge = EdgeHandle::new(Box::new(CountingNode(AtomicU32::new(0))) as Box<ErasedGNode<u32>>);
-		let memoized = EdgeHandle::new(Box::new(MemoizeNode::new(edge.downcast::<u32>().unwrap())) as Box<ErasedGNode<u32>>);
+		let edge = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedGNode<u32>>);
+		let memoized = EdgeHandle::new(Arc::new(MemoizeNode::new(edge.downcast::<u32>().unwrap())) as Arc<ErasedGNode<u32>>);
 		let stacked = MemoizeNode::new(memoized.downcast::<u32>().unwrap());
 
 		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
@@ -234,8 +234,8 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let edge = EdgeHandle::new(Box::new(ValueNode("lent out".to_string())) as Box<ErasedGNode<String>>);
-		let lending = EdgeHandle::new_ref(Box::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Box<ErasedLendGNode<String>>);
+		let edge = EdgeHandle::new(Arc::new(ValueNode("lent out".to_string())) as Arc<ErasedGNode<String>>);
+		let lending = EdgeHandle::new_ref(Arc::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Arc<ErasedLendGNode<String>>);
 		assert_eq!(*lending.ty(), Type::Ref(Box::new(concrete!(String))));
 
 		let node = lending.downcast_lend::<String>().unwrap();
