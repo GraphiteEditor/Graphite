@@ -692,7 +692,7 @@ impl NodeNetworkInterface {
 				// 1. Disconnect old upstream from post_node, wire layer output to post_node
 				self.set_input_for_import(&post_node, layer_output, network_path);
 				// 2. Wire old upstream into layer's primary (stack) input
-				self.set_input_for_import(&InputConnector::node(layer.to_node(), 0), post_node_input, network_path);
+				self.set_input_for_import(&InputConnector::node_at_index(layer.to_node(), 0), post_node_input, network_path);
 			}
 			NodeInput::Import { .. } => {
 				log::error!("Cannot insert import layer into a parent that connects to the imports");
@@ -903,7 +903,7 @@ impl NodeNetworkInterface {
 			self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 
 			// Get the other wires which need to be moved to the output of the moved layer
-			let layer_input_connector = InputConnector::node(layer.to_node(), 0);
+			let layer_input_connector = InputConnector::node_at_index(layer.to_node(), 0);
 			let other_outward_wires = self
 				.upstream_output_connector(&layer_input_connector, network_path)
 				.and_then(|pre_node_output| self.outward_wires(network_path).and_then(|wires| wires.get(&pre_node_output)))
@@ -944,7 +944,7 @@ impl NodeNetworkInterface {
 		self.create_wire(&OutputConnector::node(*node_id, 0), input_connector, network_path);
 
 		// Connect the new node to the previous node
-		self.create_wire(&upstream_output, &InputConnector::node(*node_id, insert_node_input_index), network_path);
+		self.create_wire(&upstream_output, &InputConnector::node_at_index(*node_id, insert_node_input_index), network_path);
 	}
 
 	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
@@ -962,11 +962,11 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if self.input_from_connector(&InputConnector::node(*node_id, 0), network_path).is_none() {
+		if self.input_from_connector(&InputConnector::node_at_index(*node_id, 0), network_path).is_none() {
 			return;
 		}
 
-		self.set_input(&InputConnector::node(*node_id, 0), current_input, network_path);
+		self.set_input(&InputConnector::node_at_index(*node_id, 0), current_input, network_path);
 		self.set_input(input_connector, NodeInput::node(*node_id, 0), network_path);
 
 		// If `set_input` chain-positioned the node (it joined a layer chain), there's nothing more to do.
@@ -990,7 +990,7 @@ impl NodeNetworkInterface {
 	/// Moves a node to the start of a layer chain (feeding into the secondary input of the layer).
 	/// When `import` is true, uses lightweight wiring that skips `is_acyclic` checks and per-node cache invalidation.
 	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId], import: bool) {
-		let parent_input = InputConnector::node(parent.to_node(), 1);
+		let parent_input = InputConnector::node_at_index(parent.to_node(), 1);
 		let Some(current_input) = self.input_from_connector(&parent_input, network_path).cloned() else {
 			log::error!("Could not get input for node {node_id}");
 			return;
@@ -999,7 +999,7 @@ impl NodeNetworkInterface {
 		// Chain is empty: wire the node as the first (and only) entry in the chain
 		if matches!(current_input, NodeInput::Value { .. }) {
 			// A node whose exposed primary defaults to no value inherits the layer's content value, so the chain keeps producing the layer's content type
-			let node_primary = InputConnector::node(*node_id, 0);
+			let node_primary = InputConnector::node_at_index(*node_id, 0);
 			let default_is_valueless = self
 				.input_from_connector(&node_primary, network_path)
 				.is_some_and(|input| matches!(input, NodeInput::Value { tagged_value, exposed: true } if matches!(**tagged_value, TaggedValue::None)));
@@ -1026,7 +1026,7 @@ impl NodeNetworkInterface {
 			// Wire: [parent] -> [new node] -> [existing node]
 			if import {
 				self.set_input_for_import(&parent_input, NodeInput::node(*node_id, 0), network_path);
-				self.set_input_for_import(&InputConnector::node(*node_id, 0), current_input, network_path);
+				self.set_input_for_import(&InputConnector::node_at_index(*node_id, 0), current_input, network_path);
 			} else {
 				self.insert_node_between(node_id, &parent_input, 0, network_path);
 			}
@@ -1075,7 +1075,7 @@ impl NodeNetworkInterface {
 		let tail_input = if let Some(source) = pinned_source {
 			NodeInput::node(source, 0)
 		} else {
-			let Some(input) = self.input_from_connector(&InputConnector::node(*chain.last().unwrap(), 0), network_path).cloned() else {
+			let Some(input) = self.input_from_connector(&InputConnector::node_at_index(*chain.last().unwrap(), 0), network_path).cloned() else {
 				log::error!("Could not get the upstream input of the chain in reorder_chain_node");
 				return;
 			};
@@ -1084,15 +1084,15 @@ impl NodeNetworkInterface {
 
 		// Disconnect first so the rewiring can't transiently form a cycle (the pinned source keeps its wiring)
 		for &chain_node in reorderable {
-			self.disconnect_input(&InputConnector::node(chain_node, 0), network_path);
+			self.disconnect_input(&InputConnector::node_at_index(chain_node, 0), network_path);
 		}
 
 		// Rewire in the new order: layer's secondary input -> new_order[0] -> ... -> new_order[last] -> tail input
-		self.set_input(&InputConnector::node(layer, 1), NodeInput::node(new_order[0], 0), network_path);
+		self.set_input(&InputConnector::node_at_index(layer, 1), NodeInput::node(new_order[0], 0), network_path);
 		for pair in new_order.windows(2) {
-			self.set_input(&InputConnector::node(pair[0], 0), NodeInput::node(pair[1], 0), network_path);
+			self.set_input(&InputConnector::node_at_index(pair[0], 0), NodeInput::node(pair[1], 0), network_path);
 		}
-		self.set_input(&InputConnector::node(*new_order.last().unwrap(), 0), tail_input, network_path);
+		self.set_input(&InputConnector::node_at_index(*new_order.last().unwrap(), 0), tail_input, network_path);
 
 		// Re-establish chain positioning for the reordered nodes
 		self.force_set_upstream_to_chain(&new_order[0], network_path);

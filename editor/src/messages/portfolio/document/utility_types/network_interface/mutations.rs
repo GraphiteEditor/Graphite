@@ -1132,11 +1132,14 @@ impl NodeNetworkInterface {
 
 			// Perform an upstream traversal to try delete children for secondary inputs
 			let mut upstream_nodes = (1..self.number_of_inputs(node_id, network_path))
-				.filter_map(|input_index| self.upstream_output_connector(&InputConnector::node(*node_id, input_index), network_path).and_then(|oc| oc.node_id()))
+				.filter_map(|input_index| {
+					self.upstream_output_connector(&InputConnector::node_at_index(*node_id, input_index), network_path)
+						.and_then(|oc| oc.node_id())
+				})
 				.collect::<Vec<_>>();
 			while let Some(upstream_node) = upstream_nodes.pop() {
 				// Add the upstream nodes to the traversal
-				for input_connector in (0..self.number_of_inputs(&upstream_node, network_path)).map(|input_index| InputConnector::node(upstream_node, input_index)) {
+				for input_connector in (0..self.number_of_inputs(&upstream_node, network_path)).map(|input_index| InputConnector::node_at_index(upstream_node, input_index)) {
 					if let Some(upstream_node) = self.upstream_output_connector(&input_connector, network_path).and_then(|oc| oc.node_id()) {
 						upstream_nodes.push(upstream_node);
 					}
@@ -1174,7 +1177,7 @@ impl NodeNetworkInterface {
 
 			// Disconnect every input by position, since hidden inputs make the displayed count undershoot the index of a later exposed wire
 			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
-				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
+				self.disconnect_input(&InputConnector::node_at_index(*delete_node_id, input_index), network_path);
 			}
 
 			let Some(network) = self.network_mut(network_path) else {
@@ -1257,7 +1260,7 @@ impl NodeNetworkInterface {
 				&& let Some(reconnect_input) = &reconnect_to_input
 			{
 				reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
-				self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
+				self.disconnect_input(&InputConnector::node_at_index(*node_id, 0), network_path);
 				self.set_input(downstream_input, reconnect_input.clone(), network_path);
 			}
 		}
@@ -1509,7 +1512,7 @@ impl NodeNetworkInterface {
 
 		// Try build the chain
 		if is_layer {
-			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
+			self.try_set_upstream_to_chain(&InputConnector::node_at_index(*node_id, 1), network_path);
 		} else {
 			self.try_set_node_to_chain(node_id, network_path);
 		}

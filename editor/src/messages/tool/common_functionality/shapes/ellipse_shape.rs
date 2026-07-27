@@ -37,11 +37,11 @@ impl Ellipse {
 			let radius = ((start - end) / 2. / viewport_zoom(document)).abs();
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node_at_index(node_id, 1),
 				input: NodeInput::value(TaggedValue::F64(radius.x), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node_at_index(node_id, 2),
 				input: NodeInput::value(TaggedValue::F64(radius.y), false),
 			});
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));

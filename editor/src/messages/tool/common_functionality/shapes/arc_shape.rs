@@ -172,7 +172,7 @@ impl Arc {
 			let radius = radius / viewport_zoom(document);
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node_at_index(node_id, 1),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 

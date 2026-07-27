@@ -444,7 +444,7 @@ impl PointRadiusHandle {
 		}
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, radius_index),
+			input_connector: InputConnector::node_at_index(node_id, radius_index),
 			input: NodeInput::value(TaggedValue::F64(original_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

@@ -10,14 +10,13 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::brush::brush_stroke::BrushStroke;
-use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{Gradient, PointId, Vector, VectorModification, VectorModificationType};
-use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
+use graphene_std::{Artboard, Color, Graphic};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -370,7 +369,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node_at_index(output_layer.to_node(), 1), &[]);
 			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
 				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
 					log::error!("Combine Paths does not exist in ModifyInputsContext::existing_node_id");
@@ -391,8 +390,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX);
-		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput);
+		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput);
 
 		// The backup remembers the last solid color, so the red-slash "none" choice leaves it untouched
 		if let Some(color) = color {
@@ -406,13 +405,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
-		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX);
+		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Gradient(gradient.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
 			NodeInput::value(TaggedValue::Gradient(gradient), false),
 			true,
 		);
@@ -423,29 +422,29 @@ impl<'a> ModifyInputsContext<'a> {
 			.document_network()
 			.nodes
 			.get(&fill_node_id)
-			.and_then(|node| node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX))
+			.and_then(|node| node.input(graphene_std::vector::fill::TransformInput))
 			.is_some_and(|input| input.as_value().is_some());
 		if transform_is_value {
 			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX),
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput),
 				NodeInput::value(TaggedValue::Bool(true), false),
 				true,
 			);
 			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
 				NodeInput::value(TaggedValue::DAffine2(transform), false),
 				true,
 			);
 		}
 
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput),
 			NodeInput::value(TaggedValue::GradientType(gradient_type), false),
 			true,
 		);
 
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::SpreadMethodInput::INDEX),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::SpreadMethodInput),
 			NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false),
 			false,
 		);
@@ -455,7 +454,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blend_mode::BlendModeInput::INDEX);
+		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blend_mode::BlendModeInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
@@ -465,12 +464,12 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		// Enable the `has_opacity` checkbox so the value is applied
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput),
 			NodeInput::value(TaggedValue::Bool(true), false),
 			false,
 		);
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::OpacityInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::OpacityInput),
 			NodeInput::value(TaggedValue::F64(opacity * 100.), false),
 			false,
 		);
@@ -487,19 +486,19 @@ impl<'a> ModifyInputsContext<'a> {
 		// Freshly-created node defaults to opacity enabled; disable it so the fill slider works independently
 		if !existed {
 			self.set_input_with_refresh(
-				InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput::INDEX),
+				InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput),
 				NodeInput::value(TaggedValue::Bool(false), false),
 				false,
 			);
 		}
 		// Enable the `has_fill` checkbox so the value is applied
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasFillInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasFillInput),
 			NodeInput::value(TaggedValue::Bool(true), false),
 			false,
 		);
 		self.set_input_with_refresh(
-			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::FillInput::INDEX),
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::FillInput),
 			NodeInput::value(TaggedValue::F64(fill * 100.), false),
 			false,
 		);
@@ -513,7 +512,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(id) => id,
 			None => {
 				let target = gradient_chain_target_input(output_layer, self.network_interface);
-				let starts_layer_chain = target == InputConnector::node(output_layer.to_node(), 1);
+				let starts_layer_chain = target == InputConnector::node_at_index(output_layer.to_node(), 1);
 
 				// The Gradient Value node discards its primary input, so starting a chain ahead of existing layer content would drop that content; refuse instead
 				if starts_layer_chain && self.network_interface.upstream_output_connector(&target, &[]).is_some() {
@@ -546,7 +545,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		};
 
-		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
 	}
 
@@ -624,7 +623,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_type::GradientTypeInput::INDEX);
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_type::GradientTypeInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
 	}
 
@@ -640,7 +639,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::spread_method::SpreadMethodInput::INDEX);
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::spread_method::SpreadMethodInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false), false);
 	}
 
@@ -649,7 +648,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput::INDEX);
+		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
 	}
 
@@ -658,23 +657,23 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeCap(stroke.cap), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths.into()), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
 
@@ -775,7 +774,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_proto_node_id(graphene_std::brush::brush::brush::IDENTIFIER, true) else {
 			return;
 		};
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		self.set_input_with_refresh(InputConnector::node_at_index(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: DVec2, dimensions: DVec2) {
@@ -794,8 +793,8 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y = -dimensions.y;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location), false), false);
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions), false), false);
+		self.set_input_with_refresh(InputConnector::node_at_index(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location), false), false);
+		self.set_input_with_refresh(InputConnector::node_at_index(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions), false), false);
 	}
 
 	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false

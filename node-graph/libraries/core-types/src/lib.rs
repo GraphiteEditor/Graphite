@@ -141,8 +141,35 @@ impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)>
 	}
 }
 
-pub trait NodeInputDecleration {
+/// A compile-time symbol naming one parameter of one proto node.
+/// The node macro generates a unit struct implementing this for every parameter, so code can pass the type itself (e.g. `stroke::WeightInput`) instead of a raw input index.
+pub trait NodeParameter {
+	/// The proto node this parameter belongs to.
+	const NODE_IDENTIFIER: ProtoNodeIdentifier;
+	/// Position of this parameter among the node's inputs.
+	/// Prefer passing the symbol to an API that accepts it; reach for this only at genuinely index-based boundaries.
 	const INDEX: usize;
-	fn identifier() -> ProtoNodeIdentifier;
+}
+
+/// The typed view of a node parameter, exposing the parameter's Rust type (used by test introspection).
+/// Implemented directly on the parameter symbol when its type involves no node generics, and otherwise on the macro-generated `Typed*Input` phantom marker.
+pub trait TypedNodeParameter: NodeParameter {
 	type Result;
+}
+
+/// A runtime reference to one parameter of one proto node, for heterogeneous tables and runtime-chosen parameters.
+/// Convert a symbol with `.into()`; unlike a raw index, the node identifier and index always stay paired.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ParameterRef {
+	pub node_identifier: ProtoNodeIdentifier,
+	pub input_index: usize,
+}
+
+impl<P: NodeParameter> From<P> for ParameterRef {
+	fn from(_: P) -> Self {
+		ParameterRef {
+			node_identifier: P::NODE_IDENTIFIER,
+			input_index: P::INDEX,
+		}
+	}
 }

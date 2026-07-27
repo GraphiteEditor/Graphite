@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::extract_
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
+use graphene_std::NodeParameter;
 use graphene_std::vector::misc::{GridType, dvec2_to_point, get_line_endpoints};
 use kurbo::{Line, ParamCurveNearest, Rect};
 use std::collections::VecDeque;
@@ -123,7 +123,7 @@ impl RowColumnGizmo {
 		let transform = self.transform_grid(dimensions_delta, self.spacing, grid_type, angles, viewport);
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, self.gizmo_type.index()),
+			input_connector: InputConnector::node_at_index(node_id, self.gizmo_type.index()),
 			input: NodeInput::value(TaggedValue::U32((self.initial_dimension() as i32 + dimensions_to_add).max(1) as u32), false),
 		});
 

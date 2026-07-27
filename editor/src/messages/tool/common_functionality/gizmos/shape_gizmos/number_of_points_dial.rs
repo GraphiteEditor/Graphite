@@ -201,7 +201,7 @@ impl NumberOfPointsDial {
 		let new_point_count = ((self.initial_points as i32) + (net_delta as i32)).max(3);
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node_at_index(node_id, 1),
 			input: NodeInput::value(TaggedValue::U32(new_point_count as u32), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

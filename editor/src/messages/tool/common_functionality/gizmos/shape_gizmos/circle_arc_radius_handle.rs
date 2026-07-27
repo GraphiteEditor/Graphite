@@ -165,7 +165,7 @@ impl RadiusHandle {
 		self.previous_mouse_position = input.mouse.position;
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node_at_index(node_id, 1),
 			input: NodeInput::value(TaggedValue::F64(current_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

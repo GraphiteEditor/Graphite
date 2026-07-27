@@ -2013,10 +2013,8 @@ mod test_gradient {
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::list::List;
 	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientStop, fill};
-	use graphene_std::{Graphic, NodeInputDecleration};
 
 	use super::gradient_space_transform;
 
@@ -2058,18 +2056,18 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let stops = match fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
+				let stops = match fill_node.input(fill::FillInput)?.as_value()? {
 					TaggedValue::Gradient(stops) => stops.clone(),
 					_ => return None,
 				};
 
-				let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+				let spread_method = match fill_node.input(fill::SpreadMethodInput).and_then(|input| input.as_value()) {
 					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 					_ => GradientSpreadMethod::default(),
 				};
 
-				let has_transform = matches!(fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
-				let local_transform = match fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+				let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
+				let local_transform = match fill_node.input(fill::TransformInput).and_then(|input| input.as_value()) {
 					Some(&TaggedValue::DAffine2(value)) if has_transform => value,
 					_ => DAffine2::IDENTITY,
 				};
@@ -2140,7 +2138,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::node(gradient_node_id, 0),
-				input_connector: InputConnector::node(layer.to_node(), 1),
+				input_connector: InputConnector::node_at_index(layer.to_node(), 1),
 			})
 			.await;
 
@@ -2178,7 +2176,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::node(gradient_node_id, 0),
-				input_connector: InputConnector::node(fill_node_id, fill::FillInput::<List<Graphic>>::INDEX),
+				input_connector: InputConnector::node(fill_node_id, fill::FillInput),
 			})
 			.await;
 
@@ -2823,7 +2821,7 @@ mod test_gradient {
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
 				output_connector: OutputConnector::node(gradient_value_id, 0),
-				input_connector: InputConnector::node(fill_node_id, 1),
+				input_connector: InputConnector::node_at_index(fill_node_id, 1),
 			})
 			.await;
 		editor

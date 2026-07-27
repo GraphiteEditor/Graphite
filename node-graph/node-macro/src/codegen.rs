@@ -881,7 +881,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	})
 }
 
-/// Generates strongly typed utilites to access inputs
+/// Generates the per-parameter symbol types used to reference this node's inputs, plus typed markers for test introspection.
 fn generate_node_input_references(
 	parsed: &ParsedNodeFn,
 	fn_generics: &[crate::GenericParam],
@@ -913,29 +913,39 @@ fn generate_node_input_references(
 			let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
 			// TODO: figure out a better name that doesn't conflict with so many types
 			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
-			let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
+			let (fn_generic_params, phantom_data_declarations) = generate_phantom_data(used.iter());
 
-			// Only create structs with phantom data where necessary.
-			generated_input_accessor.push(if phantom_data_declerations.is_empty() {
+			// Every parameter gets a plain unit struct: the symbol used across the codebase to name this input
+			generated_input_accessor.push(quote! {
+				pub struct #struct_name;
+				impl #core_types::NodeParameter for #struct_name {
+					const NODE_IDENTIFIER: #core_types::ProtoNodeIdentifier = #inputs_module_name::IDENTIFIER;
+					const INDEX: usize = #input_index;
+				}
+			});
+
+			// The typed view lives on the symbol itself when possible, otherwise on a phantom-data marker carrying the node's generics
+			generated_input_accessor.push(if phantom_data_declarations.is_empty() {
 				quote! {
-					pub struct #struct_name;
+					impl #core_types::TypedNodeParameter for #struct_name {
+						type Result = #ty;
+					}
 				}
 			} else {
+				let typed_struct_name = format_ident!("Typed{}", struct_name);
 				quote! {
-					pub struct #struct_name <#(#used),*>{
-						#(#phantom_data_declerations,)*
+					pub struct #typed_struct_name <#(#used),*>{
+						#(#phantom_data_declarations,)*
+					}
+					impl <#(#used),*> #core_types::NodeParameter for #typed_struct_name <#(#fn_generic_params),*> {
+						const NODE_IDENTIFIER: #core_types::ProtoNodeIdentifier = #inputs_module_name::IDENTIFIER;
+						const INDEX: usize = #input_index;
+					}
+					impl <#(#used),*> #core_types::TypedNodeParameter for #typed_struct_name <#(#fn_generic_params),*> {
+						type Result = #ty;
 					}
 				}
 			});
-			generated_input_accessor.push(quote! {
-				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
-					const INDEX: usize = #input_index;
-					fn identifier() -> #core_types::ProtoNodeIdentifier {
-						#inputs_module_name::IDENTIFIER.clone()
-					}
-					type Result = #ty;
-				}
-			})
 		}
 	}
 
@@ -953,29 +963,29 @@ fn generate_node_input_references(
 
 /// It is necessary to generate PhantomData for each fn generic to avoid compiler errors.
 fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::GenericParam>) -> (Vec<TokenStream2>, Vec<TokenStream2>) {
-	let mut phantom_data_declerations = Vec::new();
+	let mut phantom_data_declarations = Vec::new();
 	let mut fn_generic_params = Vec::new();
 
 	for fn_generic_param in fn_generics {
-		let field_name = format_ident!("phantom_{}", phantom_data_declerations.len());
+		let field_name = format_ident!("phantom_{}", phantom_data_declarations.len());
 
 		match fn_generic_param {
 			crate::GenericParam::Lifetime(lifetime_param) => {
 				let lifetime = &lifetime_param.lifetime;
 
 				fn_generic_params.push(quote! {#lifetime});
-				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<&#lifetime ()>})
+				phantom_data_declarations.push(quote! {#field_name: core::marker::PhantomData<&#lifetime ()>})
 			}
 			crate::GenericParam::Type(type_param) => {
 				let generic_name = &type_param.ident;
 
 				fn_generic_params.push(quote! {#generic_name});
-				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<#generic_name>});
+				phantom_data_declarations.push(quote! {#field_name: core::marker::PhantomData<#generic_name>});
 			}
 			_ => {}
 		}
 	}
-	(fn_generic_params, phantom_data_declerations)
+	(fn_generic_params, phantom_data_declarations)
 }
 
 /// The wire container a generated node variant is registered with, wrapping the kernel's primary input element type.

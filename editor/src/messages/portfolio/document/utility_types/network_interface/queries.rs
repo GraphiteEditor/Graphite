@@ -241,7 +241,7 @@ impl NodeNetworkInterface {
 		for old_id in new_nodes.iter().map(|(_, old_id, _)| *old_id).collect::<Vec<_>>() {
 			// Try set all selected nodes upstream of a layer to be chain nodes
 			if self.is_layer(&old_id, network_path) {
-				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, 1), network_path) {
+				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node_at_index(old_id, 1), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
 						match &mut node_template.node_type_metadata {
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
@@ -269,12 +269,12 @@ impl NodeNetworkInterface {
 					*input = NodeInput::Node { node_id: new_id, output_index };
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
-					let tagged_value = self.tagged_value_from_input(&InputConnector::node(*node_id, input_index), network_path);
+					let tagged_value = self.tagged_value_from_input(&InputConnector::node_at_index(*node_id, input_index), network_path);
 					*input = NodeInput::value(tagged_value, true);
 				}
 			} else if let &mut NodeInput::Import { .. } = input {
 				// Always disconnect network node input
-				let tagged_value = self.tagged_value_from_input(&InputConnector::node(*node_id, input_index), network_path);
+				let tagged_value = self.tagged_value_from_input(&InputConnector::node_at_index(*node_id, input_index), network_path);
 				*input = NodeInput::value(tagged_value, true);
 			}
 		}
@@ -624,7 +624,7 @@ impl NodeNetworkInterface {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
 			InputConnector::Export(0)
 		} else {
-			InputConnector::node(parent.to_node(), 1)
+			InputConnector::node_at_index(parent.to_node(), 1)
 		};
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
 		let mut current_index = 0;
@@ -644,7 +644,7 @@ impl NodeNetworkInterface {
 					current_index += 1;
 				}
 				// Input as a sibling to the Layer node above
-				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
+				post_node_input_connector = InputConnector::node_at_index(*next_node_in_stack_id, 0);
 			} else {
 				log::error!("Error getting post node: insert_index out of bounds");
 				break;
@@ -660,7 +660,7 @@ impl NodeNetworkInterface {
 			match pre_node_output_connector {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !self.is_layer(&pre_node_id, network_path) => {
 					// Update post_node_input_connector for the next iteration
-					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					post_node_input_connector = InputConnector::node_at_index(pre_node_id, 0);
 					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
 					let primary_is_exposed = self.input_from_connector(&post_node_input_connector, network_path).is_some_and(|input| input.is_exposed());
 					if !primary_is_exposed {
@@ -805,7 +805,7 @@ impl NodeNetworkInterface {
 		};
 		let description = input_metadata.input_description.to_string();
 		let name = if input_metadata.input_name.is_empty() {
-			self.input_type(&InputConnector::node(*node_id, input_index), network_path).resolved_type_node_string()
+			self.input_type(&InputConnector::node_at_index(*node_id, input_index), network_path).resolved_type_node_string()
 		} else {
 			input_metadata.input_name.to_string()
 		};

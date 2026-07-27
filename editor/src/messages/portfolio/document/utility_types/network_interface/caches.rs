@@ -565,9 +565,13 @@ impl NodeNetworkInterface {
 		for (current_node_id, node) in network.nodes.iter() {
 			for (input_index, input) in node.inputs.iter().enumerate() {
 				if let NodeInput::Node { node_id, output_index, .. } = input {
-					push_outward_wire(&mut outward_wires, OutputConnector::node(*node_id, *output_index), InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(
+						&mut outward_wires,
+						OutputConnector::node(*node_id, *output_index),
+						InputConnector::node_at_index(*current_node_id, input_index),
+					);
 				} else if let NodeInput::Import { import_index, .. } = input {
-					push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::node_at_index(*current_node_id, input_index));
 				}
 			}
 		}
@@ -753,7 +757,7 @@ impl NodeNetworkInterface {
 		}
 		for (node_id, node) in &network.nodes {
 			for input_index in 0..node.inputs.len() {
-				input_connectors.push(InputConnector::node(*node_id, input_index));
+				input_connectors.push(InputConnector::node_at_index(*node_id, input_index));
 			}
 		}
 		input_connectors
@@ -792,7 +796,7 @@ impl NodeNetworkInterface {
 			input_connectors.extend(inputs.clone())
 		}
 		for input_index in 0..self.number_of_inputs(node_id, network_path) {
-			input_connectors.push(InputConnector::node(*node_id, input_index));
+			input_connectors.push(InputConnector::node_at_index(*node_id, input_index));
 		}
 		for input in input_connectors {
 			self.unload_wire(&input, network_path);

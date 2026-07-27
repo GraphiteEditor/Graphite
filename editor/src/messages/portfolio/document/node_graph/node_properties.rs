@@ -16,13 +16,11 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
-use graphene_std::Graphic;
-use graphene_std::NodeInputDecleration;
+use graphene_std::NodeParameter;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
-use graphene_std::list::List;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
@@ -45,7 +43,11 @@ pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::row(vec![widget])]
 }
 
-fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+fn optionally_update_value<T, P: NodeParameter>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, _parameter: P) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+	optionally_update_value_at_index(value, node_id, P::INDEX)
+}
+
+fn optionally_update_value_at_index<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	move |input_value: &T| match value(input_value) {
 		Some(value) => NodeGraphMessage::SetInputValue {
 			node_id,
@@ -57,8 +59,13 @@ fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'stati
 	}
 }
 
-pub fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
-	optionally_update_value(move |v| Some(value(v)), node_id, input_index)
+pub fn update_value<T, P: NodeParameter>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, _parameter: P) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+	optionally_update_value_at_index(move |v| Some(value(v)), node_id, P::INDEX)
+}
+
+/// Like [`update_value`], for callers that receive the input index dynamically (e.g. widget overrides).
+pub fn update_value_at_index<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+	optionally_update_value_at_index(move |v| Some(value(v)), node_id, input_index)
 }
 
 pub fn commit_value<T>(_: &T) -> Message {
@@ -76,7 +83,7 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 		})
 		.on_update(move |_parameter| Message::Batched {
 			messages: Box::new([NodeGraphMessage::ExposeInput {
-				input_connector: InputConnector::node(node_id, index),
+				input_connector: InputConnector::node_at_index(node_id, index),
 				set_to_exposed: !exposed,
 				start_transaction: true,
 			}
@@ -218,7 +225,7 @@ pub(crate) fn property_from_type(
 			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
 	};
 
-	let default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
+	let default_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
 
 	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
 	let unsupported_widgets = |default_info: ParameterWidgetsInfo, type_label: String| {
@@ -361,7 +368,7 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(x.clone())
-				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
+				.on_update(update_value_at_index(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		])
@@ -383,7 +390,7 @@ pub fn text_area_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Wid
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextAreaInput::new(x.clone())
-				.on_update(update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
+				.on_update(update_value_at_index(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		])
@@ -406,7 +413,7 @@ pub fn bool_widget(parameter_widgets_info: ParameterWidgetsInfo, checkbox_input:
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			checkbox_input
 				.checked(x)
-				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
+				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		])
@@ -428,7 +435,7 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(reference_point != ReferencePoint::None)
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &CheckboxInput| TaggedValue::ReferencePoint(if x.checked { ReferencePoint::Center } else { ReferencePoint::None }),
 					node_id,
 					index,
@@ -437,7 +444,7 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			ReferencePointInput::new(reference_point)
-				.on_update(update_value(move |x: &ReferencePointInput| TaggedValue::ReferencePoint(x.value), node_id, index))
+				.on_update(update_value_at_index(move |x: &ReferencePointInput| TaggedValue::ReferencePoint(x.value), node_id, index))
 				.disabled(disabled)
 				.widget_instance(),
 		])
@@ -539,7 +546,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(top_left.x))
 				.label("X")
 				.unit(" px")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &NumberInput| {
 						let (offset, scale) = {
 							let diff = DVec2::new(top_left.x - x.value.unwrap_or_default(), 0.);
@@ -563,7 +570,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(top_left.y))
 				.label("Y")
 				.unit(" px")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &NumberInput| {
 						let (offset, scale) = {
 							let diff = DVec2::new(0., top_left.y - x.value.unwrap_or_default());
@@ -589,7 +596,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(bounds.x))
 				.label("W")
 				.unit(" px")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &NumberInput| {
 						let (offset, scale) = (top_left, DVec2::new(x.value.unwrap_or_default(), bounds.y));
 
@@ -610,7 +617,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(bounds.y))
 				.label("H")
 				.unit(" px")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &NumberInput| {
 						let (offset, scale) = (top_left, DVec2::new(bounds.x, x.value.unwrap_or_default()));
 
@@ -637,7 +644,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				.range_min(Some(1.))
 				.range_max(Some(100.))
 				.unit("%")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &NumberInput| {
 						let resolution = (bounds * x.value.unwrap_or(100.) / 100.).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
 
@@ -687,7 +694,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(translation.x))
 				.label("X")
 				.unit(" px")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |x: &NumberInput| {
 						let mut transform = transform;
 						transform.translation.x = x.value.unwrap_or(transform.translation.x);
@@ -702,7 +709,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(translation.y))
 				.label("Y")
 				.unit(" px")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |y: &NumberInput| {
 						let mut transform = transform;
 						transform.translation.y = y.value.unwrap_or(transform.translation.y);
@@ -720,7 +727,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			.mode(NumberInputMode::Range)
 			.range_min(Some(-180.))
 			.range_max(Some(180.))
-			.on_update(update_value(
+			.on_update(update_value_at_index(
 				move |r: &NumberInput| {
 					let transform = DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation) * skew_matrix;
 					TaggedValue::DAffine2(transform)
@@ -735,7 +742,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(scale.x))
 				.label("W")
 				.unit("x")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |w: &NumberInput| {
 						let transform = DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation) * skew_matrix;
 						TaggedValue::DAffine2(transform)
@@ -749,7 +756,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			NumberInput::new(Some(scale.y))
 				.label("H")
 				.unit("x")
-				.on_update(update_value(
+				.on_update(update_value_at_index(
 					move |h: &NumberInput| {
 						let transform = DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation) * skew_matrix;
 						TaggedValue::DAffine2(transform)
@@ -794,7 +801,11 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
+					.on_update(update_value_at_index(
+						move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)),
+						node_id,
+						index,
+					))
 					.on_commit(commit_value)
 					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -804,7 +815,11 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
+					.on_update(update_value_at_index(
+						move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())),
+						node_id,
+						index,
+					))
 					.on_commit(commit_value)
 					.widget_instance(),
 			]);
@@ -818,7 +833,11 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value)), node_id, index))
+					.on_update(update_value_at_index(
+						move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value)),
+						node_id,
+						index,
+					))
 					.on_commit(commit_value)
 					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -828,7 +847,11 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
-					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap())), node_id, index))
+					.on_update(update_value_at_index(
+						move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap())),
+						node_id,
+						index,
+					))
 					.on_commit(commit_value)
 					.widget_instance(),
 			]);
@@ -864,7 +887,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
 				.value(values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
+				.on_update(optionally_update_value_at_index(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_instance(),
 		])
 	}
@@ -886,7 +909,7 @@ pub fn dash_pattern_widget(parameter_widgets_info: ParameterWidgetsInfo, text_in
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
 				.value(pattern.0.iter_element_values().map(|length| length.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(
+				.on_update(optionally_update_value_at_index(
 					move |input: &TextInput| Some(TaggedValue::DashPattern(DashPattern::from(input.value.as_str()))),
 					node_id,
 					index,
@@ -1037,7 +1060,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.min(0.)
 				.max(0.99999)
 				.value(Some(fractional_part))
-				.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(whole_part + input.value.unwrap()), node_id, index))
+				.on_update(update_value_at_index(move |input: &NumberInput| TaggedValue::F64(whole_part + input.value.unwrap()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -1049,7 +1072,11 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.min(0.)
 				.is_integer(true)
 				.value(Some(whole_part))
-				.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap() + fractional_part), node_id, index))
+				.on_update(update_value_at_index(
+					move |input: &NumberInput| TaggedValue::F64(input.value.unwrap() + fractional_part),
+					node_id,
+					index,
+				))
 				.on_commit(commit_value)
 				.widget_instance(),
 		])
@@ -1083,14 +1110,14 @@ pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_in
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			// The checkbox toggles if the value is Some or None
 			CheckboxInput::new(enabled)
-				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
+				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(number))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap_or_default()), node_id, number_input_index))
+				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap_or_default()), node_id, number_input_index))
 				.disabled(!enabled)
 				.on_commit(commit_value)
 				.widget_instance(),
@@ -1115,7 +1142,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1123,7 +1150,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
+				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1131,7 +1158,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
+				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1139,7 +1166,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64), node_id, index))
+				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1148,7 +1175,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			number_props
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1177,7 +1204,7 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 					.map(|blend_mode| {
 						MenuListEntry::new(format!("{blend_mode:?}"))
 							.label(blend_mode.to_string())
-							.on_update(update_value(move |_| TaggedValue::BlendMode(*blend_mode), node_id, index))
+							.on_update(update_value_at_index(move |_| TaggedValue::BlendMode(*blend_mode), node_id, index))
 							.on_commit(commit_value)
 					})
 					.collect()
@@ -1236,7 +1263,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	widgets.push(
 		color_button
 			.value(widget_value)
-			.on_update(update_value(on_update, node_id, index))
+			.on_update(update_value_at_index(on_update, node_id, index))
 			.on_commit(commit_value)
 			.widget_instance(),
 	);
@@ -1301,7 +1328,7 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
-	Ok(match document_node.inputs.get(RandomizeInput::INDEX).and_then(|input| input.as_value()) {
+	Ok(match document_node.input(RandomizeInput).and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
@@ -1331,7 +1358,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	// Use Classic toggle changes the brightness range
 	let use_classic_value = get_document_node(node_id, context)
 		.ok()
-		.and_then(|document_node| document_node.inputs.get(UseClassicInput::INDEX).and_then(|input| input.as_value()))
+		.and_then(|document_node| document_node.input(UseClassicInput).and_then(|input| input.as_value()))
 		.and_then(|tagged| if let TaggedValue::Bool(value) = tagged { Some(*value) } else { None });
 	let includes_use_classic = use_classic_value.is_some();
 	let use_classic_value = use_classic_value.unwrap_or(false);
@@ -1342,7 +1369,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let brightness = spectrum_slider_row(
 		node_id,
 		context,
-		BrightnessInput::INDEX,
+		BrightnessInput,
 		bw_track(),
 		Color::WHITE,
 		brightness_min,
@@ -1361,7 +1388,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let contrast = spectrum_slider_row(
 		node_id,
 		context,
-		ContrastInput::INDEX,
+		ContrastInput,
 		contrast_track,
 		Color::WHITE,
 		contrast_min,
@@ -1373,7 +1400,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let mut layout = vec![brightness, contrast];
 	if includes_use_classic {
 		// TODO: When we no longer use this function in the temporary "Brightness/Contrast Classic" node, remove this conditional pushing and just always include this
-		let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput::INDEX, true, context), CheckboxInput::default());
+		let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput, true, context), CheckboxInput::default());
 		layout.push(LayoutGroup::row(use_classic));
 	}
 
@@ -1500,10 +1527,10 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 		let (exposed, current) = exposure_and_value[i];
 
 		if exposed {
-			let row = number_widget(ParameterWidgetsInfo::new(node_id, input_index, true, context), number_input.clone());
+			let row = number_widget(ParameterWidgetsInfo::at_index(node_id, input_index, true, context), number_input.clone());
 			layout.push(LayoutGroup::row(row));
 		} else {
-			let mut row = start_widgets(ParameterWidgetsInfo::new(node_id, input_index, true, context));
+			let mut row = start_widgets(ParameterWidgetsInfo::at_index(node_id, input_index, true, context));
 			row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 			if Some(input_index) == spectrum_owner
@@ -1520,7 +1547,11 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 					.min_width(60)
 					.max_width(60)
 					.display_decimal_places(0)
-					.on_update(update_value(move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32), node_id, input_index))
+					.on_update(update_value_at_index(
+						move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
+						node_id,
+						input_index,
+					))
 					.on_commit(commit_value)
 					.widget_instance(),
 			);
@@ -1535,7 +1566,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	// Current hue position on the rainbow track, used for the saturation track's right-end color
 	let current_hue_shift = get_document_node(node_id, context)
 		.ok()
-		.and_then(|document_node| document_node.inputs.get(HueShiftInput::INDEX).and_then(|input| input.as_value()))
+		.and_then(|document_node| document_node.input(HueShiftInput).and_then(|input| input.as_value()))
 		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value) } else { None })
 		.unwrap_or(0.);
 	// The rainbow has cyan at position 0.5 (hue_shift=0), so offset by +180 to align
@@ -1561,7 +1592,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		spectrum_slider_row(
 			node_id,
 			context,
-			HueShiftInput::INDEX,
+			HueShiftInput,
 			hue_track,
 			Color::WHITE,
 			-180.,
@@ -1572,7 +1603,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		spectrum_slider_row(
 			node_id,
 			context,
-			SaturationShiftInput::INDEX,
+			SaturationShiftInput,
 			saturation_track,
 			Color::WHITE,
 			-100.,
@@ -1583,7 +1614,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		spectrum_slider_row(
 			node_id,
 			context,
-			LightnessShiftInput::INDEX,
+			LightnessShiftInput,
 			lightness_track,
 			Color::WHITE,
 			-100.,
@@ -1595,7 +1626,22 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 }
 
 /// Build a row with a single-marker `SpectrumInput` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
-fn spectrum_slider_row(
+fn spectrum_slider_row<P: NodeParameter>(
+	node_id: NodeId,
+	context: &mut NodePropertiesContext,
+	_parameter: P,
+	track: Gradient,
+	handle_color: Color,
+	value_min: f64,
+	value_max: f64,
+	default_value: f64,
+	number_input: NumberInput,
+) -> LayoutGroup {
+	spectrum_slider_row_at_index(node_id, context, P::INDEX, track, handle_color, value_min, value_max, default_value, number_input)
+}
+
+/// Like [`spectrum_slider_row`], for callers that pick the input index at runtime (e.g. loops over per-channel parameter tables).
+fn spectrum_slider_row_at_index(
 	node_id: NodeId,
 	context: &mut NodePropertiesContext,
 	input_index: usize,
@@ -1606,7 +1652,7 @@ fn spectrum_slider_row(
 	default_value: f64,
 	number_input: NumberInput,
 ) -> LayoutGroup {
-	let mut row = start_widgets(ParameterWidgetsInfo::new(node_id, input_index, true, context));
+	let mut row = start_widgets(ParameterWidgetsInfo::at_index(node_id, input_index, true, context));
 
 	let current = get_document_node(node_id, context)
 		.ok()
@@ -1654,7 +1700,11 @@ fn spectrum_slider_row(
 				.min_width(60)
 				.max_width(60)
 				.display_decimal_places(0)
-				.on_update(update_value(move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32), node_id, input_index))
+				.on_update(update_value_at_index(
+					move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
+					node_id,
+					input_index,
+				))
 				.on_commit(commit_value)
 				.widget_instance(),
 		);
@@ -1672,7 +1722,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 	build_shared_spectrum_section(node_id, context, params, &mut layout);
 
 	let luminance_calc = {
-		let mut info = ParameterWidgetsInfo::new(node_id, LuminanceCalcInput::INDEX, true, context);
+		let mut info = ParameterWidgetsInfo::new(node_id, LuminanceCalcInput, true, context);
 		info.exposable = false;
 		enum_choice::<LuminanceCalculation>().for_socket(info).property_row()
 	};
@@ -1692,7 +1742,7 @@ pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesC
 	vec![spectrum_slider_row(
 		node_id,
 		context,
-		VibranceInput::INDEX,
+		VibranceInput,
 		track,
 		Color::WHITE,
 		-100.,
@@ -1707,7 +1757,7 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 
 	let number_input = NumberInput::default().mode_increment().unit("%").min(-200.).max(300.);
 
-	let tint = color_widget(ParameterWidgetsInfo::new(node_id, TintInput::INDEX, true, context), ColorInput::default());
+	let tint = color_widget(ParameterWidgetsInfo::new(node_id, TintInput, true, context), ColorInput::default());
 
 	let mut layout = vec![tint];
 	let params: &[(usize, Color, f64)] = &[
@@ -1719,7 +1769,7 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 		(MagentasInput::INDEX, Color::MAGENTA, 80.),
 	];
 	for &(input_index, color, default) in params {
-		layout.push(spectrum_slider_row(
+		layout.push(spectrum_slider_row_at_index(
 			node_id,
 			context,
 			input_index,
@@ -1738,8 +1788,8 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::channel_mixer::*;
 
-	let is_monochrome = bool_widget(ParameterWidgetsInfo::new(node_id, MonochromeInput::INDEX, true, context), CheckboxInput::default());
-	let mut parameter_info = ParameterWidgetsInfo::new(node_id, OutputChannelInput::INDEX, true, context);
+	let is_monochrome = bool_widget(ParameterWidgetsInfo::new(node_id, MonochromeInput, true, context), CheckboxInput::default());
+	let mut parameter_info = ParameterWidgetsInfo::new(node_id, OutputChannelInput, true, context);
 	parameter_info.exposable = false;
 	let output_channel = enum_choice::<RedGreenBlue>().for_socket(parameter_info).property_row();
 
@@ -1751,12 +1801,12 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		}
 	};
 	// Monochrome
-	let is_monochrome_value = match document_node.inputs[MonochromeInput::INDEX].as_value() {
+	let is_monochrome_value = match document_node.input_value(MonochromeInput) {
 		Some(TaggedValue::Bool(monochrome_choice)) => *monochrome_choice,
 		_ => false,
 	};
 	// Output channel choice
-	let output_channel_value = match &document_node.inputs[OutputChannelInput::INDEX].as_value() {
+	let output_channel_value = match &document_node.input_value(OutputChannelInput) {
 		Some(TaggedValue::RedGreenBlue(choice)) => choice,
 		_ => {
 			warn!("Channel Mixer node properties panel could not be displayed.");
@@ -1783,7 +1833,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		layout.push(output_channel);
 	}
 	for (i, (&input_index, &default)) in indices.iter().zip(defaults.iter()).enumerate() {
-		layout.push(spectrum_slider_row(
+		layout.push(spectrum_slider_row_at_index(
 			node_id,
 			context,
 			input_index,
@@ -1802,7 +1852,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::selective_color::*;
 
-	let mut default_info = ParameterWidgetsInfo::new(node_id, ColorsInput::INDEX, true, context);
+	let mut default_info = ParameterWidgetsInfo::new(node_id, ColorsInput, true, context);
 	default_info.exposable = false;
 	let colors = enum_choice::<SelectiveColorChoice>().for_socket(default_info).property_row();
 
@@ -1814,7 +1864,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 		}
 	};
 	// Colors choice
-	let colors_choice = match &document_node.inputs[ColorsInput::INDEX].as_value() {
+	let colors_choice = match &document_node.input_value(ColorsInput) {
 		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
 		_ => {
 			warn!("Selective Color node properties panel could not be displayed.");
@@ -1839,12 +1889,12 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 
 	// Mode
 	let mode = enum_choice::<RelativeAbsolute>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, ModeInput::INDEX, true, context))
+		.for_socket(ParameterWidgetsInfo::new(node_id, ModeInput, true, context))
 		.property_row();
 
 	let mut layout = vec![colors];
 	for (i, &input_index) in indices.iter().enumerate() {
-		layout.push(spectrum_slider_row(
+		layout.push(spectrum_slider_row_at_index(
 			node_id,
 			context,
 			input_index,
@@ -1864,9 +1914,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let grid_type = enum_choice::<GridType>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput::INDEX, true, context))
-		.property_row();
+	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput, true, context)).property_row();
 
 	let mut widgets = vec![grid_type];
 
@@ -1877,31 +1925,31 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let Some(grid_type_input) = document_node.inputs.get(GridTypeInput::INDEX) else {
+	let Some(grid_type_input) = document_node.input(GridTypeInput) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
 		match grid_type {
 			GridType::Rectangular => {
-				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context), "W", "H", " px", Some(0.), false);
+				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
 				widgets.push(spacing);
 			}
 			GridType::Isometric => {
 				let spacing = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, SpacingInput::<f64>::INDEX, true, context),
+					ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
 					NumberInput::default().label("H").min(0.).unit(" px"),
 				));
-				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput::INDEX, true, context), "", "", "°", None, false);
+				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
 				widgets.extend([spacing, angles]);
 			}
 		}
 	}
 
-	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput::INDEX, true, context), NumberInput::default().min(1.));
-	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput::INDEX, true, context), NumberInput::default().min(1.));
+	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput, true, context), NumberInput::default().min(1.));
+	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput, true, context), NumberInput::default().min(1.));
 
-	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput::INDEX, true, context), CheckboxInput::default());
+	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput, true, context), CheckboxInput::default());
 
 	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows), LayoutGroup::row(connect_cells)]);
 
@@ -1912,10 +1960,10 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	use graphene_std::vector::generator_nodes::spiral::*;
 
 	let spiral_type = enum_choice::<SpiralType>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput::INDEX, true, context))
+		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput, true, context))
 		.property_row();
-	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
-	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput::INDEX, true, context), NumberInput::default().unit("°"));
+	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput, true, context), NumberInput::default().min(0.1));
+	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput, true, context), NumberInput::default().unit("°"));
 
 	let mut widgets = vec![spiral_type, LayoutGroup::row(turns), LayoutGroup::row(start_angle)];
 
@@ -1927,7 +1975,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		}
 	};
 
-	let Some(spiral_type_input) = document_node.inputs.get(SpiralTypeInput::INDEX) else {
+	let Some(spiral_type_input) = document_node.input(SpiralTypeInput) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -1935,25 +1983,22 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		match spiral_type {
 			SpiralType::Archimedean => {
 				let inner_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context),
+					ParameterWidgetsInfo::new(node_id, InnerRadiusInput, true, context),
 					NumberInput::default().min(0.).unit(" px"),
 				));
 
-				let outer_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context),
-					NumberInput::default().unit(" px"),
-				));
+				let outer_radius = LayoutGroup::row(number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput, true, context), NumberInput::default().unit(" px")));
 
 				widgets.extend([inner_radius, outer_radius]);
 			}
 			SpiralType::Logarithmic => {
 				let inner_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context),
+					ParameterWidgetsInfo::new(node_id, InnerRadiusInput, true, context),
 					NumberInput::default().min(0.).unit(" px"),
 				));
 
 				let outer_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context),
+					ParameterWidgetsInfo::new(node_id, OuterRadiusInput, true, context),
 					NumberInput::default().min(0.1).unit(" px"),
 				));
 
@@ -1963,7 +2008,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	}
 
 	let angular_resolution = number_widget(
-		ParameterWidgetsInfo::new(node_id, AngularResolutionInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, AngularResolutionInput, true, context),
 		NumberInput::default().min(1.).max(180.).unit("°"),
 	);
 
@@ -1990,20 +2035,17 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 		}
 	};
 
-	let current_spacing = document_node.inputs.get(SpacingInput::INDEX).and_then(|input| input.as_value()).cloned();
+	let current_spacing = document_node.input(SpacingInput).and_then(|input| input.as_value()).cloned();
 	let is_quantity = matches!(current_spacing, Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)));
 
 	let spacing = enum_choice::<PointSpacingType>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, SpacingInput::INDEX, true, context))
+		.for_socket(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context))
 		.property_row();
-	let separation = number_widget(ParameterWidgetsInfo::new(node_id, SeparationInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px"));
-	let quantity = number_widget(ParameterWidgetsInfo::new(node_id, QuantityInput::INDEX, true, context), NumberInput::default().min(2.).int());
-	let start_offset = number_widget(ParameterWidgetsInfo::new(node_id, StartOffsetInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px"));
-	let stop_offset = number_widget(ParameterWidgetsInfo::new(node_id, StopOffsetInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px"));
-	let adaptive_spacing = bool_widget(
-		ParameterWidgetsInfo::new(node_id, AdaptiveSpacingInput::INDEX, true, context),
-		CheckboxInput::default().disabled(is_quantity),
-	);
+	let separation = number_widget(ParameterWidgetsInfo::new(node_id, SeparationInput, true, context), NumberInput::default().min(0.).unit(" px"));
+	let quantity = number_widget(ParameterWidgetsInfo::new(node_id, QuantityInput, true, context), NumberInput::default().min(2.).int());
+	let start_offset = number_widget(ParameterWidgetsInfo::new(node_id, StartOffsetInput, true, context), NumberInput::default().min(0.).unit(" px"));
+	let stop_offset = number_widget(ParameterWidgetsInfo::new(node_id, StopOffsetInput, true, context), NumberInput::default().min(0.).unit(" px"));
+	let adaptive_spacing = bool_widget(ParameterWidgetsInfo::new(node_id, AdaptiveSpacingInput, true, context), CheckboxInput::default().disabled(is_quantity));
 
 	vec![
 		spacing.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_SPACING),
@@ -2021,10 +2063,10 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::exposure::*;
 
-	let exposure = number_widget(ParameterWidgetsInfo::new(node_id, ExposureInput::INDEX, true, context), NumberInput::default().min(-20.).max(20.));
-	let offset = number_widget(ParameterWidgetsInfo::new(node_id, OffsetInput::INDEX, true, context), NumberInput::default().min(-0.5).max(0.5));
+	let exposure = number_widget(ParameterWidgetsInfo::new(node_id, ExposureInput, true, context), NumberInput::default().min(-20.).max(20.));
+	let offset = number_widget(ParameterWidgetsInfo::new(node_id, OffsetInput, true, context), NumberInput::default().min(-0.5).max(0.5));
 	let gamma_correction = number_widget(
-		ParameterWidgetsInfo::new(node_id, GammaCorrectionInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, GammaCorrectionInput, true, context),
 		NumberInput::default().min(0.01).max(9.99).increment_step(0.1),
 	);
 
@@ -2037,20 +2079,20 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 	// Read current values before borrowing context mutably for widgets
 	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
-			let decimal_places = match document_node.inputs.get(DecimalPlacesInput::INDEX).and_then(|input| input.as_value()) {
+			let decimal_places = match document_node.input(DecimalPlacesInput).and_then(|input| input.as_value()) {
 				Some(&TaggedValue::U32(x)) => x,
 				_ => 2,
 			};
-			let decimal_sep = match document_node.inputs.get(DecimalSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+			let decimal_sep = match document_node.input(DecimalSeparatorInput).and_then(|input| input.as_non_exposed_value()) {
 				Some(TaggedValue::String(x)) => Some(x.clone()),
 				_ => None,
 			};
-			let use_thousands = match document_node.inputs.get(UseThousandsSeparatorInput::INDEX).and_then(|input| input.as_value()) {
+			let use_thousands = match document_node.input(UseThousandsSeparatorInput).and_then(|input| input.as_value()) {
 				Some(&TaggedValue::Bool(x)) => x,
 				_ => false,
 			};
-			let use_thousands = use_thousands || document_node.inputs.get(ThousandsSeparatorInput::INDEX).is_some_and(|input| input.is_exposed());
-			let thousands_sep = match document_node.inputs.get(ThousandsSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+			let use_thousands = use_thousands || document_node.input(ThousandsSeparatorInput).is_some_and(|input| input.is_exposed());
+			let thousands_sep = match document_node.input(ThousandsSeparatorInput).and_then(|input| input.as_non_exposed_value()) {
 				Some(TaggedValue::String(x)) => Some(x.clone()),
 				_ => None,
 			};
@@ -2062,50 +2104,44 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 		}
 	};
 
-	let decimal_places = number_widget(ParameterWidgetsInfo::new(node_id, DecimalPlacesInput::INDEX, true, context), NumberInput::default().min(0.).int());
+	let decimal_places = number_widget(ParameterWidgetsInfo::new(node_id, DecimalPlacesInput, true, context), NumberInput::default().min(0.).int());
 
 	// Fixed decimals and decimal separator are disabled when decimal places is 0
-	let fixed_decimals = bool_widget(
-		ParameterWidgetsInfo::new(node_id, FixedDecimalsInput::INDEX, true, context),
-		CheckboxInput::default().disabled(no_decimals),
-	);
-	let mut decimal_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, DecimalSeparatorInput::INDEX, true, context));
+	let fixed_decimals = bool_widget(ParameterWidgetsInfo::new(node_id, FixedDecimalsInput, true, context), CheckboxInput::default().disabled(no_decimals));
+	let mut decimal_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, DecimalSeparatorInput, true, context));
 	if let Some(sep) = decimal_sep_value {
 		decimal_sep_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(sep)
 				.disabled(no_decimals)
-				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, DecimalSeparatorInput::INDEX))
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, DecimalSeparatorInput))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
 	}
 
 	// Thousands separator: checkbox in assist area
-	let mut thousands_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ThousandsSeparatorInput::INDEX, false, context));
+	let mut thousands_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ThousandsSeparatorInput, false, context));
 	if let Some(sep) = thousands_sep_value {
 		thousands_sep_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(use_thousands)
-				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseThousandsSeparatorInput::INDEX))
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseThousandsSeparatorInput))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(sep)
 				.disabled(!use_thousands)
-				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, ThousandsSeparatorInput::INDEX))
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, ThousandsSeparatorInput))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
 	}
 
 	// Start at 10,000: disabled when thousands separator is off
-	let start_at_10000 = bool_widget(
-		ParameterWidgetsInfo::new(node_id, StartAt10000Input::INDEX, true, context),
-		CheckboxInput::default().disabled(!use_thousands),
-	);
+	let start_at_10000 = bool_widget(ParameterWidgetsInfo::new(node_id, StartAt10000Input, true, context), CheckboxInput::default().disabled(!use_thousands));
 
 	vec![
 		LayoutGroup::row(decimal_places),
@@ -2122,7 +2158,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 	// Read the current values before borrowing context mutably for widgets
 	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
-			let capitalization_input = document_node.inputs.get(CapitalizationInput::INDEX);
+			let capitalization_input = document_node.input(CapitalizationInput);
 			let capitalization_exposed = capitalization_input.is_some_and(|input| input.is_exposed());
 			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
 			let is_simple = !capitalization_exposed
@@ -2130,11 +2166,11 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 					capitalization_input.and_then(|input| input.as_value()),
 					Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
 				);
-			let use_joiner = match document_node.inputs.get(UseJoinerInput::INDEX).and_then(|input| input.as_value()) {
+			let use_joiner = match document_node.input(UseJoinerInput).and_then(|input| input.as_value()) {
 				Some(&TaggedValue::Bool(x)) => x,
 				_ => true,
 			};
-			let joiner = match document_node.inputs.get(JoinerInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+			let joiner = match document_node.input(JoinerInput).and_then(|input| input.as_non_exposed_value()) {
 				Some(TaggedValue::String(x)) => Some(x.clone()),
 				_ => None,
 			};
@@ -2150,11 +2186,11 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 	let joiner_disabled = is_simple_case || !use_joiner_enabled;
 
 	let capitalization = enum_choice::<StringCapitalization>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput::INDEX, true, context))
+		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput, true, context))
 		.property_row();
 
 	// Joiner row: the UseJoiner checkbox is drawn in the assist area, followed by the Joiner text input
-	let mut joiner_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, JoinerInput::INDEX, false, context));
+	let mut joiner_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, JoinerInput, false, context));
 	if let Some(joiner) = joiner_value {
 		let joiner_is_empty = joiner.is_empty();
 		joiner_widgets.extend_from_slice(&[
@@ -2162,7 +2198,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(use_joiner_enabled)
 				.disabled(is_simple_case)
-				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseJoinerInput::INDEX))
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseJoinerInput))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -2170,7 +2206,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 			TextInput::new(joiner)
 				.placeholder(if joiner_is_empty { "Empty" } else { "" })
 				.disabled(joiner_disabled)
-				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, JoinerInput::INDEX))
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, JoinerInput))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]);
@@ -2219,7 +2255,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
 	// Corner Radius
-	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::INDEX, true, context));
+	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput, true, context));
 	corner_radius_row_1.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
@@ -2233,13 +2269,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			return Vec::new();
 		}
 	};
-	let Some(input) = document_node.inputs.get(IndividualCornerRadiiInput::INDEX) else {
+	let Some(input) = document_node.input(IndividualCornerRadiiInput) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(CornerRadiusInput::INDEX) else {
+		let Some(input) = document_node.input(CornerRadiusInput) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -2298,7 +2334,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 				.on_update(optionally_update_value(
 					move |x: &TextInput| Some(TaggedValue::BoxCorners(BoxCorners::from(x.value.as_str()))),
 					node_id,
-					CornerRadiusInput::INDEX,
+					CornerRadiusInput,
 				))
 				.widget_instance()
 		} else {
@@ -2308,7 +2344,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 				.on_update(update_value(
 					move |x: &NumberInput| TaggedValue::BoxCorners(BoxCorners::from(x.value.unwrap())),
 					node_id,
-					CornerRadiusInput::INDEX,
+					CornerRadiusInput,
 				))
 				.on_commit(commit_value)
 				.widget_instance()
@@ -2317,13 +2353,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	}
 
 	// Size X
-	let size_x = number_widget(ParameterWidgetsInfo::new(node_id, WidthInput::INDEX, true, context), NumberInput::default());
+	let size_x = number_widget(ParameterWidgetsInfo::new(node_id, WidthInput, true, context), NumberInput::default());
 
 	// Size Y
-	let size_y = number_widget(ParameterWidgetsInfo::new(node_id, HeightInput::INDEX, true, context), NumberInput::default());
+	let size_y = number_widget(ParameterWidgetsInfo::new(node_id, HeightInput, true, context), NumberInput::default());
 
 	// Clamped
-	let clamped = bool_widget(ParameterWidgetsInfo::new(node_id, ClampedInput::INDEX, true, context), CheckboxInput::default());
+	let clamped = bool_widget(ParameterWidgetsInfo::new(node_id, ClampedInput, true, context), CheckboxInput::default());
 
 	vec![
 		LayoutGroup::row(size_x),
@@ -2361,7 +2397,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 			// Hide inputs that are connected to a scope
 			if let Some(NodeInput::Scope(_)) = context
 				.network_interface
-				.input_from_connector(&InputConnector::node(node_id, input_index), context.selection_network_path)
+				.input_from_connector(&InputConnector::node_at_index(node_id, input_index), context.selection_network_path)
 			{
 				continue;
 			}
@@ -2419,7 +2455,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					}
 					_ => context
 						.network_interface
-						.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path)
+						.input_type(&InputConnector::node_at_index(node_id, input_index), context.selection_network_path)
 						.compiled_nested_type()
 						.cloned()
 						.unwrap_or(concrete!(())),
@@ -2504,9 +2540,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	}
 
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Graphic>>::INDEX, false, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput, false, context));
 
-	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::<List<Graphic>>::INDEX).is_some_and(|input| input.is_exposed())) {
+	if get_document_node(node_id, context).is_ok_and(|node| node.input(FillInput).is_some_and(|input| input.is_exposed())) {
 		return vec![LayoutGroup::row(widgets_first_row)];
 	}
 
@@ -2515,7 +2551,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let layer = root_layer_for_chain_node(node_id, context);
 
 	let fill = match get_document_node(node_id, context) {
-		Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
+		Ok(document_node) => match document_node.input_value(FillInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
 			Some(TaggedValue::Gradient(_)) => {
@@ -2539,11 +2575,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	let (backup_color, backup_gradient) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
-			let backup_color = match document_node.inputs[BackupColorInput::INDEX].as_value() {
+			let backup_color = match document_node.input_value(BackupColorInput) {
 				Some(&TaggedValue::Color(color)) => Some(color),
 				_ => None,
 			};
-			let backup_stops = match document_node.inputs[BackupGradientInput::INDEX].as_value() {
+			let backup_stops = match document_node.input_value(BackupGradientInput) {
 				Some(TaggedValue::Gradient(stops)) => stops.clone(),
 				_ => Gradient::default(),
 			};
@@ -2559,7 +2595,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2583,7 +2619,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let mut messages = vec![
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::<List<Graphic>>::INDEX,
+				input_index: FillInput::INDEX,
 				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color).into(),
 			}
 			.into(),
@@ -2605,7 +2641,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
-				input_index: FillInput::<List<Graphic>>::INDEX,
+				input_index: FillInput::INDEX,
 				value: TaggedValue::Gradient(gradient.clone()).into(),
 			}
 			.into(),
@@ -2646,15 +2682,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(
-					move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
-					node_id,
-					FillInput::<List<Graphic>>::INDEX,
-				))
+				.on_update(update_value(move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), node_id, FillInput))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput))
 				.on_commit(commit_value),
 		];
 
@@ -2686,7 +2718,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.map(|&grad_type| {
 				RadioEntryData::new(format!("{:?}", grad_type))
 					.label(format!("{:?}", grad_type))
-					.on_update(update_value(move |_| TaggedValue::GradientType(grad_type), node_id, GradientTypeInput::INDEX))
+					.on_update(update_value(move |_| TaggedValue::GradientType(grad_type), node_id, GradientTypeInput))
 					.on_commit(commit_value)
 			})
 			.collect();
@@ -2744,7 +2776,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.map(|&spread_method| {
 				RadioEntryData::new(format!("{:?}", spread_method))
 					.label(format!("{:?}", spread_method))
-					.on_update(update_value(move |_| TaggedValue::GradientSpreadMethod(spread_method), node_id, SpreadMethodInput::INDEX))
+					.on_update(update_value(move |_| TaggedValue::GradientSpreadMethod(spread_method), node_id, SpreadMethodInput))
 					.on_commit(commit_value)
 			})
 			.collect();
@@ -2770,41 +2802,37 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 			return Vec::new();
 		}
 	};
-	let join_value = match &document_node.inputs[JoinInput::INDEX].as_value() {
+	let join_value = match &document_node.input_value(JoinInput) {
 		Some(TaggedValue::StrokeJoin(x)) => x,
 		_ => &StrokeJoin::Miter,
 	};
 
-	let has_dash_lengths = match &document_node.inputs[DashPatternInput::INDEX].as_value() {
+	let has_dash_lengths = match &document_node.input_value(DashPatternInput) {
 		Some(TaggedValue::DashPattern(pattern)) => pattern.0.is_empty(),
 		_ => true,
 	};
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, PaintInput::<List<Graphic>>::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, PaintInput, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
-	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));
-	let align = enum_choice::<StrokeAlign>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, AlignInput::INDEX, true, context))
-		.property_row();
-	let cap = enum_choice::<StrokeCap>().for_socket(ParameterWidgetsInfo::new(node_id, CapInput::INDEX, true, context)).property_row();
-	let join = enum_choice::<StrokeJoin>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, JoinInput::INDEX, true, context))
-		.property_row();
+	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput, true, context), NumberInput::default().unit(" px").min(0.));
+	let align = enum_choice::<StrokeAlign>().for_socket(ParameterWidgetsInfo::new(node_id, AlignInput, true, context)).property_row();
+	let cap = enum_choice::<StrokeCap>().for_socket(ParameterWidgetsInfo::new(node_id, CapInput, true, context)).property_row();
+	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).property_row();
 
 	let miter_limit = number_widget(
-		ParameterWidgetsInfo::new(node_id, MiterLimitInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, MiterLimitInput, true, context),
 		NumberInput::default().min(0.).disabled(miter_limit_disabled),
 	);
 	let paint_order = enum_choice::<PaintOrder>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
+		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput, true, context))
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
-	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput::INDEX, true, context), TextInput::default().centered(true));
+	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
-	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
+	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput, true, context), number_input);
 
 	vec![
 		color,
@@ -2823,11 +2851,9 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	use graphene_std::vector::offset_path::*;
 
 	let number_input = NumberInput::default().unit(" px");
-	let distance = number_widget(ParameterWidgetsInfo::new(node_id, DistanceInput::INDEX, true, context), number_input);
+	let distance = number_widget(ParameterWidgetsInfo::new(node_id, DistanceInput, true, context), number_input);
 
-	let join = enum_choice::<StrokeJoin>()
-		.for_socket(ParameterWidgetsInfo::new(node_id, JoinInput::INDEX, true, context))
-		.property_row();
+	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).property_row();
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -2837,13 +2863,13 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	};
 	let number_input = NumberInput::default().min(0.).disabled({
-		let join_val = match &document_node.inputs[JoinInput::INDEX].as_value() {
+		let join_value = match &document_node.input_value(JoinInput) {
 			Some(TaggedValue::StrokeJoin(x)) => x,
 			_ => &StrokeJoin::Miter,
 		};
-		join_val != &StrokeJoin::Miter
+		join_value != &StrokeJoin::Miter
 	});
-	let miter_limit = number_widget(ParameterWidgetsInfo::new(node_id, MiterLimitInput::INDEX, true, context), number_input);
+	let miter_limit = number_widget(ParameterWidgetsInfo::new(node_id, MiterLimitInput, true, context), number_input);
 
 	vec![LayoutGroup::row(distance), join, LayoutGroup::row(miter_limit)]
 }
@@ -2852,7 +2878,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 	use graphene_std::math_nodes::math::*;
 
 	let expression = (|| {
-		let mut widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ExpressionInput::INDEX, true, context));
+		let mut widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ExpressionInput, true, context));
 
 		let document_node = match get_document_node(node_id, context) {
 			Ok(document_node) => document_node,
@@ -2861,7 +2887,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 				return Vec::new();
 			}
 		};
-		let Some(input) = document_node.inputs.get(ExpressionInput::INDEX) else {
+		let Some(input) = document_node.input(ExpressionInput) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -2885,7 +2911,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 							})
 						},
 						node_id,
-						ExpressionInput::INDEX,
+						ExpressionInput,
 					))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -2893,7 +2919,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		}
 		widgets
 	})();
-	let operand_b = number_widget(ParameterWidgetsInfo::new(node_id, OperandBInput::<f64>::INDEX, true, context), NumberInput::default());
+	let operand_b = number_widget(ParameterWidgetsInfo::new(node_id, OperandBInput, true, context), NumberInput::default());
 	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_instance()];
 
 	vec![
@@ -2919,11 +2945,17 @@ pub struct ParameterWidgetsInfo<'a> {
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
-	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+	/// Reference the parameter by its symbol, e.g. `ParameterWidgetsInfo::at_index(node_id, brightness_contrast::BrightnessInput, true, context)`.
+	pub fn new<P: NodeParameter>(node_id: NodeId, _parameter: P, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+		Self::at_index(node_id, P::INDEX, blank_assist, context)
+	}
+
+	/// Reference the parameter by a runtime input index, for callers that receive the index dynamically (e.g. widget overrides).
+	pub fn at_index(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
 		let input_type = context
 			.network_interface
-			.input_type_not_invalid(&InputConnector::node(node_id, index), context.selection_network_path)
+			.input_type_not_invalid(&InputConnector::node_at_index(node_id, index), context.selection_network_path)
 			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
@@ -3108,7 +3140,7 @@ pub mod choice {
 
 			if let Some(current) = input {
 				let committer = || super::commit_value;
-				let updater = || super::update_value(move |v: &W::Value| TaggedValue::from(v.clone()), node_id, index);
+				let updater = || super::update_value_at_index(move |v: &W::Value| TaggedValue::from(v.clone()), node_id, index);
 				let widget = self.widget_factory.build(current, updater, committer);
 				widgets.extend_from_slice(&[Separator::new(SeparatorStyle::Unrelated).widget_instance(), widget]);
 			}

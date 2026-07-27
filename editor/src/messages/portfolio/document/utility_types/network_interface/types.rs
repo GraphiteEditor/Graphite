@@ -82,7 +82,13 @@ impl Default for InputConnector {
 }
 
 impl InputConnector {
-	pub fn node(node_id: NodeId, input_index: usize) -> Self {
+	/// Reference a node's input by its parameter symbol, e.g. `InputConnector::node_at_index(node_id, stroke::WeightInput)`.
+	pub fn node<P: graphene_std::NodeParameter>(node_id: NodeId, _parameter: P) -> Self {
+		InputConnector::Node { node_id, input_index: P::INDEX }
+	}
+
+	/// Reference a node's input by a runtime index, for genuinely dynamic cases like clicked ports, input enumeration, and document upgrades.
+	pub fn node_at_index(node_id: NodeId, input_index: usize) -> Self {
 		InputConnector::Node { node_id, input_index }
 	}
 

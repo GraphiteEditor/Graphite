@@ -14,10 +14,10 @@ pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &
 	let rotation = rotation.to_degrees();
 	let skew = DVec2::new(skew.atan().to_degrees(), 0.);
 
-	network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::DVec2(skew), false), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::DVec2(skew), false), &[]);
 }
 
 // TODO: This should be extracted from the graph at the location of the transform node.

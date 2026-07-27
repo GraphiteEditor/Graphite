@@ -16,7 +16,7 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
+use graphene_std::NodeParameter;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
@@ -214,7 +214,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), 1)
+		.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -224,14 +224,14 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(polygon_node_id, 2),
+			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		return;
 	}
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), 1)
+		.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -241,11 +241,11 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 2),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 3),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
 		});
 	}
@@ -633,7 +633,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
 		node_inputs.get(GridTypeInput::INDEX)?.as_value(),
-		node_inputs.get(SpacingInput::<f64>::INDEX)?.as_value(),
+		node_inputs.get(SpacingInput::INDEX)?.as_value(),
 		node_inputs.get(ColumnsInput::INDEX)?.as_value(),
 		node_inputs.get(RowsInput::INDEX)?.as_value(),
 		node_inputs.get(AnglesInput::INDEX)?.as_value(),

@@ -217,7 +217,7 @@ mod test_fill {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input_as::<fill::FillInput<List<Graphic>>, Item<Color>>(&editor.runtime).collect()
+		instrumented.grab_all_input_as::<fill::TypedFillInput<List<Graphic>>, Item<Color>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]

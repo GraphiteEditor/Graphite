@@ -332,11 +332,11 @@ impl SweepAngleGizmo {
 		self.snap_angles = Self::calculate_snap_angles();
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
+			input_connector: InputConnector::node_at_index(node_id, 2),
 			input: NodeInput::value(TaggedValue::F64(start_angle), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 3),
+			input_connector: InputConnector::node_at_index(node_id, 3),
 			input: NodeInput::value(TaggedValue::F64(sweep_angle), false),
 		});
 

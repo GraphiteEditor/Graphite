@@ -131,7 +131,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[]) else {
+				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node_at_index(layer.to_node(), 1), &[]) else {
 					return;
 				};
 
@@ -180,15 +180,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::type_default(list!(Artboard), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::node_at_index(artboard_layer.to_node(), 0), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
-						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+						network_interface.disconnect_input(&InputConnector::node_at_index(artboard_layer.to_node(), 0), &[]);
+						network_interface.set_input(&InputConnector::node_at_index(artboard_layer.to_node(), 1), primary_input, &[]);
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::type_default(list!(Artboard), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::node_at_index(artboard_layer.to_node(), 0), bottom_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -227,7 +227,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend).
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.
-				network_interface.set_input(&InputConnector::node(chain_node_id, 4), NodeInput::node(path_node_id, 0), &[]);
+				network_interface.set_input(&InputConnector::node_at_index(chain_node_id, 4), NodeInput::node(path_node_id, 0), &[]);
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
@@ -245,29 +245,29 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				control_path_id,
 			} => {
 				// Find the chain node (Blend or Morph, first in chain of the layer)
-				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(interpolation_layer_id, 1), &[]) else {
+				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node_at_index(interpolation_layer_id, 1), &[]) else {
 					log::error!("Could not find chain node for layer {interpolation_layer_id}");
 					return;
 				};
 
 				// Get what feeds into the chain node's primary input (the children stack)
-				let Some(OutputConnector::Node { node_id: children_id, output_index }) = network_interface.upstream_output_connector(&InputConnector::node(chain_node, 0), &[]) else {
+				let Some(OutputConnector::Node { node_id: children_id, output_index }) = network_interface.upstream_output_connector(&InputConnector::node_at_index(chain_node, 0), &[]) else {
 					log::error!("Could not find children stack feeding chain node {chain_node}");
 					return;
 				};
 
 				// Find the deepest node in the control path layer's chain (Origins to Polyline)
 				let mut deepest_chain_node = None;
-				let mut current_connector = InputConnector::node(control_path_id, 1);
+				let mut current_connector = InputConnector::node_at_index(control_path_id, 1);
 				while let Some(OutputConnector::Node { node_id, .. }) = network_interface.upstream_output_connector(&current_connector, &[]) {
 					deepest_chain_node = Some(node_id);
-					current_connector = InputConnector::node(node_id, 0);
+					current_connector = InputConnector::node_at_index(node_id, 0);
 				}
 
 				// Connect children to the deepest chain node's input 0 (or the layer's input 1 if no chain)
 				let target_connector = match deepest_chain_node {
-					Some(node_id) => InputConnector::node(node_id, 0),
-					None => InputConnector::node(control_path_id, 1),
+					Some(node_id) => InputConnector::node_at_index(node_id, 0),
+					None => InputConnector::node_at_index(control_path_id, 1),
 				};
 				network_interface.set_input(&target_connector, NodeInput::node(children_id, output_index), &[]);
 
@@ -298,7 +298,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(layer.to_node(), 1),
+						input_connector: InputConnector::node_at_index(layer.to_node(), 1),
 						input: NodeInput::node(first_new_node_id, 0),
 					});
 				}
@@ -393,7 +393,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				for artboard in &artboard_data {
 					// Modify downstream connections
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(artboard.1.merge_node, 1),
+						input_connector: InputConnector::node_at_index(artboard.1.merge_node, 1),
 						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
 					});
 
@@ -401,7 +401,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					for outward_wire in &artboard.1.output_nodes {
 						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
 						let input_connector = match artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
-							Some(artboard_info) => InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
+							Some(artboard_info) => InputConnector::node_at_index(artboard_info.merge_node, outward_wire.input_index()),
 							_ => *outward_wire,
 						};
 						responses.add(NodeGraphMessage::SetInput { input_connector, input });

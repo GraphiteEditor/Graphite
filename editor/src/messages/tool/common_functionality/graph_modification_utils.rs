@@ -7,8 +7,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graphene_std::NodeInputDecleration;
-use graphene_std::list::List;
+use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
@@ -16,7 +15,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientSpreadMethod, GradientType, PointId, SegmentId, VectorModificationType};
-use graphene_std::{Color, Graphic};
+use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -93,8 +92,8 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		parent: first_layer,
 	});
 	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
-		downstream_input: InputConnector::node(second_layer.to_node(), 1),
-		input_connector: InputConnector::node(merge_node_id, 1),
+		downstream_input: InputConnector::node_at_index(second_layer.to_node(), 1),
+		input_connector: InputConnector::node_at_index(merge_node_id, 1),
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
 		node_ids: vec![second_layer.to_node()],
@@ -251,9 +250,7 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
 	use graphene_std::transform_nodes::transform::*;
 
-	if let TaggedValue::DVec2(origin) =
-		NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), TranslationInput::INDEX)?
-	{
+	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).parameter_value(TranslationInput)? {
 		Some(*origin)
 	} else {
 		None
@@ -275,16 +272,16 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 pub fn get_fill_node_id_with_direct_fill_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	matches!(fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?, NodeInput::Value { .. }).then_some(fill_node_id)
+	matches!(fill_node.input(graphene_std::vector::fill::FillInput)?, NodeInput::Value { .. }).then_some(fill_node_id)
 }
 
 /// Determine the input connector where the gradient chain enters the layer.
 /// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
 pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
 	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
-		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)
+		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput)
 	} else {
-		InputConnector::node(layer.to_node(), 1)
+		InputConnector::node_at_index(layer.to_node(), 1)
 	}
 }
 
@@ -303,7 +300,7 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
-	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)? else {
+	let NodeInput::Node { node_id, .. } = fill_node.input(graphene_std::vector::fill::FillInput)? else {
 		return None;
 	};
 	Some(*node_id)
@@ -317,13 +314,13 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			.document_network()
 			.nodes
 			.get(&fill_node_id)
-			.and_then(|node| node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX))
+			.and_then(|node| node.input(graphene_std::vector::fill::FillInput))
 			.and_then(|input| input.as_value())
 			.and_then(|value| if let TaggedValue::Gradient(gradient) = value { Some(gradient.clone()) } else { None });
 	}
 
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
-	let TaggedValue::Gradient(stops) = gradient_value_node.inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
+	let TaggedValue::Gradient(stops) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
 		return None;
 	};
 	Some(stops.clone())
@@ -363,7 +360,7 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+	let TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(*color)
@@ -522,8 +519,7 @@ pub fn get_text<'a>(
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let weight_node_input_index = graphene_std::vector::stroke::WeightInput::INDEX;
-	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), weight_node_input_index)? {
+	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)? {
 		Some(*width)
 	} else {
 		None
@@ -545,36 +541,34 @@ pub struct StrokeOptionsState {
 /// Reads the non-color stroke option inputs from a layer's Stroke proto node. Returns `None` when the layer has no Stroke node.
 /// Inputs that aren't a static value (e.g. wired to another node) fall back to per-field defaults so the layer still participates in the sync.
 pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<StrokeOptionsState> {
-	let stroke = &DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
 	let layer_view = NodeGraphLayer::new(layer, network_interface);
-	layer_view.upstream_node_id_from_name(stroke)?;
-	let read = |index: usize| layer_view.find_input(stroke, index);
+	layer_view.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))?;
 
-	let align = match read(graphene_std::vector::stroke::AlignInput::INDEX) {
+	let align = match layer_view.parameter_value(graphene_std::vector::stroke::AlignInput) {
 		Some(TaggedValue::StrokeAlign(value)) => *value,
 		_ => StrokeAlign::default(),
 	};
-	let cap = match read(graphene_std::vector::stroke::CapInput::INDEX) {
+	let cap = match layer_view.parameter_value(graphene_std::vector::stroke::CapInput) {
 		Some(TaggedValue::StrokeCap(value)) => *value,
 		_ => StrokeCap::default(),
 	};
-	let join = match read(graphene_std::vector::stroke::JoinInput::INDEX) {
+	let join = match layer_view.parameter_value(graphene_std::vector::stroke::JoinInput) {
 		Some(TaggedValue::StrokeJoin(value)) => *value,
 		_ => StrokeJoin::default(),
 	};
-	let miter_limit = match read(graphene_std::vector::stroke::MiterLimitInput::INDEX) {
+	let miter_limit = match layer_view.parameter_value(graphene_std::vector::stroke::MiterLimitInput) {
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 4.,
 	};
-	let paint_order = match read(graphene_std::vector::stroke::PaintOrderInput::INDEX) {
+	let paint_order = match layer_view.parameter_value(graphene_std::vector::stroke::PaintOrderInput) {
 		Some(TaggedValue::PaintOrder(value)) => *value,
 		_ => PaintOrder::default(),
 	};
-	let dash_lengths = match read(graphene_std::vector::stroke::DashPatternInput::INDEX) {
+	let dash_lengths = match layer_view.parameter_value(graphene_std::vector::stroke::DashPatternInput) {
 		Some(TaggedValue::DashPattern(value)) => value.0.iter_element_values().copied().collect(),
 		_ => Vec::new(),
 	};
-	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX) {
+	let dash_offset = match layer_view.parameter_value(graphene_std::vector::stroke::DashOffsetInput) {
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 0.,
 	};
@@ -642,19 +636,19 @@ pub struct FillNodeGradient {
 pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<FillNodeGradient> {
 	use graphene_std::vector::fill;
 
-	let TaggedValue::Gradient(stops) = fill_node.inputs.get(fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? else {
+	let TaggedValue::Gradient(stops) = fill_node.input(fill::FillInput)?.as_value()? else {
 		return None;
 	};
-	let gradient_type = match fill_node.inputs.get(fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+	let gradient_type = match fill_node.input(fill::GradientTypeInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientType(value)) => value,
 		_ => GradientType::default(),
 	};
-	let spread_method = match fill_node.inputs.get(fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+	let spread_method = match fill_node.input(fill::SpreadMethodInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
 		_ => GradientSpreadMethod::default(),
 	};
-	let has_transform = matches!(fill_node.inputs.get(fill::HasTransformInput::INDEX).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
-	let transform_input = fill_node.inputs.get(fill::TransformInput::INDEX).and_then(|input| input.as_value());
+	let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
+	let transform_input = fill_node.input(fill::TransformInput).and_then(|input| input.as_value());
 	let transform = match (has_transform, transform_input) {
 		(true, Some(&TaggedValue::DAffine2(value))) => value,
 		(false, _) => initial_gradient_transform_for_bounding_box(bounding_box()),
@@ -671,8 +665,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 }
 /// Returns the stroke color from a layer's upstream Stroke node.
 pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
-	let color_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
-	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), color_index)?;
+	let tagged = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::PaintInput)?;
 	match tagged {
 		TaggedValue::Color(color) => Some(Some(*color)),
 		value if value.is_no_paint() => Some(None),
@@ -709,7 +702,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 		let fill_choice = (|| {
 			let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-			match fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX)?.as_value()? {
+			match fill_node.input(graphene_std::vector::fill::FillInput)?.as_value()? {
 				TaggedValue::Color(color) => Some(FillChoice::Solid(*color)),
 				TaggedValue::Gradient(stops) => Some(FillChoice::Gradient(stops.clone())),
 				value if value.is_no_paint() => Some(FillChoice::None),
@@ -796,22 +789,18 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
 			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
 			FillChoice::Gradient(stops) => {
-				let fill_node = NodeGraphLayer::new(layer, &document.network_interface)
-					.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))
-					.and_then(|id| document.network_interface.document_network().nodes.get(&id));
+				let layer_view = NodeGraphLayer::new(layer, &document.network_interface);
 
-				let read = |index: usize| fill_node.and_then(|node| node.inputs.get(index)).and_then(|input| input.as_value());
-
-				let gradient_type = match read(graphene_std::vector::fill::GradientTypeInput::INDEX) {
+				let gradient_type = match layer_view.parameter_value(graphene_std::vector::fill::GradientTypeInput) {
 					Some(TaggedValue::GradientType(value)) => *value,
 					_ => GradientType::default(),
 				};
-				let spread_method = match read(graphene_std::vector::fill::SpreadMethodInput::INDEX) {
+				let spread_method = match layer_view.parameter_value(graphene_std::vector::fill::SpreadMethodInput) {
 					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
 					_ => GradientSpreadMethod::default(),
 				};
-				let has_transform = matches!(read(graphene_std::vector::fill::HasTransformInput::INDEX), Some(TaggedValue::Bool(true)));
-				let transform = match (has_transform, read(graphene_std::vector::fill::TransformInput::INDEX)) {
+				let has_transform = matches!(layer_view.parameter_value(graphene_std::vector::fill::HasTransformInput), Some(TaggedValue::Bool(true)));
+				let transform = match (has_transform, layer_view.parameter_value(graphene_std::vector::fill::TransformInput)) {
 					(true, Some(TaggedValue::DAffine2(value))) => *value,
 					(false, _) => initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)),
 					_ => DAffine2::IDENTITY,
@@ -836,7 +825,7 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			let input_index = graphene_std::vector::stroke::PaintInput::<List<Graphic>>::INDEX;
+			let input_index = graphene_std::vector::stroke::PaintInput::INDEX;
 			let value = color.map_or_else(TaggedValue::no_paint, TaggedValue::Color);
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
@@ -880,28 +869,26 @@ pub fn remove_stroke_for_selected_layers(document: &DocumentMessageHandler, resp
 	responses.add(NodeGraphMessage::SendGraph);
 }
 
-/// Reads a specific input from the matching proto node on the first selected non-artboard layer that has one.
+/// Reads the given parameter from its proto node on the first selected non-artboard layer that has one.
 /// Used by tool control bars to mirror per-shape parameters (sides, arc type, turns, etc.) from the selection
 /// into the control bar's input widget state without each call site re-implementing the layer iteration.
-pub fn first_selected_proto_node_input(document: &DocumentMessageHandler, identifier: graph_craft::ProtoNodeIdentifier, input_index: usize) -> Option<&TaggedValue> {
-	let identifier = DefinitionIdentifier::ProtoNode(identifier);
+pub fn first_selected_parameter(document: &DocumentMessageHandler, parameter: impl Into<ParameterRef>) -> Option<&TaggedValue> {
+	let parameter = parameter.into();
+	let identifier = DefinitionIdentifier::ProtoNode(parameter.node_identifier);
+
 	document
 		.network_interface
 		.selected_nodes()
 		.selected_layers_except_artboards(&document.network_interface)
-		.find_map(|layer| NodeGraphLayer::new(layer, &document.network_interface).find_input(&identifier, input_index))
+		.find_map(|layer| NodeGraphLayer::new(layer, &document.network_interface).find_input(&identifier, parameter.input_index))
 }
 
-/// Writes a value to a specific input on the matching proto node of every selected non-artboard layer that has one.
+/// Writes a value to the given parameter on its proto node for every selected non-artboard layer that has one.
 /// Used by tool control bars to push per-shape parameter changes back onto all selected layers of that shape.
-pub fn set_proto_node_input_for_selected_layers(
-	document: &DocumentMessageHandler,
-	identifier: graph_craft::ProtoNodeIdentifier,
-	input_index: usize,
-	value: TaggedValue,
-	responses: &mut VecDeque<Message>,
-) {
-	let identifier = DefinitionIdentifier::ProtoNode(identifier);
+/// The parameter symbol locates the node, so the value can never land on the right index of the wrong node.
+pub fn set_parameter_for_selected_layers(document: &DocumentMessageHandler, parameter: impl Into<ParameterRef>, value: TaggedValue, responses: &mut VecDeque<Message>) {
+	let parameter = parameter.into();
+	let identifier = DefinitionIdentifier::ProtoNode(parameter.node_identifier);
 
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 
@@ -911,7 +898,7 @@ pub fn set_proto_node_input_for_selected_layers(
 		};
 		responses.add(NodeGraphMessage::SetInputValue {
 			node_id,
-			input_index,
+			input_index: parameter.input_index,
 			value: value.clone().into(),
 		});
 	}
@@ -982,15 +969,22 @@ impl<'a> NodeGraphLayer<'a> {
 			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
-	/// Find a specific input of a node within the layer's primary flow
+	/// Find a specific input of a node within the layer's primary flow.
+	/// Prefer [`Self::parameter_value`] where the input is statically known; this remains for network nodes and runtime-chosen indices.
 	pub fn find_input(&self, identifier: &DefinitionIdentifier, index: usize) -> Option<&'a TaggedValue> {
-		// TODO: Find a better way to accept a node input rather than using its index (which is quite unclear and fragile)
 		self.find_node_inputs(identifier)?.get(index)?.as_value()
+	}
+
+	/// The stored value of the given parameter on the matching proto node in the layer's primary flow, if that node exists and the input holds a value.
+	/// The parameter symbol names both the node and the input, so the two can never disagree.
+	pub fn parameter_value(&self, parameter: impl Into<ParameterRef>) -> Option<&'a TaggedValue> {
+		let parameter = parameter.into();
+		self.find_input(&DefinitionIdentifier::ProtoNode(parameter.node_identifier), parameter.input_index)
 	}
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
+		let layer_input_type = network_interface.input_type(&InputConnector::node_at_index(layer.to_node(), 1), &[]);
 
 		matches!(layer_input_type.compiled_element_name().as_deref(), Some("Raster<CPU>" | "Raster<GPU>"))
 	}
