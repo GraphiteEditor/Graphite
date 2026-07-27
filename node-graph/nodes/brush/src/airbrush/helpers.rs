@@ -6,7 +6,7 @@ use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Color};
 use glam::{DAffine2, DVec2, UVec2};
-use raster_types::Texture;
+use raster_types::{Texture, WeakTexture};
 use std::hash::Hasher;
 use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
 
@@ -94,8 +94,9 @@ fn stroke_key(stroke: &Stroke, style: &BrushStyle) -> u64 {
 struct AirbrushSlot {
 	/// The finished strokes `base` shows, in composite order, each with its pad bounds.
 	strokes: Vec<(u64, AxisAlignedBbox)>,
-	/// Composite of `strokes`, crop-sized, with its texel origin on the region lattice.
-	base: Option<(Texture, UVec2)>,
+	/// Composite of `strokes`, crop-sized, with its texel origin on the region lattice; parked
+	/// weakly, so a failed upgrade rebakes.
+	base: Option<(WeakTexture, UVec2)>,
 	/// The in-progress stroke's continuation state.
 	active: Option<ActiveState>,
 }
@@ -110,8 +111,9 @@ struct ActiveState {
 	walk: Walk,
 	/// Position of the last consumed sample, verifying the stored prefix is intact.
 	last_position: DVec2,
-	/// Frame-sized R16Float; the provisional tail is never committed here while growing.
-	density: Texture,
+	/// Frame-sized R16Float, parked weakly; the provisional tail is never committed here while
+	/// growing.
+	density: WeakTexture,
 }
 
 impl ActiveState {
@@ -536,16 +538,19 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		// The base covers wherever its strokes had content, so any relation to the crop is fine.
 		let base = slot
 			.base
+			.and_then(|(texture, origin)| Some((texture.upgrade()?, origin)))
 			.filter(|(texture, origin)| prefix && (*origin + UVec2::new(texture.width(), texture.height())).cmple(region.size).all());
 		let covered = match &base {
 			Some(_) => slot.strokes.len(),
 			None => 0,
 		};
 		let missing = &finished[covered..];
-		let mut sidecar = slot.active.filter(|state| frame_sized(&state.density));
+		let mut sidecar = slot
+			.active
+			.and_then(|state| state.density.upgrade().filter(|density| frame_sized(density)).map(|density| (density, state)));
 		// The sidecar either continues the active stroke, or finishes the stroke it belonged to
 		// during the bake (the pen-up event), or is stale.
-		let continuation = sidecar.as_ref().is_some_and(|state| state.is_prefix_of(active, active_style_hash));
+		let continuation = sidecar.as_ref().is_some_and(|(_, state)| state.is_prefix_of(active, active_style_hash));
 
 		let bake = (!missing.is_empty()).then(|| executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT));
 		let composite = executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT);
@@ -559,8 +564,10 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		let scratch_bind = self.resolve_bind(device, &active_uniform, &scratch_view);
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("airbrush_encoder") });
 		// Everything the encoder references must outlive the submit below, or destroy-on-drop
-		// would invalidate it; per-pass buffers collect here.
+		// would invalidate it; per-pass buffers collect here, as does the sidecar density the
+		// pen-up fast path consumes mid-encode.
 		let mut in_flight: Vec<Buffer> = Vec::new();
+		let mut spent: Vec<Texture> = Vec::new();
 
 		// Stored base textures are never mutated, so an in-flight reader of the old slot stays valid.
 		if let Some(bake) = &bake {
@@ -577,15 +584,16 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 				let stroke_uniform = resolve_uniform(executor, style.color, &crop);
 				// Pen-up fast path: the stroke that was active last event completes its committed
 				// density (remaining segments plus the final tail) and resolves in one pass.
-				if !continuation && sidecar.as_ref().is_some_and(|state| state.is_prefix_of(stroke, style_hash(style))) {
-					let mut state = sidecar.take().unwrap();
+				if !continuation && sidecar.as_ref().is_some_and(|(_, state)| state.is_prefix_of(stroke, style_hash(style))) {
+					let (density, mut state) = sidecar.take().unwrap();
 					let prev = state.walk.kept_last;
 					let kept = state.walk.advance(stroke, style, scale);
 					let tail = state.walk.tail(stroke, style);
-					let density_view = state.density.create_view(&wgpu::TextureViewDescriptor::default());
+					let density_view = density.create_view(&wgpu::TextureViewDescriptor::default());
 					in_flight.extend(self.scatter_pass(executor, &mut encoder, &density_view, &scatter_bind, &edges(&region, prev, &kept, tail)));
 					self.resolve_pass(&mut encoder, &bake_view, &self.resolve_bind(device, &stroke_uniform, &density_view), stroke_scissor);
 					in_flight.push(stroke_uniform);
+					spent.push(density);
 					continue;
 				}
 				let (kept, tail) = walk_stroke(stroke, style, scale);
@@ -597,7 +605,7 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		}
 
 		let (mut walk, density) = match sidecar.take() {
-			Some(state) if continuation => (state.walk, state.density),
+			Some((density, state)) if continuation => (state.walk, density),
 			_ => (Walk::default(), executor.request_texture_with_format(region.size, wgpu::TextureFormat::R16Float)),
 		};
 		let density_view = density.create_view(&wgpu::TextureViewDescriptor::default());
@@ -642,13 +650,15 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 			&args.footprint,
 			AirbrushSlot {
 				strokes: keys.into_iter().zip(bounds).collect(),
-				base: bake.map(|texture| (texture, crop.origin)).or(base),
+				base: bake
+					.map(|texture| (texture.downgrade(), crop.origin))
+					.or_else(|| base.map(|(texture, origin)| (texture.downgrade(), origin))),
 				active: Some(ActiveState {
 					seed: active.seed,
 					style: active_style_hash,
 					walk,
 					last_position: *active.position.last().unwrap(),
-					density,
+					density: density.downgrade(),
 				}),
 			},
 		);
