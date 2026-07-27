@@ -33,7 +33,10 @@ pub use wgpu_sync::Instance as WgpuInstance;
 pub use wgpu_sync::Queue as WgpuQueue;
 pub use wgpu_sync::Surface as WgpuSurface;
 
-const TEXTURE_CACHE_SIZE: u64 = 256 * 1024 * 1024; // 256 MiB
+#[cfg(not(target_family = "wasm"))]
+const TEXTURE_CACHE_SIZE: u64 = 1024 * 1024 * 1024; // 1GB
+#[cfg(target_family = "wasm")]
+const TEXTURE_CACHE_SIZE: u64 = 512 * 1024 * 1024; // 512MB
 
 #[derive(dyn_any::DynAny, Clone)]
 pub struct WgpuExecutor {
