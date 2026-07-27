@@ -50,7 +50,7 @@ impl WgpuExecutor {
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutorInner {
 	context: WgpuContext,
-	texture_cache: Mutex<TextureCache>,
+	texture_cache: std::sync::Mutex<TextureCache>,
 	vello_renderer: Mutex<Renderer>,
 	shader_runtime: ShaderRuntime,
 }
@@ -69,7 +69,7 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
-		let texture = self.request_texture(size).await;
+		let texture = self.request_texture(size);
 
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -109,8 +109,8 @@ impl WgpuExecutor {
 		pipeline.init::<P>(self);
 	}
 
-	pub async fn request_texture(&self, size: UVec2) -> Texture {
-		self.inner.texture_cache.lock().await.request_texture(&self.context().device, size)
+	pub fn request_texture(&self, size: UVec2) -> Texture {
+		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size)
 	}
 }
 
