@@ -8,8 +8,7 @@ use core_types::{CacheHash, Color};
 use glam::{DAffine2, DVec2, UVec2};
 use raster_types::Texture;
 use std::hash::Hasher;
-use wgpu::util::DeviceExt;
-use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor};
+use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
 
 /// One segment of a stroke's centerline, the per-instance vertex data of the scatter pass.
 #[repr(C)]
@@ -38,25 +37,25 @@ struct ResolveUniforms {
 	_pad: [f32; 2],
 }
 
-fn scatter_uniform(device: &wgpu::Device, region: &Region) -> wgpu::Buffer {
+fn scatter_uniform(executor: &WgpuExecutor, region: &Region) -> Buffer {
 	let uniforms = ScatterUniforms {
 		frame_size: [region.size.x as f32, region.size.y as f32],
 	};
-	device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+	executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 		label: Some("airbrush_scatter_uniform"),
 		contents: bytemuck::bytes_of(&uniforms),
 		usage: wgpu::BufferUsages::UNIFORM,
 	})
 }
 
-fn resolve_uniform(device: &wgpu::Device, color: Color, crop: &Crop) -> wgpu::Buffer {
+fn resolve_uniform(executor: &WgpuExecutor, color: Color, crop: &Crop) -> Buffer {
 	let uniforms = ResolveUniforms {
 		// Linear-light channels; the composite stays linear until the convert pass encodes it.
 		color: [color.r(), color.g(), color.b(), color.a()],
 		density_offset: [crop.origin.x as f32, crop.origin.y as f32],
 		_pad: [0.; 2],
 	};
-	device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+	executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 		label: Some("airbrush_resolve_uniform"),
 		contents: bytemuck::bytes_of(&uniforms),
 		usage: wgpu::BufferUsages::UNIFORM,
@@ -80,23 +79,6 @@ pub struct AirbrushPipeline {
 /// convert pass encodes to the app-wide straight-alpha sRGB convention once per output.
 const COMPOSITE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
-fn create_texture(device: &wgpu::Device, size: UVec2, format: wgpu::TextureFormat) -> wgpu::Texture {
-	device.create_texture(&wgpu::TextureDescriptor {
-		label: Some("airbrush_texture"),
-		size: wgpu::Extent3d {
-			width: size.x,
-			height: size.y,
-			depth_or_array_layers: 1,
-		},
-		mip_level_count: 1,
-		sample_count: 1,
-		dimension: wgpu::TextureDimension::D2,
-		format,
-		usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
-		view_formats: &[],
-	})
-}
-
 /// The identity of one finished stroke: a hash of its content and style, so any in-place edit
 /// misses.
 fn stroke_key(stroke: &Stroke, style: &BrushStyle) -> u64 {
@@ -113,7 +95,7 @@ struct AirbrushSlot {
 	/// The finished strokes `base` shows, in composite order, each with its pad bounds.
 	strokes: Vec<(u64, AxisAlignedBbox)>,
 	/// Composite of `strokes`, crop-sized, with its texel origin on the region lattice.
-	base: Option<(wgpu::Texture, UVec2)>,
+	base: Option<(Texture, UVec2)>,
 	/// The in-progress stroke's continuation state.
 	active: Option<ActiveState>,
 }
@@ -129,7 +111,7 @@ struct ActiveState {
 	/// Position of the last consumed sample, verifying the stored prefix is intact.
 	last_position: DVec2,
 	/// Frame-sized R16Float; the provisional tail is never committed here while growing.
-	density: wgpu::Texture,
+	density: Texture,
 }
 
 impl ActiveState {
@@ -565,16 +547,20 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		// during the bake (the pen-up event), or is stale.
 		let continuation = sidecar.as_ref().is_some_and(|state| state.is_prefix_of(active, active_style_hash));
 
-		let bake = (!missing.is_empty()).then(|| create_texture(device, crop.size, COMPOSITE_FORMAT));
-		let composite = create_texture(device, crop.size, COMPOSITE_FORMAT);
-		let scratch = create_texture(device, region.size, wgpu::TextureFormat::R16Float);
+		let bake = (!missing.is_empty()).then(|| executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT));
+		let composite = executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT);
+		let scratch = executor.request_texture_with_format(region.size, wgpu::TextureFormat::R16Float);
 		let output = executor.request_texture(crop.size);
 
-		let scatter_bind = self.scatter_bind(device, &scatter_uniform(device, &region));
-		let active_uniform = resolve_uniform(device, active_style.color, &crop);
+		let scatter_globals = scatter_uniform(executor, &region);
+		let scatter_bind = self.scatter_bind(device, &scatter_globals);
+		let active_uniform = resolve_uniform(executor, active_style.color, &crop);
 		let scratch_view = scratch.create_view(&wgpu::TextureViewDescriptor::default());
 		let scratch_bind = self.resolve_bind(device, &active_uniform, &scratch_view);
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("airbrush_encoder") });
+		// Everything the encoder references must outlive the submit below, or destroy-on-drop
+		// would invalidate it; per-pass buffers collect here.
+		let mut in_flight: Vec<Buffer> = Vec::new();
 
 		// Stored base textures are never mutated, so an in-flight reader of the old slot stays valid.
 		if let Some(bake) = &bake {
@@ -588,7 +574,7 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 				if !stroke_scissor.1.cmpgt(UVec2::ZERO).all() {
 					continue;
 				}
-				let stroke_uniform = resolve_uniform(device, style.color, &crop);
+				let stroke_uniform = resolve_uniform(executor, style.color, &crop);
 				// Pen-up fast path: the stroke that was active last event completes its committed
 				// density (remaining segments plus the final tail) and resolves in one pass.
 				if !continuation && sidecar.as_ref().is_some_and(|state| state.is_prefix_of(stroke, style_hash(style))) {
@@ -597,20 +583,22 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 					let kept = state.walk.advance(stroke, style, scale);
 					let tail = state.walk.tail(stroke, style);
 					let density_view = state.density.create_view(&wgpu::TextureViewDescriptor::default());
-					self.scatter_pass(device, &mut encoder, &density_view, &scatter_bind, &edges(&region, prev, &kept, tail));
+					in_flight.extend(self.scatter_pass(executor, &mut encoder, &density_view, &scatter_bind, &edges(&region, prev, &kept, tail)));
 					self.resolve_pass(&mut encoder, &bake_view, &self.resolve_bind(device, &stroke_uniform, &density_view), stroke_scissor);
+					in_flight.push(stroke_uniform);
 					continue;
 				}
 				let (kept, tail) = walk_stroke(stroke, style, scale);
 				clear(&mut encoder, &scratch_view);
-				self.scatter_pass(device, &mut encoder, &scratch_view, &scatter_bind, &edges(&region, None, &kept, tail));
+				in_flight.extend(self.scatter_pass(executor, &mut encoder, &scratch_view, &scatter_bind, &edges(&region, None, &kept, tail)));
 				self.resolve_pass(&mut encoder, &bake_view, &self.resolve_bind(device, &stroke_uniform, &scratch_view), stroke_scissor);
+				in_flight.push(stroke_uniform);
 			}
 		}
 
 		let (mut walk, density) = match sidecar.take() {
 			Some(state) if continuation => (state.walk, state.density),
-			_ => (Walk::default(), create_texture(device, region.size, wgpu::TextureFormat::R16Float)),
+			_ => (Walk::default(), executor.request_texture_with_format(region.size, wgpu::TextureFormat::R16Float)),
 		};
 		let density_view = density.create_view(&wgpu::TextureViewDescriptor::default());
 		if walk.consumed == 0 {
@@ -619,7 +607,7 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		let prev = walk.kept_last;
 		let kept = walk.advance(active, active_style, scale);
 		let tail = walk.tail(active, active_style);
-		self.scatter_pass(device, &mut encoder, &density_view, &scatter_bind, &edges(&region, prev, &kept, None));
+		in_flight.extend(self.scatter_pass(executor, &mut encoder, &density_view, &scatter_bind, &edges(&region, prev, &kept, None)));
 
 		let composite_view = composite.create_view(&wgpu::TextureViewDescriptor::default());
 		match (&bake, &base) {
@@ -639,7 +627,7 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 					let encoder: &mut wgpu::CommandEncoder = &mut encoder;
 					encoder.copy_texture_to_texture(density.as_image_copy(), scratch.as_image_copy(), density.size());
 				};
-				self.scatter_pass(device, &mut encoder, &scratch_view, &scatter_bind, &edges(&region, None, &[], Some((a, b))));
+				in_flight.extend(self.scatter_pass(executor, &mut encoder, &scratch_view, &scatter_bind, &edges(&region, None, &[], Some((a, b)))));
 				&scratch_bind
 			}
 			None => &density_bind,
@@ -708,12 +696,13 @@ impl AirbrushPipeline {
 		})
 	}
 
-	/// Scatter `edges` as instanced quads additively into a density texture.
-	fn scatter_pass(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, bind: &wgpu::BindGroup, edges: &[Edge]) {
+	/// Scatter `edges` as instanced quads additively into a density texture. Returns the
+	/// instance buffer, which the caller keeps alive until the submit.
+	fn scatter_pass(&self, executor: &WgpuExecutor, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, bind: &wgpu::BindGroup, edges: &[Edge]) -> Option<Buffer> {
 		if edges.is_empty() {
-			return;
+			return None;
 		}
-		let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+		let buffer = executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("airbrush_segment_buffer"),
 			contents: bytemuck::cast_slice(edges),
 			usage: wgpu::BufferUsages::VERTEX,
@@ -735,6 +724,7 @@ impl AirbrushPipeline {
 		pass.set_bind_group(0, bind, &[]);
 		pass.set_vertex_buffer(0, buffer.slice(..));
 		pass.draw(0..4, 0..edges.len() as u32);
+		Some(buffer)
 	}
 
 	/// Resolve a density texture to color over the target, scissored to `scissor`.
