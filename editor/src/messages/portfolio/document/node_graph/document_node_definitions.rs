@@ -1332,7 +1332,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::at_index(node_id, index, true, context));
+			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
@@ -1391,7 +1391,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::at_index(node_id, index, true, context));
+			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {

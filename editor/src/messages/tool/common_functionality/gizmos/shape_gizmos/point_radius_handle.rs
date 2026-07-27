@@ -14,8 +14,8 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::ParameterRef;
 use graphene_std::vector::generator_nodes::{regular_polygon, star};
-use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
@@ -339,17 +339,17 @@ impl PointRadiusHandle {
 	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_parameter: &ParameterRef) -> Vec<f64> {
 		let mut snap_radii = Vec::new();
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(star::IDENTIFIER)) else {
+		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(star::IDENTIFIER) else {
 			return snap_radii;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[star::Radius1Input::INDEX].as_value(), node_inputs[star::Radius2Input::INDEX].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
 			return snap_radii;
 		};
 
 		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 
-		let Some(&TaggedValue::U32(sides)) = node_inputs[star::SidesInput::INDEX].as_value() else {
+		let Some(&TaggedValue::U32(sides)) = parameters.value(star::SidesInput) else {
 			return snap_radii;
 		};
 
@@ -458,11 +458,11 @@ impl PointRadiusHandle {
 	}
 
 	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_parameter: &ParameterRef) {
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(star::IDENTIFIER)) else {
+		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(star::IDENTIFIER) else {
 			return;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[star::Radius1Input::INDEX].as_value(), node_inputs[star::Radius2Input::INDEX].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
 			return;
 		};
 

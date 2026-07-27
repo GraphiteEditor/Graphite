@@ -16,7 +16,6 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeParameter;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
@@ -353,7 +352,7 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(SpiralType, f64, f64, f64, f64, f64)> {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))?;
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (
 		Some(&TaggedValue::SpiralType(spiral_type)),
@@ -363,12 +362,12 @@ pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &Document
 		Some(&TaggedValue::F64(turns)),
 		Some(&TaggedValue::F64(angle_resolution)),
 	) = (
-		node_inputs.get(SpiralTypeInput::INDEX)?.as_value(),
-		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
-		node_inputs.get(InnerRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(OuterRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(TurnsInput::INDEX)?.as_value(),
-		node_inputs.get(AngularResolutionInput::INDEX)?.as_value(),
+		parameters.value(SpiralTypeInput),
+		parameters.value(StartAngleInput),
+		parameters.value(InnerRadiusInput),
+		parameters.value(OuterRadiusInput),
+		parameters.value(TurnsInput),
+		parameters.value(AngularResolutionInput),
 	)
 	else {
 		return None;
@@ -629,14 +628,14 @@ pub fn calculate_arc_text_transform(angle: f64, offset_angle: f64, center: DVec2
 pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(GridType, DVec2, u32, u32, DVec2)> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))?;
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		node_inputs.get(GridTypeInput::INDEX)?.as_value(),
-		node_inputs.get(SpacingInput::INDEX)?.as_value(),
-		node_inputs.get(ColumnsInput::INDEX)?.as_value(),
-		node_inputs.get(RowsInput::INDEX)?.as_value(),
-		node_inputs.get(AnglesInput::INDEX)?.as_value(),
+		parameters.value(GridTypeInput),
+		parameters.value(SpacingInput),
+		parameters.value(ColumnsInput),
+		parameters.value(RowsInput),
+		parameters.value(AnglesInput),
 	) else {
 		return None;
 	};

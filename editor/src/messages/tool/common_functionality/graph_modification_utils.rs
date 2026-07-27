@@ -8,6 +8,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
+use graphene_std::ParameterRef;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
@@ -15,7 +16,6 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientSpreadMethod, GradientType, PointId, SegmentId, VectorModificationType};
-use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -359,8 +359,7 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Color(color) = inputs.get(graphene_std::vector::fill::FillInput::INDEX)?.as_value()? else {
+	let TaggedValue::Color(color) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::fill::FillInput)? else {
 		return None;
 	};
 	Some(*color)
@@ -469,42 +468,35 @@ pub fn get_text<'a>(
 	fonts: &FontsMessageHandler,
 	resources: &ResourceMessageHandler,
 ) -> Option<(&'a String, Font, TypesettingConfig)> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?;
+	use graphene_std::text::text;
+	let parameters = NodeGraphLayer::new(layer, network_interface).find_node_parameters(text::IDENTIFIER)?;
 
-	let Some(TaggedValue::String(text)) = inputs.get(graphene_std::text::text::TextInput::INDEX)?.as_value() else {
-		return None;
-	};
-	let font = match inputs.get(graphene_std::text::text::FontInput::INDEX)?.as_value() {
+	let Some(TaggedValue::String(text)) = parameters.value(text::TextInput) else { return None };
+	let font = match parameters.value(text::FontInput) {
 		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
 		_ => Font::default(),
 	};
-	let Some(&TaggedValue::F64(font_size)) = inputs.get(graphene_std::text::text::SizeInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(font_size)) = parameters.value(text::SizeInput) else { return None };
+	let Some(&TaggedValue::F64(line_height_ratio)) = parameters.value(text::LineHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(line_height_ratio)) = inputs.get(graphene_std::text::text::LineHeightInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(letter_spacing)) = parameters.value(text::LetterSpacingInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(letter_spacing)) = inputs.get(graphene_std::text::text::LetterSpacingInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::Bool(has_max_width)) = parameters.value(text::HasMaxWidthInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(has_max_width)) = inputs.get(graphene_std::text::text::HasMaxWidthInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(max_width)) = parameters.value(text::MaxWidthInput) else { return None };
+	let Some(&TaggedValue::Bool(has_max_height)) = parameters.value(text::HasMaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_width)) = inputs.get(graphene_std::text::text::MaxWidthInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(max_height)) = parameters.value(text::MaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(has_max_height)) = inputs.get(graphene_std::text::text::HasMaxHeightInput::INDEX)?.as_value() else {
+	let Some(&TaggedValue::F64(letter_tilt)) = parameters.value(text::LetterTiltInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_height)) = inputs.get(graphene_std::text::text::MaxHeightInput::INDEX)?.as_value() else {
-		return None;
-	};
-	let Some(&TaggedValue::F64(letter_tilt)) = inputs.get(graphene_std::text::text::LetterTiltInput::INDEX)?.as_value() else {
-		return None;
-	};
-	let Some(&TaggedValue::TextAlign(align)) = inputs.get(graphene_std::text::text::AlignInput::INDEX)?.as_value() else {
-		return None;
-	};
+	let Some(&TaggedValue::TextAlign(align)) = parameters.value(text::AlignInput) else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -541,34 +533,34 @@ pub struct StrokeOptionsState {
 /// Reads the non-color stroke option inputs from a layer's Stroke proto node. Returns `None` when the layer has no Stroke node.
 /// Inputs that aren't a static value (e.g. wired to another node) fall back to per-field defaults so the layer still participates in the sync.
 pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<StrokeOptionsState> {
-	let layer_view = NodeGraphLayer::new(layer, network_interface);
-	layer_view.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))?;
+	use graphene_std::vector::stroke;
+	let parameters = NodeGraphLayer::new(layer, network_interface).find_node_parameters(stroke::IDENTIFIER)?;
 
-	let align = match layer_view.parameter_value(graphene_std::vector::stroke::AlignInput) {
+	let align = match parameters.value(stroke::AlignInput) {
 		Some(TaggedValue::StrokeAlign(value)) => *value,
 		_ => StrokeAlign::default(),
 	};
-	let cap = match layer_view.parameter_value(graphene_std::vector::stroke::CapInput) {
+	let cap = match parameters.value(stroke::CapInput) {
 		Some(TaggedValue::StrokeCap(value)) => *value,
 		_ => StrokeCap::default(),
 	};
-	let join = match layer_view.parameter_value(graphene_std::vector::stroke::JoinInput) {
+	let join = match parameters.value(stroke::JoinInput) {
 		Some(TaggedValue::StrokeJoin(value)) => *value,
 		_ => StrokeJoin::default(),
 	};
-	let miter_limit = match layer_view.parameter_value(graphene_std::vector::stroke::MiterLimitInput) {
+	let miter_limit = match parameters.value(stroke::MiterLimitInput) {
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 4.,
 	};
-	let paint_order = match layer_view.parameter_value(graphene_std::vector::stroke::PaintOrderInput) {
+	let paint_order = match parameters.value(stroke::PaintOrderInput) {
 		Some(TaggedValue::PaintOrder(value)) => *value,
 		_ => PaintOrder::default(),
 	};
-	let dash_lengths = match layer_view.parameter_value(graphene_std::vector::stroke::DashPatternInput) {
+	let dash_lengths = match parameters.value(stroke::DashPatternInput) {
 		Some(TaggedValue::DashPattern(value)) => value.0.iter_element_values().copied().collect(),
 		_ => Vec::new(),
 	};
-	let dash_offset = match layer_view.parameter_value(graphene_std::vector::stroke::DashOffsetInput) {
+	let dash_offset = match parameters.value(stroke::DashOffsetInput) {
 		Some(TaggedValue::F64(value)) => *value,
 		_ => 0.,
 	};
@@ -607,13 +599,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			let input_index = graphene_std::vector::stroke::WeightInput::INDEX;
-			let value = TaggedValue::F64(weight);
-			responses.add(NodeGraphMessage::SetInputValue {
-				node_id,
-				input_index,
-				value: value.into(),
-			});
+			responses.add(NodeGraphMessage::set_input_value(node_id, graphene_std::vector::stroke::WeightInput, TaggedValue::F64(weight)));
 		} else if weight > 0. {
 			let color = Some(Color::BLACK);
 			let stroke = graphene_std::vector::style::Stroke::default().with_weight(weight);
@@ -789,18 +775,19 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
 			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
 			FillChoice::Gradient(stops) => {
-				let layer_view = NodeGraphLayer::new(layer, &document.network_interface);
+				use graphene_std::vector::fill;
+				let fill_parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(fill::IDENTIFIER);
 
-				let gradient_type = match layer_view.parameter_value(graphene_std::vector::fill::GradientTypeInput) {
+				let gradient_type = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::GradientTypeInput)) {
 					Some(TaggedValue::GradientType(value)) => *value,
 					_ => GradientType::default(),
 				};
-				let spread_method = match layer_view.parameter_value(graphene_std::vector::fill::SpreadMethodInput) {
+				let spread_method = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::SpreadMethodInput)) {
 					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
 					_ => GradientSpreadMethod::default(),
 				};
-				let has_transform = matches!(layer_view.parameter_value(graphene_std::vector::fill::HasTransformInput), Some(TaggedValue::Bool(true)));
-				let transform = match (has_transform, layer_view.parameter_value(graphene_std::vector::fill::TransformInput)) {
+				let has_transform = matches!(fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::HasTransformInput)), Some(TaggedValue::Bool(true)));
+				let transform = match (has_transform, fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::TransformInput))) {
 					(true, Some(TaggedValue::DAffine2(value))) => *value,
 					(false, _) => initial_gradient_transform_for_bounding_box(document.network_interface.document_metadata().nonzero_bounding_box(layer)),
 					_ => DAffine2::IDENTITY,
@@ -825,13 +812,11 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			let input_index = graphene_std::vector::stroke::PaintInput::INDEX;
-			let value = color.map_or_else(TaggedValue::no_paint, TaggedValue::Color);
-			responses.add(NodeGraphMessage::SetInputValue {
+			responses.add(NodeGraphMessage::set_input_value(
 				node_id,
-				input_index,
-				value: value.into(),
-			});
+				graphene_std::vector::stroke::PaintInput,
+				color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
+			));
 		} else {
 			let stroke = graphene_std::vector::style::Stroke::new(weight);
 			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
@@ -888,7 +873,7 @@ pub fn first_selected_parameter(document: &DocumentMessageHandler, parameter: im
 /// The parameter symbol locates the node, so the value can never land on the right index of the wrong node.
 pub fn set_parameter_for_selected_layers(document: &DocumentMessageHandler, parameter: impl Into<ParameterRef>, value: TaggedValue, responses: &mut VecDeque<Message>) {
 	let parameter = parameter.into();
-	let identifier = DefinitionIdentifier::ProtoNode(parameter.node_identifier);
+	let identifier = DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone());
 
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 
@@ -896,11 +881,7 @@ pub fn set_parameter_for_selected_layers(document: &DocumentMessageHandler, para
 		let Some(node_id) = NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name(&identifier) else {
 			continue;
 		};
-		responses.add(NodeGraphMessage::SetInputValue {
-			node_id,
-			input_index: parameter.input_index,
-			value: value.clone().into(),
-		});
+		responses.add(NodeGraphMessage::set_input_value(node_id, parameter.clone(), value.clone()));
 	}
 }
 
@@ -977,9 +958,16 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// The stored value of the given parameter on the matching proto node in the layer's primary flow, if that node exists and the input holds a value.
 	/// The parameter symbol names both the node and the input, so the two can never disagree.
+	/// For reading several parameters of the same node, prefer [`Self::find_node_parameters`] so the upstream flow is walked only once.
 	pub fn parameter_value(&self, parameter: impl Into<ParameterRef>) -> Option<&'a TaggedValue> {
 		let parameter = parameter.into();
 		self.find_input(&DefinitionIdentifier::ProtoNode(parameter.node_identifier), parameter.input_index)
+	}
+
+	/// Find a proto node in the layer's primary flow and return its inputs for reading by parameter symbol, walking upstream only once.
+	pub fn find_node_parameters(&self, identifier: ProtoNodeIdentifier) -> Option<ProtoNodeParameters<'a>> {
+		let inputs = self.find_node_inputs(&DefinitionIdentifier::ProtoNode(identifier.clone()))?;
+		Some(ProtoNodeParameters { identifier, inputs })
 	}
 
 	/// Check if a layer is a raster layer
@@ -987,5 +975,25 @@ impl<'a> NodeGraphLayer<'a> {
 		let layer_input_type = network_interface.input_type(&InputConnector::layer_secondary_input(layer.to_node()), &[]);
 
 		matches!(layer_input_type.compiled_element_name().as_deref(), Some("Raster<CPU>" | "Raster<GPU>"))
+	}
+}
+
+/// The inputs of a proto node located by [`NodeGraphLayer::find_node_parameters`], read by parameter symbol without re-walking the layer's upstream flow per read.
+pub struct ProtoNodeParameters<'a> {
+	identifier: ProtoNodeIdentifier,
+	inputs: &'a [NodeInput],
+}
+
+impl<'a> ProtoNodeParameters<'a> {
+	/// The input slot of the given parameter.
+	pub fn input(&self, parameter: impl Into<ParameterRef>) -> Option<&'a NodeInput> {
+		let parameter = parameter.into();
+		debug_assert_eq!(parameter.node_identifier, self.identifier, "a parameter of one node was read from the inputs of another node");
+		self.inputs.get(parameter.input_index)
+	}
+
+	/// The stored value of the given parameter, if that input currently holds a value rather than a wire.
+	pub fn value(&self, parameter: impl Into<ParameterRef>) -> Option<&'a TaggedValue> {
+		self.input(parameter)?.as_value()
 	}
 }
