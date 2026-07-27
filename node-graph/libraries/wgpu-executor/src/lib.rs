@@ -1,3 +1,4 @@
+mod buffer;
 mod context;
 mod pipeline;
 pub mod shader_runtime;
@@ -14,8 +15,10 @@ use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use wgpu::util::DeviceExt;
 use wgpu::{Origin3d, TextureAspect};
 
+pub use buffer::Buffer;
 pub use context::Context as WgpuContext;
 pub use context::ContextBuilder as WgpuContextBuilder;
 pub use pipeline::AsyncPipeline as AsyncWgpuPipeline;
@@ -115,6 +118,14 @@ impl WgpuExecutor {
 
 	pub fn request_texture_with_format(&self, size: UVec2, format: wgpu::TextureFormat) -> Texture {
 		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size, format)
+	}
+
+	pub fn create_buffer(&self, desc: &wgpu::BufferDescriptor) -> Buffer {
+		self.context().device.create_buffer(desc).into()
+	}
+
+	pub fn create_buffer_init(&self, desc: &wgpu::util::BufferInitDescriptor) -> Buffer {
+		self.context().device.create_buffer_init(desc).into()
 	}
 }
 
