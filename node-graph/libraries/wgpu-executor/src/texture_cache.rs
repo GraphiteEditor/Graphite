@@ -22,7 +22,7 @@ impl TextureCache {
 		if let Some(pos) = self
 			.textures
 			.iter()
-			.position(|texture| UVec2::new(texture.width(), texture.height()) == size && texture.format() == format && !texture.is_shared())
+			.position(|texture| UVec2::new(texture.width(), texture.height()) == size && texture.format() == format && !texture.is_shared() && !texture.is_weakly_shared())
 		{
 			let entry = self.textures.remove(pos).unwrap();
 			let texture = entry.clone();
@@ -73,17 +73,19 @@ impl TextureCache {
 			return;
 		}
 
-		self.textures.retain(|texture| {
-			if free_bytes + incoming_bytes <= max_free_bytes {
-				return true;
-			}
-			if !texture.is_shared() {
-				free_bytes -= texture.memory_size_estimate();
-				false
-			} else {
-				true
-			}
-		});
+		for parked in [false, true] {
+			self.textures.retain(|texture| {
+				if free_bytes + incoming_bytes <= max_free_bytes {
+					return true;
+				}
+				if !texture.is_shared() && texture.is_weakly_shared() == parked {
+					free_bytes -= texture.memory_size_estimate();
+					false
+				} else {
+					true
+				}
+			});
+		}
 	}
 }
 

@@ -140,7 +140,7 @@ mod cpu {
 
 pub use gpu::GPU;
 #[cfg(feature = "wgpu")]
-pub use gpu::Texture;
+pub use gpu::{Texture, TextureWeakRef};
 
 #[cfg(feature = "wgpu")]
 mod gpu {
@@ -163,6 +163,23 @@ mod gpu {
 	impl Texture {
 		pub fn is_shared(&self) -> bool {
 			Arc::strong_count(&self.0) > 1
+		}
+
+		pub fn is_weakly_shared(&self) -> bool {
+			Arc::weak_count(&self.0) > 0
+		}
+
+		pub fn downgrade(&self) -> TextureWeakRef {
+			TextureWeakRef(Arc::downgrade(&self.0))
+		}
+	}
+
+	#[derive(Clone, Debug)]
+	pub struct TextureWeakRef(std::sync::Weak<TextureInner>);
+
+	impl TextureWeakRef {
+		pub fn upgrade(&self) -> Option<Texture> {
+			self.0.upgrade().map(Texture)
 		}
 	}
 
