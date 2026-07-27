@@ -73,4 +73,11 @@ impl Crop {
 	pub(crate) fn transform(&self, region: &Region) -> DAffine2 {
 		DAffine2::from_translation(region.min + self.origin.as_dvec2() / region.scale) * DAffine2::from_scale(self.size.as_dvec2() / region.scale)
 	}
+
+	pub(crate) fn scissor(&self, region: &Region, bounds: AxisAlignedBbox) -> (UVec2, UVec2) {
+		let clamp = |texels: UVec2| texels.max(self.origin).min(self.origin + self.size) - self.origin;
+		let min = ((bounds.start - region.min) * region.scale).floor().max(DVec2::ZERO).as_uvec2().min(region.size);
+		let max = ((bounds.end - region.min) * region.scale).ceil().max(DVec2::ZERO).as_uvec2().min(region.size);
+		(clamp(min), clamp(max) - clamp(min))
+	}
 }

@@ -1,14 +1,14 @@
 use brush_types::{BrushStyle, Sample, Stroke};
 use bytemuck::{Pod, Zeroable};
 use core_types::math::bbox::AxisAlignedBbox;
-use glam::{DVec2, UVec2};
+use glam::DVec2;
 
 const MIN_SIGMA: f32 = f32::EPSILON;
 pub(super) const CUTOFF_SIGMA: f32 = 5.;
 const MAX_EDGE_SHIFT: f32 = 0.25;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, PartialEq, Pod, Zeroable)]
 pub(super) struct Edge {
 	a: [f32; 2],
 	b: [f32; 2],
@@ -16,8 +16,13 @@ pub(super) struct Edge {
 	weight: f32,
 }
 
+pub(super) struct StyledStroke {
+	pub(super) style: BrushStyle,
+	pub(super) stroke: Stroke,
+}
+
 #[derive(Clone, Copy)]
-pub(super) struct Dab {
+struct Dab {
 	position: DVec2,
 	sigma: f32,
 	weight: f32,
@@ -50,18 +55,23 @@ pub(super) fn union(bounds: &mut Option<AxisAlignedBbox>, other: AxisAlignedBbox
 	});
 }
 
-pub(super) fn bounds(stroke: &Stroke, style: &BrushStyle, scale: f64) -> AxisAlignedBbox {
+pub(super) fn bounds(stroke: &StyledStroke, scale: f64) -> AxisAlignedBbox {
 	let mut bounds = None;
-	for sample in stroke.samples() {
-		union(&mut bounds, dab_pad(dab(&sample, style), scale));
+	for sample in stroke.stroke.samples() {
+		union(&mut bounds, dab_pad(dab(&sample, &stroke.style), scale));
 	}
 	bounds.unwrap_or(AxisAlignedBbox::ZERO)
+}
+
+pub(super) struct Update {
+	pub(super) committed: Vec<Edge>,
+	pub(super) tail: Vec<Edge>,
 }
 
 #[derive(Clone)]
 pub(super) struct Walk {
 	sigma_min: f32,
-	pub(super) kept_last: Option<Dab>,
+	kept_last: Option<Dab>,
 	kept: usize,
 	pub(super) consumed: usize,
 }
@@ -78,11 +88,11 @@ impl Default for Walk {
 }
 
 impl Walk {
-	pub(super) fn advance(&mut self, stroke: &Stroke, style: &BrushStyle, scale: f64) -> Vec<Dab> {
+	fn advance(&mut self, stroke: &StyledStroke, scale: f64) -> Vec<Dab> {
 		let mut kept = Vec::new();
-		for index in self.consumed..stroke.len() {
-			let sample = stroke.sample(index);
-			let dab = dab(&sample, style);
+		for index in self.consumed..stroke.stroke.len() {
+			let sample = stroke.stroke.sample(index);
+			let dab = dab(&sample, &stroke.style);
 			self.sigma_min = self.sigma_min.min(dab.sigma);
 			let min_step = (self.sigma_min as f64 * 0.5).max(0.5 / scale);
 			if self.kept_last.is_none_or(|last| last.position.distance(dab.position) >= min_step) {
@@ -91,17 +101,27 @@ impl Walk {
 				self.kept += 1;
 			}
 		}
-		self.consumed = stroke.len();
+		self.consumed = stroke.stroke.len();
 		kept
 	}
 
-	pub(super) fn tail(&self, stroke: &Stroke, style: &BrushStyle) -> Option<(Dab, Dab)> {
+	fn tail(&self, stroke: &StyledStroke) -> Option<(Dab, Dab)> {
 		let kept_last = self.kept_last?;
-		let dab = dab(&stroke.sample(stroke.len() - 1), style);
+		let dab = dab(&stroke.stroke.sample(stroke.stroke.len() - 1), &stroke.style);
 		if dab.position == kept_last.position {
 			return (self.kept == 1).then_some((kept_last, kept_last));
 		}
 		Some((kept_last, dab))
+	}
+
+	pub(super) fn update(&mut self, stroke: &StyledStroke, region: &super::region::Region) -> Update {
+		let previous = self.kept_last;
+		let kept = self.advance(stroke, region.scale);
+		let tail = self.tail(stroke);
+		Update {
+			committed: edges(region, previous, &kept, None),
+			tail: edges(region, None, &[], tail),
+		}
 	}
 }
 
@@ -139,7 +159,7 @@ fn segment_edges(edges: &mut Vec<Edge>, region: &super::region::Region, a: Dab, 
 	}
 }
 
-pub(super) fn edges(region: &super::region::Region, prev: Option<Dab>, kept: &[Dab], tail: Option<(Dab, Dab)>) -> Vec<Edge> {
+fn edges(region: &super::region::Region, prev: Option<Dab>, kept: &[Dab], tail: Option<(Dab, Dab)>) -> Vec<Edge> {
 	let mut edges = Vec::with_capacity(kept.len() + 1);
 	let mut last = prev;
 	for &dab in kept {
@@ -154,16 +174,43 @@ pub(super) fn edges(region: &super::region::Region, prev: Option<Dab>, kept: &[D
 	edges
 }
 
-pub(super) fn walk(stroke: &Stroke, style: &BrushStyle, scale: f64) -> (Vec<Dab>, Option<(Dab, Dab)>) {
-	let mut walk = Walk::default();
-	let kept = walk.advance(stroke, style, scale);
-	let tail = walk.tail(stroke, style);
-	(kept, tail)
-}
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use glam::{DVec2, UVec2};
 
-pub(super) fn scissor(region: &super::region::Region, crop: &super::region::Crop, bounds: AxisAlignedBbox) -> (UVec2, UVec2) {
-	let clamp = |texels: UVec2| texels.max(crop.origin).min(crop.origin + crop.size) - crop.origin;
-	let min = ((bounds.start - region.min) * region.scale).floor().max(DVec2::ZERO).as_uvec2().min(region.size);
-	let max = ((bounds.end - region.min) * region.scale).ceil().max(DVec2::ZERO).as_uvec2().min(region.size);
-	(clamp(min), clamp(max) - clamp(min))
+	fn stroke(points: &[[f64; 2]]) -> StyledStroke {
+		StyledStroke {
+			style: BrushStyle::default(),
+			stroke: Stroke {
+				position: points.iter().copied().map(DVec2::from).collect(),
+				..Default::default()
+			},
+		}
+	}
+
+	fn region() -> super::super::region::Region {
+		super::super::region::Region {
+			min: DVec2::ZERO,
+			scale: 2.,
+			size: UVec2::splat(512),
+		}
+	}
+
+	#[test]
+	fn chunked_walk_matches_whole_stroke() {
+		let partial = stroke(&[[10., 10.], [15., 12.], [20., 15.]]);
+		let complete = stroke(&[[10., 10.], [15., 12.], [20., 15.], [31., 19.], [45., 24.]]);
+		let region = region();
+
+		let mut chunked = Walk::default();
+		let first = chunked.update(&partial, &region);
+		let second = chunked.update(&complete, &region);
+		let mut committed = first.committed;
+		committed.extend(second.committed);
+
+		let whole = Walk::default().update(&complete, &region);
+		assert_eq!(committed, whole.committed);
+		assert_eq!(second.tail, whole.tail);
+	}
 }

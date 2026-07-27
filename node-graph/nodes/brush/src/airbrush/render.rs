@@ -1,0 +1,357 @@
+use super::pipeline::{AirbrushPipeline, COMPOSITE_FORMAT, DENSITY_FORMAT, Recorder};
+use super::region::{Crop, Region};
+use super::stroke::{self, StyledStroke, Walk};
+use brush_types::BrushStyle;
+use core_types::CacheHash;
+use core_types::math::bbox::AxisAlignedBbox;
+use glam::{DAffine2, DVec2, UVec2};
+use raster_types::{Texture, TextureWeakRef};
+use std::hash::Hasher;
+use wgpu_executor::WgpuExecutor;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct StrokeKey(u64);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct StyleKey(u64);
+
+#[derive(PartialEq, Eq)]
+struct FrameKey {
+	finished: Vec<StrokeKey>,
+	active: StrokeKey,
+}
+
+pub(super) struct Frame<'a> {
+	finished: &'a [StyledStroke],
+	active: &'a StyledStroke,
+}
+
+impl<'a> Frame<'a> {
+	pub(super) fn new(strokes: &'a [StyledStroke]) -> Option<Self> {
+		let (active, finished) = strokes.split_last()?;
+		Some(Self { finished, active })
+	}
+}
+
+#[derive(Default)]
+pub(super) struct State {
+	finished: Finished,
+	pending: Option<Pending>,
+	output: Option<CachedOutput>,
+}
+
+#[derive(Default)]
+struct Finished {
+	strokes: Vec<Record>,
+	image: Option<Placed<TextureWeakRef>>,
+}
+
+struct Record {
+	key: StrokeKey,
+	bounds: AxisAlignedBbox,
+}
+
+struct Placed<T> {
+	texture: T,
+	origin: UVec2,
+}
+
+struct CachedOutput {
+	key: FrameKey,
+	texture: TextureWeakRef,
+}
+
+struct Pending {
+	seed: u64,
+	style: StyleKey,
+	walk: Walk,
+	last_position: DVec2,
+	density: TextureWeakRef,
+}
+
+struct LivePending {
+	seed: u64,
+	style: StyleKey,
+	walk: Walk,
+	last_position: DVec2,
+	density: Texture,
+}
+
+impl Pending {
+	fn upgrade(self, region: &Region) -> Option<LivePending> {
+		let density = self.density.upgrade()?;
+		if density.width() != region.size.x || density.height() != region.size.y {
+			return None;
+		}
+		Some(LivePending {
+			seed: self.seed,
+			style: self.style,
+			walk: self.walk,
+			last_position: self.last_position,
+			density,
+		})
+	}
+}
+
+impl LivePending {
+	fn matches(&self, stroke: &StyledStroke) -> bool {
+		self.seed == stroke.stroke.seed
+			&& self.style == style_key(&stroke.style)
+			&& self.walk.consumed > 0
+			&& self.walk.consumed <= stroke.stroke.len()
+			&& stroke.stroke.position[self.walk.consumed - 1] == self.last_position
+	}
+
+	fn park(self) -> Pending {
+		Pending {
+			seed: self.seed,
+			style: self.style,
+			walk: self.walk,
+			last_position: self.last_position,
+			density: self.density.downgrade(),
+		}
+	}
+}
+
+pub(super) struct Rendered {
+	pub(super) texture: Texture,
+	pub(super) transform: DAffine2,
+	pub(super) state: State,
+}
+
+pub(super) fn render(pipeline: &AirbrushPipeline, executor: &WgpuExecutor, frame: Frame<'_>, region: Region, mut state: State) -> Option<Rendered> {
+	let keys: Vec<_> = frame.finished.iter().map(stroke_key).collect();
+	let active_key = stroke_key(frame.active);
+	let frame_key = frame_key(&keys, active_key);
+	let prefix = state.finished.strokes.len() <= keys.len() && state.finished.strokes.iter().zip(&keys).all(|(cached, current)| cached.key == *current);
+	let known = if prefix { state.finished.strokes.len() } else { 0 };
+	let mut bounds: Vec<_> = if prefix {
+		state.finished.strokes.iter().map(|record| record.bounds.clone()).collect()
+	} else {
+		Vec::new()
+	};
+	bounds.extend(frame.finished[known..].iter().map(|stroke| stroke::bounds(stroke, region.scale)));
+	let active_bounds = stroke::bounds(frame.active, region.scale);
+	let mut content = None;
+	for bounds in &bounds {
+		stroke::union(&mut content, bounds.clone());
+	}
+	stroke::union(&mut content, active_bounds.clone());
+	let crop = Crop::new(content?, &region)?;
+
+	if let Some(texture) = state.output.as_ref().filter(|output| output.key == frame_key).and_then(|output| output.texture.upgrade()) {
+		return Some(Rendered {
+			texture,
+			transform: crop.transform(&region),
+			state,
+		});
+	}
+
+	let base = state
+		.finished
+		.image
+		.take()
+		.and_then(|placed| {
+			Some(Placed {
+				texture: placed.texture.upgrade()?,
+				origin: placed.origin,
+			})
+		})
+		.filter(|placed| prefix && (placed.origin + UVec2::new(placed.texture.width(), placed.texture.height())).cmple(region.size).all());
+	let covered = if base.is_some() { state.finished.strokes.len() } else { 0 };
+	let missing = &frame.finished[covered..];
+	let pending = state.pending.take().and_then(|pending| pending.upgrade(&region));
+	let (active_pending, mut finished_pending) = match pending {
+		Some(pending) if pending.matches(frame.active) => (Some(pending), None),
+		pending => (None, pending),
+	};
+
+	let updated = (!missing.is_empty()).then(|| executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT));
+	let composite = executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT);
+	let scratch = executor.request_texture_with_format(region.size, DENSITY_FORMAT);
+	let output = executor.request_texture(crop.size);
+	let mut recorder = Recorder::new(pipeline, executor, &region);
+
+	if let Some(updated) = &updated {
+		let target = updated.create_view(&wgpu::TextureViewDescriptor::default());
+		recorder.clear(&target);
+		if let Some(base) = &base {
+			recorder.copy(&base.texture, base.origin, updated, crop.origin);
+		}
+		let mut strokes = StrokeRenderer {
+			recorder: &mut recorder,
+			executor,
+			region: &region,
+			crop: &crop,
+			scratch: &scratch,
+		};
+		for (index, stroke) in missing.iter().enumerate() {
+			let scissor = crop.scissor(&region, bounds[covered + index].clone());
+			if !scissor.1.cmpgt(UVec2::ZERO).all() {
+				continue;
+			}
+			let previous = if finished_pending.as_ref().is_some_and(|pending| pending.matches(stroke)) {
+				finished_pending.take()
+			} else {
+				None
+			};
+			strokes.render(stroke, previous, Tail::Commit, Target { view: &target, scissor });
+		}
+	}
+
+	let composite_view = composite.create_view(&wgpu::TextureViewDescriptor::default());
+	match (&updated, &base) {
+		(Some(updated), _) => recorder.copy_texture(updated, &composite),
+		(None, Some(base)) => {
+			recorder.clear(&composite_view);
+			recorder.copy(&base.texture, base.origin, &composite, crop.origin);
+		}
+		(None, None) => recorder.clear(&composite_view),
+	}
+	let active_scissor = crop.scissor(&region, active_bounds);
+	let pending = StrokeRenderer {
+		recorder: &mut recorder,
+		executor,
+		region: &region,
+		crop: &crop,
+		scratch: &scratch,
+	}
+	.render(
+		frame.active,
+		active_pending,
+		Tail::Preview,
+		Target {
+			view: &composite_view,
+			scissor: active_scissor,
+		},
+	)?;
+
+	let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+	recorder.convert(&composite_view, &output_view);
+	recorder.submit();
+
+	let image = updated
+		.map(|texture| Placed {
+			texture: texture.downgrade(),
+			origin: crop.origin,
+		})
+		.or_else(|| {
+			base.map(|placed| Placed {
+				texture: placed.texture.downgrade(),
+				origin: placed.origin,
+			})
+		});
+	let state = State {
+		finished: Finished {
+			strokes: keys.into_iter().zip(bounds).map(|(key, bounds)| Record { key, bounds }).collect(),
+			image,
+		},
+		pending: Some(pending.park()),
+		output: Some(CachedOutput {
+			key: frame_key,
+			texture: output.downgrade(),
+		}),
+	};
+	Some(Rendered {
+		texture: output,
+		transform: crop.transform(&region),
+		state,
+	})
+}
+
+#[derive(Clone, Copy)]
+enum Tail {
+	Commit,
+	Preview,
+}
+
+enum Density<'a> {
+	Temporary(&'a Texture),
+	Owned(Texture),
+}
+
+impl Density<'_> {
+	fn texture(&self) -> &Texture {
+		match self {
+			Self::Temporary(texture) => texture,
+			Self::Owned(texture) => texture,
+		}
+	}
+}
+
+struct Target<'a> {
+	view: &'a wgpu::TextureView,
+	scissor: (UVec2, UVec2),
+}
+
+struct StrokeRenderer<'a, 'gpu> {
+	recorder: &'a mut Recorder<'gpu>,
+	executor: &'gpu WgpuExecutor,
+	region: &'a Region,
+	crop: &'a Crop,
+	scratch: &'a Texture,
+}
+
+impl StrokeRenderer<'_, '_> {
+	fn render(&mut self, stroke: &StyledStroke, previous: Option<LivePending>, tail: Tail, target: Target<'_>) -> Option<LivePending> {
+		let (mut walk, density) = match previous {
+			Some(pending) => (pending.walk, Density::Owned(pending.density)),
+			None => match tail {
+				Tail::Commit => (Walk::default(), Density::Temporary(self.scratch)),
+				Tail::Preview => (Walk::default(), Density::Owned(self.executor.request_texture_with_format(self.region.size, DENSITY_FORMAT))),
+			},
+		};
+		let density_view = density.texture().create_view(&wgpu::TextureViewDescriptor::default());
+		if walk.consumed == 0 {
+			self.recorder.clear(&density_view);
+		}
+		let mut update = walk.update(stroke, self.region);
+		match tail {
+			Tail::Commit => {
+				update.committed.append(&mut update.tail);
+				self.recorder.scatter(&density_view, &update.committed);
+				self.recorder.resolve(stroke.style.color, self.crop, &density_view, target.view, target.scissor);
+				if let Density::Owned(texture) = density {
+					self.recorder.keep(texture);
+				}
+				None
+			}
+			Tail::Preview => {
+				self.recorder.scatter(&density_view, &update.committed);
+				if update.tail.is_empty() {
+					self.recorder.resolve(stroke.style.color, self.crop, &density_view, target.view, target.scissor);
+				} else {
+					self.recorder.copy_texture(density.texture(), self.scratch);
+					let scratch_view = self.scratch.create_view(&wgpu::TextureViewDescriptor::default());
+					self.recorder.scatter(&scratch_view, &update.tail);
+					self.recorder.resolve(stroke.style.color, self.crop, &scratch_view, target.view, target.scissor);
+				}
+				let Density::Owned(density) = density else { unreachable!() };
+				Some(LivePending {
+					seed: stroke.stroke.seed,
+					style: style_key(&stroke.style),
+					walk,
+					last_position: *stroke.stroke.position.last().unwrap(),
+					density,
+				})
+			}
+		}
+	}
+}
+
+fn stroke_key(stroke: &StyledStroke) -> StrokeKey {
+	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	stroke.stroke.cache_hash(&mut hasher);
+	stroke.style.cache_hash(&mut hasher);
+	StrokeKey(hasher.finish())
+}
+
+fn style_key(style: &BrushStyle) -> StyleKey {
+	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	style.cache_hash(&mut hasher);
+	StyleKey(hasher.finish())
+}
+
+fn frame_key(finished: &[StrokeKey], active: StrokeKey) -> FrameKey {
+	FrameKey { finished: finished.to_vec(), active }
+}

@@ -1,13 +1,14 @@
 mod convert;
-mod helpers;
+mod pipeline;
 mod region;
+mod render;
 mod stroke;
 
 use brush_types::{BrushCache, BrushStyle};
 use core_types::list::{ATTR_BRUSH_STYLE, Item, List};
 use core_types::{ATTR_TRANSFORM, Ctx, ExtractFootprint, ProtoNodeIdentifier};
 use graphic_types::Graphic;
-use helpers::{AirbrushPipeline, AirbrushPipelineArgs};
+use pipeline::{AirbrushPipeline, AirbrushPipelineArgs};
 use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
@@ -22,7 +23,12 @@ pub async fn airbrush<'a: 'n>(ctx: impl Ctx + ExtractFootprint, strokes: List<Gr
 		};
 		let style = item.attribute_cloned_or(ATTR_BRUSH_STYLE, BrushStyle::default());
 		match item.into_element() {
-			Graphic::Stroke(list) => strokes.extend(list.into_iter().map(Item::into_element).filter(|stroke| !stroke.is_empty()).map(|stroke| (style, stroke))),
+			Graphic::Stroke(list) => strokes.extend(
+				list.into_iter()
+					.map(Item::into_element)
+					.filter(|stroke| !stroke.is_empty())
+					.map(|stroke| stroke::StyledStroke { style, stroke }),
+			),
 			Graphic::Graphic(nested) => stack.push(nested.into_iter()),
 			_ => {}
 		}
