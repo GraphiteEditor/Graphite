@@ -4,9 +4,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
-pub type SourceFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+pub type SourceFuture<T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 #[cfg(target_family = "wasm")]
-pub type SourceFuture = Pin<Box<dyn Future<Output = ()> + 'static>>;
+pub type SourceFuture<T = ()> = Pin<Box<dyn Future<Output = T> + 'static>>;
 
 #[cfg(not(target_family = "wasm"))]
 pub type DynRuntime = dyn Runtime + Send + Sync;
@@ -34,7 +34,7 @@ impl graphene_hash::CacheHash for RuntimeHandle {
 mod tests {
 	use super::*;
 	use crate::arena::Arena;
-	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint};
+	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gnode::GNode;
 	use crate::gpoll::GPoll;
 	use crate::transform::Footprint;
@@ -103,6 +103,38 @@ mod tests {
 		ctx.try_footprint().map(|footprint| footprint.resolution.x).unwrap_or(0)
 	}
 
+	#[node_macro::node(category(""))]
+	async fn snapshot_vararg(ctx: CtxSnapshot, _primary: ()) -> f64 {
+		ctx.vararg(0).ok().and_then(|slot| slot.downcast_ref::<f64>()).copied().unwrap_or(0.)
+	}
+
+	static STAGED_RUNS: AtomicU32 = AtomicU32::new(0);
+
+	#[node_macro::node(category(""))]
+	fn staged_double(_: impl Ctx, value: f64) -> SourceFuture<f64> {
+		STAGED_RUNS.fetch_add(1, Ordering::Relaxed);
+		Box::pin(async move { value * 2. })
+	}
+
+	#[node_macro::node(category(""))]
+	fn staged_sum(ctx: impl Ctx, value: f64, addend: impl Node<Context<'_>, Output = f64>) -> Result<SourceFuture<f64>, crate::gpoll::Interrupt> {
+		let addend = addend.eval(ctx)?;
+		Ok(Box::pin(async move { value + addend }))
+	}
+
+	struct GatedSource(Arc<std::sync::atomic::AtomicBool>, f64);
+
+	impl<Input> GNode<Input> for GatedSource {
+		type Output = f64;
+
+		fn eval(&self, _input: &Input) -> GPoll<f64> {
+			match self.0.load(Ordering::Relaxed) {
+				true => GPoll::Final(self.1),
+				false => GPoll::Pending,
+			}
+		}
+	}
+
 	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
 		EvalScope::new(None, None, None, generations, arena)
 	}
@@ -155,6 +187,70 @@ mod tests {
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+	}
+
+	#[test]
+	fn prologue_runs_sync_and_spawns_once() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let runtime = Arc::new(MockRuntime::default());
+		let graph = StagedDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(8u64));
+
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "the prologue runs synchronously on the miss");
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "in flight must not rerun the prologue");
+		assert_eq!(runtime.drain(), vec![8]);
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1);
+	}
+
+	#[test]
+	fn prologue_interrupt_defers_the_spawn() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
+		let runtime = Arc::new(MockRuntime::default());
+		let graph = StagedSumNode::new(
+			SourceNode(40.0f64),
+			GatedSource(gate.clone(), 2.0),
+			SourceNode(RuntimeHandle(runtime.clone())),
+			SourceNode(9u64),
+		);
+
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(runtime.drain(), vec![], "an interrupted prologue must not spawn or claim the slot");
+		gate.store(true, Ordering::Relaxed);
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(runtime.drain(), vec![9]);
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+	}
+
+	#[test]
+	fn async_kernels_read_captured_varargs() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let payload = 21.5f64;
+		let link = VarArgLink {
+			args: VarArgSlots::Single(&payload),
+			outer: None,
+		};
+		let ctx = root.with_varargs(&link);
+
+		let runtime = Arc::new(MockRuntime::default());
+		let graph = SnapshotVarargNode::new(SourceNode(()), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(5u64));
+
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		runtime.drain();
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(21.5));
 	}
 
 	#[test]

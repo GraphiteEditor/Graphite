@@ -23,18 +23,30 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 
 fn validate_async_source(parsed: &ParsedNodeFn) {
 	let snapshot_ctx = matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
+	let future_kernel = crate::gcodegen::is_source_kernel(&parsed.output_type);
+	if parsed.is_async && future_kernel {
+		emit_error!(
+			parsed.output_type.span(),
+			"an `async fn` kernel already is the async part; returning `SourceFuture` is the sync-prologue form, so drop the `async` keyword or return the value directly"
+		);
+		return;
+	}
 	if !parsed.is_async {
 		if snapshot_ctx {
 			emit_error!(parsed.input.pat_ident.span(), "`CtxSnapshot` is the async source context; synchronous nodes take `impl Ctx` and read through extract bounds");
 		}
-		return;
+		if !future_kernel {
+			return;
+		}
 	}
-	for field in &parsed.fields {
-		if matches!(field.ty, ParsedFieldType::Node(_)) {
-			emit_error!(
-				field.pat_ident.span(),
-				"async source nodes cannot take `impl Node` inputs: the spawned future outlives any borrow of the graph, so it cannot evaluate other nodes; declare the input as an eager value instead"
-			);
+	if parsed.is_async {
+		for field in &parsed.fields {
+			if matches!(field.ty, ParsedFieldType::Node(_)) {
+				emit_error!(
+					field.pat_ident.span(),
+					"`async fn` source nodes cannot take `impl Node` inputs: the spawned future outlives any borrow of the graph, so it cannot evaluate other nodes; use the sync-prologue form (return `SourceFuture`) to evaluate lazy inputs before spawning"
+				);
+			}
 		}
 	}
 	let ctx_ident = match &parsed.input.ty {

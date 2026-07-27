@@ -18,14 +18,16 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		Some(ctx_param) => ctx_param.ident.clone(),
 		None => format_ident!("__Ctx"),
 	};
-	let async_source = parsed.is_async;
-	if async_source && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+	let async_fn = parsed.is_async;
+	let future_kernel = is_source_kernel(&parsed.output_type);
+	let async_source = async_fn || future_kernel;
+	if async_fn && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
 		return Ok(GNodeTokens {
 			in_mod: quote!(),
 			top_level: quote!(),
 		});
 	}
-	let snapshot_ctx = async_source && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
+	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
 		Some(ctx_param) => ctx_param
@@ -80,11 +82,9 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	let mod_name = format_ident!("_{}_mod", parsed.mod_name);
 	let struct_name = format_ident!("{}Node", parsed.struct_name);
 	let output_type = &parsed.output_type;
-	let trait_output = match kernel_kind(&parsed.output_type) {
-		KernelKind::Interrupt(inner) | KernelKind::Poll(inner) => inner,
-		KernelKind::Plain => parsed.output_type.clone(),
-	};
+	let trait_output = slot_value_type(&parsed.output_type);
 	let raw_lazy = matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_));
+	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
 
 	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = parsed.fields.iter().partition(|field| field.is_data_field);
@@ -121,7 +121,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		false => quote!(#core_types::gnode::GNode<#ctx_ident, Output = #output_type>),
 	};
 
-	let kernel_params = regular_fields.iter().map(|field| {
+	let kernel_params = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).map(|field| {
 		let pat = &field.pat_ident;
 		match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
@@ -144,9 +144,10 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		}
 	});
 
-	let async_bounds = match async_source {
-		false => Vec::new(),
-		true => {
+	let async_bounds = match (async_fn, future_kernel) {
+		(false, false) => Vec::new(),
+		(false, true) => vec![quote!(#trait_output: Clone)],
+		(true, _) => {
 			let output_clone = std::iter::once(quote!(#trait_output: Clone));
 			let value_clones = regular_fields.iter().filter_map(|field| match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
@@ -198,7 +199,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		(!tokens.is_empty()).then_some(tokens)
 	});
 
-	let call_args = regular_fields.iter().map(|field| {
+	let call_args = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).map(|field| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			ParsedFieldType::Node(_) if raw_lazy => quote!(&self.#name),
@@ -254,9 +255,8 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	let fn_where = &parsed.where_clause;
 	let body = &parsed.body;
 	let vis = &parsed.vis;
-	let injected = |field: &&&ParsedField| async_source && (field.pat_ident.ident == "_runtime" || field.pat_ident.ident == "_source");
-	let kernel_fields: Vec<&&ParsedField> = regular_fields.iter().filter(|field| !injected(field)).collect();
-	let kernel = match async_source {
+	let kernel_fields: Vec<&&ParsedField> = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).collect();
+	let kernel = match async_fn {
 		false => quote! {
 			#[allow(clippy::too_many_arguments)]
 			#vis fn #fn_name<#(#generics,)*>(#ctx_pat: &#ctx_ident #(, #data_params)* #(, #kernel_params)*) -> #output_type #fn_where #body
@@ -301,43 +301,52 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			}
 		},
 		KernelKind::Poll(_) => quote!(__cell.merge(#kernel_call)),
-		KernelKind::Plain => quote!(__cell.finish(#kernel_call)),
+		_ => quote!(__cell.finish(#kernel_call)),
 	};
 
-	let eval_tail = match async_source {
-		false => lift,
-		true => {
+	let placeholder_value_names: Vec<&Ident> = kernel_fields
+		.iter()
+		.filter(|field| matches!(field.ty, ParsedFieldType::Regular(_)))
+		.map(|field| &field.pat_ident.ident)
+		.collect();
+	let inflight = match &parsed.attributes.placeholder {
+		Some(path) => quote!(__cell.merge(#core_types::gpoll::GPoll::Partial(#path(#(&#placeholder_value_names),*)))),
+		None => quote!(#core_types::gpoll::GPoll::Pending),
+	};
+	let slot_check = quote! {
+		let __key = #core_types::wire::cache_key(__input);
+		{
+			let __entries = self.slot.lock().unwrap();
+			if let Some(__state) = __entries.get(&__key) {
+				return match __state {
+					Some(value) => __cell.merge(value.clone()),
+					None => #inflight,
+				};
+			}
+		}
+	};
+	let future_completion = |payload: &Type| match kernel_kind(payload) {
+		KernelKind::Poll(_) => quote!(__future.await),
+		KernelKind::Interrupt(_) => quote! {
+			match __future.await {
+				Ok(value) => #core_types::gpoll::GPoll::Final(value),
+				Err(interrupt) => interrupt.into(),
+			}
+		},
+		_ => quote!(#core_types::gpoll::GPoll::Final(__future.await)),
+	};
+	let eval_tail = match (async_fn, future_kernel) {
+		(false, false) => lift,
+		(true, _) => {
 			let kernel_value_names: Vec<&Ident> = kernel_fields.iter().map(|field| &field.pat_ident.ident).collect();
-			let inflight = match &parsed.attributes.placeholder {
-				Some(path) => quote!(__cell.merge(#core_types::gpoll::GPoll::Partial(#path(#(&#kernel_value_names),*)))),
-				None => quote!(#core_types::gpoll::GPoll::Pending),
-			};
 			let snapshot_binding = snapshot_ctx.then(|| quote!(let __snapshot = #core_types::context::CtxSnapshot::capture(__input);)).into_iter();
 			let snapshot_arg = snapshot_ctx.then(|| quote!(__snapshot)).into_iter();
 			let future_args = snapshot_arg
 				.chain(data_names.iter().map(|name| quote!(self.#name.clone())))
 				.chain(kernel_value_names.iter().map(|name| quote!(#name.clone())));
-			let completion = match kernel_kind(&parsed.output_type) {
-				KernelKind::Plain => quote!(#core_types::gpoll::GPoll::Final(__future.await)),
-				KernelKind::Poll(_) => quote!(__future.await),
-				KernelKind::Interrupt(_) => quote! {
-					match __future.await {
-						Ok(value) => #core_types::gpoll::GPoll::Final(value),
-						Err(interrupt) => interrupt.into(),
-					}
-				},
-			};
+			let completion = future_completion(&parsed.output_type);
 			quote! {
-				let __key = #core_types::wire::cache_key(__input);
-				{
-					let __entries = self.slot.lock().unwrap();
-					if let Some(__state) = __entries.get(&__key) {
-						return match __state {
-							Some(value) => __cell.merge(value.clone()),
-							None => #inflight,
-						};
-					}
-				}
+				#slot_check
 				self.slot.lock().unwrap().insert(__key, None);
 				let __slot = std::sync::Arc::clone(&self.slot);
 				#(#snapshot_binding)*
@@ -347,6 +356,41 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 					__slot.lock().unwrap().insert(__key, Some(__value));
 				}));
 				#inflight
+			}
+		}
+		(false, true) => {
+			let (placeholder_binding, spawn_return) = match &parsed.attributes.placeholder {
+				Some(path) => (
+					quote!(let __placeholder = #path(#(&#placeholder_value_names),*);),
+					quote!(__cell.merge(#core_types::gpoll::GPoll::Partial(__placeholder))),
+				),
+				None => (quote!(), quote!(#core_types::gpoll::GPoll::Pending)),
+			};
+			let acquire = match kernel_kind(&parsed.output_type) {
+				KernelKind::FutureInterrupt(_) => quote! {
+					let __future = match #kernel_call {
+						Ok(future) => future,
+						Err(interrupt) => return interrupt.into(),
+					};
+				},
+				_ => quote!(let __future = #kernel_call;),
+			};
+			let payload = match kernel_kind(&parsed.output_type) {
+				KernelKind::Future(payload) | KernelKind::FutureInterrupt(payload) => payload,
+				_ => unreachable!("guarded by future_kernel"),
+			};
+			let completion = future_completion(&payload);
+			quote! {
+				#slot_check
+				#placeholder_binding
+				#acquire
+				self.slot.lock().unwrap().insert(__key, None);
+				let __slot = std::sync::Arc::clone(&self.slot);
+				_runtime.0.spawn(_source, Box::pin(async move {
+					let __value = #completion;
+					__slot.lock().unwrap().insert(__key, Some(__value));
+				}));
+				#spawn_return
 			}
 		}
 	};
@@ -406,13 +450,36 @@ pub(crate) fn slot_value_type(output: &Type) -> Type {
 	match kernel_kind(output) {
 		KernelKind::Plain => output.clone(),
 		KernelKind::Poll(inner) | KernelKind::Interrupt(inner) => inner,
+		KernelKind::Future(payload) | KernelKind::FutureInterrupt(payload) => match kernel_kind(&payload) {
+			KernelKind::Poll(inner) | KernelKind::Interrupt(inner) => inner,
+			_ => payload,
+		},
 	}
+}
+
+pub(crate) fn is_source_kernel(output: &Type) -> bool {
+	matches!(kernel_kind(output), KernelKind::Future(_) | KernelKind::FutureInterrupt(_))
 }
 
 enum KernelKind {
 	Plain,
 	Interrupt(Type),
 	Poll(Type),
+	Future(Type),
+	FutureInterrupt(Type),
+}
+
+fn source_future_payload(segment: &syn::PathSegment) -> Type {
+	let PathArguments::AngleBracketed(args) = &segment.arguments else {
+		return syn::parse_quote!(());
+	};
+	args.args
+		.iter()
+		.find_map(|argument| match argument {
+			GenericArgument::Type(ty) => Some(ty.clone()),
+			_ => None,
+		})
+		.unwrap_or_else(|| syn::parse_quote!(()))
 }
 
 fn kernel_kind(output: &Type) -> KernelKind {
@@ -428,6 +495,7 @@ fn kernel_kind(output: &Type) -> KernelKind {
 			});
 			inner.map(KernelKind::Poll).unwrap_or_else(plain)
 		}
+		"SourceFuture" => KernelKind::Future(source_future_payload(segment)),
 		"Result" => {
 			let PathArguments::AngleBracketed(args) = &segment.arguments else { return plain() };
 			let mut types = args.args.iter().filter_map(|argument| match argument {
@@ -437,10 +505,17 @@ fn kernel_kind(output: &Type) -> KernelKind {
 			let (Some(inner), Some(Type::Path(error_path))) = (types.next(), types.next()) else {
 				return plain();
 			};
-			match error_path.path.segments.last().is_some_and(|segment| segment.ident == "Interrupt") {
-				true => KernelKind::Interrupt(inner.clone()),
-				false => plain(),
+			if !error_path.path.segments.last().is_some_and(|segment| segment.ident == "Interrupt") {
+				return plain();
 			}
+			if let Type::Path(inner_path) = inner {
+				if let Some(inner_segment) = inner_path.path.segments.last() {
+					if inner_segment.ident == "SourceFuture" {
+						return KernelKind::FutureInterrupt(source_future_payload(inner_segment));
+					}
+				}
+			}
+			KernelKind::Interrupt(inner.clone())
 		}
 		_ => plain(),
 	}
