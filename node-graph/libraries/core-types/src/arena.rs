@@ -22,6 +22,9 @@ struct DropEntry {
 unsafe impl Sync for Arena {}
 unsafe impl Send for Arena {}
 
+impl std::panic::UnwindSafe for Arena {}
+impl std::panic::RefUnwindSafe for Arena {}
+
 impl Arena {
 	pub fn new(capacity: usize) -> Self {
 		let buf = (0..capacity).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect();
@@ -209,6 +212,33 @@ mod tests {
 			assert!(arena.alloc(0u32).is_none(), "exhausted within generation");
 			arena.reset();
 		}
+	}
+
+	#[test]
+	fn panics_leave_the_arena_coherent() {
+		fn assert_ref_unwind_safe<T: std::panic::RefUnwindSafe>() {}
+		assert_ref_unwind_safe::<Arena>();
+
+		static DROPS: AtomicU32 = AtomicU32::new(0);
+		struct Probe(#[allow(dead_code)] String);
+		impl Drop for Probe {
+			fn drop(&mut self) {
+				DROPS.fetch_add(1, Ordering::Relaxed);
+			}
+		}
+		let mut arena = Arena::new(1024);
+		let cell = ArenaCell::new();
+		let result = std::panic::catch_unwind(|| {
+			let (_, weak) = arena.alloc(Probe("pre-panic".into())).unwrap();
+			cell.store(weak);
+			panic!("mid-eval");
+		});
+		assert!(result.is_err());
+		assert!(cell.load(&arena).is_some(), "the generation is still live after the caught panic");
+		arena.reset();
+		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "reset reclaims pre-panic allocations");
+		assert!(cell.load(&arena).is_none(), "the bump kills stale handles");
+		assert!(arena.alloc(0u32).is_some(), "the arena stays usable");
 	}
 
 	#[test]

@@ -316,7 +316,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	let slot_check = quote! {
 		let __key = #core_types::wire::cache_key(__input);
 		{
-			let __entries = self.slot.lock().unwrap();
+			let __entries = self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 			if let Some(__state) = __entries.get(&__key) {
 				return match __state {
 					Some(value) => __cell.merge(value.clone()),
@@ -347,13 +347,13 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			let completion = future_completion(&parsed.output_type);
 			quote! {
 				#slot_check
-				self.slot.lock().unwrap().insert(__key, None);
+				self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, None);
 				let __slot = std::sync::Arc::clone(&self.slot);
 				#(#snapshot_binding)*
 				let __future = self::#fn_name(#(#future_args),*);
 				_runtime.0.spawn(_source, Box::pin(async move {
 					let __value = #completion;
-					__slot.lock().unwrap().insert(__key, Some(__value));
+					__slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, Some(__value));
 				}));
 				#inflight
 			}
@@ -384,11 +384,11 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 				#slot_check
 				#placeholder_binding
 				#acquire
-				self.slot.lock().unwrap().insert(__key, None);
+				self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, None);
 				let __slot = std::sync::Arc::clone(&self.slot);
 				_runtime.0.spawn(_source, Box::pin(async move {
 					let __value = #completion;
-					__slot.lock().unwrap().insert(__key, Some(__value));
+					__slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, Some(__value));
 				}));
 				#spawn_return
 			}
