@@ -1,7 +1,7 @@
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
+use crate::wrapper::{Texture, WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -10,14 +10,14 @@ pub(crate) struct RenderState {
 	executor: WgpuExecutor,
 	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
-	transparent_texture: std::sync::Arc<wgpu::Texture>,
+	transparent_texture: Texture,
 	sampler: wgpu::Sampler,
 	desired_width: u32,
 	desired_height: u32,
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
-	viewport_texture: Option<std::sync::Arc<wgpu::Texture>>,
-	overlays_texture: Option<std::sync::Arc<wgpu::Texture>>,
+	viewport_texture: Option<Texture>,
+	overlays_texture: Option<Texture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
@@ -46,8 +46,8 @@ impl RenderState {
 
 		surface.configure(&context.device, &config);
 
-		let transparent_texture = std::sync::Arc::new(context.device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("Transparent Texture"),
+		let transparent_texture = Texture::from(context.device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("transparent_fallback"),
 			size: wgpu::Extent3d {
 				width: 1,
 				height: 1,
@@ -193,7 +193,7 @@ impl RenderState {
 		self.surface_outdated = true;
 	}
 
-	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: std::sync::Arc<wgpu::Texture>) {
+	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: Texture) {
 		self.viewport_texture = Some(viewport_texture);
 		self.update_bindgroup();
 	}
@@ -231,7 +231,7 @@ impl RenderState {
 		let result = futures::executor::block_on(self.executor.render_vello_scene(&scene, size, &Default::default(), None));
 		match result {
 			Ok(texture) => {
-				self.overlays_texture = Some(texture.into());
+				self.overlays_texture = Some(texture);
 			}
 			Err(e) => {
 				self.overlays_texture = None;

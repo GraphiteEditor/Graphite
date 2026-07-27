@@ -149,37 +149,40 @@ mod gpu {
 	use std::sync::Arc;
 
 	#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny)]
-	pub struct Texture(Arc<wgpu::Texture>);
+	pub struct Texture(Arc<TextureInner>);
+
+	#[derive(Debug, PartialEq, Eq, Hash)]
+	struct TextureInner(wgpu::Texture);
+
+	impl Drop for TextureInner {
+		fn drop(&mut self) {
+			self.0.destroy();
+		}
+	}
+
+	impl Texture {
+		pub fn is_shared(&self) -> bool {
+			Arc::strong_count(&self.0) > 1
+		}
+	}
 
 	impl Deref for Texture {
 		type Target = wgpu::Texture;
 
 		fn deref(&self) -> &Self::Target {
-			&self.0
+			&self.0.0
 		}
 	}
 
 	impl AsRef<wgpu::Texture> for Texture {
 		fn as_ref(&self) -> &wgpu::Texture {
-			&self.0
-		}
-	}
-
-	impl From<Arc<wgpu::Texture>> for Texture {
-		fn from(texture: Arc<wgpu::Texture>) -> Self {
-			Self(texture)
+			&self.0.0
 		}
 	}
 
 	impl From<wgpu::Texture> for Texture {
 		fn from(texture: wgpu::Texture) -> Self {
-			Self(Arc::new(texture))
-		}
-	}
-
-	impl From<Texture> for Arc<wgpu::Texture> {
-		fn from(texture: Texture) -> Self {
-			texture.0
+			Self(Arc::new(TextureInner(texture)))
 		}
 	}
 
