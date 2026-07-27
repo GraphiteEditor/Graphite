@@ -1933,8 +1933,13 @@ impl Render for List<Raster<GPU>> {
 
 			let width = raster.data().width();
 			let height = raster.data().height();
+
+			let resource_override_index = context.resource_overrides.len();
+			// Stable across frames so vello reuses the atlas slot; high bit avoids Blob::new counter ids.
+			let blob_id = (resource_override_index as u64) << 40 | (width as u64) << 20 | height as u64 | 1 << 63;
+			let blob = peniko::Blob::from_raw_parts(LAZY_ARC_VEC_ZERO_U8.deref().clone(), blob_id);
 			let image = peniko::ImageBrush::new(peniko::ImageData {
-				data: peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+				data: blob,
 				format: peniko::ImageFormat::Rgba8,
 				width,
 				height,
