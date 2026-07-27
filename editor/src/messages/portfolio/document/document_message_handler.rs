@@ -4336,15 +4336,18 @@ mod document_message_handler_tests {
 
 		let instrumented = editor.eval_graph().await.unwrap();
 
+		// The emptiness guards keep these assertions honest: a wrong `Output` type on `grab_all_input` yields no records at all, which would otherwise pass vacuously
 		let base_lengths: Vec<usize> = instrumented
-			.grab_all_input::<graphene_std::graphic::extend::TypedBaseInput<graphene_std::Graphic>>(&editor.runtime)
+			.grab_all_input::<graphene_std::graphic::extend::BaseInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.map(|base| base.len())
 			.collect();
+		assert!(!base_lengths.is_empty(), "Instrumentation should have recorded at least one stack base");
 		assert!(base_lengths.iter().all(|&len| len == 0), "Every stack base should be empty, found lengths {base_lengths:?}");
 
 		let news: Vec<graphene_std::list::List<graphene_std::Graphic>> = instrumented
-			.grab_all_input::<graphene_std::graphic::extend::TypedNewInput<graphene_std::Graphic>>(&editor.runtime)
+			.grab_all_input::<graphene_std::graphic::extend::NewInput, graphene_std::list::List<graphene_std::Graphic>>(&editor.runtime)
 			.collect();
+		assert!(!news.is_empty(), "Instrumentation should have recorded at least one stacked element list");
 		let phantom_count = news
 			.iter()
 			.flat_map(|new| new.iter_element_values())

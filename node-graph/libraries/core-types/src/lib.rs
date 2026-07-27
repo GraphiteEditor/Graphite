@@ -151,12 +151,6 @@ pub trait NodeParameter {
 	const INDEX: usize;
 }
 
-/// The typed view of a node parameter, exposing the parameter's Rust type (used by test introspection).
-/// Implemented directly on the parameter symbol when its type involves no node generics, and otherwise on the macro-generated `Typed*Input` phantom marker.
-pub trait TypedNodeParameter: NodeParameter {
-	type Result;
-}
-
 /// A runtime reference to one parameter of one proto node, for heterogeneous tables and runtime-chosen parameters.
 /// Convert a symbol with `.into()`; unlike a raw index, the node identifier and index always stay paired.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

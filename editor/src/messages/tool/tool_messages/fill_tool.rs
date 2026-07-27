@@ -205,9 +205,8 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
-	use graphene_std::Graphic;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::list::{Item, List};
+	use graphene_std::list::Item;
 	use graphene_std::vector::fill;
 
 	// The Fill tool writes solid colors, whose stored values the input monitor records as `Item<Color>` wires
@@ -217,7 +216,7 @@ mod test_fill {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input_as::<fill::TypedFillInput<List<Graphic>>, Item<Color>>(&editor.runtime).collect()
+		instrumented.grab_all_input::<fill::FillInput, Item<Color>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
