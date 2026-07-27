@@ -43,21 +43,10 @@ impl<T: Copy> Channel<T> {
 		}
 	}
 
-	pub fn len(&self) -> Option<usize> {
+	fn len(&self) -> Option<usize> {
 		match self {
 			Self::Uniform(_) => None,
 			Self::Samples(values) => Some(values.len()),
-		}
-	}
-
-	pub fn is_uniform(&self) -> bool {
-		matches!(self, Self::Uniform(_))
-	}
-
-	pub fn is_empty(&self) -> bool {
-		match self {
-			Self::Uniform(_) => false,
-			Self::Samples(values) => values.is_empty(),
 		}
 	}
 }
@@ -117,12 +106,15 @@ impl Stroke {
 	pub fn sample_lerp(&self, index: usize, t: f32) -> Sample {
 		let a = self.sample(index);
 		let b = self.sample(index + 1);
-		let lerp = |a: f32, b: f32| a + (b - a) * t;
 		Sample {
 			position: a.position.lerp(b.position, t as f64),
-			pressure: lerp(a.pressure, b.pressure),
+			pressure: a.pressure + (b.pressure - a.pressure) * t,
 			tilt: a.tilt.lerp(b.tilt, t),
-			twist: lerp_angle(a.twist, b.twist, t),
+			twist: {
+				let delta = (b.twist - a.twist).rem_euclid(TAU);
+				let delta = if delta > PI { delta - TAU } else { delta };
+				a.twist + delta * t
+			},
 			time: a.time + (b.time - a.time) * t as f64,
 		}
 	}
@@ -159,10 +151,4 @@ pub struct Sample {
 	pub tilt: Vec2,
 	pub twist: f32,
 	pub time: f64,
-}
-
-fn lerp_angle(a: f32, b: f32, t: f32) -> f32 {
-	let delta = (b - a).rem_euclid(TAU);
-	let delta = if delta > PI { delta - TAU } else { delta };
-	a + delta * t
 }
