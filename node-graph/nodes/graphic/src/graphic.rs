@@ -109,7 +109,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 }
 
 #[node_macro::node(category("General"))]
-fn map<Item: AnyHash + Send + Sync + CacheHash>(
+fn map<Item: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl Ctx + DeriveCtx,
 	#[implementations(
 		List<Graphic>,

@@ -592,6 +592,38 @@ impl Hash for Box<dyn AnyHash + Send + Sync> {
 pub trait AnyHash: DynHash + Any {}
 impl<T: DynHash + Any> AnyHash for T {}
 
+pub trait VarArg: AnyHash {
+	fn clone_slot(&self) -> OwnedSlot;
+}
+
+impl<T: AnyHash + Clone + Send + Sync> VarArg for T {
+	fn clone_slot(&self) -> OwnedSlot {
+		OwnedSlot(Box::new(self.clone()))
+	}
+}
+
+pub struct OwnedSlot(Box<dyn VarArg + Send + Sync>);
+
+impl Clone for OwnedSlot {
+	fn clone(&self) -> Self {
+		self.0.clone_slot()
+	}
+}
+
+impl std::ops::Deref for OwnedSlot {
+	type Target = dyn VarArg + Send + Sync;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.as_ref()
+	}
+}
+
+impl std::fmt::Debug for OwnedSlot {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("OwnedSlot")
+	}
+}
+
 impl OwnedContextImpl {
 	pub fn set_footprint(&mut self, footprint: Footprint) {
 		self.footprint = Some(footprint);
@@ -657,7 +689,7 @@ pub struct PositionLink<'a> {
 	pub outer: Option<&'a PositionLink<'a>>,
 }
 
-pub type DynSlot<'a> = &'a (dyn AnyHash + Send + Sync);
+pub type DynSlot<'a> = &'a (dyn VarArg + Send + Sync);
 
 #[derive(Clone, Copy)]
 pub enum VarArgSlots<'a> {
@@ -857,6 +889,7 @@ pub struct CtxSnapshot {
 	pointer_position: Option<DVec2>,
 	index: Vec<usize>,
 	positions: Vec<DVec2>,
+	varargs: Vec<Vec<OwnedSlot>>,
 	generations: Vec<(SourceId, u64)>,
 }
 
@@ -872,6 +905,9 @@ impl CtxSnapshot {
 			pointer_position: ctx.try_pointer_position(),
 			index: ctx.try_index().map(|levels| levels.collect()).unwrap_or_default(),
 			positions: ctx.try_position().map(|positions| positions.collect()).unwrap_or_default(),
+			varargs: std::iter::successors(ctx.varargs_head(), |link| link.outer)
+				.map(|link| link.args.iter().map(|slot| slot.clone_slot()).collect())
+				.collect(),
 			generations: ctx.scope().generations().to_vec(),
 		}
 	}
@@ -918,6 +954,32 @@ impl ExtractIndex for CtxSnapshot {
 impl ExtractPosition for CtxSnapshot {
 	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
 		Some(self.positions.iter().copied())
+	}
+}
+
+impl ExtractVarArgs for CtxSnapshot {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		if self.varargs.is_empty() {
+			return Err(VarArgsResult::NoVarArgs);
+		}
+		let slot = self.varargs.iter().flatten().nth(index).ok_or(VarArgsResult::IndexOutOfBounds)?;
+		Ok(&**slot as DynRef<'_>)
+	}
+
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		if self.varargs.is_empty() {
+			return Err(VarArgsResult::NoVarArgs);
+		}
+		Ok(self.varargs.iter().map(|level| level.len()).sum())
+	}
+
+	fn hash_varargs(&self, hasher: &mut dyn Hasher) {
+		let mut count = 0u64;
+		for slot in self.varargs.iter().flatten() {
+			slot.dyn_hash(&mut *hasher);
+			count += 1;
+		}
+		count.hash(&mut &mut *hasher);
 	}
 }
 
@@ -1354,6 +1416,51 @@ mod context_impl_tests {
 		assert!(inner_ctx.vararg(1).unwrap().downcast_ref::<u32>().is_some());
 		assert!(matches!(inner_ctx.vararg(2), Err(VarArgsResult::IndexOutOfBounds)));
 		assert_ne!(hash_of(&outer_ctx), hash_of(&inner_ctx));
+	}
+
+	#[test]
+	fn snapshot_captures_vararg_levels() {
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+
+		let outer_value = 7u32;
+		let outer_args: [DynSlot; 1] = [&outer_value];
+		let outer_link = VarArgLink {
+			args: VarArgSlots::Slice(&outer_args),
+			outer: None,
+		};
+		let inner_value = String::from("inner");
+		let inner_link = VarArgLink {
+			args: VarArgSlots::Single(&inner_value),
+			outer: Some(&outer_link),
+		};
+		let ctx = root.with_varargs(&inner_link);
+
+		let snapshot = CtxSnapshot::capture(&ctx);
+		assert_eq!(snapshot.varargs_len(), Ok(2));
+		assert_eq!(snapshot.vararg(0).unwrap().downcast_ref::<String>(), Some(&inner_value));
+		assert_eq!(snapshot.vararg(1).unwrap().downcast_ref::<u32>(), Some(&outer_value));
+		assert!(matches!(snapshot.vararg(2), Err(VarArgsResult::IndexOutOfBounds)));
+
+		let hash_via = |target: &dyn Fn(&mut dyn Hasher)| {
+			let mut hasher = std::hash::DefaultHasher::new();
+			target(&mut hasher);
+			hasher.finish()
+		};
+		assert_eq!(
+			hash_via(&|hasher| snapshot.hash_varargs(hasher)),
+			hash_via(&|hasher| ctx.hash_varargs(hasher)),
+			"snapshot varargs must hash like the borrowed chain"
+		);
+
+		let cloned = snapshot.clone();
+		assert_eq!(cloned.vararg(0).unwrap().downcast_ref::<String>(), Some(&inner_value));
+
+		let empty = CtxSnapshot::capture(&root);
+		assert_eq!(empty.varargs_len(), Err(VarArgsResult::NoVarArgs));
+		assert!(matches!(empty.vararg(0), Err(VarArgsResult::NoVarArgs)));
 	}
 
 	#[test]
