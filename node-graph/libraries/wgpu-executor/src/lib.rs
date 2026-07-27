@@ -110,7 +110,11 @@ impl WgpuExecutor {
 	}
 
 	pub fn request_texture(&self, size: UVec2) -> Texture {
-		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size)
+		self.request_texture_with_format(size, wgpu::TextureFormat::Rgba8Unorm)
+	}
+
+	pub fn request_texture_with_format(&self, size: UVec2, format: wgpu::TextureFormat) -> Texture {
+		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size, format)
 	}
 }
 
