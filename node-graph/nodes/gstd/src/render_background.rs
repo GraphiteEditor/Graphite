@@ -340,7 +340,7 @@ impl AsyncWgpuPipeline for CompositeBackground {
 		} = args;
 
 		let foreground_size = foreground.size();
-		let output = executor.request_texture(UVec2::new(foreground_size.width, foreground_size.height)).await;
+		let output = executor.request_texture(UVec2::new(foreground_size.width, foreground_size.height));
 
 		if zoom <= 0. {
 			return output;
