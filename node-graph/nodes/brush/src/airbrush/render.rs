@@ -4,16 +4,19 @@ use super::stroke::{self, StyledStroke, Walk};
 use brush_types::BrushStyle;
 use core_types::CacheHash;
 use core_types::math::bbox::AxisAlignedBbox;
-use glam::{DAffine2, DVec2, UVec2};
+use glam::{DAffine2, UVec2};
 use raster_types::{Texture, TextureWeakRef};
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use wgpu_executor::WgpuExecutor;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct StrokeKey(u64);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct StyleKey(u64);
+struct DensityKey(u64);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PrefixKey(u64);
 
 #[derive(PartialEq, Eq)]
 struct FrameKey {
@@ -62,19 +65,36 @@ struct CachedOutput {
 }
 
 struct Pending {
-	seed: u64,
-	style: StyleKey,
+	key: PendingKey,
 	walk: Walk,
-	last_position: DVec2,
 	density: TextureWeakRef,
 }
 
 struct LivePending {
-	seed: u64,
-	style: StyleKey,
+	key: PendingKey,
 	walk: Walk,
-	last_position: DVec2,
 	density: Texture,
+}
+
+#[derive(Clone, Copy)]
+struct PendingKey {
+	seed: u64,
+	density: DensityKey,
+	prefix: PrefixKey,
+}
+
+impl PendingKey {
+	fn new(stroke: &StyledStroke, consumed: usize) -> Self {
+		Self {
+			seed: stroke.stroke.seed,
+			density: density_key(&stroke.style),
+			prefix: prefix_key(stroke, consumed),
+		}
+	}
+
+	fn matches(&self, stroke: &StyledStroke, consumed: usize) -> bool {
+		self.seed == stroke.stroke.seed && self.density == density_key(&stroke.style) && self.prefix == prefix_key(stroke, consumed)
+	}
 }
 
 impl Pending {
@@ -84,10 +104,8 @@ impl Pending {
 			return None;
 		}
 		Some(LivePending {
-			seed: self.seed,
-			style: self.style,
+			key: self.key,
 			walk: self.walk,
-			last_position: self.last_position,
 			density,
 		})
 	}
@@ -95,19 +113,13 @@ impl Pending {
 
 impl LivePending {
 	fn matches(&self, stroke: &StyledStroke) -> bool {
-		self.seed == stroke.stroke.seed
-			&& self.style == style_key(&stroke.style)
-			&& self.walk.consumed > 0
-			&& self.walk.consumed <= stroke.stroke.len()
-			&& stroke.stroke.position[self.walk.consumed - 1] == self.last_position
+		self.walk.consumed > 0 && self.walk.consumed <= stroke.stroke.len() && self.key.matches(stroke, self.walk.consumed)
 	}
 
 	fn park(self) -> Pending {
 		Pending {
-			seed: self.seed,
-			style: self.style,
+			key: self.key,
 			walk: self.walk,
-			last_position: self.last_position,
 			density: self.density.downgrade(),
 		}
 	}
@@ -328,10 +340,8 @@ impl StrokeRenderer<'_, '_> {
 				}
 				let Density::Owned(density) = density else { unreachable!() };
 				Some(LivePending {
-					seed: stroke.stroke.seed,
-					style: style_key(&stroke.style),
+					key: PendingKey::new(stroke, walk.consumed),
 					walk,
-					last_position: *stroke.stroke.position.last().unwrap(),
 					density,
 				})
 			}
@@ -346,12 +356,83 @@ fn stroke_key(stroke: &StyledStroke) -> StrokeKey {
 	StrokeKey(hasher.finish())
 }
 
-fn style_key(style: &BrushStyle) -> StyleKey {
+fn density_key(style: &BrushStyle) -> DensityKey {
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
-	style.cache_hash(&mut hasher);
-	StyleKey(hasher.finish())
+	(style.diameter.max(0.) as f32).to_bits().hash(&mut hasher);
+	(style.hardness.clamp(0., 1.) as f32).to_bits().hash(&mut hasher);
+	(style.flow.clamp(0., 1.) as f32).to_bits().hash(&mut hasher);
+	DensityKey(hasher.finish())
+}
+
+fn prefix_key(stroke: &StyledStroke, consumed: usize) -> PrefixKey {
+	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	for sample in stroke.stroke.samples().take(consumed) {
+		sample.position.x.to_bits().hash(&mut hasher);
+		sample.position.y.to_bits().hash(&mut hasher);
+		sample.pressure.clamp(0., 1.).to_bits().hash(&mut hasher);
+	}
+	PrefixKey(hasher.finish())
 }
 
 fn frame_key(finished: &[StrokeKey], active: StrokeKey) -> FrameKey {
 	FrameKey { finished: finished.to_vec(), active }
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use brush_types::{Channel, Stroke};
+	use core_types::Color;
+	use glam::DVec2;
+
+	fn stroke() -> StyledStroke {
+		StyledStroke {
+			style: BrushStyle::default(),
+			stroke: Stroke {
+				position: vec![DVec2::new(1., 2.), DVec2::new(3., 4.), DVec2::new(5., 6.)],
+				pressure: Channel::Samples(vec![0.2, 0.4, 0.6]),
+				seed: 42,
+				..Default::default()
+			},
+		}
+	}
+
+	#[test]
+	fn pending_key_accepts_an_appended_stroke() {
+		let original = stroke();
+		let key = PendingKey::new(&original, original.stroke.len());
+		let mut appended = stroke();
+		appended.stroke.position.push(DVec2::new(7., 8.));
+		let Channel::Samples(pressure) = &mut appended.stroke.pressure else { unreachable!() };
+		pressure.push(0.8);
+		assert!(key.matches(&appended, original.stroke.len()));
+	}
+
+	#[test]
+	fn pending_key_rejects_changed_render_data() {
+		let original = stroke();
+		let key = PendingKey::new(&original, original.stroke.len());
+
+		let mut position = stroke();
+		position.stroke.position[0].x += 1.;
+		assert!(!key.matches(&position, original.stroke.len()));
+
+		let mut pressure = stroke();
+		let Channel::Samples(samples) = &mut pressure.stroke.pressure else { unreachable!() };
+		samples[1] += 0.1;
+		assert!(!key.matches(&pressure, original.stroke.len()));
+
+		let mut flow = stroke();
+		flow.style.flow *= 0.5;
+		assert!(!key.matches(&flow, original.stroke.len()));
+	}
+
+	#[test]
+	fn pending_key_ignores_color() {
+		let original = stroke();
+		let key = PendingKey::new(&original, original.stroke.len());
+		let mut recolored = stroke();
+		recolored.style.color = Color::WHITE;
+		assert!(key.matches(&recolored, original.stroke.len()));
+	}
 }
