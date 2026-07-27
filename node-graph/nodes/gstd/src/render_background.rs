@@ -8,8 +8,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
 use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
-use wgpu::util::DeviceExt;
-use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
+use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
 async fn render_background<'a: 'n>(
@@ -358,10 +357,8 @@ impl AsyncWgpuPipeline for CompositeBackground {
 		let foreground_view = foreground.create_view(&wgpu::TextureViewDescriptor::default());
 
 		let checker_draws = if backgrounds.is_empty() {
-			vec![(
-				3,
-				self.create_checker_bind_group(device, CompositeUniforms::fullscreen(viewport_size, screen_to_document, checker_size_doc)),
-			)]
+			let uniforms = CompositeUniforms::fullscreen(viewport_size, screen_to_document, checker_size_doc).create_buffer(executor);
+			vec![(3, self.create_checker_bind_group(device, &uniforms), uniforms)]
 		} else {
 			backgrounds
 				.iter()
@@ -376,8 +373,8 @@ impl AsyncWgpuPipeline for CompositeBackground {
 						return None;
 					}
 
-					let uniforms = CompositeUniforms::rect(min, max, document_to_screen, viewport_size, checker_size_doc);
-					Some((6, self.create_checker_bind_group(device, uniforms)))
+					let uniforms = CompositeUniforms::rect(min, max, document_to_screen, viewport_size, checker_size_doc).create_buffer(executor);
+					Some((6, self.create_checker_bind_group(device, &uniforms), uniforms))
 				})
 				.collect()
 		};
@@ -419,13 +416,13 @@ impl AsyncWgpuPipeline for CompositeBackground {
 
 			if backgrounds.is_empty() {
 				pass.set_pipeline(&self.checker_viewport_pipeline);
-				for (vertex_count, bind_group) in &checker_draws {
+				for (vertex_count, bind_group, _uniforms) in &checker_draws {
 					pass.set_bind_group(0, bind_group, &[]);
 					pass.draw(0..*vertex_count, 0..1);
 				}
 			} else {
 				pass.set_pipeline(&self.checker_rect_pipeline);
-				for (vertex_count, bind_group) in &checker_draws {
+				for (vertex_count, bind_group, _uniforms) in &checker_draws {
 					pass.set_bind_group(0, bind_group, &[]);
 					pass.draw(0..*vertex_count, 0..1);
 				}
@@ -443,19 +440,13 @@ impl AsyncWgpuPipeline for CompositeBackground {
 }
 
 impl CompositeBackground {
-	fn create_checker_bind_group(&self, device: &wgpu::Device, uniforms: CompositeUniforms) -> wgpu::BindGroup {
-		let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("background_checker_uniforms"),
-			contents: bytemuck::bytes_of(&uniforms),
-			usage: wgpu::BufferUsages::UNIFORM,
-		});
-
+	fn create_checker_bind_group(&self, device: &wgpu::Device, uniforms: &Buffer) -> wgpu::BindGroup {
 		device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("background_checker_bind_group"),
 			layout: &self.checker_bind_group_layout,
 			entries: &[wgpu::BindGroupEntry {
 				binding: 0,
-				resource: buffer.as_entire_binding(),
+				resource: uniforms.as_entire_binding(),
 			}],
 		})
 	}
@@ -496,5 +487,13 @@ impl CompositeUniforms {
 			checker_size,
 			_pad: 0.,
 		}
+	}
+
+	fn create_buffer(&self, executor: &WgpuExecutor) -> Buffer {
+		executor.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("background_checker_uniforms"),
+			contents: bytemuck::bytes_of(self),
+			usage: wgpu::BufferUsages::UNIFORM,
+		})
 	}
 }
