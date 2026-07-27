@@ -20,12 +20,12 @@ use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::Color;
 use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
 use graphene_std::vector::style::{FillChoice, FillChoiceUI};
+use graphene_std::{Color, NodeParameter};
 
 #[derive(Default, ExtractField)]
 pub struct TextTool {
@@ -115,7 +115,12 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 				Message::Batched {
 					messages: Box::new([
 						DocumentMessage::Resource(ResourceMessage::AddFont { resource_id, font }).into(),
-						NodeGraphMessage::set_input_value(node_id, graphene_std::text::text::FontInput, TaggedValue::Resource(resource_id)).into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: graphene_std::text::text::FontInput::INDEX,
+							value: TaggedValue::Resource(resource_id).into(),
+						}
+						.into(),
 					]),
 				}
 			}
@@ -341,7 +346,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if let Some(layer) = can_edit_selected(context.document)
 					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
-					responses.add(NodeGraphMessage::set_input_value(node_id, graphene_std::text::text::SizeInput, TaggedValue::F64(font_size)));
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::text::text::SizeInput::INDEX,
+						value: TaggedValue::F64(font_size).into(),
+					});
 				}
 			}
 			TextOptionsUpdate::Align(align) => {
@@ -352,7 +361,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if let Some(layer) = can_edit_selected(context.document)
 					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
-					responses.add(NodeGraphMessage::set_input_value(node_id, graphene_std::text::text::AlignInput, TaggedValue::TextAlign(align)));
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::text::text::AlignInput::INDEX,
+						value: TaggedValue::TextAlign(align).into(),
+					});
 				}
 			}
 			TextOptionsUpdate::FillColor(fill_choice) => {

@@ -16,7 +16,6 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
-use graphene_std::ParameterRef;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::brush::brush_stroke::BrushTrace;
 use graphene_std::color::SRGBA8;
@@ -37,6 +36,7 @@ use graphene_std::vector::style::{
 	DashPattern, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
+use graphene_std::{NodeParameter, ParameterRef};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -861,7 +861,12 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		Message::Batched {
 			messages: Box::new([
 				DocumentMessage::Resource(ResourceMessage::AddFont { resource_id, font }).into(),
-				NodeGraphMessage::set_input_value(node_id, graphene_std::text::text::FontInput, TaggedValue::Resource(resource_id)).into(),
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: graphene_std::text::text::FontInput::INDEX,
+					value: TaggedValue::Resource(resource_id).into(),
+				}
+				.into(),
 			]),
 		}
 	}
@@ -2121,8 +2126,18 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 				.disabled(is_simple_case)
 				.on_update(move |_: &TextButton| Message::Batched {
 					messages: Box::new([
-						NodeGraphMessage::set_input_value(node_id, UseJoinerInput, TaggedValue::Bool(true)).into(),
-						NodeGraphMessage::set_input_value(node_id, JoinerInput, TaggedValue::String(value.clone())).into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: UseJoinerInput::INDEX,
+							value: TaggedValue::Bool(true).into(),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: JoinerInput::INDEX,
+							value: TaggedValue::String(value.clone()).into(),
+						}
+						.into(),
 					]),
 				})
 				.on_commit(commit_value)
@@ -2172,8 +2187,18 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			.label("Uniform")
 			.on_update(move |_| Message::Batched {
 				messages: Box::new([
-					NodeGraphMessage::set_input_value(node_id, IndividualCornerRadiiInput, TaggedValue::Bool(false)).into(),
-					NodeGraphMessage::set_input_value(node_id, CornerRadiusInput, TaggedValue::BoxCorners(BoxCorners::from(uniform_val))).into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: IndividualCornerRadiiInput::INDEX,
+						value: TaggedValue::Bool(false).into(),
+					}
+					.into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(uniform_val)).into(),
+					}
+					.into(),
 				]),
 			})
 			.on_commit(commit_value);
@@ -2181,8 +2206,18 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			.label("Individual")
 			.on_update(move |_| Message::Batched {
 				messages: Box::new([
-					NodeGraphMessage::set_input_value(node_id, IndividualCornerRadiiInput, TaggedValue::Bool(true)).into(),
-					NodeGraphMessage::set_input_value(node_id, CornerRadiusInput, TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec()))).into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: IndividualCornerRadiiInput::INDEX,
+						value: TaggedValue::Bool(true).into(),
+					}
+					.into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec())).into(),
+					}
+					.into(),
 				]),
 			})
 			.on_commit(commit_value);
@@ -2478,17 +2513,41 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	let solid_set_messages = move |color: Option<Color>| {
-		let mut messages = vec![NodeGraphMessage::set_input_value(node_id, FillInput, color.map_or_else(TaggedValue::no_paint, TaggedValue::Color)).into()];
+		let mut messages = vec![
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: FillInput::INDEX,
+				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color).into(),
+			}
+			.into(),
+		];
 		if let Some(color) = color {
-			messages.push(NodeGraphMessage::set_input_value(node_id, BackupColorInput, TaggedValue::Color(color)).into());
+			messages.push(
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: BackupColorInput::INDEX,
+					value: TaggedValue::Color(color).into(),
+				}
+				.into(),
+			);
 		}
 		Message::Batched { messages: messages.into() }
 	};
 
 	let gradient_set_messages = move |gradient: Gradient| Message::Batched {
 		messages: Box::new([
-			NodeGraphMessage::set_input_value(node_id, FillInput, TaggedValue::Gradient(gradient.clone())).into(),
-			NodeGraphMessage::set_input_value(node_id, BackupGradientInput, TaggedValue::Gradient(gradient)).into(),
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: FillInput::INDEX,
+				value: TaggedValue::Gradient(gradient.clone()).into(),
+			}
+			.into(),
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: BackupGradientInput::INDEX,
+				value: TaggedValue::Gradient(gradient).into(),
+			}
+			.into(),
 		]),
 	};
 
@@ -2588,8 +2647,18 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				})
 				.on_update(move |_| Message::Batched {
 					messages: Box::new([
-						NodeGraphMessage::set_input_value(node_id, HasTransformInput, TaggedValue::Bool(true)).into(),
-						NodeGraphMessage::set_input_value(node_id, TransformInput, TaggedValue::DAffine2(new_transform)).into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: HasTransformInput::INDEX,
+							value: TaggedValue::Bool(true).into(),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: TransformInput::INDEX,
+							value: TaggedValue::DAffine2(new_transform).into(),
+						}
+						.into(),
 					]),
 				})
 				.widget_instance();

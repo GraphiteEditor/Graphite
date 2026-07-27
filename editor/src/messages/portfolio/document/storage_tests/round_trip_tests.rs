@@ -16,6 +16,7 @@ use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
 use crate::test_utils::test_prelude::*;
+use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
 
 /// Every node addressable in `original` resolves identically through the round-tripped interface:
@@ -737,11 +738,11 @@ async fn none_fill_survives_document_reopen() {
 	// Pick the red-slash "none" paint, stored the same way as the Fill widget's None choice
 	let (_, fill_node_id) = find_fill_node(editor.active_document());
 	editor
-		.handle_message(NodeGraphMessage::set_input_value(
-			fill_node_id,
-			graphene_std::vector::fill::FillInput,
-			graph_craft::document::value::TaggedValue::no_paint(),
-		))
+		.handle_message(NodeGraphMessage::SetInputValue {
+			node_id: fill_node_id,
+			input_index: graphene_std::vector::fill::FillInput::INDEX,
+			value: graph_craft::document::value::TaggedValue::no_paint().into(),
+		})
 		.await;
 	assert!(fill_paint_value(editor.active_document()).is_no_paint(), "the None pick should store as no_paint");
 

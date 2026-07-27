@@ -263,14 +263,3 @@ pub enum NodeGraphMessage {
 	UpdateHints,
 	SendSelectedNodes,
 }
-
-impl NodeGraphMessage {
-	/// Write a value to the given parameter of a node, e.g. `NodeGraphMessage::set_input_value(node_id, stroke::WeightInput, TaggedValue::F64(weight))`.
-	pub fn set_input_value(node_id: NodeId, parameter: impl Into<graphene_std::ParameterRef>, value: TaggedValue) -> Self {
-		NodeGraphMessage::SetInputValue {
-			node_id,
-			input_index: parameter.into().input_index,
-			value: Box::new(value),
-		}
-	}
-}

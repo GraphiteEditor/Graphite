@@ -8,7 +8,6 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
-use graphene_std::ParameterRef;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
@@ -16,6 +15,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientSpreadMethod, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -599,7 +599,11 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			responses.add(NodeGraphMessage::set_input_value(node_id, graphene_std::vector::stroke::WeightInput, TaggedValue::F64(weight)));
+			responses.add(NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: graphene_std::vector::stroke::WeightInput::INDEX,
+				value: TaggedValue::F64(weight).into(),
+			});
 		} else if weight > 0. {
 			let color = Some(Color::BLACK);
 			let stroke = graphene_std::vector::style::Stroke::default().with_weight(weight);
@@ -812,11 +816,11 @@ pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, d
 	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
 	for layer in layers {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
-			responses.add(NodeGraphMessage::set_input_value(
+			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
-				graphene_std::vector::stroke::PaintInput,
-				color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
-			));
+				input_index: graphene_std::vector::stroke::PaintInput::INDEX,
+				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color).into(),
+			});
 		} else {
 			let stroke = graphene_std::vector::style::Stroke::new(weight);
 			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
@@ -881,7 +885,11 @@ pub fn set_parameter_for_selected_layers(document: &DocumentMessageHandler, para
 		let Some(node_id) = NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name(&identifier) else {
 			continue;
 		};
-		responses.add(NodeGraphMessage::set_input_value(node_id, parameter.clone(), value.clone()));
+		responses.add(NodeGraphMessage::SetInputValue {
+			node_id,
+			input_index: parameter.input_index,
+			value: value.clone().into(),
+		});
 	}
 }
 
