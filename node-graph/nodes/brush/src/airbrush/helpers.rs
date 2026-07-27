@@ -99,6 +99,9 @@ struct AirbrushSlot {
 	base: Option<(WeakTexture, UVec2)>,
 	/// The in-progress stroke's continuation state.
 	active: Option<ActiveState>,
+	/// The composed frame with the content hash of the active stroke it shows; parked weakly.
+	/// While it upgrades and every stroke matches, re-renders return it without encoding.
+	output: Option<(u64, WeakTexture)>,
 }
 
 /// The active stroke's committed kept-chain density plus the decimation-walk watermark: while
@@ -505,14 +508,16 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		}
 	}
 
-	/// Take this footprint's slot, derive the content crop, bake missing finished strokes over
-	/// the placed base, render the active stroke — continuing its committed density when the
-	/// sidecar still describes a prefix of it — and store the slot back. The cache is
-	/// unobservable: every path produces identical pixels.
+	/// Take this footprint's slot, derive the content crop, return the parked output if no
+	/// stroke changed, otherwise bake missing finished strokes over the placed base, render the
+	/// active stroke — continuing its committed density when the sidecar still describes a
+	/// prefix of it — and store the slot back. The cache is unobservable: every path produces
+	/// identical pixels.
 	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
 		let (last, finished) = args.strokes.split_last()?;
 		let (active_style, active) = (&last.0, &last.1);
 		let active_style_hash = style_hash(active_style);
+		let active_key = stroke_key(active, active_style);
 		// The frame covers the full footprint: density textures span it, so the active stroke
 		// can wander anywhere visible without reallocation.
 		let region = Region::new(&args.footprint)?;
@@ -535,6 +540,16 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 		union(&mut content, active_bounds.clone());
 		// Base, bake, composite, and output are all crop-sized; no visible content, nothing to emit.
 		let crop = Crop::new(content?, &region)?;
+		// Identical strokes with a live parked output: the previous frame's pixels are still
+		// exact, so return them and put the slot back untouched.
+		if prefix
+			&& slot.strokes.len() == keys.len()
+			&& let Some(output) = slot.output.as_ref().filter(|(key, _)| *key == active_key).and_then(|(_, output)| output.upgrade())
+		{
+			let transform = crop.transform(&region);
+			args.cache.store(&args.footprint, slot);
+			return Some((output, transform));
+		}
 		// The base covers wherever its strokes had content, so any relation to the crop is fine.
 		let base = slot
 			.base
@@ -660,6 +675,7 @@ impl AsyncWgpuPipeline for AirbrushPipeline {
 					last_position: *active.position.last().unwrap(),
 					density: density.downgrade(),
 				}),
+				output: Some((active_key, output.downgrade())),
 			},
 		);
 		Some((output, crop.transform(&region)))
