@@ -204,13 +204,13 @@ async fn layer_stacking_follows_wiring() {
 
 	// Wiring a layer into the bottom input of another layer converts it to stack positioning at its current visual spot
 	let lower_position_before = network_interface.position(&lower, &[]).expect("Lower layer should have a position");
-	network_interface.create_wire(&OutputConnector::node(lower, 0), &InputConnector::node_at_index(upper, 0), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(lower), &InputConnector::primary_input(upper), &[]);
 	assert!(network_interface.is_stack(&lower, &[]), "A layer feeding the bottom of a layer should be stack positioned");
 	let stacked_position = network_interface.position(&lower, &[]).expect("Stacked layer should have a position");
 	assert_eq!(stacked_position.y, lower_position_before.y, "Stacking should preserve the layer's vertical position");
 
 	// Disconnecting converts the layer back to absolute positioning without moving it
-	network_interface.disconnect_input(&InputConnector::node_at_index(upper, 0), &[]);
+	network_interface.disconnect_input(&InputConnector::primary_input(upper), &[]);
 	assert!(network_interface.is_absolute(&lower, &[]), "A disconnected stack layer should return to absolute positioning");
 	assert_eq!(network_interface.position(&lower, &[]), Some(stacked_position), "Unstacking should not move the layer");
 
@@ -229,7 +229,7 @@ async fn chain_membership_follows_wiring() {
 	network_interface.set_to_node_or_layer(&layer, &[], true);
 
 	// A node wired into a layer's secondary input from the same row, within chain distance, joins the chain
-	network_interface.create_wire(&OutputConnector::node(node, 0), &InputConnector::node_at_index(layer, 1), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::layer_secondary_input(layer), &[]);
 	assert!(
 		network_interface.is_chain(&node, &[]),
 		"A node feeding a layer's secondary input from chain range should become a chain node"
@@ -237,7 +237,7 @@ async fn chain_membership_follows_wiring() {
 
 	// Disconnecting breaks the chain and the node becomes absolute at its chain spot
 	let chained_y = network_interface.position(&node, &[]).expect("Chained node should have a position").y;
-	network_interface.disconnect_input(&InputConnector::node_at_index(layer, 1), &[]);
+	network_interface.disconnect_input(&InputConnector::layer_secondary_input(layer), &[]);
 	assert!(!network_interface.is_chain(&node, &[]), "Disconnecting should break the chain");
 	assert!(network_interface.is_absolute(&node, &[]));
 	assert_eq!(network_interface.position(&node, &[]).map(|position| position.y), Some(chained_y));

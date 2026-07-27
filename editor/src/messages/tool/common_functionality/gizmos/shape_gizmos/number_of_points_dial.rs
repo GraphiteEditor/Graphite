@@ -13,6 +13,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::ParameterRef;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
 
@@ -194,14 +195,20 @@ impl NumberOfPointsDial {
 		let net_delta = (delta.length() / 25.).round() * sign;
 
 		let Some(layer) = self.layer else { return };
-		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface)) else {
+
+		// This dial serves both Star and Polygon layers, so resolve which node is present to know whose sides parameter to write
+		let (node_id, sides_parameter) = if let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) {
+			(node_id, ParameterRef::from(graphene_std::vector::generator_nodes::star::SidesInput))
+		} else if let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) {
+			(node_id, ParameterRef::from(graphene_std::vector::generator_nodes::regular_polygon::SidesInput))
+		} else {
 			return;
 		};
 
 		let new_point_count = ((self.initial_points as i32) + (net_delta as i32)).max(3);
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node_at_index(node_id, 1),
+			input_connector: InputConnector::node(node_id, sides_parameter),
 			input: NodeInput::value(TaggedValue::U32(new_point_count as u32), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

@@ -546,7 +546,10 @@ impl TextToolData {
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node_at_index(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
+				input_connector: InputConnector::node(
+					graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(),
+					graphene_std::text::text::TextInput,
+				),
 				input: NodeInput::value(TaggedValue::String("".to_string()), false),
 			});
 			responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1026,7 +1029,10 @@ impl Fsm for TextToolFsmState {
 					tool_data.set_editing(false, fonts, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node_at_index(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
+						input_connector: InputConnector::node(
+							graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(),
+							graphene_std::text::text::TextInput,
+						),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);

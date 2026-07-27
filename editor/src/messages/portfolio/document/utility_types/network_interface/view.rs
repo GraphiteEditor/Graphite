@@ -160,7 +160,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn primary_input_connected_to_layer(&self, node_id: &NodeId) -> bool {
-		self.input(&InputConnector::node_at_index(*node_id, 0))
+		self.input(&InputConnector::primary_input(*node_id))
 			.ok()
 			.and_then(|input| input.as_node())
 			.is_some_and(|upstream_id| self.is_layer(&upstream_id).unwrap_or_default())
@@ -234,7 +234,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn has_primary_input(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
-		Ok(self.input(&InputConnector::node_at_index(*node_id, 0)).is_ok_and(|input| input.is_exposed()))
+		Ok(self.input(&InputConnector::primary_input(*node_id)).is_ok_and(|input| input.is_exposed()))
 	}
 
 	pub fn hidden_primary_output(&self, node_id: &NodeId) -> Result<bool, NetworkError> {

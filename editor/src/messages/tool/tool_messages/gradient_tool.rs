@@ -2137,8 +2137,8 @@ mod test_gradient {
 
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
-				output_connector: OutputConnector::node(gradient_node_id, 0),
-				input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+				output_connector: OutputConnector::primary_output(gradient_node_id),
+				input_connector: InputConnector::layer_secondary_input(layer.to_node()),
 			})
 			.await;
 
@@ -2175,7 +2175,7 @@ mod test_gradient {
 
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
-				output_connector: OutputConnector::node(gradient_node_id, 0),
+				output_connector: OutputConnector::primary_output(gradient_node_id),
 				input_connector: InputConnector::node(fill_node_id, fill::FillInput),
 			})
 			.await;
@@ -2820,8 +2820,8 @@ mod test_gradient {
 		let gradient_value_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)).await;
 		editor
 			.handle_message(NodeGraphMessage::CreateWire {
-				output_connector: OutputConnector::node(gradient_value_id, 0),
-				input_connector: InputConnector::node_at_index(fill_node_id, 1),
+				output_connector: OutputConnector::primary_output(gradient_value_id),
+				input_connector: InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
 			})
 			.await;
 		editor

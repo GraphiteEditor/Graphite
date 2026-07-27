@@ -11,6 +11,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::ParameterRef;
 use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_2;
 
@@ -147,7 +148,13 @@ impl RadiusHandle {
 
 	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
 		let Some(layer) = self.layer else { return };
-		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface).or(get_arc_id(layer, &document.network_interface)) else {
+
+		// This gizmo serves both Circle and Arc layers, so resolve which node is present to know whose radius parameter to write
+		let (node_id, radius_parameter) = if let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface) {
+			(node_id, ParameterRef::from(graphene_std::vector::generator_nodes::circle::RadiusInput))
+		} else if let Some(node_id) = get_arc_id(layer, &document.network_interface) {
+			(node_id, ParameterRef::from(graphene_std::vector::generator_nodes::arc::RadiusInput))
+		} else {
 			return;
 		};
 		let Some(current_radius) = extract_circle_radius(layer, document).or(extract_arc_parameters(Some(layer), document).map(|(r, _, _, _)| r)) else {
@@ -165,7 +172,7 @@ impl RadiusHandle {
 		self.previous_mouse_position = input.mouse.position;
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node_at_index(node_id, 1),
+			input_connector: InputConnector::node(node_id, radius_parameter),
 			input: NodeInput::value(TaggedValue::F64(current_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

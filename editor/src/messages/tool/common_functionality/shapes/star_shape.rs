@@ -152,12 +152,12 @@ impl Star {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node_at_index(node_id, 2),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node_at_index(node_id, 3),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
 				input: NodeInput::value(TaggedValue::F64(radius / 2.), false),
 			});
 

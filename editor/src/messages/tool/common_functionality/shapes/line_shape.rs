@@ -73,7 +73,7 @@ impl Line {
 		let line_to = document_points[1] - document_points[0];
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node_at_index(node_id, 1),
+			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::line::LineToInput),
 			input: NodeInput::value(TaggedValue::DVec2(line_to), false),
 		});
 		let document_to_viewport = document.metadata().document_to_viewport;

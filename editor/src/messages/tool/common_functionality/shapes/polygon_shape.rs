@@ -147,7 +147,7 @@ impl Polygon {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node_at_index(node_id, 2),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
@@ -180,7 +180,7 @@ impl Polygon {
 		});
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node_at_index(node_id, 1),
+			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::regular_polygon::SidesInput),
 			input: NodeInput::value(TaggedValue::U32(new_dimension), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

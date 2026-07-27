@@ -1,5 +1,7 @@
 use super::transform_utils;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{
+	ARTBOARD_DIMENSIONS_INPUT_INDEX, ARTBOARD_LOCATION_INPUT_INDEX, DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
+};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
@@ -369,7 +371,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a 'Path' node, insert a 'Combine Paths' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node_at_index(output_layer.to_node(), 1), &[]);
+			let layer_input_type = self.network_interface.input_type(&InputConnector::layer_secondary_input(output_layer.to_node()), &[]);
 			if layer_input_type.compiled_element_name().as_deref() == Some("Graphic") {
 				let Some(combine_paths_definition) = resolve_proto_node_type(graphene_std::vector_nodes::combine_paths::IDENTIFIER) else {
 					log::error!("Combine Paths does not exist in ModifyInputsContext::existing_node_id");
@@ -512,7 +514,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(id) => id,
 			None => {
 				let target = gradient_chain_target_input(output_layer, self.network_interface);
-				let starts_layer_chain = target == InputConnector::node_at_index(output_layer.to_node(), 1);
+				let starts_layer_chain = target == InputConnector::layer_secondary_input(output_layer.to_node());
 
 				// The Gradient Value node discards its primary input, so starting a chain ahead of existing layer content would drop that content; refuse instead
 				if starts_layer_chain && self.network_interface.upstream_output_connector(&target, &[]).is_some() {
@@ -774,7 +776,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_proto_node_id(graphene_std::brush::brush::brush::IDENTIFIER, true) else {
 			return;
 		};
-		self.set_input_with_refresh(InputConnector::node_at_index(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node(brush_node_id, graphene_std::brush::brush::brush::TraceInput),
+			NodeInput::value(TaggedValue::BrushStrokes(strokes), false),
+			false,
+		);
 	}
 
 	pub fn resize_artboard(&mut self, location: DVec2, dimensions: DVec2) {
@@ -793,8 +799,16 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y = -dimensions.y;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node_at_index(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location), false), false);
-		self.set_input_with_refresh(InputConnector::node_at_index(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node_at_index(artboard_node_id, ARTBOARD_LOCATION_INPUT_INDEX),
+			NodeInput::value(TaggedValue::DVec2(location), false),
+			false,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node_at_index(artboard_node_id, ARTBOARD_DIMENSIONS_INPUT_INDEX),
+			NodeInput::value(TaggedValue::DVec2(dimensions), false),
+			false,
+		);
 	}
 
 	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false

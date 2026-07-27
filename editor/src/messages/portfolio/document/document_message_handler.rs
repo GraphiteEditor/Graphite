@@ -2614,7 +2614,7 @@ impl DocumentMessageHandler {
 				// If there's already a boolean operation on the selected layer, update it with the new operation
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
 					network_interface.set_input(
-						&InputConnector::node_at_index(upstream_boolean_op, 1),
+						&InputConnector::node(upstream_boolean_op, graphene_std::path_bool_nodes::boolean_operation::OperationInput),
 						NodeInput::value(TaggedValue::BooleanOperation(operation), false),
 						&[],
 					);
@@ -2819,7 +2819,7 @@ impl DocumentMessageHandler {
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
 
 				self.network_interface
-					.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node_at_index(new_index_id, 0), &[]);
+					.create_wire(&OutputConnector::primary_output(solidify_id), &InputConnector::primary_input(new_index_id), &[]);
 
 				resulting_layers.push(layer.to_node());
 				resulting_layers.push(new_layer.to_node());
@@ -3584,7 +3584,7 @@ impl DocumentMessageHandler {
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
 						self.network_interface
-							.upstream_output_connector(&InputConnector::node_at_index(layer.to_node(), 1), &[])
+							.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[])
 							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 

@@ -92,8 +92,8 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		parent: first_layer,
 	});
 	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
-		downstream_input: InputConnector::node_at_index(second_layer.to_node(), 1),
-		input_connector: InputConnector::node_at_index(merge_node_id, 1),
+		downstream_input: InputConnector::layer_secondary_input(second_layer.to_node()),
+		input_connector: InputConnector::layer_secondary_input(merge_node_id),
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
 		node_ids: vec![second_layer.to_node()],
@@ -281,7 +281,7 @@ pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface
 	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
 		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput)
 	} else {
-		InputConnector::node_at_index(layer.to_node(), 1)
+		InputConnector::layer_secondary_input(layer.to_node())
 	}
 }
 
@@ -984,7 +984,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		let layer_input_type = network_interface.input_type(&InputConnector::node_at_index(layer.to_node(), 1), &[]);
+		let layer_input_type = network_interface.input_type(&InputConnector::layer_secondary_input(layer.to_node()), &[]);
 
 		matches!(layer_input_type.compiled_element_name().as_deref(), Some("Raster<CPU>" | "Raster<GPU>"))
 	}

@@ -297,7 +297,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {proto_node_identifier:?} not found in registry in complete_valid_input_types");
 							return Vec::new();
 						};
-						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
+						let valid_output_types = self.valid_output_types(&OutputConnector::primary_output(*node_id), network_path);
 
 						implementations
 							.keys()
@@ -342,7 +342,7 @@ impl NodeNetworkInterface {
 			OutputConnector::Node { node_id, output_index } => {
 				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
 				if *output_index == 0 && !self.is_visible(node_id, network_path) {
-					return self.input_type(&InputConnector::node_at_index(*node_id, 0), network_path);
+					return self.input_type(&InputConnector::primary_input(*node_id), network_path);
 				}
 
 				// First try iterating upstream to the first protonode and try get its compiled type
@@ -353,7 +353,7 @@ impl NodeNetworkInterface {
 					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
 					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
 					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => {
-						self.input_type(&InputConnector::node_at_index(*node_id, 0), network_path)
+						self.input_type(&InputConnector::primary_input(*node_id), network_path)
 					}
 					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
 						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
