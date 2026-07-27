@@ -174,11 +174,11 @@
 			typeof x === "object" &&
 			x !== null &&
 			"createGuideLine" in x &&
-			typeof (x as GuideEditor).createGuideLine === "function" &&
+			typeof x.createGuideLine === "function" &&
 			"moveGuideLine" in x &&
-			typeof (x as GuideEditor).moveGuideLine === "function" &&
+			typeof x.moveGuideLine === "function" &&
 			"deleteGuideLine" in x &&
-			typeof (x as GuideEditor).deleteGuideLine === "function"
+			typeof x.deleteGuideLine === "function"
 		);
 	}
 
