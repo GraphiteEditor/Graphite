@@ -1,35 +1,105 @@
-use core_types::gpoll::Interrupt;
+use core_types::arena::{Arena, ArenaCell};
+use core_types::context::Ctx;
+use core_types::frame_table::{FrameTable, Lookup};
+use core_types::gnode::GNode;
+use core_types::gpoll::{Extent, Finality, GPoll, Interrupt};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
-use std::hash::DefaultHasher;
-use std::hash::Hasher;
+use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
 /// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
-#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
-fn memoize<I: CacheHash, T: Clone>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, content: impl Node<I, Output = T>) -> Result<T, Interrupt> {
-	// Caches the output of a given node called with a specific input.
-	//
-	// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
-	//
-	// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
-	//
-	// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
-
-	let mut hasher = DefaultHasher::new();
-	input.cache_hash(&mut hasher);
-	let hash = hasher.finish();
-
-	if let Some(data) = cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
-		return Ok(data);
+#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl, extent(memoize_extent))]
+fn memoize<I: CacheHash, T: Clone>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T, Finality)>>>, content: impl Node<I, Output = T>) -> GPoll<T> {
+	let key = cache_key(&input);
+	if let Some((hash, value, finality)) = cache.lock().unwrap().as_ref() {
+		if *hash == key {
+			return match finality {
+				Finality::AllFinal => GPoll::Final(value.clone()),
+				Finality::Partial => GPoll::Partial(value.clone()),
+			};
+		}
 	}
+	let result = content.eval(&input);
+	match &result {
+		GPoll::Final(value) => *cache.lock().unwrap() = Some((key, value.clone(), Finality::AllFinal)),
+		GPoll::Partial(value) => *cache.lock().unwrap() = Some((key, value.clone(), Finality::Partial)),
+		GPoll::Pending | GPoll::Fallback(_) | GPoll::Error(_) => {}
+	}
+	result
+}
 
-	let value = content.eval(input)?;
-	*cache.lock().unwrap() = Some((hash, value.clone()));
-	Ok(value)
+fn memoize_extent<C, T, NodeContent>(node: &MemoizeNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
+where
+	T: Clone,
+	NodeContent: GNode<C, Output = T>,
+{
+	node.content.extent(ctx)
+}
+
+#[node_macro::node(category(""), path(graphene_core::memo), skip_impl, extent(frame_memo_extent))]
+fn frame_memo<'e, T: Clone + 'static>(
+	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
+	#[data] cell: ArenaCell<FrameTable<T, 32>>,
+	content: impl Node<Context<'_>, Output = T>,
+) -> GPoll<&'e T> {
+	let arena = ctx.arena();
+	let table = match cell.load(arena) {
+		Some(table) => table,
+		None => match arena.alloc(FrameTable::new()) {
+			Some((table, weak)) => {
+				cell.store(weak);
+				table
+			}
+			None => return park(arena, content.eval(ctx)),
+		},
+	};
+	match table.lookup(cache_key(ctx)) {
+		Lookup::Hit(Finality::AllFinal, value) => GPoll::Final(value),
+		Lookup::Hit(Finality::Partial, value) => GPoll::Partial(value),
+		Lookup::Vacant(slot) => match content.eval(ctx) {
+			GPoll::Final(value) => GPoll::Final(slot.publish(value, Finality::AllFinal)),
+			GPoll::Partial(value) => GPoll::Partial(slot.publish(value, Finality::Partial)),
+			unpublishable => {
+				slot.release();
+				park(arena, unpublishable)
+			}
+		},
+		Lookup::Full => park(arena, content.eval(ctx)),
+	}
+}
+
+fn frame_memo_extent<C, T, NodeContent>(node: &FrameMemoNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
+where
+	T: Clone + 'static,
+	NodeContent: GNode<C, Output = T>,
+{
+	node.content.extent(ctx)
+}
+
+pub fn park<'e, T>(arena: &'e Arena, result: GPoll<T>) -> GPoll<&'e T> {
+	match result {
+		GPoll::Final(value) => match arena.alloc(value) {
+			Some((parked, _)) => GPoll::Final(parked),
+			None => GPoll::arena_exhausted(),
+		},
+		GPoll::Partial(value) => match arena.alloc(value) {
+			Some((parked, _)) => GPoll::Partial(parked),
+			None => GPoll::arena_exhausted(),
+		},
+		GPoll::Fallback(boxed) => {
+			let (value, error) = *boxed;
+			match arena.alloc(value) {
+				Some((parked, _)) => GPoll::Fallback(Box::new((parked, error))),
+				None => GPoll::arena_exhausted(),
+			}
+		}
+		GPoll::Pending => GPoll::Pending,
+		GPoll::Error(error) => GPoll::Error(error),
+	}
 }
 
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
@@ -54,4 +124,128 @@ fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(io: &MonitorValue<I, T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
 	let io = io.lock().unwrap();
 	io.as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::SourceId;
+	use core_types::concrete;
+	use core_types::context::{ContextImpl, EvalScope};
+	use core_types::registry::{EdgeHandle, ErasedGNode, ErasedLendGNode};
+	use core_types::Type;
+	use std::sync::atomic::{AtomicU32, Ordering};
+
+	struct CountingNode(AtomicU32);
+
+	impl<Input> GNode<Input> for CountingNode {
+		type Output = u32;
+
+		fn eval(&self, _input: &Input) -> GPoll<u32> {
+			GPoll::Final(self.0.fetch_add(1, Ordering::Relaxed) + 1)
+		}
+	}
+
+	struct PartialCountingNode(AtomicU32);
+
+	impl<Input> GNode<Input> for PartialCountingNode {
+		type Output = u32;
+
+		fn eval(&self, _input: &Input) -> GPoll<u32> {
+			GPoll::Partial(self.0.fetch_add(1, Ordering::Relaxed) + 1)
+		}
+	}
+
+	struct ValueNode<T>(T);
+
+	impl<T: Clone, Input> GNode<Input> for ValueNode<T> {
+		type Output = T;
+
+		fn eval(&self, _input: &Input) -> GPoll<T> {
+			GPoll::Final(self.0.clone())
+		}
+	}
+
+	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
+		EvalScope::new(Some(0.5), None, None, generations, arena)
+	}
+
+	#[test]
+	fn memoize_caches_across_evals() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let memoized = MemoizeNode::new(CountingNode(AtomicU32::new(0)));
+
+		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
+	}
+
+	#[test]
+	fn memo_invalidates_on_generation_bump() {
+		let arena = Arena::new(1024);
+		let source: SourceId = 7;
+		let before = [(source, 1)];
+		let after = [(source, 2)];
+		let scope_before = scope_fixture(&before, &arena);
+		let scope_after = scope_fixture(&after, &arena);
+
+		let memoized = MemoizeNode::new(CountingNode(AtomicU32::new(0)));
+
+		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
+		assert_eq!(memoized.eval(&ContextImpl::root(&scope_after)), GPoll::Final(2));
+	}
+
+	#[test]
+	fn memo_replays_partiality_on_hit() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let memoized = MemoizeNode::new(PartialCountingNode(AtomicU32::new(0)));
+
+		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
+		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
+	}
+
+	#[test]
+	fn memoized_edges_stack_and_rewire() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let edge = EdgeHandle::new(Box::new(CountingNode(AtomicU32::new(0))) as Box<ErasedGNode<u32>>);
+		let memoized = EdgeHandle::new(Box::new(MemoizeNode::new(edge.downcast::<u32>().unwrap())) as Box<ErasedGNode<u32>>);
+		let stacked = MemoizeNode::new(memoized.downcast::<u32>().unwrap());
+
+		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
+		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
+	}
+
+	#[test]
+	fn frame_memo_turns_an_owned_edge_into_a_lending_edge() {
+		let arena = Arena::new(4096);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let edge = EdgeHandle::new(Box::new(ValueNode("lent out".to_string())) as Box<ErasedGNode<String>>);
+		let lending = EdgeHandle::new_ref(Box::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Box<ErasedLendGNode<String>>);
+		assert_eq!(*lending.ty(), Type::Ref(Box::new(concrete!(String))));
+
+		let node = lending.downcast_lend::<String>().unwrap();
+		let GPoll::Final(first) = node.eval(&ctx) else {
+			panic!("lend must fill the frame table and lend");
+		};
+		let GPoll::Final(second) = node.eval(&ctx) else {
+			panic!("second eval must lend the published value");
+		};
+		assert_eq!(first, "lent out");
+		assert!(std::ptr::eq(first, second));
+	}
 }

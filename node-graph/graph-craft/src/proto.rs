@@ -631,14 +631,14 @@ pub type GraphErrors = Vec<GraphError>;
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
-	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
+	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, DynNodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
-	constructor: HashMap<NodeId, NodeConstructor>,
+	constructor: HashMap<NodeId, DynNodeConstructor>,
 }
 
 impl TypingContext {
 	/// Creates a new `TypingContext` with the given lookup table.
-	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>) -> Self {
+	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, DynNodeConstructor>>) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
 			..Default::default()
@@ -662,7 +662,7 @@ impl TypingContext {
 	}
 
 	/// Returns the node constructor for a given node id.
-	pub fn constructor(&self, node_id: NodeId) -> Option<NodeConstructor> {
+	pub fn constructor(&self, node_id: NodeId) -> Option<DynNodeConstructor> {
 		self.constructor.get(&node_id).copied()
 	}
 

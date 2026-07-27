@@ -1068,7 +1068,7 @@ mod graphene_test {
 	use core_types::context::{ContextImpl, EvalScope, ExtractIndex};
 	use core_types::gnode::{BatchStatus, GNode};
 	use core_types::gpoll::{Finality, GPoll};
-	use core_types::wire::{EdgeHandle, ErasedGNode, resolve_and_wire};
+	use core_types::registry::{EdgeHandle, ErasedGNode, construct};
 	use std::mem::MaybeUninit;
 
 	struct SourceNode<T>(T);
@@ -1130,7 +1130,7 @@ mod graphene_test {
 		let entries = logical_or_entries();
 		let value = EdgeHandle::new(Box::new(SourceNode(true)) as Box<ErasedGNode<bool>>);
 		let other_value = EdgeHandle::new(Box::new(SourceNode(false)) as Box<ErasedGNode<bool>>);
-		let wired = resolve_and_wire(&entries[0], vec![value, other_value]).unwrap().downcast::<bool>().unwrap();
+		let wired = construct(&entries[0], vec![value, other_value]).unwrap().downcast::<bool>().unwrap();
 
 		assert_eq!(GNode::eval(&wired, &ctx), GPoll::Final(true));
 	}
@@ -1150,7 +1150,7 @@ mod graphene_test {
 
 		let augend = EdgeHandle::new(Box::new(SourceNode(1.5f64)) as Box<ErasedGNode<f64>>);
 		let addend = EdgeHandle::new(Box::new(SourceNode(2.5f64)) as Box<ErasedGNode<f64>>);
-		let wired = resolve_and_wire(&entries[0], vec![augend, addend]).unwrap().downcast::<f64>().unwrap();
+		let wired = construct(&entries[0], vec![augend, addend]).unwrap().downcast::<f64>().unwrap();
 
 		assert_eq!(GNode::eval(&wired, &ctx), GPoll::Final(4.0));
 	}

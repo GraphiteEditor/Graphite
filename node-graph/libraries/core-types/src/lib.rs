@@ -19,7 +19,6 @@ pub mod runtime;
 pub mod transform;
 pub mod uuid;
 pub mod value;
-pub mod wire;
 
 pub use crate as core_types;
 pub use blending::*;

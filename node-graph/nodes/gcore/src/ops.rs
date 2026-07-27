@@ -26,6 +26,6 @@ mod test {
 
 	#[test]
 	pub fn passthrough_node() {
-		assert_eq!(passthrough((), &4), &4);
+		assert_eq!(passthrough(&(), &4), &4);
 	}
 }

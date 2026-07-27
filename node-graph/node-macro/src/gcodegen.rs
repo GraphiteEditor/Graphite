@@ -314,7 +314,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		None => quote!(#core_types::gpoll::GPoll::Pending),
 	};
 	let slot_check = quote! {
-		let __key = #core_types::wire::cache_key(__input);
+		let __key = #core_types::registry::cache_key(__input);
 		{
 			let __entries = self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 			if let Some(__state) = __entries.get(&__key) {
@@ -395,9 +395,9 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		}
 	};
 
-	let wire = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
+	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
 	let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
-	let wire_reexport = match wire.is_empty() {
+	let entries_reexport = match entries.is_empty() {
 		true => quote!(),
 		false => {
 			let entries_name = format_ident!("{}_entries", fn_name);
@@ -410,7 +410,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	};
 
 	let top_level = quote! {
-		#wire_reexport
+		#entries_reexport
 
 		#cfg
 		#[automatically_derived]
@@ -437,7 +437,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	};
 
 	Ok(GNodeTokens {
-		in_mod: wire,
+		in_mod: entries,
 		top_level: quote! {
 			#kernel
 
@@ -597,31 +597,31 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 
 	let entries = rows.iter().map(|row| {
 		let types = row.iter();
-		let boxed_types = row.iter().map(|ty| quote!(::std::boxed::Box<gcore::wire::ErasedGNode<#ty>>));
+		let boxed_types = row.iter().map(|ty| quote!(::std::boxed::Box<gcore::registry::ErasedGNode<#ty>>));
 		let output = quote!(<#struct_name<#(#boxed_types),*> as gcore::gnode::GNode<gcore::context::ContextImpl<'static>>>::Output);
 		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| {
 			quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;)
 		});
 		quote! {
-			gcore::wire::RegistryEntry {
-				io: gcore::wire::NodeIoRecord {
+			gcore::registry::RegistryEntry {
+				io: gcore::registry::NodeIoRecord {
 					inputs: vec![#(gcore::concrete!(#types)),*],
 					output: gcore::concrete!(#output),
 				},
-				wire: |inputs| {
+				constructor: |inputs| {
 					if inputs.len() != #arity {
-						return Err(gcore::wire::WireError::Arity { expected: #arity, got: inputs.len() });
+						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					Ok(gcore::wire::EdgeHandle::new(::std::boxed::Box::new(#struct_name::new(#(#names),*)) as ::std::boxed::Box<gcore::wire::ErasedGNode<#output>>))
+					Ok(gcore::registry::EdgeHandle::new(::std::boxed::Box::new(#struct_name::new(#(#names),*)) as ::std::boxed::Box<gcore::registry::ErasedGNode<#output>>))
 				},
 			}
 		}
 	});
 
 	quote! {
-		pub fn #entries_name() -> ::std::vec::Vec<gcore::wire::RegistryEntry> {
+		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![#(#entries),*]
 		}
 	}

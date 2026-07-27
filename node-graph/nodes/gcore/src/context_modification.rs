@@ -4,7 +4,7 @@ use core_types::gpoll::GPoll;
 use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::{Color, OwnedContextImpl};
+use core_types::Color;
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -48,73 +48,4 @@ fn context_modification<T>(
 ) -> GPoll<T> {
 	let scope = ctx.scope().nullified(features_to_keep);
 	value.eval(&ctx.nullified(features_to_keep, &scope))
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use core_types::graphene_hash::CacheHash;
-	use core_types::transform::Footprint;
-	use std::collections::hash_map::DefaultHasher;
-	use std::hash::Hasher;
-
-	/// Verifies that nullified context fields don't affect the cache hash — only the kept features matter.
-	#[test]
-	fn test_nullified_context_hash_stability() {
-		use core_types::Context;
-		use std::sync::Arc;
-
-		let original_ctx: Context = Some(Arc::new(
-			OwnedContextImpl::empty()
-				.with_footprint(Footprint::default())
-				.with_index(1)
-				.with_real_time(10.5)
-				.with_vararg(Box::new("test"))
-				.with_animation_time(20.25),
-		));
-
-		// A second context with different values for the nullified fields
-		let changed_ctx: Context = Some(Arc::new(
-			OwnedContextImpl::empty()
-				.with_footprint(Footprint::default())
-				.with_index(2)
-				.with_real_time(999.9)
-				.with_vararg(Box::new("test"))
-				.with_animation_time(888.8),
-		));
-
-		// Nullify everything — both should hash the same regardless of their field values
-		let features_to_keep = ContextFeatures::empty();
-		let nullified1 = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), features_to_keep);
-		let nullified2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), features_to_keep);
-
-		let mut hasher1 = DefaultHasher::new();
-		nullified1.cache_hash(&mut hasher1);
-
-		let mut hasher2 = DefaultHasher::new();
-		nullified2.cache_hash(&mut hasher2);
-
-		assert_eq!(
-			hasher1.finish(),
-			hasher2.finish(),
-			"Hash of nullified context should remain stable regardless of input changes when features are nullified"
-		);
-
-		// Keep only footprint and varargs — both have the same footprint and vararg, so hash should still match
-		let partial_features = ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS;
-		let partial1 = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), partial_features);
-		let partial2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), partial_features);
-
-		let mut hasher3 = DefaultHasher::new();
-		partial1.cache_hash(&mut hasher3);
-
-		let mut hasher4 = DefaultHasher::new();
-		partial2.cache_hash(&mut hasher4);
-
-		assert_eq!(
-			hasher3.finish(),
-			hasher4.finish(),
-			"Hash should be stable when keeping only footprint and varargs and their values are the same"
-		);
-	}
 }

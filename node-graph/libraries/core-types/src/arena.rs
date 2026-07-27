@@ -158,6 +158,21 @@ pub struct ArenaCell<T> {
 	_marker: PhantomData<fn() -> T>,
 }
 
+impl<T> Clone for ArenaCell<T> {
+	fn clone(&self) -> Self {
+		Self {
+			word: AtomicU64::new(self.word.load(Ordering::Acquire)),
+			_marker: PhantomData,
+		}
+	}
+}
+
+impl<T> std::fmt::Debug for ArenaCell<T> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ArenaCell").field("word", &self.word.load(Ordering::Relaxed)).finish()
+	}
+}
+
 impl<T> Default for ArenaCell<T> {
 	fn default() -> Self {
 		Self {

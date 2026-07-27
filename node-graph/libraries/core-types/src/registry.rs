@@ -1,7 +1,12 @@
+use crate::concrete;
+use crate::context::ContextImpl;
+use crate::gnode::GNode;
 use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
+use graphene_hash::CacheHash;
 pub use no_std_types::registry::types;
 use std::collections::HashMap;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -57,11 +62,104 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
-type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
+type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(DynNodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub type ErasedGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = T>;
+pub type ErasedLendGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = &'c T>;
+
+pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
+	let mut hasher = std::hash::DefaultHasher::new();
+	ctx.cache_hash(&mut hasher);
+	hasher.finish()
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ConstructionError {
+	Arity { expected: usize, got: usize },
+	Type { expected: Type, found: Type },
+}
+
+pub struct EdgeHandle {
+	node: Box<dyn std::any::Any>,
+	ty: Type,
+}
+
+impl std::fmt::Debug for EdgeHandle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("EdgeHandle").field("ty", &self.ty).finish_non_exhaustive()
+	}
+}
+
+impl EdgeHandle {
+	pub fn new<T: 'static>(node: Box<ErasedGNode<T>>) -> Self {
+		Self::new_erased(node, concrete!(T))
+	}
+
+	pub fn new_ref<T: 'static>(node: Box<ErasedLendGNode<T>>) -> Self {
+		Self::new_erased(node, Type::Ref(Box::new(concrete!(T))))
+	}
+
+	pub fn new_erased<N: ?Sized>(node: Box<N>, ty: Type) -> Self
+	where
+		Box<N>: std::any::Any,
+	{
+		Self { node: Box::new(node), ty }
+	}
+
+	pub fn ty(&self) -> &Type {
+		&self.ty
+	}
+
+	pub fn downcast<T: 'static>(self) -> Result<Box<ErasedGNode<T>>, ConstructionError> {
+		self.downcast_erased(concrete!(T))
+	}
+
+	pub fn downcast_lend<T: 'static>(self) -> Result<Box<ErasedLendGNode<T>>, ConstructionError> {
+		self.downcast_erased(Type::Ref(Box::new(concrete!(T))))
+	}
+
+	pub fn downcast_erased<N: ?Sized>(self, expected: Type) -> Result<Box<N>, ConstructionError>
+	where
+		Box<N>: std::any::Any,
+	{
+		let found = self.ty;
+		self.node.downcast::<Box<N>>().map(|node| *node).map_err(|_| ConstructionError::Type { expected, found })
+	}
+}
+
+pub struct NodeIoRecord {
+	pub inputs: Vec<Type>,
+	pub output: Type,
+}
+
+pub type NodeConstructor = fn(Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError>;
+
+pub struct RegistryEntry {
+	pub io: NodeIoRecord,
+	pub constructor: NodeConstructor,
+}
+
+pub fn construct(entry: &RegistryEntry, inputs: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
+	if inputs.len() != entry.io.inputs.len() {
+		return Err(ConstructionError::Arity {
+			expected: entry.io.inputs.len(),
+			got: inputs.len(),
+		});
+	}
+	for (handle, expected) in inputs.iter().zip(&entry.io.inputs) {
+		if handle.ty() != expected {
+			return Err(ConstructionError::Type {
+				expected: expected.clone(),
+				found: handle.ty().clone(),
+			});
+		}
+	}
+	(entry.constructor)(inputs)
+}
 
 #[cfg(not(target_family = "wasm"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
@@ -85,7 +183,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
-pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type DynNodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -291,3 +389,222 @@ impl<I: WasmNotSend, O: WasmNotSend> Default for PanicNode<I, O> {
 
 // TODO: Evaluate safety
 unsafe impl<I: WasmNotSend, O: WasmNotSend> Sync for PanicNode<I, O> {}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::SourceId;
+	use crate::arena::Arena;
+	use crate::context::{Ctx, EvalScope, ExtractArena};
+	use crate::gpoll::GPoll;
+
+	struct ValueNode<T>(T);
+
+	impl<T: Clone, Input> GNode<Input> for ValueNode<T> {
+		type Output = T;
+
+		fn eval(&self, _input: &Input) -> GPoll<T> {
+			GPoll::Final(self.0.clone())
+		}
+	}
+
+	struct LendNode(String);
+
+	impl<'e, Input: Ctx + ExtractArena<ArenaRef = &'e Arena>> GNode<Input> for LendNode {
+		type Output = &'e String;
+
+		fn eval(&self, input: &Input) -> GPoll<&'e String> {
+			match input.arena().alloc(self.0.clone()) {
+				Some((parked, _)) => GPoll::Final(parked),
+				None => GPoll::arena_exhausted(),
+			}
+		}
+	}
+
+	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
+		EvalScope::new(Some(0.5), None, None, generations, arena)
+	}
+
+	#[test]
+	fn borrow_carrying_value_types_wire_through_the_general_constructor() {
+		struct SplitBorrow<'c>(&'c str, usize);
+
+		struct SplitNode<Node0> {
+			content: Node0,
+		}
+
+		impl<'e, Input, Node0> GNode<Input> for SplitNode<Node0>
+		where
+			Input: Ctx,
+			Node0: GNode<Input, Output = &'e String>,
+		{
+			type Output = SplitBorrow<'e>;
+
+			fn eval(&self, input: &Input) -> GPoll<SplitBorrow<'e>> {
+				self.content.eval(input).map(|value| SplitBorrow(value, value.len()))
+			}
+		}
+
+		type ErasedSplitEdge = dyn for<'c> GNode<ContextImpl<'c>, Output = SplitBorrow<'c>>;
+
+		let arena = Arena::new(4096);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let lending = EdgeHandle::new_ref(Box::new(LendNode("held".to_string())) as Box<ErasedLendGNode<String>>);
+		let upstream = lending.downcast_lend::<String>().unwrap();
+		let node: Box<ErasedSplitEdge> = Box::new(SplitNode { content: upstream });
+		let handle = EdgeHandle::new_erased(node, concrete!(SplitBorrow<'static>));
+		assert_eq!(*handle.ty(), concrete!(SplitBorrow<'static>));
+
+		let wired = handle.downcast_erased::<ErasedSplitEdge>(concrete!(SplitBorrow<'static>)).unwrap();
+		let GPoll::Final(split) = wired.eval(&ctx) else {
+			panic!("borrow-carrying output must eval through the erased edge");
+		};
+		assert_eq!(split.0, "held");
+		assert_eq!(split.1, 4);
+	}
+
+	#[test]
+	fn derive_ctx_repeat_pushes_index_levels_through_the_erased_edge() {
+		use crate::context::{Derived, DeriveCtx, ExtractIndex};
+
+		struct RepeatNode<Node0> {
+			content: Node0,
+		}
+
+		impl<C, T, Node0> GNode<C> for RepeatNode<Node0>
+		where
+			C: Ctx + DeriveCtx,
+			Node0: for<'x> GNode<Derived<'x, C>, Output = T>,
+		{
+			type Output = Vec<T>;
+
+			fn eval(&self, input: &C) -> GPoll<Vec<T>> {
+				let spilled = input.index_head();
+				let mut result = Vec::new();
+				for index in 0..3 {
+					let derived = input.promoted(&spilled, index);
+					match self.content.eval(&derived) {
+						GPoll::Final(value) => result.push(value),
+						other => return other.map(|_| Vec::new()),
+					}
+				}
+				GPoll::Final(result)
+			}
+		}
+
+		struct LevelsNode;
+
+		impl<Input: ExtractIndex> GNode<Input> for LevelsNode {
+			type Output = Vec<usize>;
+
+			fn eval(&self, input: &Input) -> GPoll<Vec<usize>> {
+				GPoll::Final(input.try_index().map(|levels| levels.collect()).unwrap_or_default())
+			}
+		}
+
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let nested = RepeatNode {
+			content: RepeatNode { content: LevelsNode },
+		};
+		let erased: Box<ErasedGNode<Vec<Vec<Vec<usize>>>>> = Box::new(nested);
+
+		let GPoll::Final(outer) = erased.eval(&ctx) else {
+			panic!("nested repeat must evaluate");
+		};
+		assert_eq!(outer.len(), 3);
+		assert_eq!(outer[2][1], vec![1, 2, 0]);
+		assert_eq!(outer[0][0], vec![0, 0, 0]);
+	}
+
+	#[test]
+	fn derive_ctx_footprint_replace_reaches_the_content() {
+		use crate::context::{Derived, DeriveCtx, ExtractFootprint};
+		use crate::transform::Footprint;
+
+		struct ShiftFootprintNode<Node0> {
+			content: Node0,
+		}
+
+		impl<C, T, Node0> GNode<C> for ShiftFootprintNode<Node0>
+		where
+			C: Ctx + DeriveCtx + ExtractFootprint,
+			Node0: for<'x> GNode<Derived<'x, C>, Output = T>,
+		{
+			type Output = T;
+
+			fn eval(&self, input: &C) -> GPoll<T> {
+				let mut footprint = input.try_footprint().copied().unwrap_or(Footprint::DEFAULT);
+				footprint.resolution.x += 7;
+				let derived = input.with_footprint(&footprint);
+				self.content.eval(&derived)
+			}
+		}
+
+		struct ResolutionNode;
+
+		impl<Input: ExtractFootprint> GNode<Input> for ResolutionNode {
+			type Output = u32;
+
+			fn eval(&self, input: &Input) -> GPoll<u32> {
+				GPoll::Final(input.try_footprint().map(|footprint| footprint.resolution.x).unwrap_or(0))
+			}
+		}
+
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let graph: Box<ErasedGNode<u32>> = Box::new(ShiftFootprintNode {
+			content: ShiftFootprintNode { content: ResolutionNode },
+		});
+		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x + 14));
+	}
+
+	#[test]
+	fn construct_checks_arity_and_types() {
+		fn construct_strlen(args: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
+			let mut args = args.into_iter();
+			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast::<String>()?;
+			drop(value);
+			Ok(EdgeHandle::new(Box::new(ValueNode(0u32)) as Box<ErasedGNode<u32>>))
+		}
+		let entry = RegistryEntry {
+			io: NodeIoRecord {
+				inputs: vec![concrete!(String)],
+				output: concrete!(u32),
+			},
+			constructor: construct_strlen,
+		};
+
+		let owned = EdgeHandle::new(Box::new(ValueNode("typed".to_string())) as Box<ErasedGNode<String>>);
+		assert!(construct(&entry, vec![owned]).is_ok());
+
+		assert_eq!(construct(&entry, vec![]).unwrap_err(), ConstructionError::Arity { expected: 1, got: 0 });
+
+		let mistyped = EdgeHandle::new(Box::new(ValueNode(1.0f64)) as Box<ErasedGNode<f64>>);
+		assert_eq!(
+			construct(&entry, vec![mistyped]).unwrap_err(),
+			ConstructionError::Type {
+				expected: concrete!(String),
+				found: concrete!(f64),
+			}
+		);
+
+		let lent = EdgeHandle::new_ref(Box::new(LendNode("typed".to_string())) as Box<ErasedLendGNode<String>>);
+		assert_eq!(
+			construct(&entry, vec![lent]).unwrap_err(),
+			ConstructionError::Type {
+				expected: concrete!(String),
+				found: Type::Ref(Box::new(concrete!(String))),
+			}
+		);
+	}
+}
