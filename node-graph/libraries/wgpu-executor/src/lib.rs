@@ -44,10 +44,6 @@ impl WgpuExecutor {
 	pub fn context(&self) -> &WgpuContext {
 		&self.inner.context
 	}
-
-	pub fn shader_runtime(&self) -> &ShaderRuntime {
-		&self.inner.shader_runtime
-	}
 }
 
 #[derive(dyn_any::DynAny)]
@@ -149,7 +145,7 @@ impl WgpuExecutor {
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
 
-		let shader_runtime = ShaderRuntime::new(&context);
+		let shader_runtime = ShaderRuntime::default();
 
 		Some(Self {
 			inner: Arc::new(WgpuExecutorInner {
