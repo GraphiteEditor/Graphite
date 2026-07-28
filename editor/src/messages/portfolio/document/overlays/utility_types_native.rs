@@ -4,11 +4,12 @@ use crate::consts::{
 	GRADIENT_MIDPOINT_DIAMOND_RADIUS, INFLATE_FACTOR, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET,
 	SKEW_TRIANGLE_SIZE,
 };
-use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
+use crate::messages::portfolio::document::overlays::utility_functions::hex_to_rgba_u8;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
+use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
@@ -16,7 +17,7 @@ use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
-use graphene_std::text::{TextAlign, TypesettingConfig};
+use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::style::{PaintOrder, PathStyleType, StrokeAlign};
@@ -1139,7 +1140,7 @@ impl OverlayContextInternal {
 	pub fn preview_fill(&mut self, style_type: PathStyleType, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
 		let subpaths = vector_data.stroke_bezier_paths();
 
-		if let Some(stroke) = vector_data.style.stroke() {
+		if let Some(stroke) = vector_data.stroke.clone() {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
@@ -1262,16 +1263,16 @@ impl OverlayContextInternal {
 			align: TextAlign::AlignLeft,
 		};
 
-		// Get text dimensions directly from layout
-		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-		let text_size = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
+		// Lay out the text once, taking its dimensions and vector paths from the same thread-local context pass
+		let (text_size, text_list) = TextContext::with_thread_local(|text_context| {
+			let text_size = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
+			let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
+			(text_size, text_list)
+		});
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
 		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
-
-		// Convert text to vector paths for rendering
-		let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
@@ -1335,7 +1336,7 @@ impl OverlayContextInternal {
 
 			let width = match typed_string {
 				Some(ref typed_string) => typed_string,
-				None => &format!("{:.2}", translation.x).trim_end_matches('0').trim_end_matches('.').to_string(),
+				None => &format_rounded(translation.x, 2),
 			};
 			let x_transform = DAffine2::from_translation((quad.top_left() + quad.top_right()) / 2.);
 			self.text(width, COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
@@ -1346,7 +1347,7 @@ impl OverlayContextInternal {
 
 			let height = match typed_string {
 				Some(ref typed_string) => typed_string,
-				None => &format!("{:.2}", translation.y).trim_end_matches('0').trim_end_matches('.').to_string(),
+				None => &format_rounded(translation.y, 2),
 			};
 			let y_transform = DAffine2::from_translation((quad.top_left() + quad.bottom_left()) / 2.);
 			let height_pivot = if translation.x > -1e-3 { Pivot::Start } else { Pivot::End };

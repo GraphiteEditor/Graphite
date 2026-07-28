@@ -3,5 +3,6 @@ pub mod error;
 pub mod misc;
 pub mod network_interface;
 pub mod nodes;
+pub mod text_metrics;
 pub mod transformation;
 pub mod wires;

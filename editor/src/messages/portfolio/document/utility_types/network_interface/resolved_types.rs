@@ -111,7 +111,7 @@ impl TypeSource {
 }
 
 impl NodeNetworkInterface {
-	fn input_has_error(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+	fn input_has_error(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(implementation) = self.implementation(node_id, network_path) else {
@@ -121,9 +121,9 @@ impl NodeNetworkInterface {
 				let node_path = [network_path, &[*node_id]].concat();
 				match implementation {
 					DocumentNodeImplementation::Network(_) => {
-						let Some(map) = self.outward_wires(&node_path) else { return false };
-						let Some(outward_wires) = map.get(&OutputConnector::Import(*input_index)) else { return false };
-						outward_wires.clone().iter().any(|connector| match connector {
+						let outward_wires = self.with_outward_wires(&node_path, |map| map.get(&OutputConnector::Import(*input_index)).cloned()).flatten();
+						let Some(outward_wires) = outward_wires else { return false };
+						outward_wires.iter().any(|connector| match connector {
 							InputConnector::Node { node_id, input_index } => self.input_has_error(&InputConnector::node(*node_id, *input_index), &node_path),
 							InputConnector::Export(_) => false,
 						})
@@ -143,7 +143,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn input_type_not_invalid(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
+	pub fn input_type_not_invalid(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
 		let Some(input) = self.input_from_connector(input_connector, network_path) else {
 			return TypeSource::Error("Could not get input from connector");
 		};
@@ -171,7 +171,7 @@ impl NodeNetworkInterface {
 
 	/// Get the [`TypeSource`] for any InputConnector.
 	/// If the input is not compiled, then an Unknown or default from the definition is returned.
-	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
+	pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
 		// First check if there is an error with this node or any protonodes it is connected to
 		if self.input_has_error(input_connector, network_path) {
 			return TypeSource::Invalid;
@@ -180,7 +180,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Gets the default tagged value for an input. If its not compiled, then it tries to get a valid type. If there are no valid types, then it picks a random implementation.
-	pub fn tagged_value_from_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
+	pub fn tagged_value_from_input(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
 		let guaranteed_type = match self.input_type(input_connector, network_path) {
 			TypeSource::Compiled(compiled) => compiled,
 			TypeSource::TaggedValue(value) => value,
@@ -219,7 +219,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// A list of all valid input types for this specific node.
-	pub fn potential_valid_input_types(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
+	pub fn potential_valid_input_types(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		let InputConnector::Node { node_id, input_index } = input_connector else {
 			// An export can have any type connected to it
 			return vec![graph_craft::generic!(T)];
@@ -231,17 +231,15 @@ impl NodeNetworkInterface {
 		match implementation {
 			DocumentNodeImplementation::Network(_) => {
 				let nested_path = [network_path, &[*node_id]].concat();
-				let Some(outward_wires) = self.outward_wires(&nested_path) else {
-					log::error!("Could not get outward wires in potential_valid_input_types");
-					return Vec::new();
-				};
-				let Some(inputs_from_import) = outward_wires.get(&OutputConnector::Import(*input_index)) else {
+				let inputs_from_import = self
+					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
+					.flatten();
+				let Some(inputs_from_import) = inputs_from_import else {
 					log::error!("Could not get inputs from import in potential_valid_input_types");
 					return Vec::new();
 				};
 
 				let intersection: HashSet<Type> = inputs_from_import
-					.clone()
 					.iter()
 					.map(|input_connector| self.potential_valid_input_types(input_connector, &nested_path).into_iter().collect::<HashSet<_>>())
 					.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
@@ -285,7 +283,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Performs a downstream traversal to ensure input type will work in the full context of the graph.
-	pub fn complete_valid_input_types(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
+	pub fn complete_valid_input_types(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(implementation) = self.implementation(node_id, network_path) else {
@@ -339,7 +337,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn output_type(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
+	pub fn output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
 				// A hidden node is replaced by a passthrough during flattening, so its output carries its primary input's type
@@ -376,18 +374,14 @@ impl NodeNetworkInterface {
 	}
 
 	/// The valid output types are all types that are valid for each downstream connection.
-	fn valid_output_types(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
-		let Some(outward_wires) = self.outward_wires(network_path) else {
-			log::error!("Could not get outward wires in valid_output_types");
-			return Vec::new();
-		};
-		let Some(inputs_from_import) = outward_wires.get(output_connector) else {
+	fn valid_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
+		let inputs_from_import = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()).flatten();
+		let Some(inputs_from_import) = inputs_from_import else {
 			log::error!("Could not get inputs from import in valid_output_types");
 			return Vec::new();
 		};
 
 		let intersection = inputs_from_import
-			.clone()
 			.iter()
 			.map(|input_connector| self.potential_valid_input_types(input_connector, network_path).into_iter().collect::<HashSet<_>>())
 			.fold(None, |acc: Option<HashSet<Type>>, set| match acc {

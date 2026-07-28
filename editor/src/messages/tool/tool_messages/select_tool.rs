@@ -2058,6 +2058,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 			.parent(document.metadata())
 			.is_some_and(|parent| document.network_interface.selected_nodes().selected_layers_contains(parent, document.metadata()))
 	}) else {
+		edit_layer_deepest_manipulation(layer, &document.network_interface, responses);
 		return;
 	};
 
