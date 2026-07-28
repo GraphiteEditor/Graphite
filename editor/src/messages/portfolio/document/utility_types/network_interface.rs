@@ -2,6 +2,9 @@ mod caches;
 #[cfg(test)]
 mod characterization_tests;
 mod deserialization;
+pub mod editor_delta;
+#[cfg(test)]
+mod editor_delta_tests;
 mod hit_tests;
 mod layout;
 mod memo_network;

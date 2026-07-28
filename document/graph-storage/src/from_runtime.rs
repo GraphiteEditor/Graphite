@@ -423,6 +423,27 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	})
 }
 
+pub fn encode_node_ui_attributes<M: NodeMetadataSource + ?Sized>(
+	attributes: &mut crate::Attributes,
+	metadata: &M,
+	metadata_path: &[RuntimeNodeId],
+	runtime_node_id: RuntimeNodeId,
+	timestamp: TimeStamp,
+) -> Result<(), ConversionError> {
+	write_ui_attributes(attributes, metadata, metadata_path, runtime_node_id, timestamp)
+}
+
+pub fn encode_input_ui_attributes<M: NodeMetadataSource + ?Sized>(
+	attributes: &mut crate::Attributes,
+	metadata: &M,
+	metadata_path: &[RuntimeNodeId],
+	runtime_node_id: RuntimeNodeId,
+	input_index: usize,
+	timestamp: TimeStamp,
+) -> Result<(), ConversionError> {
+	write_ui_input_attributes(attributes, metadata, metadata_path, runtime_node_id, input_index, timestamp)
+}
+
 fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
@@ -613,6 +634,13 @@ impl PathResolver {
 		child_path(owner.as_ref(), self.network_id(local_path), local_id).to_global_id(self.peer)
 	}
 
+	/// Converts one runtime input inside the network at `local_path` to its storage form, resolving
+	/// node references to their stable global IDs.
+	pub fn convert_input_at(&self, input: &GraphCraftNodeInput, local_path: &[RuntimeNodeId]) -> Result<NodeInput, ConversionError> {
+		let owner = self.owner_path(local_path);
+		convert_input(input, owner.as_ref(), self.network_id(local_path), self.peer)
+	}
+
 	/// The `NodePath` of the node owning the network at `local_path`, or `None` for the root network.
 	fn owner_path(&self, local_path: &[RuntimeNodeId]) -> Option<NodePath> {
 		let mut owner: Option<NodePath> = None;
@@ -703,10 +731,15 @@ impl<'m, M: NodeMetadataSource + ?Sized> ScopedConversion<'m, M> {
 /// whole `TaggedValue`, which can be arbitrarily large. `resource_ref_shape_matches_serde` asserts
 /// this stays in lockstep with the real serialization.
 pub fn node_value_resource_refs(node: &Node) -> impl Iterator<Item = ResourceId> + '_ {
-	node.inputs.iter().filter_map(|slot| match &slot.input {
+	node.inputs.iter().filter_map(|slot| value_resource_ref(&slot.input))
+}
+
+/// The `TaggedValue::Resource` ID referenced by a stored value input, if any.
+pub fn value_resource_ref(input: &NodeInput) -> Option<ResourceId> {
+	match input {
 		NodeInput::Value { value, .. } => value.get("Resource").and_then(|id| serde_json::from_value(id.clone()).ok()),
 		_ => None,
-	})
+	}
 }
 
 #[cfg(test)]

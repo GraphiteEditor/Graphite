@@ -29,7 +29,10 @@ pub use resources::*;
 pub use session::*;
 
 #[cfg(any(feature = "conversion", test))]
-pub use from_runtime::{PathResolver, RuntimeConversion, ScopedConversion, convert_resource_entry, decode_declaration, encode_declaration, node_value_resource_refs};
+pub use from_runtime::{
+	PathResolver, RuntimeConversion, ScopedConversion, convert_resource_entry, decode_declaration, encode_declaration, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs,
+	value_resource_ref,
+};
 #[cfg(any(feature = "conversion", test))]
 pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
 #[cfg(any(feature = "conversion", test))]
