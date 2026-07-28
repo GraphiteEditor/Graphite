@@ -1,0 +1,51 @@
+pub mod dynamic_executor;
+pub mod node_registry;
+pub mod util;
+
+#[cfg(test)]
+mod tests {
+	use core_types::*;
+	use graphene_core::ops::passthrough;
+
+	#[test]
+	fn double_number() {
+		use graph_craft::document::*;
+		use graph_craft::*;
+
+		let network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [
+				// Simple passthrough node taking a number as input from outside the graph
+				(
+					NodeId(0),
+					DocumentNode {
+						inputs: vec![],
+						call_argument: concrete!(u32),
+						implementation: DocumentNodeImplementation::ProtoNode(passthrough::IDENTIFIER),
+						..Default::default()
+					},
+				),
+				// An add node adding the result of the passthrough node to its self
+				(
+					NodeId(1),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::add::IDENTIFIER),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		use crate::dynamic_executor::DynamicExecutor;
+		use graph_craft::graphene_compiler::Compiler;
+
+		let compiler = Compiler {};
+		let protograph = compiler.compile_single(network, &crate::node_registry::NODE_REGISTRY).expect("Graph should be generated");
+
+		let _exec = DynamicExecutor::new(protograph).map(|_e| panic!("The network should not type check ")).unwrap_err();
+	}
+}

@@ -11,7 +11,6 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGiz
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
 use graphene_std::vector::misc::GridType;
 use std::collections::VecDeque;
 
@@ -119,14 +118,14 @@ impl Grid {
 
 		// Set dimensions/spacing
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, SpacingInput::<f64>::INDEX),
+			input_connector: InputConnector::node(node_id, SpacingInput),
 			input: NodeInput::value(TaggedValue::DVec2(dimensions), false),
 		});
 
 		// Set angle for isometric grids
 		if let Some(angle_deg) = angle {
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, AnglesInput::INDEX),
+				input_connector: InputConnector::node(node_id, AnglesInput),
 				input: NodeInput::value(TaggedValue::DVec2(DVec2::splat(angle_deg)), false),
 			});
 		}

@@ -1,0 +1,35 @@
+[package]
+name = "dyn-any"
+version = "0.3.1"
+rust-version = "1.85"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.art>"]
+description = "An Any trait that works for arbitrary lifetimes"
+license = "MIT OR Apache-2.0"
+readme = "./README.md"
+homepage = "https://crates.io/crates/dyn-any"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/dyn-any"
+documentation = "https://docs.rs/dyn-any"
+
+[features]
+default = ["std", "large-atomics"]
+std = ["alloc", "rc", "glam/default"]
+large-atomics = []
+alloc = []
+derive = ["dyn-any-derive"]
+log-bad-types = []
+# Opt into impls for Rc<T> and Arc<T>.
+rc = []
+# Opt into impls for some glam types
+glam = ["dep:glam"]
+
+[dependencies]
+# Optional local dependencies
+dyn-any-derive = { path = "derive", optional = true }
+
+# Optional dependencies
+glam = { version = "0.32.1", optional = true, default-features = false }
+reqwest = { version = "0.13", optional = true, default-features = false }
+
+[package.metadata.docs.rs]
+all-features = true

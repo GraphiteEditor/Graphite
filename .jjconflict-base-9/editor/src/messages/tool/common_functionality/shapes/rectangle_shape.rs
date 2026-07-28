@@ -37,11 +37,11 @@ impl Rectangle {
 			let size = ((start - end) / viewport_zoom(document)).abs();
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::rectangle::WidthInput),
 				input: NodeInput::value(TaggedValue::F64(size.x), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::rectangle::HeightInput),
 				input: NodeInput::value(TaggedValue::F64(size.y), false),
 			});
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));

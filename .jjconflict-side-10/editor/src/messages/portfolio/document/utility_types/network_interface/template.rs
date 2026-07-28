@@ -38,6 +38,18 @@ pub struct NodeTemplate {
 	pub node_type_metadata: NodeTypePersistentMetadata,
 }
 
+impl NodeTemplate {
+	/// The input slot named by the given parameter symbol, mirroring [`DocumentNode::input`].
+	pub fn input<P: graphene_std::NodeParameter>(&self, _parameter: P) -> Option<&NodeInput> {
+		self.inputs.get(P::INDEX)
+	}
+
+	/// Mutable access to the input slot named by the given parameter symbol, mirroring [`DocumentNode::input_mut`].
+	pub fn input_mut<P: graphene_std::NodeParameter>(&mut self, _parameter: P) -> Option<&mut NodeInput> {
+		self.inputs.get_mut(P::INDEX)
+	}
+}
+
 impl Default for NodeTemplate {
 	fn default() -> Self {
 		Self {

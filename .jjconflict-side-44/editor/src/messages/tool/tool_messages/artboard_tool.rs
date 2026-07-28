@@ -582,7 +582,7 @@ mod test_artboard {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 		let mut artboards = List::new();
-		for list in instrumented.grab_all_input_level::<graphene_std::graphic::extend::NewInput<Artboard>, Artboard>(&editor.runtime) {
+		for list in instrumented.grab_all_input_level::<graphene_std::graphic::extend::NewInput, Artboard>(&editor.runtime) {
 			for index in 0..list.len() {
 				if let Some(item) = list.clone_item(index) {
 					artboards.push(item);

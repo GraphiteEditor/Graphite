@@ -70,3 +70,23 @@ pub trait NodeInputDecleration {
 	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
 }
+
+/// Master spells this trait `NodeParameter`; our node macro emits `NodeInputDecleration`.
+pub use NodeInputDecleration as NodeParameter;
+
+/// A runtime reference to one parameter of one proto node, for heterogeneous tables and runtime-chosen parameters.
+/// Convert a symbol with `.into()`; unlike a raw index, the node identifier and index always stay paired.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ParameterRef {
+	pub node_identifier: ProtoNodeIdentifier,
+	pub input_index: usize,
+}
+
+impl<P: NodeParameter> From<P> for ParameterRef {
+	fn from(_: P) -> Self {
+		ParameterRef {
+			node_identifier: P::identifier(),
+			input_index: P::INDEX,
+		}
+	}
+}

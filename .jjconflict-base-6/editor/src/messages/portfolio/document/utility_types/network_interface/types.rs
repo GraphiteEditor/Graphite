@@ -1,4 +1,5 @@
 use super::*;
+use graphene_std::ParameterRef;
 
 #[derive(PartialEq)]
 pub enum FlowType {
@@ -60,6 +61,13 @@ pub enum ImportOrExport {
 	Export(usize),
 }
 
+/// The primary input (index 0) of any node: a chain node's horizontal wire continuing from the left, or a layer's vertical stack wire from the sibling rendered below it.
+pub const PRIMARY_INPUT_INDEX: usize = 0;
+/// The secondary input (index 1) of a layer-shaped node: the horizontal wire from the left, carrying the node chain or child stack that the layer renders.
+pub const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+/// The primary output (index 0) of a node, which most nodes expose as their only output.
+pub const PRIMARY_OUTPUT_INDEX: usize = 0;
+
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -82,7 +90,32 @@ impl Default for InputConnector {
 }
 
 impl InputConnector {
-	pub fn node(node_id: NodeId, input_index: usize) -> Self {
+	/// Reference a node's input by its parameter symbol, e.g. `InputConnector::node(node_id, stroke::WeightInput)`, or by an erased [`ParameterRef`] chosen at runtime.
+	pub fn node(node_id: NodeId, parameter: impl Into<ParameterRef>) -> Self {
+		InputConnector::Node {
+			node_id,
+			input_index: parameter.into().input_index,
+		}
+	}
+
+	/// Reference a node's primary input: a chain node's continuation from the left, or a layer's stack wire from the bottom.
+	pub fn primary_input(node_id: NodeId) -> Self {
+		InputConnector::Node {
+			node_id,
+			input_index: PRIMARY_INPUT_INDEX,
+		}
+	}
+
+	/// Reference a layer-shaped node's secondary input, the wire from the left carrying the content that the layer renders.
+	pub fn layer_secondary_input(node_id: NodeId) -> Self {
+		InputConnector::Node {
+			node_id,
+			input_index: LAYER_SECONDARY_INPUT_INDEX,
+		}
+	}
+
+	/// Reference a node's input by a runtime index, for genuinely dynamic cases like clicked ports, input enumeration, and document upgrades.
+	pub fn node_at_index(node_id: NodeId, input_index: usize) -> Self {
 		InputConnector::Node { node_id, input_index }
 	}
 
@@ -125,6 +158,14 @@ impl Default for OutputConnector {
 impl OutputConnector {
 	pub fn node(node_id: NodeId, output_index: usize) -> Self {
 		OutputConnector::Node { node_id, output_index }
+	}
+
+	/// Reference a node's primary (first) output.
+	pub fn primary_output(node_id: NodeId) -> Self {
+		OutputConnector::Node {
+			node_id,
+			output_index: PRIMARY_OUTPUT_INDEX,
+		}
 	}
 
 	pub fn index(&self) -> usize {

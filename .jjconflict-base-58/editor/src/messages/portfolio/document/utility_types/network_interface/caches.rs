@@ -145,7 +145,7 @@ impl NodeNetworkInterface {
 				};
 				let Some(first_downstream_input) = self.with_outward_wires(network_path, |outward_wires| {
 					outward_wires
-						.get(&OutputConnector::node(current_node, 0))
+						.get(&OutputConnector::primary_output(current_node))
 						.map(|layer_outward_wires| layer_outward_wires.first().copied())
 				}) else {
 					log::error!("Cannot load outward wires in load_stack_dependents");
@@ -565,9 +565,13 @@ impl NodeNetworkInterface {
 		for (current_node_id, node) in network.nodes.iter() {
 			for (input_index, input) in node.inputs.iter().enumerate() {
 				if let NodeInput::Node { node_id, output_index, .. } = input {
-					push_outward_wire(&mut outward_wires, OutputConnector::node(*node_id, *output_index), InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(
+						&mut outward_wires,
+						OutputConnector::node(*node_id, *output_index),
+						InputConnector::node_at_index(*current_node_id, input_index),
+					);
 				} else if let NodeInput::Import { import_index, .. } = input {
-					push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::node(*current_node_id, input_index));
+					push_outward_wire(&mut outward_wires, OutputConnector::Import(*import_index), InputConnector::node_at_index(*current_node_id, input_index));
 				}
 			}
 		}
@@ -753,7 +757,7 @@ impl NodeNetworkInterface {
 		}
 		for (node_id, node) in &network.nodes {
 			for input_index in 0..node.inputs.len() {
-				input_connectors.push(InputConnector::node(*node_id, input_index));
+				input_connectors.push(InputConnector::node_at_index(*node_id, input_index));
 			}
 		}
 		input_connectors
@@ -792,7 +796,7 @@ impl NodeNetworkInterface {
 			input_connectors.extend(inputs.clone())
 		}
 		for input_index in 0..self.number_of_inputs(node_id, network_path) {
-			input_connectors.push(InputConnector::node(*node_id, input_index));
+			input_connectors.push(InputConnector::node_at_index(*node_id, input_index));
 		}
 		for input in input_connectors {
 			self.unload_wire(&input, network_path);
@@ -1154,7 +1158,7 @@ impl NodeNetworkInterface {
 					LayerPosition::Absolute(position) => Some(position),
 					LayerPosition::Stack(y_offset) => {
 						let Some(downstream_node_connectors) = self
-							.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned())
+							.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)).cloned())
 							.flatten()
 						else {
 							log::error!("Could not get downstream node in position_from_downstream_node");
@@ -1188,7 +1192,7 @@ impl NodeNetworkInterface {
 						loop {
 							// TODO: Use root node to restore if previewing
 							let Some(downstream_node_connectors) = self
-								.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::node(current_node_id, 0)).cloned())
+								.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(current_node_id)).cloned())
 								.flatten()
 							else {
 								log::error!("Could not get downstream node for node {node_id} with Position::Chain");
