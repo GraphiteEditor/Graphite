@@ -5,7 +5,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 use core_types::memo::MemoHashGuard;
 pub use core_types::uuid::NodeId;
 pub use core_types::uuid::generate_uuid;
-use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
+use core_types::{Context, ContextDependencies, Cow, MemoHash, NodeParameter, ProtoNodeIdentifier, Type};
 use dyn_any::DynAny;
 use glam::IVec2;
 use rustc_hash::FxHashMap;
@@ -121,6 +121,21 @@ impl OriginalLocation {
 	}
 }
 impl DocumentNode {
+	/// The input slot named by the given parameter symbol, e.g. `node.input(stroke::WeightInput)`.
+	pub fn input<P: NodeParameter>(&self, _parameter: P) -> Option<&NodeInput> {
+		self.inputs.get(P::INDEX)
+	}
+
+	/// Mutable access to the input slot named by the given parameter symbol.
+	pub fn input_mut<P: NodeParameter>(&mut self, _parameter: P) -> Option<&mut NodeInput> {
+		self.inputs.get_mut(P::INDEX)
+	}
+
+	/// The stored value of the given parameter, if that input currently holds a value rather than a wire.
+	pub fn input_value<P: NodeParameter>(&self, parameter: P) -> Option<&TaggedValue> {
+		self.input(parameter)?.as_value()
+	}
+
 	/// Locate the input that is a [`NodeInput::Import`] at index `offset` and replace it with a [`NodeInput::Node`].
 	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, source: impl Iterator<Item = Source>, skip: usize) {
 		let (index, _) = self
