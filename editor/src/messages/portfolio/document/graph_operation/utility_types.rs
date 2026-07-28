@@ -819,14 +819,7 @@ impl<'a> ModifyInputsContext<'a> {
 /// interact with any existing layers in the parent stack. All descendant layers use a lightweight
 /// O(n) import path that skips collision detection and instead calculates positions directly from
 /// the known tree structure.
-pub fn import_usvg_node(
-	modify_inputs: &mut ModifyInputsContext,
-	node: &usvg::Node,
-	id: NodeId,
-	parent: LayerNodeIdentifier,
-	insert_index: usize,
-	graphite_gradient_stops: &HashMap<String, GradientStops>,
-) {
+pub fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize, graphite_gradient_stops: &HashMap<String, Gradient>) {
 	// Phase 1: parse usvg tree into intermediate representation (pure, no ModifyInputsContext)
 	let parsed = extract_usvg_node(node, graphite_gradient_stops);
 
