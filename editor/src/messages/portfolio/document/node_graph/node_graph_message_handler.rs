@@ -301,7 +301,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// A freshly added Text node carries no font, so give it the default font (registered like the Text tool does)
 				if node_type == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) {
 					let font_resource_id = graph_craft::application_io::resource::ResourceId::new();
-					if let Some(font_input) = node_template.document_node.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
+					if let Some(font_input) = node_template.inputs.get_mut(graphene_std::text::text::FontInput::INDEX) {
 						*font_input = NodeInput::value(TaggedValue::Resource(font_resource_id), false);
 					}
 					responses.add(DocumentMessage::Resource(ResourceMessage::AddFont {
@@ -336,7 +336,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 
 					// Ensure connection is to correct input of new node. If it does not have an input then do not connect
-					if let Some((input_index, _)) = node_template.document_node.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
+					if let Some((input_index, _)) = node_template.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
 						responses.add(NodeGraphMessage::CreateWire {
 							output_connector: *output_connector,
 							input_connector: InputConnector::node(node_id, input_index),
@@ -530,19 +530,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				network_interface.set_input(&encapsulating_connector, input, network_path);
 
-				let Some(outward_wires) = network_interface.outward_wires(breadcrumb_network_path) else {
-					log::error!("Could not get outward wires in remove_import");
-					return;
-				};
-				let Some(downstream_connections) = outward_wires.get(&OutputConnector::Import(0)).cloned() else {
-					log::error!("Could not get outward wires for import in remove_import");
-					return;
-				};
-
-				// Disconnect all connections in the encapsulating network
-				for downstream_connection in &downstream_connections {
-					network_interface.disconnect_input(downstream_connection, breadcrumb_network_path);
-				}
+				// Disconnect all connections fed by the hidden import in the nested network
+				network_interface.disconnect_import_wires(0, breadcrumb_network_path);
 
 				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendWires);
@@ -565,18 +554,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Disconnect all connections in the encapsulating network
 				if let Some((encapsulating_node, encapsulating_path)) = breadcrumb_network_path.split_last() {
-					let Some(outward_wires) = network_interface.outward_wires(encapsulating_path) else {
-						log::error!("Could not get outward wires in remove_import");
-						return;
-					};
-					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*encapsulating_node, 0)).cloned() else {
-						log::error!("Could not get outward wires for import in remove_import");
-						return;
-					};
-
-					for downstream_connection in &downstream_connections {
-						network_interface.disconnect_input(downstream_connection, encapsulating_path);
-					}
+					network_interface.disconnect_output_wires(&OutputConnector::node(*encapsulating_node, 0), encapsulating_path);
 				}
 
 				responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -693,7 +671,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 				let center_of_selected_nodes_grid_space = IVec2::new((center_of_selected_nodes.x / 24. + 0.5).floor() as i32, (center_of_selected_nodes.y / 24. + 0.5).floor() as i32);
-				default_node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
+				default_node_template.node_type_metadata = NodeTypePersistentMetadata::node(center_of_selected_nodes_grid_space - IVec2::new(3, 1));
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id: encapsulating_node_id,
@@ -1352,7 +1330,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.shift_without_push = false;
 
 					// Reset all offsets to end the rubber banding while dragging
-					network_interface.unload_stack_dependents_y_offset(selection_network_path);
+					network_interface.clear_drag_offsets(selection_network_path);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
 						return;
@@ -1784,7 +1762,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.any(|id| *r == DefinitionIdentifier::ProtoNode(id))
 				});
 
-				let input = NodeInput::value(value, false);
+				let input = NodeInput::value(*value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
@@ -1812,7 +1790,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
 
 				if !rubber_band {
-					network_interface.unload_stack_dependents_y_offset(selection_network_path);
+					network_interface.clear_drag_offsets(selection_network_path);
 				}
 
 				if graph_view_overlay_open {

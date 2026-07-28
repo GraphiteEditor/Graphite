@@ -550,7 +550,6 @@ fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInp
 	let value = math_parser::evaluate(expression)
 		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
 		.ok()?
-		.0
 		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err}"))
 		.ok()?;
 

@@ -52,7 +52,12 @@ pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 
 fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	move |input_value: &T| match value(input_value) {
-		Some(value) => NodeGraphMessage::SetInputValue { node_id, input_index, value }.into(),
+		Some(value) => NodeGraphMessage::SetInputValue {
+			node_id,
+			input_index,
+			value: value.into(),
+		}
+		.into(),
 		None => Message::NoOp,
 	}
 }
@@ -906,7 +911,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 				NodeGraphMessage::SetInputValue {
 					node_id,
 					input_index: graphene_std::text::text::FontInput::INDEX,
-					value: TaggedValue::Resource(resource_id),
+					value: TaggedValue::Resource(resource_id).into(),
 				}
 				.into(),
 			]),
@@ -1483,7 +1488,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(percent.clamp(0., 100.) as f32),
+						value: TaggedValue::F32(percent.clamp(0., 100.) as f32).into(),
 					}
 					.into()
 				}
@@ -1640,7 +1645,7 @@ fn spectrum_slider_row(
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32),
+						value: TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32).into(),
 					}
 					.into()
 				})
@@ -1901,7 +1906,9 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput::INDEX, true, context), NumberInput::default().min(1.));
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput::INDEX, true, context), NumberInput::default().min(1.));
 
-	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows)]);
+	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput::INDEX, true, context), CheckboxInput::default());
+
+	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows), LayoutGroup::row(connect_cells)]);
 
 	widgets
 }
@@ -2194,13 +2201,13 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: UseJoinerInput::INDEX,
-							value: TaggedValue::Bool(true),
+							value: TaggedValue::Bool(true).into(),
 						}
 						.into(),
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: JoinerInput::INDEX,
-							value: TaggedValue::String(value.clone()),
+							value: TaggedValue::String(value.clone()).into(),
 						}
 						.into(),
 					]),
@@ -2255,13 +2262,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
-						value: TaggedValue::Bool(false),
+						value: TaggedValue::Bool(false).into(),
 					}
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::INDEX,
-						value: TaggedValue::BoxCorners(BoxCorners::from(uniform_val)),
+						value: TaggedValue::BoxCorners(BoxCorners::from(uniform_val)).into(),
 					}
 					.into(),
 				]),
@@ -2274,13 +2281,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: IndividualCornerRadiiInput::INDEX,
-						value: TaggedValue::Bool(true),
+						value: TaggedValue::Bool(true).into(),
 					}
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::INDEX,
-						value: TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec())),
+						value: TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec())).into(),
 					}
 					.into(),
 				]),
@@ -2582,7 +2589,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::<List<Graphic>>::INDEX,
-				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
+				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color).into(),
 			}
 			.into(),
 		];
@@ -2591,7 +2598,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				NodeGraphMessage::SetInputValue {
 					node_id,
 					input_index: BackupColorInput::INDEX,
-					value: TaggedValue::Color(color),
+					value: TaggedValue::Color(color).into(),
 				}
 				.into(),
 			);
@@ -2604,13 +2611,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::<List<Graphic>>::INDEX,
-				value: TaggedValue::Gradient(gradient.clone()),
+				value: TaggedValue::Gradient(gradient.clone()).into(),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: BackupGradientInput::INDEX,
-				value: TaggedValue::Gradient(gradient),
+				value: TaggedValue::Gradient(gradient).into(),
 			}
 			.into(),
 		]),
@@ -2719,13 +2726,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: HasTransformInput::INDEX,
-							value: TaggedValue::Bool(true),
+							value: TaggedValue::Bool(true).into(),
 						}
 						.into(),
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: TransformInput::INDEX,
-							value: TaggedValue::DAffine2(new_transform),
+							value: TaggedValue::DAffine2(new_transform).into(),
 						}
 						.into(),
 					]),
