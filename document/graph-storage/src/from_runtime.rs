@@ -423,6 +423,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	})
 }
 
+/// Public form of the node ui-attribute encoding, for staging paths that encode single nodes.
 pub fn encode_node_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
@@ -433,6 +434,7 @@ pub fn encode_node_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	write_ui_attributes(attributes, metadata, metadata_path, runtime_node_id, timestamp)
 }
 
+/// Public form of the per-input ui-attribute encoding, matching `encode_node_ui_attributes`.
 pub fn encode_input_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
