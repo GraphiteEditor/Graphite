@@ -42,8 +42,10 @@ jobs:
     steps:
       - name: 🔎 Parse command, find branch, and set build flags
         id: pr_info
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          COMMENT="${{ github.event.comment.body }}"
+          COMMENT="$COMMENT_BODY"
 
           # Split into space-separated words
           read -ra WORDS <<< "$COMMENT"
