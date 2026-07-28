@@ -1162,7 +1162,7 @@ impl OverlayContext {
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 
-		if let Some(stroke) = vector_data.style.stroke() {
+		if let Some(stroke) = vector_data.stroke.clone() {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };

@@ -1,3 +1,3 @@
-fn main() {
-	graphite_desktop::start_helper();
+fn main() -> std::process::ExitCode {
+	graphite_desktop_ui::run_helper()
 }

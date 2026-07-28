@@ -5,4 +5,4 @@ pub mod utility_types;
 #[doc(inline)]
 pub use clipboard_message::{ClipboardMessage, ClipboardMessageDiscriminant};
 #[doc(inline)]
-pub use clipboard_message_handler::ClipboardMessageHandler;
+pub use clipboard_message_handler::{ClipboardMessageContext, ClipboardMessageHandler};

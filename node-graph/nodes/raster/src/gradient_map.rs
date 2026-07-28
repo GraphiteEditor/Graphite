@@ -1,29 +1,31 @@
-//! Not immediately shader compatible due to needing [`GradientStops`] as a param, which needs [`Vec`]
+//! Not immediately shader compatible due to needing [`Gradient`] as a param, which needs [`Vec`]
 
 use crate::adjust::Adjust;
-use core_types::list::List;
+use core_types::list::Item;
 use core_types::{Color, Ctx};
 use raster_types::{CPU, Raster};
-use vector_types::GradientStops;
+use vector_types::Gradient;
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn gradient_map<T: Adjust<Color>>(
+async fn gradient_map<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Raster<CPU>,
+		Color,
+		Gradient,
 	)]
-	mut image: T,
-	gradient: List<GradientStops>,
-	reverse: bool,
-) -> T {
-	let Some(gradient) = gradient.element(0) else { return image };
+	image: Item<T>,
+	gradient: Item<Gradient>,
+	reverse: Item<bool>,
+) -> Item<T> {
+	let mut image = image;
+	let gradient = gradient.into_element();
+	let reverse = reverse.into_element();
 
-	image.adjust(|color| {
+	image.element_mut().adjust(|color| {
 		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
 		gradient.evaluate(intensity as f64)

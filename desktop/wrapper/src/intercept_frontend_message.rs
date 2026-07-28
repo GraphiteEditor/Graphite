@@ -37,13 +37,14 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			} else {
+				let extension = std::path::Path::new(&name).extension().and_then(|extension| extension.to_str()).unwrap_or("*").to_string();
 				dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
 					default_folder: folder,
 					filters: vec![FileFilter {
-						name: "Graphite".to_string(),
-						extensions: vec!["graphite".to_string()],
+						name: "Graphite Document".to_string(),
+						extensions: vec![extension],
 					}],
 					context: SaveFileDialogContext::Document { document_id, content },
 				});

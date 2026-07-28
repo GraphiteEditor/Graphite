@@ -61,9 +61,9 @@ impl NativeWindowHandle {
 				0,
 				0,
 				0,
-				main,
+				Some(main),
 				None,
-				HINSTANCE(std::ptr::null_mut()),
+				None,
 				// Pass the main window's HWND to WM_NCCREATE so the helper can store it.
 				Some(&main as *const _ as _),
 			)
@@ -103,18 +103,36 @@ impl NativeWindowHandle {
 		};
 		let _ = unsafe { DwmExtendFrameIntoClientArea(main, &margins) };
 
-		let hinst = unsafe { GetModuleHandleW(None) }.unwrap();
+		let hinst: HINSTANCE = unsafe { GetModuleHandleW(None) }.unwrap().into();
 
 		// Set taskbar icon
-		if let Ok(big) = unsafe { LoadImageW(hinst, PCWSTR(1usize as *const u16), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED) } {
+		if let Ok(big) = unsafe {
+			LoadImageW(
+				Some(hinst),
+				PCWSTR(1usize as *const u16),
+				IMAGE_ICON,
+				GetSystemMetrics(SM_CXICON),
+				GetSystemMetrics(SM_CYICON),
+				LR_SHARED,
+			)
+		} {
 			unsafe { SetClassLongPtrW(main, GCLP_HICON, big.0 as isize) };
-			unsafe { SendMessageW(main, WM_SETICON, WPARAM(ICON_BIG as usize), LPARAM(big.0 as isize)) };
+			unsafe { SendMessageW(main, WM_SETICON, Some(WPARAM(ICON_BIG as usize)), Some(LPARAM(big.0 as isize))) };
 		}
 
 		// Set window icon
-		if let Ok(small) = unsafe { LoadImageW(hinst, PCWSTR(1usize as *const u16), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED) } {
+		if let Ok(small) = unsafe {
+			LoadImageW(
+				Some(hinst),
+				PCWSTR(1usize as *const u16),
+				IMAGE_ICON,
+				GetSystemMetrics(SM_CXSMICON),
+				GetSystemMetrics(SM_CYSMICON),
+				LR_SHARED,
+			)
+		} {
 			unsafe { SetClassLongPtrW(main, GCLP_HICONSM, small.0 as isize) };
-			unsafe { SendMessageW(main, WM_SETICON, WPARAM(ICON_SMALL as usize), LPARAM(small.0 as isize)) };
+			unsafe { SendMessageW(main, WM_SETICON, Some(WPARAM(ICON_SMALL as usize)), Some(LPARAM(small.0 as isize))) };
 		}
 
 		// Force window update
@@ -197,7 +215,7 @@ unsafe fn ensure_helper_class() {
 			lpfnWndProc: Some(helper_window_handle_message),
 			hInstance: unsafe { GetModuleHandleW(None).unwrap().into() },
 			hIcon: HICON::default(),
-			hCursor: unsafe { LoadCursorW(HINSTANCE(std::ptr::null_mut()), IDC_ARROW).unwrap() },
+			hCursor: unsafe { LoadCursorW(None, IDC_ARROW).unwrap() },
 			// No painting; the ring is invisible.
 			hbrBackground: HBRUSH::default(),
 			lpszClassName: PCWSTR(class_name.as_ptr()),
@@ -292,7 +310,7 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 			// Extract the main window's HWND from GWLP_USERDATA that we saved earlier.
 			let main_ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut std::ffi::c_void;
 			let main = HWND(main_ptr);
-			if unsafe { IsWindow(main).as_bool() } {
+			if unsafe { IsWindow(Some(main)).as_bool() } {
 				let Some(wmsz) = (unsafe { calculate_resize_direction(hwnd, lparam) }) else {
 					return LRESULT(0);
 				};
@@ -301,7 +319,7 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 				let _ = unsafe { SetForegroundWindow(main) };
 
 				// Start sizing on the main window in the calculated direction. (SC_SIZE + WMSZ_*)
-				let _ = unsafe { PostMessageW(main, WM_SYSCOMMAND, WPARAM((SC_SIZE + wmsz) as usize), lparam) };
+				let _ = unsafe { PostMessageW(Some(main), WM_SYSCOMMAND, WPARAM((SC_SIZE + wmsz) as usize), lparam) };
 			}
 			return LRESULT(0);
 		}
@@ -325,7 +343,7 @@ unsafe fn position_helper(main: HWND, helper: HWND) {
 	let w = (r.right - r.left) + RESIZE_BAND_THICKNESS * 2;
 	let h = (r.bottom - r.top) + RESIZE_BAND_THICKNESS * 2;
 
-	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE | SWP_NOSENDCHANGING) };
+	let _ = unsafe { SetWindowPos(helper, Some(main), x, y, w, h, SWP_NOACTIVATE | SWP_NOSENDCHANGING) };
 }
 
 unsafe fn calculate_hit(helper: HWND, lparam: LPARAM) -> u32 {

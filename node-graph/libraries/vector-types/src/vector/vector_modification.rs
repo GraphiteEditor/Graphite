@@ -629,6 +629,10 @@ where
 	deserializer.deserialize_seq(visitor)
 }
 
+/// Distance below which a path's closing point is treated as coincident with its start point.
+/// Matches Kurbo's default path accuracy, so points within an offset operation's own precision are not split into separate anchors.
+const CLOSE_POINT_TOLERANCE: f64 = 1e-6;
+
 pub struct AppendBezpath<'a> {
 	first_point: Option<Point>,
 	last_point: Option<Point>,
@@ -657,7 +661,11 @@ impl<'a> AppendBezpath<'a> {
 	}
 
 	fn append_segment_and_close_path(&mut self, point: Point, handle: BezierHandles) {
-		let handle = if self.first_point.unwrap() != point {
+		// A path's final point may return to approximately (but not bit-exactly) its start before closing, e.g. a contour
+		// produced by Kurbo's path offsetting. Treat a near-coincident final point as already on the start so we don't
+		// introduce a redundant duplicate anchor and a zero-length closing segment.
+		let endpoints_coincide = (self.first_point.unwrap() - point).hypot2() <= CLOSE_POINT_TOLERANCE * CLOSE_POINT_TOLERANCE;
+		let handle = if !endpoints_coincide {
 			// If the first point is not the same as the last point of the path then we append the segment
 			// with given handle and point and then close the path with linear handle.
 			self.append_segment(point, handle);

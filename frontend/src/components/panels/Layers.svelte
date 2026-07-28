@@ -884,7 +884,6 @@
 						width: 100%;
 
 						&:disabled {
-							-webkit-user-select: none; // Still required by Safari as of 2025
 							user-select: none;
 							// Workaround for `user-select: none` not working on <input> elements
 							pointer-events: none;

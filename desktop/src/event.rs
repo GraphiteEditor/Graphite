@@ -1,14 +1,15 @@
+use crate::ui::Cursor;
 use crate::wrapper::NodeGraphExecutionResult;
 use crate::wrapper::messages::DesktopWrapperMessage;
 
 pub(crate) enum AppEvent {
 	UiUpdate(wgpu::Texture),
-	CursorChange(crate::window::Cursor),
-	ScheduleBrowserWork(std::time::Instant),
+	CursorChange(Cursor),
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	Exit,
+	UiCrashed,
 	OpenFiles(Vec<std::path::PathBuf>),
 	#[cfg(target_os = "macos")]
 	MenuEvent {

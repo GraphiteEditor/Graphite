@@ -1,12 +1,13 @@
 //! Tile-based render caching for efficient viewport panning.
 
+use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
-use graphene_application_io::ImageTexture;
+use graphene_application_io::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -25,7 +26,7 @@ pub struct TileCoord {
 
 #[derive(Debug, Clone)]
 pub struct CachedRegion {
-	pub texture: ImageTexture,
+	pub texture: Texture,
 	pub texture_size: UVec2,
 	pub tiles: Vec<TileCoord>,
 	pub metadata: rendering::RenderMetadata,
@@ -37,7 +38,6 @@ pub struct CachedRegion {
 pub struct CacheKey {
 	pub max_region_area: u32,
 	pub render_mode_hash: u64,
-	pub device_scale: u64,
 	pub zoom: u64,
 	pub rotation: u64,
 	pub for_export: bool,
@@ -55,7 +55,6 @@ impl CacheKey {
 	fn new(
 		max_region_area: u32,
 		render_mode_hash: u64,
-		device_scale: f64,
 		zoom: f64,
 		rotation: f64,
 		for_export: bool,
@@ -81,7 +80,6 @@ impl CacheKey {
 		Self {
 			max_region_area,
 			render_mode_hash,
-			device_scale: device_scale.to_bits(),
 			zoom: zoom.to_bits(),
 			rotation: quantized_rotation.to_bits(),
 			for_export,
@@ -326,11 +324,11 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
-	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi,
-	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
+	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>,
+	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 	#[data] tile_cache: TileCache,
-) -> RenderOutput {
+) -> Item<RenderOutput> {
 	let footprint = ctx.footprint();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
@@ -345,23 +343,20 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let device_scale = render_params.scale;
 	let zoom = footprint.scale_magnitudes().x;
 	let rotation = footprint.decompose_rotation();
 
-	let viewport_origin_offset = footprint.transform.translation;
-	let device_origin_offset = viewport_origin_offset * device_scale;
+	let device_origin_offset = footprint.transform.translation;
 	let viewport_bounds_device = AxisAlignedBbox {
 		start: -device_origin_offset,
 		end: footprint.resolution.as_dvec2() - device_origin_offset,
 	};
 
-	let max_region_area = editor_api.editor_preferences.max_render_region_area();
+	let max_region_area = editor_api.into_element().editor_preferences.max_render_region_area();
 
 	let cache_key = CacheKey::new(
 		max_region_area,
 		render_params.render_mode as u64,
-		device_scale,
 		zoom,
 		rotation,
 		render_params.for_export,
@@ -381,16 +376,7 @@ pub async fn render_output_cache<'a: 'n>(
 		if missing_region.tiles.is_empty() {
 			continue;
 		}
-		let region = render_missing_region(
-			missing_region,
-			|ctx| data.eval(ctx),
-			ctx.clone(),
-			render_params,
-			&footprint.transform,
-			&viewport_origin_offset,
-			device_scale,
-		)
-		.await;
+		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &device_origin_offset).await;
 		new_regions.push(region);
 	}
 
@@ -404,14 +390,15 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let executor = executor.expect("GPU executor not available");
+	let executor = executor.into_element().expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution).await;
-	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
 
-	RenderOutput {
-		data: RenderOutputType::Texture(output_texture.into()),
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, executor);
+
+	Item::new_from_element(RenderOutput {
+		data: RenderOutputType::Texture(output_texture),
 		metadata: combined_metadata,
-	}
+	})
 }
 
 async fn render_missing_region<F, Fut>(
@@ -421,11 +408,10 @@ async fn render_missing_region<F, Fut>(
 	render_params: &RenderParams,
 	viewport_transform: &DAffine2,
 	viewport_origin_offset: &DVec2,
-	device_scale: f64,
 ) -> CachedRegion
 where
 	F: Fn(Context<'static>) -> Fut,
-	Fut: std::future::Future<Output = RenderOutput>,
+	Fut: std::future::Future<Output = Item<RenderOutput>>,
 {
 	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
@@ -433,7 +419,7 @@ where
 	let tile_count = (max_tile - min_tile) + IVec2::ONE;
 	let region_pixel_size = (tile_count * TILE_SIZE as i32).as_uvec2();
 
-	let tile_global_offset = min_tile.as_dvec2() * (TILE_SIZE as f64 / device_scale) + *viewport_origin_offset;
+	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
 	let region_transform = DAffine2::from_translation(-tile_global_offset) * *viewport_transform;
 	let region_footprint = Footprint {
 		transform: region_transform,
@@ -443,7 +429,7 @@ where
 
 	let region_params = render_params.clone();
 	let region_ctx = OwnedContextImpl::from(ctx).with_footprint(region_footprint).with_vararg(Box::new(region_params)).into_context();
-	let mut result = render_fn(region_ctx).await;
+	let mut result = render_fn(region_ctx).await.into_element();
 
 	let RenderOutputType::Texture(texture) = result.data else {
 		unreachable!("render_missing_region: expected texture output from Vello render");

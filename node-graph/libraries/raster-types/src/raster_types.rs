@@ -139,15 +139,60 @@ mod cpu {
 }
 
 pub use gpu::GPU;
+#[cfg(feature = "wgpu")]
+pub use gpu::Texture;
 
 #[cfg(feature = "wgpu")]
 mod gpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
+	use std::sync::Arc;
+
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny)]
+	pub struct Texture(Arc<wgpu::Texture>);
+
+	impl Deref for Texture {
+		type Target = wgpu::Texture;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl AsRef<wgpu::Texture> for Texture {
+		fn as_ref(&self) -> &wgpu::Texture {
+			&self.0
+		}
+	}
+
+	impl From<Arc<wgpu::Texture>> for Texture {
+		fn from(texture: Arc<wgpu::Texture>) -> Self {
+			Self(texture)
+		}
+	}
+
+	impl From<wgpu::Texture> for Texture {
+		fn from(texture: wgpu::Texture) -> Self {
+			Self(Arc::new(texture))
+		}
+	}
+
+	impl From<Texture> for Arc<wgpu::Texture> {
+		fn from(texture: Texture) -> Self {
+			texture.0
+		}
+	}
+
+	impl core_types::CacheHash for Texture {
+		fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+			use ::core::hash::Hash;
+			self.hash(state);
+		}
+	}
 
 	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU {
-		pub texture: wgpu::Texture,
+		pub texture: Texture,
 	}
 
 	impl core_types::CacheHash for GPU {
@@ -166,8 +211,8 @@ mod gpu {
 	}
 
 	impl Raster<GPU> {
-		pub fn new_gpu(texture: wgpu::Texture) -> Self {
-			Self::new(GPU { texture })
+		pub fn new_gpu(texture: impl Into<Texture>) -> Self {
+			Self::new(GPU { texture: texture.into() })
 		}
 
 		pub fn data(&self) -> &wgpu::Texture {

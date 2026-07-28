@@ -1,22 +1,23 @@
 use core_types::ExtractVarArgs;
 use core_types::color::Linear;
+use core_types::list::Item;
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
 use core_types::{Ctx, ExtractFootprint};
 use glam::{Affine2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
+use graphic_types::raster_types::Texture;
 use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
-use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
 async fn render_background<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
-	data: RenderOutput,
-) -> RenderOutput {
+	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+	data: Item<RenderOutput>,
+) -> Item<RenderOutput> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -28,14 +29,15 @@ async fn render_background<'a: 'n>(
 		return data;
 	}
 
-	let RenderOutput { data: foreground_data, metadata } = data;
+	let RenderOutput { data: foreground_data, metadata } = data.into_element();
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 
 	let data = match foreground_data {
 		RenderOutputType::Texture(foreground_texture) => {
-			let doc_to_screen = (glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale)) * render_params.footprint.transform).as_affine2();
+			let doc_to_screen = render_params.footprint.transform.as_affine2();
 			let blended = pipeline
+				.into_element()
 				.run::<CompositeBackground>(&CompositeBackgroundArgs {
 					foreground: foreground_texture.as_ref(),
 					backgrounds: &metadata.backgrounds,
@@ -44,13 +46,15 @@ async fn render_background<'a: 'n>(
 				})
 				.await;
 
-			RenderOutputType::Texture(blended.into())
+			RenderOutputType::Texture(blended)
 		}
 		RenderOutputType::Svg {
 			svg: foreground_svg,
 			image_data: foreground_images,
 		} => {
 			let mut render = SvgRender::new();
+
+			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * render_params.footprint.transform;
 
 			if render_params.viewport_zoom > 0. {
 				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
@@ -79,6 +83,7 @@ async fn render_background<'a: 'n>(
 					if render_params.scale > 0. {
 						let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
 						let logical_footprint = Footprint {
+							transform: logical_transform,
 							resolution: logical_resolution.round().as_uvec2().max(glam::UVec2::ONE),
 							..render_params.footprint
 						};
@@ -101,7 +106,7 @@ async fn render_background<'a: 'n>(
 			}
 
 			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
-			render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+			render.wrap_with_transform(logical_transform, Some(logical_resolution));
 
 			let background = SvgRenderOutput::from(render);
 			assert!(background.svg_defs.is_empty());
@@ -114,19 +119,19 @@ async fn render_background<'a: 'n>(
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};
 
-	RenderOutput { data, metadata }
+	Item::new_from_element(RenderOutput { data, metadata })
 }
 
 #[node_macro::node(category(""), inject_scope)]
 async fn composite_background_pipeline<'a: 'n>(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
 	#[data] pipeline: WgpuPipelineCache,
-) -> WgpuPipelineCache {
-	if let Some(executor) = executor {
+) -> Item<WgpuPipelineCache> {
+	if let Some(executor) = executor.into_element() {
 		executor.pipeline_init::<CompositeBackground>(pipeline);
 	}
-	pipeline.clone()
+	Item::new_from_element(pipeline.clone())
 }
 
 pub struct CompositeBackground {
@@ -147,7 +152,7 @@ pub struct CompositeBackgroundArgs<'a> {
 
 impl AsyncWgpuPipeline for CompositeBackground {
 	type Args<'a> = CompositeBackgroundArgs<'a>;
-	type Out = Arc<wgpu::Texture>;
+	type Out = Texture;
 
 	fn create(executor: &WgpuExecutor) -> Self {
 		let device = &executor.context().device;

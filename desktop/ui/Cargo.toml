@@ -1,0 +1,53 @@
+[package]
+name = "graphite-desktop-ui"
+description = "Renders the Graphite editor frontend UI into wgpu textures"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+embedded_resources = ["dep:graphite-desktop-embedded-resources"]
+accelerated_paint = ["dep:ash", "dep:bytemuck", "dep:objc2-io-surface", "dep:objc2-metal", "dep:mach2"]
+
+[dependencies]
+# Local dependencies
+graphite-desktop-embedded-resources = { path = "../embedded-resources", optional = true }
+
+wgpu = { workspace = true }
+wgpu-sync = { workspace = true }
+winit = { workspace = true, features = ["serde"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
+cef = { workspace = true }
+bytemuck = { workspace = true, optional = true }
+ipc-channel = "0.22"
+
+# Linux-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+ash = { version = "0.38", optional = true }
+
+# Windows-specific dependencies
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = [
+	"Win32_Foundation",
+	"Win32_Graphics_Direct3D12",
+	"Win32_Security",
+	"Win32_System_JobObjects",
+	"Win32_System_Threading",
+] }
+
+# Mac-specific dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+mach2 = { version = "0.4", optional = true }
+objc2 = { version = "0.6.1", default-features = false }
+objc2-foundation = { version = "0.3.2", default-features = false }
+objc2-app-kit = { version = "0.3.2", default-features = false }
+objc2-io-surface = { version = "0.3.2", optional = true }
+objc2-metal = { version = "0.3", features = ["objc2-io-surface"], optional = true }

@@ -89,9 +89,10 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>, working_copy_root: Option<std::path::PathBuf>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
+		s.message_handlers.portfolio_message_handler.set_working_copy_root(working_copy_root);
 		s
 	}
 
@@ -186,7 +187,14 @@ impl Dispatcher {
 					self.message_handlers.future_message_handler.process_message(message, &mut queue, FutureMessageContext {});
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
-				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
+				Message::Clipboard(message) => {
+					let context = ClipboardMessageContext {
+						portfolio: &mut self.message_handlers.portfolio_message_handler,
+						current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+						resource_storage: &self.message_handlers.resource_storage_message_handler,
+					};
+					self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, context);
+				}
 				Message::ColorPicker(message) => self.message_handlers.color_picker_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
@@ -264,6 +272,7 @@ impl Dispatcher {
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
+					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;
 
 					if let Some(document) = self
 						.message_handlers
@@ -418,141 +427,6 @@ impl Dispatcher {
 #[cfg(test)]
 mod test {
 	pub use crate::test_utils::test_prelude::*;
-
-	/// Create an editor with three layers
-	/// 1. A red rectangle
-	/// 2. A blue shape
-	/// 3. A green ellipse
-	async fn create_editor_with_three_layers() -> EditorTestUtils {
-		let mut editor = EditorTestUtils::create();
-
-		editor.new_document().await;
-
-		editor.select_primary_color(Color::RED).await;
-		editor.draw_rect(100., 200., 300., 400.).await;
-
-		editor.select_primary_color(Color::BLUE).await;
-		editor.draw_polygon(10., 1200., 1300., 400.).await;
-
-		editor.select_primary_color(Color::GREEN).await;
-		editor.draw_ellipse(104., 1200., 1300., 400.).await;
-
-		editor
-	}
-
-	/// - create rect, shape and ellipse
-	/// - copy
-	/// - paste
-	/// - assert that ellipse was copied
-	#[tokio::test]
-	async fn copy_paste_single_layer() {
-		let mut editor = create_editor_with_three_layers().await;
-
-		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
-
-		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-
-		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 4);
-
-		// Existing layers are unaffected
-		for i in 0..=2 {
-			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
-		}
-	}
-
-	#[cfg_attr(miri, ignore)]
-	/// - create rect, shape and ellipse
-	/// - select shape
-	/// - copy
-	/// - paste
-	/// - assert that shape was copied
-	#[tokio::test]
-	async fn copy_paste_single_layer_from_middle() {
-		let mut editor = create_editor_with_three_layers().await;
-
-		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
-
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
-
-		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-
-		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 4);
-
-		// Existing layers are unaffected
-		for i in 0..=2 {
-			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
-		}
-	}
-
-	#[cfg_attr(miri, ignore)]
-	/// - create rect, shape and ellipse
-	/// - select ellipse and rect
-	/// - copy
-	/// - delete
-	/// - create another rect
-	/// - paste
-	/// - paste
-	#[tokio::test]
-	async fn copy_paste_deleted_layers() {
-		let mut editor = create_editor_with_three_layers().await;
-		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
-
-		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let rect_id = layers_before_copy[0];
-		let shape_id = layers_before_copy[1];
-		let ellipse_id = layers_before_copy[2];
-
-		editor
-			.handle_message(NodeGraphMessage::SelectedNodesSet {
-				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
-			})
-			.await;
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
-		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
-		editor.draw_rect(0., 800., 12., 200.).await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
-		editor
-			.handle_message(PortfolioMessage::PasteIntoFolder {
-				clipboard: Clipboard::Internal,
-				parent: LayerNodeIdentifier::ROOT_PARENT,
-				insert_index: 0,
-			})
-			.await;
-
-		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-
-		assert_eq!(layers_before_copy.len(), 3);
-		assert_eq!(layers_after_copy.len(), 6);
-
-		println!("{layers_after_copy:?} {layers_before_copy:?}");
-
-		assert_eq!(layers_after_copy[5], shape_id);
-	}
 
 	#[tokio::test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.

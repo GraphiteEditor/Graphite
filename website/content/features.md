@@ -21,9 +21,7 @@ The current alpha version of Graphite is a tool for vector art and graphic desig
 
 <div class="block video-container">
 <div>
-<div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="ZUbcwUC5lxA" loading="lazy" src="https://static.graphite.art/content/features/podcast-interview-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Rust-Powered Graphics Editor: How Graphite's Syntax Trees Revolutionize Image Editing" />
-</div>
+{{ youtube_embed(id="ZUbcwUC5lxA", title="Rust-Powered Graphics Editor: How Graphite's Syntax Trees Revolutionize Image Editing") }}
 </div>
 </div>
 

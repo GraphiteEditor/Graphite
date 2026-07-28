@@ -8,13 +8,20 @@ repository = ""
 edition = "2024"
 rust-version = "1.87"
 
+[features]
+main = ["dep:graphite-desktop"]
+helper = ["dep:graphite-desktop-ui"]
+
 [[bin]]
 name = "graphite"
 path = "src/main.rs"
+required-features = ["main"]
 
 [[bin]]
 name = "helper"
 path = "src/helper.rs"
+required-features = ["helper"]
 
 [dependencies]
-graphite-desktop = { path = "../.." }
+graphite-desktop = { path = "../..", optional = true }
+graphite-desktop-ui = { path = "../../ui", optional = true }

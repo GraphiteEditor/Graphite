@@ -1,4 +1,5 @@
-use wgpu::{Adapter, Backends, Device, Features, Instance, Queue};
+use wgpu::{Backends, Device, Features};
+use wgpu_sync::{Adapter, Instance, Queue};
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -77,10 +78,10 @@ impl ContextBuilder {
 }
 impl ContextBuilder {
 	fn build_instance(&self) -> Instance {
-		Instance::new(wgpu::InstanceDescriptor {
+		Instance::new(wgpu::Instance::new(wgpu::InstanceDescriptor {
 			backends: self.backends,
 			..wgpu::InstanceDescriptor::new_without_display_handle()
-		})
+		}))
 	}
 	#[cfg(target_family = "wasm")]
 	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {

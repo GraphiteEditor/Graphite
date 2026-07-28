@@ -25,6 +25,4 @@ If you're ever stuck or confused, ask your questions in the `#🧭user-help` cha
 
 The fastest way to get started is to watch and follow along steps-by-step in the hands-on quickstart tutorial:
 
-<div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.art/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
-</div>
+{{ youtube_embed(id="7gjUhl_3X10", title="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite") }}

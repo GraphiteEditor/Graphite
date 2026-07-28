@@ -1,4 +1,5 @@
 use glam::UVec2;
+use raster_types::Texture;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ impl TextureCache {
 		}
 	}
 
-	pub fn request_texture(&mut self, device: &wgpu::Device, size: UVec2) -> Arc<wgpu::Texture> {
+	pub fn request_texture(&mut self, device: &wgpu::Device, size: UVec2) -> Texture {
 		let size = size.max(UVec2::ONE);
 
 		if let Some(pos) = self
@@ -27,7 +28,7 @@ impl TextureCache {
 			let entry = self.textures.remove(pos).unwrap();
 			let texture = entry.clone();
 			self.textures.push_back(entry);
-			return texture;
+			return texture.into();
 		}
 
 		let incoming_bytes = size.x as u64 * size.y as u64 * 4;
@@ -50,7 +51,7 @@ impl TextureCache {
 
 		self.textures.push_back(texture.clone());
 
-		texture
+		texture.into()
 	}
 
 	fn total_free_bytes(&self) -> u64 {

@@ -7,7 +7,6 @@ use crate::messages::input_mapper::utility_types::macros::*;
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapping};
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
-use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
@@ -224,8 +223,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PathToolMessage::Cut { clipboard: Clipboard::Device }),
-		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PathToolMessage::Copy { clipboard: Clipboard::Device }),
+		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PathToolMessage::Cut),
+		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PathToolMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=PathToolMessage::Duplicate),
 		entry!(KeyDownNoRepeat(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { extend_selection: Shift, lasso_select: Control, handle_drag_from_anchor: Alt, drag_restore_handle: Control, segment_editing_modifier: Control }),
@@ -447,8 +446,6 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::Open),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
-		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
-		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
 		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleDataPanelOpen),
 		entry!(KeyDown(Enter); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleFocusDocument),

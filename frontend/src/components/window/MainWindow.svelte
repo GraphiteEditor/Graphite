@@ -33,7 +33,7 @@
 	{#if $tooltip.visible}
 		<Tooltip />
 	{/if}
-	{#if import.meta.env.MODE === "native" && new Date() > new Date("2026-07-01")}
+	{#if import.meta.env.MODE === "native" && new Date() > new Date("2026-12-31")}
 		<LayoutCol class="release-candidate-expiry">
 			<TextLabel>
 				<p>

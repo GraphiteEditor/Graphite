@@ -17,6 +17,7 @@ pub struct MenuBarMessageHandler {
 	pub has_selection_history: (bool, bool),
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
+	pub show_storage_preferences: bool,
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
@@ -50,6 +51,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
+		let show_storage_preferences = self.show_storage_preferences;
 		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let about = MenuListEntry::new("About Graphite…")
@@ -718,6 +720,10 @@ impl LayoutHolder for MenuBarMessageHandler {
 								.label("Reset Nodes to Definitions on Open")
 								.icon(if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 								.on_commit(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
+							MenuListEntry::new("Show Storage Preferences")
+								.label("Show Storage Preferences")
+								.icon(if show_storage_preferences { "CheckboxChecked" } else { "CheckboxUnchecked" })
+								.on_commit(|_| PreferencesMessage::ToggleShowStoragePreferences.into()),
 						],
 						vec![
 							MenuListEntry::new("Print Trace Logs")

@@ -6,7 +6,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::near_to_subpath;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoiceUI, PathStyleType};
+use graphene_std::vector::style::{FillChoiceUI, PathStyleType};
 
 const STROKE_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
 const FILL_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
@@ -171,7 +171,7 @@ impl Fsm for FillToolFsmState {
 							input.mouse.position,
 							subpath,
 							is_closed_on_all,
-							vector_data.style.stroke(),
+							vector_data.stroke.clone(),
 							layer_to_viewport,
 							Some(overlay_context.clone()),
 						)
@@ -195,19 +195,14 @@ impl Fsm for FillToolFsmState {
 				self
 			}
 			(FillToolFsmState::Ready, color_event) => {
-				let Some(layer) = document.click(input, viewport) else {
+				let Some(layer_identifier) = document.click(input, viewport) else {
 					return self;
 				};
 				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
-				if NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface) {
+				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
 					return self;
 				}
-				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
-					_ => return self,
-				};
-				let stroke_color = match color_event {
+				let color = match color_event {
 					FillToolMessage::FillPrimaryColor => global_tool_data.primary_color,
 					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color,
 					_ => return self,
@@ -215,14 +210,14 @@ impl Fsm for FillToolFsmState {
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer) {
-					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-					let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+				if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer_identifier) {
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer_identifier, &document.network_interface);
+					let layer_to_viewport = document.metadata().transform_to_viewport(layer_identifier);
 
 					// Stroke
 					let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
 					let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-					let stroke = vector_data.style.stroke();
+					let stroke = vector_data.stroke.clone();
 
 					let mut subpaths = vector_data.stroke_bezier_paths();
 					// Subpaths on a layer is considered "closed" only if all subpaths are closed.
@@ -235,9 +230,15 @@ impl Fsm for FillToolFsmState {
 					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
 					if stroke_exists_and_visible && near_to_stroke {
-						responses.add(GraphOperationMessage::StrokeColorSet { layer, stroke_color });
+						responses.add(GraphOperationMessage::StrokeColorSet {
+							layer: layer_identifier,
+							stroke_color: color,
+						});
 					} else if fill_exists_and_visible {
-						responses.add(GraphOperationMessage::FillSet { layer, fill });
+						responses.add(GraphOperationMessage::FillColorSet {
+							layer: layer_identifier,
+							color: Some(color),
+						});
 					}
 				}
 
@@ -273,17 +274,19 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::Graphic;
 	use graphene_std::color::SRGBA8;
+	use graphene_std::list::{Item, List};
 	use graphene_std::vector::fill;
-	use graphene_std::vector::style::Fill;
 
-	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
+	// The Fill tool writes solid colors, whose stored values the input monitor records as `Item<Color>` wires
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Item<Color>> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
+		instrumented.grab_all_input_as::<fill::FillInput<List<Graphic>>, Item<Color>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
@@ -313,7 +316,8 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(SRGBA8::from(fills[0].as_solid().unwrap()), SRGBA8::from(Color::GREEN));
+		let color = fills.first().unwrap().element();
+		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::GREEN));
 	}
 
 	#[tokio::test]
@@ -325,6 +329,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(SRGBA8::from(fills[0].as_solid().unwrap()), SRGBA8::from(Color::YELLOW));
+		let color = fills.first().unwrap().element();
+		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
 	}
 }

@@ -233,7 +233,6 @@
 		height: 100%;
 		background: var(--color-2-mildblack);
 		overscroll-behavior: none;
-		-webkit-user-select: none; // Still required by Safari as of 2025
 		user-select: none;
 	}
 

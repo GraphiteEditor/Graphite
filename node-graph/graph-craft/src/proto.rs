@@ -397,7 +397,7 @@ impl ProtoNetwork {
 		let we_introduce_new_deps = !combined_deps.contains(new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
 			} else if we_introduce_new_deps || deps != combined_deps {
@@ -634,6 +634,31 @@ pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
+	promotions: HashMap<NodeId, Vec<(usize, Promotion)>>,
+}
+
+/// A rank adapter which type resolution marks for insertion between a wire and a connector whose ranks differ,
+/// carrying the element type the adapter is registered under.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Promotion {
+	/// Raises an `Item<X>` wire onto a `List<X>` connector as a one-element list.
+	ItemToList(Type),
+	/// Bundles a whole `List<X>` wire into one opaque `Item<Bundle<X>>` cell.
+	Bundle(Type),
+	/// Unbundles an `Item<Bundle<X>>` wire back into the whole `List<X>`.
+	Unbundle(Type),
+}
+
+impl Promotion {
+	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
+	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
+		let (adapter_name, element) = match self {
+			Self::ItemToList(element) => ("graphene_core::ops::ItemToListNode", element),
+			Self::Bundle(element) => ("graphene_core::ops::BundleNode", element),
+			Self::Unbundle(element) => ("graphene_core::ops::UnbundleNode", element),
+		};
+		ProtoNodeIdentifier::with_owned_string(format!("{adapter_name}<{}>", element.identifier_name()))
+	}
 }
 
 impl TypingContext {
@@ -658,7 +683,18 @@ impl TypingContext {
 
 	pub fn remove_inference(&mut self, node_id: NodeId) -> Option<NodeIOTypes> {
 		self.constructor.remove(&node_id);
+		self.promotions.remove(&node_id);
 		self.inferred.remove(&node_id)
+	}
+
+	/// Returns the input positions of a node which type resolution marked for rank promotion, with each position's adapter.
+	pub fn promotions(&self, node_id: NodeId) -> Option<&Vec<(usize, Promotion)>> {
+		self.promotions.get(&node_id)
+	}
+
+	/// Looks up the sole constructor registered under an adapter identifier, such as an Item -> List promotion adapter.
+	pub fn adapter_constructor(&self, identifier: &ProtoNodeIdentifier) -> Option<NodeConstructor> {
+		self.lookup.get(identifier).and_then(|implementations| implementations.values().next().copied())
 	}
 
 	/// Returns the node constructor for a given node id.
@@ -731,6 +767,9 @@ impl TypingContext {
 				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
 				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
+				// Ranked wrappers of the same rank are compared element-wise
+				(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
+				(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
 				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -768,6 +807,75 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
+				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter.
+				// Every rank relation is matched structurally; only the `Bundle` layer inside an `Item` cell remains name-encoded.
+				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
+					fn concrete_name(ty: &Type) -> Option<&str> {
+						match ty {
+							Type::Concrete(descriptor) => Some(&descriptor.name),
+							_ => None,
+						}
+					}
+
+					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
+						return None;
+					};
+					if !valid_type(from_input, to_input) {
+						return None;
+					}
+
+					let from_value = from_output.nested_type();
+					let to_value = to_output.nested_type();
+
+					match (from_value, to_value) {
+						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
+						(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some(Promotion::ItemToList((**element).clone())),
+
+						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
+						(Type::List(element), Type::Item(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some(Promotion::Bundle((**element).clone())),
+
+						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
+						(Type::Item(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
+							Some(Promotion::Unbundle((**element).clone()))
+						}
+
+						_ => None,
+					}
+				}
+
+				let mut promotable_matches = impls
+					.keys()
+					.filter(|node_io| collect_generics(node_io).is_empty() && valid_type(&node_io.call_argument, call_argument) && inputs.len() == node_io.inputs.len())
+					.filter_map(|node_io| {
+						let mut required_promotions = Vec::new();
+						for (index, (provided, expected)) in inputs.iter().zip(node_io.inputs.iter()).enumerate() {
+							if valid_type(provided, expected) {
+								continue;
+							}
+							required_promotions.push((index, promotable_adapter(provided, expected)?));
+						}
+						Some((node_io, required_promotions))
+					})
+					.collect::<Vec<_>>();
+
+				// Prefer the variant needing the fewest promotions, so an Item wire resolves the all-Item variant instead of raising every ranked connector to reach the mapped variant; a tie stays ambiguous.
+				promotable_matches.sort_by_key(|(_, required_promotions)| required_promotions.len());
+				let minimum_promotions = promotable_matches.first().map(|(_, required_promotions)| required_promotions.len());
+				let tied_at_minimum = promotable_matches
+					.iter()
+					.take_while(|(_, required_promotions)| Some(required_promotions.len()) == minimum_promotions)
+					.count();
+
+				if tied_at_minimum == 1 {
+					let (node_io, required_promotions) = promotable_matches.remove(0);
+					let node_io = node_io.clone();
+
+					self.inferred.insert(node_id, node_io.clone());
+					self.constructor.insert(node_id, impls[&node_io]);
+					self.promotions.insert(node_id, required_promotions);
+					return Ok(node_io);
+				}
+
 				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();

@@ -57,6 +57,7 @@ impl_via_hash! {
 	bool, char,
 	u8, u16, u32, u64, u128, usize,
 	i8, i16, i32, i64, i128, isize,
+	core::time::Duration,
 	// glam integer vector types have Hash
 	glam::UVec2, glam::UVec3, glam::UVec4,
 	glam::IVec2, glam::IVec3, glam::IVec4,

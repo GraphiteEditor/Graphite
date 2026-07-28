@@ -16,9 +16,11 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
+use graphene_std::Graphic;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
-use graphene_std::brush::brush_stroke::BrushStroke;
+use graphene_std::brush::brush_stroke::BrushTrace;
+use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::list::List;
 use graphene_std::raster::{
@@ -30,8 +32,12 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
-use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::misc::{
+	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+};
+use graphene_std::vector::style::{
+	DashPattern, FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -149,22 +155,36 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	widgets
 }
 
+/// The numeric bounds and widget mode of a number parameter, sourced from the node's field metadata.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct NumberOptions {
+	pub soft_min: Option<f64>,
+	pub soft_max: Option<f64>,
+	pub hard_min: Option<f64>,
+	pub hard_max: Option<f64>,
+	pub slider: bool,
+}
+
 pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
 	ty: &Type,
-	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+	number_options: NumberOptions,
 	unit: Option<&str>,
 	display_decimal_places: Option<u32>,
 	step: Option<f64>,
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
-	let (mut number_min, mut number_max, range) = number_options;
+	let NumberOptions {
+		soft_min,
+		soft_max,
+		hard_min,
+		hard_max,
+		slider,
+	} = number_options;
 	let mut number_input = NumberInput::default();
-	if let Some((range_start, range_end)) = range {
-		number_min = Some(range_start);
-		number_max = Some(range_end);
-		number_input = number_input.mode_range().min(range_start).max(range_end);
+	if slider {
+		number_input = number_input.mode_range();
 	}
 	if let Some(unit) = unit {
 		number_input = number_input.unit(unit);
@@ -176,118 +196,142 @@ pub(crate) fn property_from_type(
 		number_input = number_input.step(step);
 	}
 
-	let min = |x: f64| number_min.unwrap_or(x);
-	let max = |x: f64| number_max.unwrap_or(x);
+	// Applies the parameter's typing clamp and slider extent to the widget, given the type's own default bounds.
+	// Per end: the clamp is the hard bound (or unbounded if only a soft bound is given, since soft is a suggested
+	// extent rather than a limit), and the slider extent is the soft bound, each falling back to the hard bound
+	// and then to the type default when unspecified. An end with any explicit bound ignores the type default.
+	let bounded = |number_input: NumberInput, type_min: f64, type_max: f64| {
+		let clamp_min = hard_min.unwrap_or(if soft_min.is_some() { f64::NEG_INFINITY } else { type_min });
+		let clamp_max = hard_max.unwrap_or(if soft_max.is_some() { f64::INFINITY } else { type_max });
+		let extent_min = soft_min.or(hard_min).unwrap_or(type_min);
+		let extent_max = soft_max.or(hard_max).unwrap_or(type_max);
+
+		number_input
+			.min(clamp_min)
+			.max(clamp_max)
+			.range_min(Some(extent_min).filter(|bound| bound.is_finite()))
+			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
+	};
 
 	let default_info = ParameterWidgetsInfo::new(node_id, index, true, context);
+
+	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
+	let unsupported_widgets = |default_info: ParameterWidgetsInfo, type_label: String| {
+		let is_exposed = default_info.is_exposed();
+
+		let mut widgets = start_widgets(default_info);
+		if !is_exposed {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				TextLabel::new("-")
+					.tooltip_label(type_label)
+					.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
+					.widget_instance(),
+			]);
+		}
+
+		vec![LayoutGroup::from(widgets)]
+	};
 
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
-				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
-				Some("Angle") | Some("AngleF32") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
-				Some("Multiplier") => number_widget(default_info, number_input.unit(unit.unwrap_or("x"))).into(),
-				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(unit.unwrap_or(" px"))).into(),
-				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
-				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
-				Some("Progression") => progression_widget(default_info, number_input.min(min(0.))).into(),
-				Some("SignedInteger") => number_widget(default_info, number_input.int()).into(),
-				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
+				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, bounded(number_input.percentage(), 0., 100.)).into(),
+				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, bounded(number_input.percentage(), -100., 100.)).into(),
+				Some("Angle") | Some("AngleF32") => number_widget(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°"))).into(),
+				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
+				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
+				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+				Some("Fraction") => number_widget(default_info, bounded(number_input.mode_range(), 0., 1.)).into(),
+				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some("SeedValue") => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
 
 				// For all other types, use TypeId-based matching
 				_ => {
 					use std::any::TypeId;
+
+					// The compiler peels a rank-0 `Item` cell to its element before this arm runs, so widgets dispatch on the bare element `T`
+					fn id_is<T: 'static>(id: TypeId) -> bool {
+						id == TypeId::of::<T>()
+					}
+
 					match concrete_type.id {
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if x == TypeId::of::<f64>() || x == TypeId::of::<f32>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
-						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX)))).into(),
-						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
-						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
-						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
-						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						// ==========
-						// LIST TYPES
-						// ==========
-						Some(x) if x == TypeId::of::<List<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<List<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<List<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<List<BrushStroke>>() => brush_strokes_widget(default_info).into(),
+						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
+						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
+						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
+						Some(x) if id_is::<String>(x) => text_widget(default_info).into(),
+						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", "", None, false),
+						Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
+						Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if id_is::<BrushTrace>(x) => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
-						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
-						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
-						Some(x) if x == TypeId::of::<Box<VectorModification>>() => vector_modification_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<Image<Color>>() => image_data_widget(default_info).into(),
+						Some(x) if id_is::<Font>(x) => font_widget(default_info),
+						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
+						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
+						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
-						Some(x) if x == TypeId::of::<ReferencePoint>() => reference_point_widget(default_info, false).into(),
-						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
+						Some(x) if id_is::<ReferencePoint>(x) => reference_point_widget(default_info, false).into(),
+						Some(x) if id_is::<BlendMode>(x) => blend_mode_widget(default_info),
 						// =========================
 						// AUTO-GENERATED ENUM TYPES
 						// =========================
-						Some(x) if x == TypeId::of::<GradientType>() => enum_choice::<GradientType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<GradientSpreadMethod>() => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StringCapitalization>() => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<CellularReturnType>() => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<DomainWarpType>() => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<RelativeAbsolute>() => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if x == TypeId::of::<GridType>() => enum_choice::<GridType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StrokeCap>() => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StrokeJoin>() => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<RowsOrColumns>() => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<ExtrudeJoiningAlgorithm>() => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<QRCodeErrorCorrectionLevel>() => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<ScaleType>() => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<InterpolationDistribution>() => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientType>(x) => enum_choice::<GradientType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientSpreadMethod>(x) => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<XY>(x) => enum_choice::<XY>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<PaintOrder>(x) => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<LuminanceCalculation>(x) => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
 						// =====
 						// OTHER
 						// =====
-						_ => {
-							let is_exposed = default_info.is_exposed();
-
-							let mut widgets = start_widgets(default_info);
-
-							if !is_exposed {
-								widgets.extend_from_slice(&[
-									Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-									TextLabel::new("-")
-										.tooltip_label(concrete_type.to_string())
-										.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
-										.widget_instance(),
-								]);
-							}
-							return Err(vec![widgets.into()]);
-						}
+						_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
 					}
 				}
 			}
 		}
+		Type::Item(element) => return property_from_type(node_id, index, element, number_options, unit, display_decimal_places, step, context),
+		Type::List(element) => match element.as_ref() {
+			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
+			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
+		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
@@ -822,6 +866,32 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 	widgets
 }
 
+pub fn dash_pattern_widget(parameter_widgets_info: ParameterWidgetsInfo, text_input: TextInput) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return Vec::new() };
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(TaggedValue::DashPattern(pattern)) = &input.as_non_exposed_value() {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			text_input
+				.value(pattern.0.iter_element_values().map(|length| length.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(
+					move |input: &TextInput| Some(TaggedValue::DashPattern(DashPattern::from(input.value.as_str()))),
+					node_id,
+					index,
+				))
+				.widget_instance(),
+		])
+	}
+	widgets
+}
+
 pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetInstance>, Option<Vec<WidgetInstance>>) {
 	pub fn assign_font_message(node_id: NodeId, font: Font) -> Message {
 		let resource_id = ResourceId::new();
@@ -1134,30 +1204,37 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	// Add the color input
-	match &**tagged_value {
-		TaggedValue::Color(color) => widgets.push(
-			color_button
-				.value(FillChoiceUI::from(&match color {
-					Some(color) => FillChoice::Solid(*color),
-					None => FillChoice::None,
-				}))
-				.on_update(update_value(|input: &ColorInput| TaggedValue::Color(input.value.as_solid().map(Color::from)), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		TaggedValue::Gradient(stops) => widgets.push(
-			color_button
-				.value(FillChoiceUI::from(&FillChoice::Gradient(stops.clone())))
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().map(GradientStops::from).unwrap_or_default()),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		x => warn!("Color {x:?}"),
-	}
+	let widget_value = match &**tagged_value {
+		TaggedValue::Color(color) => FillChoiceUI::Solid(SRGBA8::from(*color)),
+		TaggedValue::Gradient(stops) => FillChoiceUI::Gradient(GradientUI::from(stops)),
+		value if value.is_no_paint() => FillChoiceUI::None,
+		x => {
+			warn!("Color {x:?}");
+			return LayoutGroup::row(widgets);
+		}
+	};
+
+	// A paint input (`allow_none`) stores the pick as a plain color, gradient, or no-paint type default,
+	// while a plain color or gradient input always keeps its own value type
+	let on_update: fn(&ColorInput) -> TaggedValue = if color_button.allow_none {
+		|input| match &input.value {
+			FillChoiceUI::None => TaggedValue::no_paint(),
+			FillChoiceUI::Solid(srgba) => TaggedValue::Color(Color::from(*srgba)),
+			FillChoiceUI::Gradient(gradient_ui) => TaggedValue::Gradient(Gradient::from(gradient_ui)),
+		}
+	} else if matches!(&**tagged_value, TaggedValue::Gradient(_)) {
+		|input| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_default())
+	} else {
+		|input| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT))
+	};
+
+	widgets.push(
+		color_button
+			.value(widget_value)
+			.on_update(update_value(on_update, node_id, index))
+			.on_commit(commit_value)
+			.widget_instance(),
+	);
 
 	LayoutGroup::row(widgets)
 }
@@ -1226,8 +1303,8 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 }
 
 /// 2-stop black-to-white gradient track for spectrum sliders that map a value to a grayscale axis.
-fn bw_track() -> GradientStops {
-	GradientStops {
+fn bw_track() -> Gradient {
+	Gradient {
 		position: vec![0., 1.],
 		midpoint: vec![0.5, 0.5],
 		color: vec![Color::BLACK, Color::WHITE],
@@ -1235,8 +1312,8 @@ fn bw_track() -> GradientStops {
 }
 
 /// 3-stop black-to-color-to-white gradient track for spectrum sliders that map a value to a hue's full luminance range.
-fn color_track(color: Color) -> GradientStops {
-	GradientStops {
+fn color_track(color: Color) -> Gradient {
+	Gradient {
 		position: vec![0., 0.5, 1.],
 		midpoint: vec![0.5; 3],
 		color: vec![Color::BLACK, color, Color::WHITE],
@@ -1271,7 +1348,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 
 	let contrast_min = if use_classic_value { -100. } else { -50. };
 	let zero_position = -contrast_min / (100. - contrast_min);
-	let contrast_track = GradientStops {
+	let contrast_track = Gradient {
 		position: vec![0., zero_position, 1.],
 		midpoint: vec![0.5; 3],
 		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::BLACK, Color::from_rgbf32_unchecked(0.5, 0.5, 0.5)],
@@ -1368,7 +1445,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(GradientStopsUI::from(&bw_track()))
+		SpectrumInput::new(GradientUI::from(&bw_track()))
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1461,13 +1538,13 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	let saturated_current_hue = Color::from_hsva(marker_hue, 1., 1., 1.);
 
 	// Hue: cyclic rainbow
-	let hue_track = GradientStops {
+	let hue_track = Gradient {
 		position: vec![0., 1. / 6., 2. / 6., 3. / 6., 4. / 6., 5. / 6., 1.],
 		midpoint: vec![0.5; 7],
 		color: vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED],
 	};
 	// Saturation: gray to the fully saturated current hue
-	let saturation_track = GradientStops {
+	let saturation_track = Gradient {
 		position: vec![0., 1.],
 		midpoint: vec![0.5, 0.5],
 		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), saturated_current_hue],
@@ -1517,7 +1594,7 @@ fn spectrum_slider_row(
 	node_id: NodeId,
 	context: &mut NodePropertiesContext,
 	input_index: usize,
-	track: GradientStops,
+	track: Gradient,
 	handle_color: Color,
 	value_min: f64,
 	value_max: f64,
@@ -1542,7 +1619,7 @@ fn spectrum_slider_row(
 
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
-			SpectrumInput::new(GradientStopsUI::from(&track))
+			SpectrumInput::new(GradientUI::from(&track))
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)
@@ -1602,7 +1679,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::vibrance::*;
 
-	let track = GradientStops {
+	let track = Gradient {
 		position: vec![0., 1.],
 		midpoint: vec![0.5, 0.5],
 		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::RED],
@@ -2135,7 +2212,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
 	// Corner Radius
-	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::<f64>::INDEX, true, context));
+	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::INDEX, true, context));
 	corner_radius_row_1.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
@@ -2155,20 +2232,15 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(CornerRadiusInput::<f64>::INDEX) else {
+		let Some(input) = document_node.inputs.get(CornerRadiusInput::INDEX) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
-		let uniform_val = match input.as_non_exposed_value() {
-			Some(TaggedValue::F64(x)) => *x,
-			Some(TaggedValue::F64Array(values)) => values.first().copied().unwrap_or(0.),
-			_ => 0.,
+		let corner_values = match input.as_non_exposed_value() {
+			Some(TaggedValue::BoxCorners(corners)) => corners.to_corner_values(),
+			_ => [0.; 4],
 		};
-		let individual_val = match input.as_non_exposed_value() {
-			Some(&TaggedValue::F64(x)) => vec![x; 4],
-			Some(TaggedValue::F64Array(values)) => values.clone(),
-			_ => vec![0.; 4],
-		};
+		let uniform_val = corner_values[0];
 
 		// Uniform/individual radio input widget
 		let uniform = RadioEntryData::new("Uniform")
@@ -2183,14 +2255,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64(uniform_val),
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(uniform_val)),
 					}
 					.into(),
 				]),
 			})
 			.on_commit(commit_value);
-		let individual_val_for_switch = individual_val.clone();
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
 			.on_update(move |_| Message::Batched {
@@ -2203,8 +2274,8 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64Array(individual_val_for_switch.clone()),
+						input_index: CornerRadiusInput::INDEX,
+						value: TaggedValue::BoxCorners(BoxCorners::from(corner_values.to_vec())),
 					}
 					.into(),
 				]),
@@ -2215,24 +2286,23 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 		// Radius value input widget
 		let input_widget = if is_individual {
-			let from_string = |string: &str| {
-				string
-					.split(&[',', ' '])
-					.filter(|x| !x.is_empty())
-					.map(str::parse::<f64>)
-					.collect::<Result<Vec<f64>, _>>()
-					.ok()
-					.map(|values| TaggedValue::F64Array(values.into_iter().take(4).collect()))
-			};
 			TextInput::default()
-				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, CornerRadiusInput::<f64>::INDEX))
+				.value(corner_values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(
+					move |x: &TextInput| Some(TaggedValue::BoxCorners(BoxCorners::from(x.value.as_str()))),
+					node_id,
+					CornerRadiusInput::INDEX,
+				))
 				.widget_instance()
 		} else {
 			NumberInput::default()
 				.value(Some(uniform_val))
 				.unit(" px")
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::<f64>::INDEX))
+				.on_update(update_value(
+					move |x: &NumberInput| TaggedValue::BoxCorners(BoxCorners::from(x.value.unwrap())),
+					node_id,
+					CornerRadiusInput::INDEX,
+				))
 				.on_commit(commit_value)
 				.widget_instance()
 		};
@@ -2281,34 +2351,54 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	} else {
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 		for input_index in 1..number_of_inputs {
+			// Hide inputs that are connected to a scope
+			if let Some(NodeInput::Scope(_)) = context
+				.network_interface
+				.input_from_connector(&InputConnector::node(node_id, input_index), context.selection_network_path)
+			{
+				continue;
+			}
+
 			let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
 				let Some(implementation) = context.network_interface.implementation(&node_id, context.selection_network_path) else {
 					log::error!("Could not get implementation for node {node_id}");
 					return Vec::new();
 				};
 
-				let mut number_options = (None, None, None);
+				let mut number_options = NumberOptions::default();
 				let mut display_decimal_places = None;
 				let mut step = None;
 				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
+						// Clone to end the `network_interface` borrow held via `implementation`, freeing the mutable borrow `input_type` needs below
+						let proto_node_identifier = proto_node_identifier.clone();
+
+						let mut default_type = None;
 						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
-							.get(proto_node_identifier)
+							.get(&proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
-							number_options = (field.number_min, field.number_max, field.number_mode_range);
+							number_options = NumberOptions {
+								soft_min: field.number_soft_min,
+								soft_max: field.number_soft_max,
+								hard_min: field.number_hard_min,
+								hard_max: field.number_hard_max,
+								slider: field.number_mode_range,
+							};
 							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
 							step = field.number_step;
-							if let Some(ref default) = field.default_type {
-								break 'early_return default.clone();
-							}
+							default_type = field.default_type.clone();
 						}
 
-						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
+						if let Some(default) = default_type {
+							break 'early_return default;
+						}
+
+						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(&proto_node_identifier) else {
 							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
 							return Vec::new();
 						};
@@ -2365,64 +2455,104 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
+	let expanded = !context.properties_panel_collapsed_sections.contains(&node_id);
 
-	LayoutGroup::section(name, description, visible, pinned, node_id.0, Layout(layout))
+	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
+}
+
+/// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
+/// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
+fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
+	if !context.selection_network_path.is_empty() {
+		return None;
+	}
+	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
+	Some(LayerNodeIdentifier::new(layer_node, context.network_interface))
 }
 
 /// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
 /// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
-fn gradient_orientation_in_fill_node(node_id: NodeId, gradient: &graphene_std::vector::style::Gradient, context: &mut NodePropertiesContext) -> Option<bool> {
-	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
-	let layer = LayerNodeIdentifier::new(layer_node, context.network_interface);
+fn gradient_orientation_in_fill_node(node_id: NodeId, gradient_transform: DAffine2, context: &mut NodePropertiesContext) -> Option<bool> {
+	let layer = root_layer_for_chain_node(node_id, context)?;
 	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
-	Some(graph_modification_utils::gradient_orientation_rightward(gradient.start, gradient.end, transform))
+	Some(graph_modification_utils::gradient_orientation_rightward(transform * gradient_transform))
 }
 
 /// Fill Node Widgets LayoutGroup
 pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::fill::*;
 
+	#[derive(Debug, Clone)]
+	enum ResolvedFill {
+		Solid(Option<Color>),
+		Gradient {
+			gradient: Gradient,
+			gradient_type: GradientType,
+			spread_method: GradientSpreadMethod,
+			transform: DAffine2,
+			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
+			transform_is_value: bool,
+		},
+		Other,
+	}
+
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, false, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Graphic>>::INDEX, false, context));
 
-	let document_node = match get_document_node(node_id, context) {
-		Ok(document_node) => document_node,
-		Err(err) => {
-			log::error!("Could not get document node in fill_properties: {err}");
-			return Vec::new();
-		}
-	};
-
-	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::FillGradient(backup_gradient))) = (
-		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
-		&document_node.inputs[BackupColorInput::INDEX].as_value(),
-		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
-	) {
-		(fill, backup_color, backup_gradient)
-	} else {
+	if get_document_node(node_id, context).is_ok_and(|node| node.inputs.get(FillInput::<List<Graphic>>::INDEX).is_some_and(|input| input.is_exposed())) {
 		return vec![LayoutGroup::row(widgets_first_row)];
-	};
-	let fill2 = fill.clone();
-	let backup_color_fill: Fill = (*backup_color).into();
-	let backup_gradient_fill: Fill = backup_gradient.clone().into();
+	}
 
-	match fill {
-		Fill::Gradient(gradient) => {
+	// A Fill node not attached to a layer (or living in a nested network) still shows its full fill UI; only the gradient's
+	// bounding-box default transform needs the layer, and it falls back to a unit box when there isn't one.
+	let layer = root_layer_for_chain_node(node_id, context);
+
+	let fill = match get_document_node(node_id, context) {
+		Ok(document_node) => match document_node.inputs[FillInput::<List<Graphic>>::INDEX].as_value() {
+			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
+			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
+			Some(TaggedValue::Gradient(_)) => {
+				match graph_modification_utils::read_fill_node_gradient(document_node, || {
+					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
+				}) {
+					Some(gradient) => ResolvedFill::Gradient {
+						gradient: gradient.stops,
+						gradient_type: gradient.gradient_type,
+						spread_method: gradient.spread_method,
+						transform: gradient.transform,
+						transform_is_value: gradient.transform_is_value,
+					},
+					None => ResolvedFill::Other,
+				}
+			}
+			_ => ResolvedFill::Other,
+		},
+		Err(_) => ResolvedFill::Other,
+	};
+
+	let (backup_color, backup_gradient) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let backup_color = match document_node.inputs[BackupColorInput::INDEX].as_value() {
+				Some(&TaggedValue::Color(color)) => Some(color),
+				_ => None,
+			};
+			let backup_stops = match document_node.inputs[BackupGradientInput::INDEX].as_value() {
+				Some(TaggedValue::Gradient(stops)) => stops.clone(),
+				_ => Gradient::default(),
+			};
+			(backup_color, backup_stops)
+		}
+		Err(_) => (None, Gradient::default()),
+	};
+
+	match &fill {
+		ResolvedFill::Gradient { gradient: stops, .. } => {
+			let stops = stops.clone();
+
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(
-					{
-						let gradient = gradient.clone();
-						move |_| {
-							let mut gradient = gradient.clone();
-							gradient.stops = gradient.stops.reversed();
-							TaggedValue::Fill(Fill::Gradient(gradient))
-						}
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				))
+				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput::<List<Graphic>>::INDEX))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2430,32 +2560,70 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		_ => add_blank_assist(&mut widgets_first_row),
 	}
 
+	let fill_choice_ui = match &fill {
+		ResolvedFill::Solid(color) => {
+			if let Some(color) = color {
+				FillChoiceUI::Solid(SRGBA8::from(*color))
+			} else {
+				FillChoiceUI::None
+			}
+		}
+		ResolvedFill::Gradient { gradient: stops, .. } => FillChoiceUI::Gradient(GradientUI::from(stops)),
+		ResolvedFill::Other => FillChoiceUI::None,
+	};
+
+	let solid_set_messages = move |color: Option<Color>| {
+		let mut messages = vec![
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: FillInput::<List<Graphic>>::INDEX,
+				value: color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
+			}
+			.into(),
+		];
+		if let Some(color) = color {
+			messages.push(
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: BackupColorInput::INDEX,
+					value: TaggedValue::Color(color),
+				}
+				.into(),
+			);
+		}
+		Message::Batched { messages: messages.into() }
+	};
+
+	let gradient_set_messages = move |gradient: Gradient| Message::Batched {
+		messages: Box::new([
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: FillInput::<List<Graphic>>::INDEX,
+				value: TaggedValue::Gradient(gradient.clone()),
+			}
+			.into(),
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: BackupGradientInput::INDEX,
+				value: TaggedValue::Gradient(gradient),
+			}
+			.into(),
+		]),
+	};
+
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
 		ColorInput::default()
-			.value(FillChoiceUI::from(&FillChoice::from(fill.clone())))
-			.on_update(move |x: &ColorInput| {
-				let new_fill = FillChoice::from(&x.value).to_fill(fill2.as_gradient());
-				let (backup_index, backup_value) = match &new_fill {
-					Fill::None => (BackupColorInput::INDEX, TaggedValue::Color(None)),
-					Fill::Solid(color) => (BackupColorInput::INDEX, TaggedValue::Color(Some(*color))),
-					Fill::Gradient(gradient) => (BackupGradientInput::INDEX, TaggedValue::FillGradient(gradient.clone())),
-				};
-				Message::Batched {
-					messages: Box::new([
-						NodeGraphMessage::SetInputValue {
-							node_id,
-							input_index: backup_index,
-							value: backup_value,
-						}
-						.into(),
-						NodeGraphMessage::SetInputValue {
-							node_id,
-							input_index: FillInput::<Color>::INDEX,
-							value: TaggedValue::Fill(new_fill),
-						}
-						.into(),
-					]),
+			.value(fill_choice_ui)
+			.on_update(move |x: &ColorInput| match &x.value {
+				FillChoiceUI::None => solid_set_messages(None),
+				FillChoiceUI::Solid(srgba8) => {
+					let color = Some(Color::from(*srgba8));
+					solid_set_messages(color)
+				}
+				FillChoiceUI::Gradient(gradient_stops_ui) => {
+					let gradient = Gradient::from(gradient_stops_ui);
+					gradient_set_messages(gradient)
 				}
 			})
 			.on_commit(commit_value)
@@ -2471,61 +2639,54 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, FillInput::<Color>::INDEX))
+				.on_update(update_value(
+					move |_| backup_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color),
+					node_id,
+					FillInput::<List<Graphic>>::INDEX,
+				))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, FillInput::<Color>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput::<List<Graphic>>::INDEX))
 				.on_commit(commit_value),
 		];
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries).selected_index(Some(if fill.as_gradient().is_some() { 1 } else { 0 })).widget_instance(),
+			RadioInput::new(entries)
+				.selected_index(Some(if matches!(fill, ResolvedFill::Gradient { .. }) { 1 } else { 0 }))
+				.widget_instance(),
 		]);
 
 		LayoutGroup::row(row)
 	};
 	widgets.push(fill_type_switch);
 
-	if let Fill::Gradient(gradient) = fill.clone() {
+	if let ResolvedFill::Gradient {
+		gradient_type,
+		spread_method,
+		transform,
+		transform_is_value,
+		..
+	} = fill.clone()
+	{
 		// Linear/Radial radio: blank assist (the "Reverse Direction" button has been moved down to the spread method row)
 		let mut row = vec![TextLabel::new("").widget_instance()];
 		add_blank_assist(&mut row);
 
-		let gradient_for_closure = gradient.clone();
-
 		let entries = [GradientType::Linear, GradientType::Radial]
 			.iter()
 			.map(|&grad_type| {
-				let gradient = gradient_for_closure.clone();
-				let set_input_value = update_value(
-					move |_: &()| {
-						let mut new_gradient = gradient.clone();
-						new_gradient.gradient_type = grad_type;
-						TaggedValue::Fill(Fill::Gradient(new_gradient))
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				);
 				RadioEntryData::new(format!("{:?}", grad_type))
 					.label(format!("{:?}", grad_type))
-					.on_update(move |_| Message::Batched {
-						messages: Box::new([
-							set_input_value(&()),
-							GradientToolMessage::UpdateOptions {
-								options: GradientOptionsUpdate::Type(grad_type),
-							}
-							.into(),
-						]),
-					})
+					.on_update(update_value(move |_| TaggedValue::GradientType(grad_type), node_id, GradientTypeInput::INDEX))
 					.on_commit(commit_value)
 			})
 			.collect();
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries).selected_index(Some(gradient.gradient_type as u32)).widget_instance(),
+			RadioInput::new(entries).selected_index(Some(gradient_type as u32)).widget_instance(),
 		]);
 
 		widgets.push(LayoutGroup::row(row));
@@ -2534,75 +2695,56 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		// space so canvas tilt and layer transforms behave the same as in the Gradient tool's control bar.
 		let mut spread_methods_row = vec![TextLabel::new("").widget_instance()];
 
-		let orientation_rightward = gradient_orientation_in_fill_node(node_id, &gradient, context).unwrap_or(true);
-		let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
-			.tooltip_label("Reverse Direction")
-			.tooltip_description(if gradient.gradient_type == GradientType::Radial {
-				"Reverse which end the gradient radiates from."
-			} else {
-				"Swap the start and end points of the gradient line."
-			})
-			.on_update(update_value(
-				{
-					let gradient = gradient.clone();
-					move |_| {
-						let mut gradient = gradient.clone();
-						std::mem::swap(&mut gradient.start, &mut gradient.end);
-						TaggedValue::Fill(Fill::Gradient(gradient))
-					}
-				},
-				node_id,
-				FillInput::<Color>::INDEX,
-			))
-			.widget_instance();
-		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		spread_methods_row.push(reverse_direction_button);
+		// The button writes a value into the transform input, so only offer it when the input isn't wired
+		if transform_is_value {
+			let start = transform.transform_point2(DVec2::ZERO);
+			let end = transform.transform_point2(DVec2::X);
+			let new_transform = build_transform_with_y_preservation(transform, end, start);
+			let orientation_rightward = gradient_orientation_in_fill_node(node_id, transform, context).unwrap_or(true);
+
+			let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+				.tooltip_label("Reverse Direction")
+				.tooltip_description(if gradient_type == GradientType::Radial {
+					"Reverse which end the gradient radiates from."
+				} else {
+					"Swap the start and end points of the gradient line."
+				})
+				.on_update(move |_| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: HasTransformInput::INDEX,
+							value: TaggedValue::Bool(true),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: TransformInput::INDEX,
+							value: TaggedValue::DAffine2(new_transform),
+						}
+						.into(),
+					]),
+				})
+				.widget_instance();
+			spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			spread_methods_row.push(reverse_direction_button);
+		} else {
+			add_blank_assist(&mut spread_methods_row);
+		}
 
 		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
 			.iter()
 			.map(|&spread_method| {
-				let gradient_for_input = gradient_for_closure.clone();
-				let gradient_for_backup = gradient_for_closure.clone();
-
-				let set_input_value = update_value(
-					move |_: &()| {
-						let mut new_gradient = gradient_for_input.clone();
-						new_gradient.spread_method = spread_method;
-						TaggedValue::Fill(Fill::Gradient(new_gradient))
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				);
-
-				let set_backup_value = update_value(
-					move |_: &()| {
-						let mut new_gradient = gradient_for_backup.clone();
-						new_gradient.spread_method = spread_method;
-						TaggedValue::FillGradient(new_gradient)
-					},
-					node_id,
-					BackupGradientInput::INDEX,
-				);
-
 				RadioEntryData::new(format!("{:?}", spread_method))
 					.label(format!("{:?}", spread_method))
-					.on_update(move |_| Message::Batched {
-						messages: Box::new([
-							set_input_value(&()),
-							set_backup_value(&()),
-							GradientToolMessage::UpdateOptions {
-								options: GradientOptionsUpdate::SetSpreadMethod(spread_method),
-							}
-							.into(),
-						]),
-					})
+					.on_update(update_value(move |_| TaggedValue::GradientSpreadMethod(spread_method), node_id, SpreadMethodInput::INDEX))
 					.on_commit(commit_value)
 			})
 			.collect();
 
 		spread_methods_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance(),
+			RadioInput::new(spread_method_entries).selected_index(Some(spread_method as u32)).widget_instance(),
 		]);
 
 		widgets.push(LayoutGroup::row(spread_methods_row));
@@ -2617,7 +2759,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in fill_properties: {err}");
+			log::error!("Could not get document node in stroke_properties: {err}");
 			return Vec::new();
 		}
 	};
@@ -2626,14 +2768,14 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<List<f64>>::INDEX].as_value() {
-		Some(TaggedValue::F64Array(values)) => values.is_empty(),
+	let has_dash_lengths = match &document_node.inputs[DashPatternInput::INDEX].as_value() {
+		Some(TaggedValue::DashPattern(pattern)) => pattern.0.is_empty(),
 		_ => true,
 	};
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, ColorInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, PaintInput::<List<Graphic>>::INDEX, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));
@@ -2653,10 +2795,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
-	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<List<f64>>::INDEX, true, context),
-		TextInput::default().centered(true),
-	);
+	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput::INDEX, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
 	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
 

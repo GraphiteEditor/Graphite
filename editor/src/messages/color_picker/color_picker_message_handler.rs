@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientStops, GradientStopsUI};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientUI};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -28,7 +28,7 @@ pub struct ColorPickerMessageHandler {
 	old_is_none: bool,
 
 	// When set, the picker is editing a gradient: the visual pickers and inputs target the active stop's color.
-	gradient: Option<GradientStops>,
+	gradient: Option<Gradient>,
 	active_marker_index: Option<u32>,
 	active_marker_is_midpoint: bool,
 
@@ -339,6 +339,31 @@ impl ColorPickerMessageHandler {
 					self.snapshot_old();
 				}
 			}
+			SpectrumInputUpdate::InsertDuplicate { index, position } => {
+				let source = index as usize;
+				let Some(insert_index) = gradient.duplicate_stop(source, position) else { return };
+				// The dragged stop (the duplication source) stays active. Its index shifts up if the frozen copy landed at or before it.
+				let dragged_index = if insert_index <= source { source + 1 } else { source };
+				self.active_marker_index = Some(dragged_index as u32);
+				self.active_marker_is_midpoint = false;
+			}
+			SpectrumInputUpdate::RemoveDuplicate { index } => {
+				let anchor = index as usize;
+				if anchor >= gradient.position.len() || gradient.position.len() <= 2 {
+					return;
+				}
+				// Never remove the active (dragged) stop itself, this should only ever target the frozen copy.
+				if self.active_marker_index == Some(anchor as u32) {
+					return;
+				}
+				gradient.remove(anchor);
+				// Keep the dragged stop active. Its index shifts down if the removed copy came before it.
+				if let Some(active) = self.active_marker_index
+					&& (anchor as u32) < active
+				{
+					self.active_marker_index = Some(active - 1);
+				}
+			}
 			SpectrumInputUpdate::DeleteMarker { index } => {
 				// Enforce minimum stop count. The gradient editor needs at least 2 stops to remain meaningful.
 				if gradient.position.len() <= 2 || (index as usize) >= gradient.position.len() {
@@ -405,7 +430,7 @@ impl ColorPickerMessageHandler {
 			// For gradient editing, the markers' handle colors mirror their gradient stop colors
 			let markers = gradient.iter().map(|stop| SpectrumMarker::new(stop.position, stop.midpoint, stop.color)).collect();
 			let mut row_widgets = vec![
-				SpectrumInput::new(GradientStopsUI::from(gradient))
+				SpectrumInput::new(GradientUI::from(gradient))
 					.markers(markers)
 					.active_marker_index(self.active_marker_index)
 					.active_marker_is_midpoint(self.active_marker_is_midpoint)

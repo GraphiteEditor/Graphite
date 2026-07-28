@@ -7,7 +7,7 @@ use crate::common::*;
 const EXECUTABLE: &str = "Graphite.exe";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
-	let app_bin = build_bin("graphite-desktop-platform-win", None)?;
+	let app_bin = build_bin("graphite-desktop-platform-win", None, None)?;
 
 	let executable = bundle(&profile_path(), &app_bin);
 

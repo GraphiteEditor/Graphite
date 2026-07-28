@@ -1,7 +1,9 @@
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
-use graphite_editor::messages::prelude::{FrontendMessage, Message, Wake};
+use graphite_editor::messages::frontend::FrontendMessage;
+use graphite_editor::messages::prelude::Wake;
+
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 use std::sync::Arc;
@@ -11,8 +13,11 @@ pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
+pub use wgpu_executor::WgpuCurrentSurfaceTexture;
 pub use wgpu_executor::WgpuExecutor;
 pub use wgpu_executor::WgpuFeatures;
+pub use wgpu_executor::WgpuInstance;
+pub use wgpu_executor::WgpuSurface;
 
 mod handle_desktop_wrapper_message;
 mod intercept_editor_message;
@@ -26,7 +31,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, working_copy_root: std::path::PathBuf, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -37,7 +42,7 @@ impl DesktopWrapper {
 		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 
 		Self {
-			editor: Editor::new(env, uuid_random_seed, resource_storage, application_io, schedule_wake),
+			editor: Editor::new(env, uuid_random_seed, resource_storage, Some(working_copy_root), application_io, schedule_wake),
 		}
 	}
 
@@ -62,21 +67,10 @@ pub enum NodeGraphExecutionResult {
 }
 
 pub fn deserialize_editor_message(data: &[u8]) -> Option<DesktopWrapperMessage> {
-	if let Ok(string) = std::str::from_utf8(data) {
-		if let Ok(message) = ron::de::from_str::<Message>(string) {
-			Some(DesktopWrapperMessage::FromWeb(message.into()))
-		} else {
-			None
-		}
-	} else {
-		None
-	}
+	let message = graphite_wasm_wrapper::native_communication::decode_editor_command(data)?;
+	Some(DesktopWrapperMessage::FromWeb(message.into()))
 }
 
 pub fn serialize_frontend_messages(messages: Vec<FrontendMessage>) -> Option<Vec<u8>> {
-	if let Ok(serialized) = ron::ser::to_string(&messages) {
-		Some(serialized.into_bytes())
-	} else {
-		None
-	}
+	graphite_wasm_wrapper::native_communication::encode_frontend_messages(messages)
 }

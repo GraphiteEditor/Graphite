@@ -1,6 +1,5 @@
 use crate::WgpuExecutor;
 use core_types::Color;
-use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::ops::Convert;
@@ -20,7 +19,7 @@ fn upload_to_texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Raster<
 	device.create_texture_with_data(
 		queue,
 		&TextureDescriptor {
-			label: Some("upload_texture node texture"),
+			label: Some("upload_to_texture staging texture"),
 			size: Extent3d {
 				width: image.width,
 				height: image.height,
@@ -50,6 +49,7 @@ struct RasterGpuToRasterCpuConverter {
 	height: u32,
 	unpadded_bytes_per_row: u32,
 	padded_bytes_per_row: u32,
+	_source: raster_types::Texture,
 }
 impl RasterGpuToRasterCpuConverter {
 	fn new(device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
@@ -97,6 +97,8 @@ impl RasterGpuToRasterCpuConverter {
 			height,
 			unpadded_bytes_per_row,
 			padded_bytes_per_row,
+			// Keep source texture alive
+			_source: data_gpu.texture.clone(),
 		}
 	}
 
@@ -150,12 +152,12 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
 impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
 		let device = &executor.context().device;
-		let queue = &executor.context().queue;
+		let queue = executor.context().queue.lock();
 		let list = self
 			.into_iter()
 			.map(|row| {
 				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(device, queue, &image);
+				let texture = upload_to_texture(device, &queue, &image);
 
 				Item::from_parts(Raster::new_gpu(texture), attributes)
 			})
@@ -170,8 +172,8 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
 		let device = &executor.context().device;
-		let queue = &executor.context().queue;
-		let texture = upload_to_texture(device, queue, &self);
+		let queue = executor.context().queue.lock();
+		let texture = upload_to_texture(device, &queue, &self);
 
 		queue.submit([]);
 		Raster::new_gpu(texture)
@@ -243,16 +245,4 @@ impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 
 		converter.convert(device).await.expect("Failed to download texture data")
 	}
-}
-
-/// Uploads an raster texture from the CPU to the GPU. This is now deprecated and the Convert node should be used in the future.
-///
-/// Accepts either individual raster data or a `List` of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
-#[node_macro::node(category(""))]
-pub async fn upload_texture<'a: 'n, T: Convert<List<Raster<GPU>>, &'a WgpuExecutor>>(
-	_: impl Ctx,
-	#[implementations(List<Raster<CPU>>, List<Raster<GPU>>)] input: T,
-	executor: &'a WgpuExecutor,
-) -> List<Raster<GPU>> {
-	input.convert(Footprint::DEFAULT, executor).await
 }

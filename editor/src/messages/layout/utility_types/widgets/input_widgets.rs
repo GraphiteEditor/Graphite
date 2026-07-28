@@ -6,7 +6,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoiceUI, GradientStopsUI};
+use graphene_std::vector::style::{FillChoiceUI, GradientUI};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -531,7 +531,7 @@ pub struct SpectrumInput {
 	// Content
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
-	pub track: GradientStopsUI,
+	pub track: GradientUI,
 	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]
@@ -610,6 +610,16 @@ pub enum SpectrumInputUpdate {
 		position: f64,
 	},
 	DeleteMarker {
+		index: u32,
+	},
+	/// Insert a copy (same color and midpoint) of the marker at `index` at `position`, keeping the marker at `index` active.
+	InsertDuplicate {
+		index: u32,
+		position: f64,
+	},
+	/// Remove the marker at `index` while keeping the currently active marker active (renumbered to account for the removal).
+	/// Used to un-duplicate when Alt is released mid-drag, deleting the frozen copy left by [`InsertDuplicate`](Self::InsertDuplicate).
+	RemoveDuplicate {
 		index: u32,
 	},
 	/// Emitted when the user double-clicks a marker. The consumer decides what (if anything) to reset the marker to.

@@ -1,7 +1,7 @@
 use crate::common::*;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let app_bin = build_bin("graphite-desktop-platform-linux", None)?;
+	let app_bin = build_bin("graphite-desktop-platform-linux", None, None)?;
 
 	// TODO: Implement bundling for linux
 

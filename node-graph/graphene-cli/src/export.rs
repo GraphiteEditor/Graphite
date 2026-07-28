@@ -57,7 +57,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor.execute(render_config).await?;
+	let result = executor.execute(render_config.into_context()).await?;
 
 	// Handle the result based on output type
 	match result {
@@ -67,13 +67,11 @@ pub async fn export_document(
 				std::fs::write(&output_path, svg)?;
 				log::info!("Exported SVG to: {}", output_path.display());
 			}
-			RenderOutputType::Texture(image_texture) => {
+			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
-				let gpu_raster = Raster::<GPU>::new_gpu(image_texture.as_ref().clone());
+				let gpu_raster = Raster::<GPU>::new_gpu(texture);
 				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
-				// Explicitly drop texture to make sure it lives long enough
-				std::mem::drop(image_texture);
 
 				// Encode and write raster image
 				write_raster_image(output_path, file_type, data, width, height, transparent)?;
@@ -197,16 +195,14 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor.execute(render_config).await?;
+		let result = executor.execute(render_config.into_context()).await?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
 			TaggedValue::RenderOutput(output) => match output.data {
-				RenderOutputType::Texture(image_texture) => {
-					let gpu_raster = Raster::<GPU>::new_gpu(image_texture.as_ref().clone());
+				RenderOutputType::Texture(texture) => {
+					let gpu_raster = Raster::<GPU>::new_gpu(texture);
 					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
-					// Explicitly drop texture to make sure it lives long enough
-					std::mem::drop(image_texture);
 					cpu_raster.to_flat_u8()
 				}
 				RenderOutputType::Buffer { data, width, height } => (data, width, height),

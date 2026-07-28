@@ -789,8 +789,10 @@ impl PanelLayoutSubdivision {
 }
 
 pub enum FileContent {
-	/// A Graphite document.
+	/// A legacy `.graphite` document (serialized runtime JSON).
 	Document(String),
+	/// A `.gdd` document container (archive bytes).
+	GddDocument(Vec<u8>),
 	/// A bitmap image.
 	Image(Image<Color>),
 	/// An SVG file string.

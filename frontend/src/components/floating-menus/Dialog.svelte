@@ -136,7 +136,6 @@
 			}
 
 			.text-label.multiline {
-				-webkit-user-select: text; // Still required by Safari as of 2026
 				user-select: text;
 			}
 

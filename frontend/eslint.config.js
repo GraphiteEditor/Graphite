@@ -29,6 +29,7 @@ export default defineConfig([
 		"**/node_modules/",
 		"**/dist/",
 		"**/pkg/",
+		"**/pkg-native/",
 		"wasm/pkg/",
 		// Don't ignore JS and TS dotfiles in this folder
 		"!**/.*.js",

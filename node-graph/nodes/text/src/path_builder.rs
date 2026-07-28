@@ -201,7 +201,7 @@ impl PathBuilder {
 			}
 		}
 
-		// "Separate Glyphs" off: widen the accumulated AABBs and bundle as one override `Vector`
+		// Glyph separation off: widen the accumulated AABBs and bundle as one override `Vector`
 		if !self.merged_click_target_bboxes.is_empty() {
 			let mut bboxes = self.merged_click_target_bboxes;
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);

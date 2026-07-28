@@ -7,8 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait,
-	TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait, TypeParam,
+	TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -33,6 +33,8 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) where_clause: Option<WhereClause>,
 	pub(crate) input: Input,
 	pub(crate) output_type: Type,
+	/// The peeled `Item` element of `output_type`, if the node returns `Item<T>`.
+	pub(crate) output_element: Option<Type>,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
@@ -120,13 +122,99 @@ pub struct ParsedField {
 	pub is_data_field: bool,
 }
 
+impl ParsedField {
+	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
+	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
+	pub(crate) fn is_environment(&self) -> bool {
+		self.is_data_field
+			|| matches!(
+				self.ty.regular(),
+				Some(RegularParsedField {
+					value_source: ParsedValueSource::Scope(_),
+					..
+				})
+			)
+	}
+}
+
 #[derive(Clone, Debug)]
 pub enum ParsedFieldType {
 	Regular(RegularParsedField),
+	/// Declared `Item<T>`: a rank-0 cell carrying element `T`; the field's `ty` keeps the full declared type.
+	Item {
+		field: RegularParsedField,
+		element: Type,
+	},
+	/// Declared `List<T>`: a whole-list wire carrying element `T`; the field's `ty` keeps the full declared type.
+	List {
+		field: RegularParsedField,
+		element: Type,
+	},
 	Node(NodeParsedField),
 }
 
-/// A numeric bound value accepted by attributes like `#[soft_min]`, `#[hard_min]`, `#[soft_max]`, and `#[hard_max]`.
+/// Extracts `T` from a wrapper type like `Item<T>` or `List<T>`, if the type's outermost segment matches the wrapper name.
+fn peel_wrapper(ty: &syn::Type, wrapper: &str) -> Option<syn::Type> {
+	let syn::Type::Path(type_path) = ty else { return None };
+	let segment = type_path.path.segments.last()?;
+	if segment.ident != wrapper {
+		return None;
+	}
+
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else { return None };
+	match arguments.args.first()? {
+		syn::GenericArgument::Type(inner) => Some(inner.clone()),
+		_ => None,
+	}
+}
+
+pub(crate) fn peel_item(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "Item")
+}
+
+pub(crate) fn peel_list(ty: &syn::Type) -> Option<syn::Type> {
+	peel_wrapper(ty, "List")
+}
+
+impl ParsedFieldType {
+	/// Classifies a value field by its declared type: `Item<T>` and `List<T>` become the ranked variants carrying
+	/// element `T` (the field keeps the full declared type), and anything else stays `Regular`.
+	pub(crate) fn classify(field: RegularParsedField) -> ParsedFieldType {
+		if let Some(element) = peel_item(&field.ty) {
+			ParsedFieldType::Item { field, element }
+		} else if let Some(element) = peel_list(&field.ty) {
+			ParsedFieldType::List { field, element }
+		} else {
+			ParsedFieldType::Regular(field)
+		}
+	}
+
+	/// The shared value-field data, present for every value field (`Regular`, `Item`, `List`) but not a lazy `Node`.
+	pub fn regular(&self) -> Option<&RegularParsedField> {
+		match self {
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => Some(field),
+			ParsedFieldType::Node(_) => None,
+		}
+	}
+
+	/// The element type `T` of a rank-0 `Item<T>` field, or `None` for any other shape.
+	pub fn item_element(&self) -> Option<&Type> {
+		match self {
+			ParsedFieldType::Item { element, .. } => Some(element),
+			_ => None,
+		}
+	}
+
+	/// The element type `T` of a whole-list `List<T>` field, or `None` for any other shape.
+	pub fn list_element(&self) -> Option<&Type> {
+		match self {
+			ParsedFieldType::List { element, .. } => Some(element),
+			_ => None,
+		}
+	}
+}
+
+/// A single numeric endpoint within a `#[soft(..)]` or `#[hard(..)]` bounds range.
 /// Accepts both integer literals (e.g. `1`, `-1`) and float literals (e.g. `1.`, `-500.`).
 #[derive(Clone, Debug)]
 pub struct NumberBound {
@@ -180,6 +268,52 @@ impl ToTokens for NumberBound {
 	}
 }
 
+/// A pair of numeric bounds parsed from the `#[soft(a..b)]` and `#[hard(a..b)]` attributes.
+/// Either endpoint may be omitted for an open-ended bound (`a..` or `..b`), and each endpoint
+/// independently accepts an integer or float literal (each cast to `f64`), so a mixed range like
+/// `0..3.14159` is valid.
+///
+/// The operator is always the bare `..`; both endpoints are treated as inclusive (clamping reaches them).
+/// Unlike a Rust range there is no `..=` form, `..` is purely this attribute DSL's bounds operator.
+#[derive(Clone, Debug)]
+pub struct NumberRange {
+	start: Option<NumberBound>,
+	end: Option<NumberBound>,
+}
+
+impl Parse for NumberRange {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		if input.is_empty() {
+			return Err(input.error("expected a range like `0..100`, `..100`, or `0..`"));
+		}
+
+		// A leading endpoint is present unless the range opens directly into the `..` operator.
+		let start = if input.peek(syn::Token![..=]) || input.peek(syn::Token![..]) {
+			None
+		} else {
+			Some(input.parse::<NumberBound>()?)
+		};
+
+		// Only the bare `..` is accepted. `..=` is rejected even though both endpoints are inclusive here:
+		// this DSL treats `..` as its own bounds operator, deliberately diverging from Rust's range semantics.
+		if input.peek(syn::Token![..=]) {
+			return Err(input.error("use `..` rather than `..=` for number bounds; both endpoints are always inclusive (e.g. `0..100`)"));
+		}
+		if !input.peek(syn::Token![..]) {
+			return Err(input.error("expected a range like `0..100`, `..100`, or `0..`"));
+		}
+		input.parse::<syn::Token![..]>()?;
+
+		let end = if input.is_empty() { None } else { Some(input.parse::<NumberBound>()?) };
+
+		if start.is_none() && end.is_none() {
+			return Err(input.error("a bounds range must specify at least a lower or upper bound"));
+		}
+
+		Ok(NumberRange { start, end })
+	}
+}
+
 /// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
 /// `#[implementation(type)]`
 #[derive(Clone, Debug)]
@@ -191,7 +325,8 @@ pub struct RegularParsedField {
 	pub number_soft_max: Option<NumberBound>,
 	pub number_hard_min: Option<NumberBound>,
 	pub number_hard_max: Option<NumberBound>,
-	pub number_mode_range: Option<ExprTuple>,
+	/// Whether the number input renders as a draggable slider (the `#[range]` attribute) rather than the default increment field.
+	pub number_mode_range: bool,
 	pub implementations: Punctuated<Type, Comma>,
 	pub gpu_image: bool,
 }
@@ -201,6 +336,8 @@ pub struct RegularParsedField {
 pub struct NodeParsedField {
 	pub input_type: Type,
 	pub output_type: Type,
+	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
+	pub output_element: Option<Type>,
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
@@ -450,7 +587,7 @@ impl Parse for NodeFnAttributes {
 	}
 }
 
-fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
+pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
 	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes:\n{e}")))?;
 	let input_fn = syn::parse2::<ItemFn>(item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse function: {e}. Make sure it's a valid Rust function.")))?;
 
@@ -463,6 +600,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 
 	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
+	let output_element = peel_item(&output_type);
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let description = input_fn
@@ -491,6 +629,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		fn_generics,
 		input,
 		output_type,
+		output_element,
 		is_async,
 		fields,
 		where_clause,
@@ -680,47 +819,27 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		_ => ParsedValueSource::None,
 	};
 
-	let number_soft_min = extract_attribute(attrs, "soft_min")
+	// The slider's interactive extent (`#[soft(a..b)]`) and the enforced clamp (`#[hard(a..b)]`), each an
+	// optionally open-ended range. They decompose into the four bound values used by codegen and the UI.
+	let number_soft_bounds = extract_attribute(attrs, "soft")
 		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_min` value for argument '{ident}': {e}")))
+			attr.parse_args::<NumberRange>()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `soft` bounds for argument '{ident}': {e}\nUSAGE EXAMPLE: #[soft(0..100)]")))
 		})
 		.transpose()?;
-	let number_soft_max = extract_attribute(attrs, "soft_max")
+	let number_hard_bounds = extract_attribute(attrs, "hard")
 		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_max` value for argument '{ident}': {e}")))
+			attr.parse_args::<NumberRange>()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `hard` bounds for argument '{ident}': {e}\nUSAGE EXAMPLE: #[hard(0..100)]")))
 		})
 		.transpose()?;
+	let number_soft_min = number_soft_bounds.as_ref().and_then(|range| range.start.clone());
+	let number_soft_max = number_soft_bounds.as_ref().and_then(|range| range.end.clone());
+	let number_hard_min = number_hard_bounds.as_ref().and_then(|range| range.start.clone());
+	let number_hard_max = number_hard_bounds.as_ref().and_then(|range| range.end.clone());
 
-	let number_hard_min = extract_attribute(attrs, "hard_min")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{ident}': {e}")))
-		})
-		.transpose()?;
-	let number_hard_max = extract_attribute(attrs, "hard_max")
-		.map(|attr| {
-			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{ident}': {e}")))
-		})
-		.transpose()?;
-
-	let number_mode_range = extract_attribute(attrs, "range")
-		.map(|attr| {
-			attr.parse_args::<ExprTuple>().map_err(|e| {
-				Error::new_spanned(
-					attr,
-					format!("Invalid `range` tuple of min and max range slider values for argument '{ident}': {e}\nUSAGE EXAMPLE: #[range((0., 100.))]"),
-				)
-			})
-		})
-		.transpose()?;
-	if let Some(range) = &number_mode_range
-		&& range.elems.len() != 2
-	{
-		return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
-	}
+	// The `#[range]` marker selects the slider widget; its extent is derived from the soft (then hard) bounds.
+	let number_mode_range = extract_attribute(attrs, "range").is_some();
 
 	let unit = extract_attribute(attrs, "unit")
 		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, "Expected a unit type as string".to_string())))
@@ -789,11 +908,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
+		let output_element = peel_item(&output_type);
+
 		Ok(ParsedField {
 			pat_ident,
 			ty: ParsedFieldType::Node(NodeParsedField {
 				input_type,
 				output_type,
+				output_element,
 				implementations,
 			}),
 			name,
@@ -810,15 +932,15 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
-		// Error if a float literal is given for a bound attribute on an integer-typed field
+		// Error if a float literal is given for a bound on an integer-typed field
 		if is_integer_type(&ty) {
 			let bound_attrs = [
-				(&number_soft_min, "soft_min"),
-				(&number_hard_min, "hard_min"),
-				(&number_soft_max, "soft_max"),
-				(&number_hard_max, "hard_max"),
+				(&number_soft_min, "soft", "lower"),
+				(&number_soft_max, "soft", "upper"),
+				(&number_hard_min, "hard", "lower"),
+				(&number_hard_max, "hard", "upper"),
 			];
-			for (bound, attr_name) in bound_attrs {
+			for (bound, attr_name, end) in bound_attrs {
 				if let Some(NumberBound {
 					literal: NumberBoundLiteral::Float(_),
 					..
@@ -826,7 +948,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				{
 					return Err(Error::new_spanned(
 						&pat_ident,
-						format!("Attribute `#[{attr_name}]` on `{ident}` has a float literal, but `{ident}` is an integer type. Use an integer literal without a decimal point."),
+						format!("The {end} `#[{attr_name}]` bound on `{ident}` is a float literal, but `{ident}` is an integer type. Use an integer literal without a decimal point."),
 					));
 				}
 			}
@@ -834,7 +956,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 		Ok(ParsedField {
 			pat_ident,
-			ty: ParsedFieldType::Regular(RegularParsedField {
+			ty: ParsedFieldType::classify(RegularParsedField {
 				exposed,
 				number_soft_min,
 				number_soft_max,
@@ -909,6 +1031,12 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 }
 
 impl ParsedNodeFn {
+	/// The node's primary: the first argument (non-environment) field, whose declared shape classifies the node
+	/// as an element-wise kernel, aggregation, or generator. Returns the field with its index in `fields`.
+	pub(crate) fn primary_input_field(&self) -> Option<(usize, &ParsedField)> {
+		self.fields.iter().enumerate().find(|(_, field)| !field.is_environment())
+	}
+
 	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
@@ -1068,6 +1196,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
@@ -1082,7 +1211,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1138,6 +1267,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
+			output_element: None,
 			is_async: false,
 			fields: vec![
 				ParsedField {
@@ -1148,6 +1278,7 @@ mod tests {
 					ty: ParsedFieldType::Node(NodeParsedField {
 						input_type: parse_quote!(Footprint),
 						output_type: parse_quote!(T),
+						output_element: None,
 						implementations: Punctuated::new(),
 					}),
 					number_display_decimal_places: None,
@@ -1168,7 +1299,7 @@ mod tests {
 						number_soft_max: None,
 						number_hard_min: None,
 						number_hard_max: None,
-						number_mode_range: None,
+						number_mode_range: false,
 						implementations: Punctuated::new(),
 						gpu_image: false,
 					}),
@@ -1222,6 +1353,7 @@ mod tests {
 				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
@@ -1236,7 +1368,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1288,6 +1420,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<P>>),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
@@ -1302,7 +1435,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: {
 						let mut p = Punctuated::new();
 						p.push(parse_quote!(f32));
@@ -1330,9 +1463,9 @@ mod tests {
 			fn add(
 				a: f64,
 				/// b
-				#[range((0., 100.))]
-				#[soft_min(-500.)]
-				#[soft_max(500.)]
+				#[range]
+				#[soft(0..100)]
+				#[hard(-500..500)]
 				b: f64,
 			) -> f64 {
 				a + b
@@ -1366,6 +1499,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
+			output_element: None,
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
@@ -1376,11 +1510,11 @@ mod tests {
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
-					number_soft_min: Some(parse_quote!(-500.)),
-					number_soft_max: Some(parse_quote!(500.)),
-					number_hard_min: None,
-					number_hard_max: None,
-					number_mode_range: Some(parse_quote!((0., 100.))),
+					number_soft_min: Some(parse_quote!(0)),
+					number_soft_max: Some(parse_quote!(100)),
+					number_hard_min: Some(parse_quote!(-500)),
+					number_hard_max: Some(parse_quote!(500)),
+					number_mode_range: true,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1394,6 +1528,21 @@ mod tests {
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
+	}
+
+	#[test]
+	fn test_empty_bounds_range() {
+		let attr = quote!(category("Math: Arithmetic"));
+		let input = quote!(
+			fn add(a: f64, #[soft()] b: f64) -> f64 {
+				a + b
+			}
+		);
+
+		let result = parse_node_fn(attr, input);
+		assert!(result.is_err());
+		let error_message = result.unwrap_err().to_string();
+		assert!(error_message.contains("expected a range like `0..100`, `..100`, or `0..`"));
 	}
 
 	#[test]
@@ -1432,6 +1581,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(List<Raster<CPU>>),
+			output_element: None,
 			is_async: true,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
@@ -1446,7 +1596,7 @@ mod tests {
 					number_soft_max: None,
 					number_hard_min: None,
 					number_hard_max: None,
-					number_mode_range: None,
+					number_mode_range: false,
 					implementations: Punctuated::new(),
 					gpu_image: false,
 				}),
@@ -1498,6 +1648,7 @@ mod tests {
 				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
+			output_element: None,
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),
@@ -1587,10 +1738,10 @@ mod tests {
 				#[implementations(
 					() -> List<Raster<CPU>>,
 					() -> List<Color>,
-					() -> List<GradientStops>,
+					() -> List<Gradient>,
 					Footprint -> List<Raster<CPU>>,
 					Footprint -> List<Color>,
-					Footprint -> List<GradientStops>,
+					Footprint -> List<Gradient>,
 				)]
 				image: impl Node<F, Output = T>,
 			) -> T {

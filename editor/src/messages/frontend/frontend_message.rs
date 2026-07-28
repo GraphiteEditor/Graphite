@@ -1,7 +1,7 @@
 use super::IconName;
 use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage};
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -14,7 +14,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
-use graphene_std::raster::Image;
 use graphene_std::vector::style::FillChoiceUI;
 use std::path::PathBuf;
 
@@ -235,7 +234,7 @@ pub enum FrontendMessage {
 		svg: String,
 	},
 	UpdateImageData {
-		image_data: Vec<(u64, Image<SRGBA8>)>,
+		image_data: Vec<RasterizedImage>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,

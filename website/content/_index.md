@@ -85,7 +85,7 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 
 <div class="carousel-slide" data-carousel-slide>
-	<img src="https://static.graphite.art/content/index/gui-demo-creative-coding-poster.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.art/content/index/gui-demo-fractal__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 	<!-- Above is a copy of the last -->
 	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.art/content/index/gui-demo-painted-dreams__4.avif" />
 	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.art/content/index/gui-demo-magazine-page-layout.avif" />
@@ -165,9 +165,7 @@ The latest major update is out now! See what the team has been cooking up recent
 
 <div class="block video-container">
 <div>
-<div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="U3E-sWo2H_M" loading="lazy" src="https://static.graphite.art/content/index/video-may-2026-update.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="May Update - Graphite, the Open Source 2D Graphics Suite" />
-</div>
+{{ youtube_embed(id="U3E-sWo2H_M", title="May Update - Graphite, the Open Source 2D Graphics Suite") }}
 </div>
 </div>
 
@@ -496,9 +494,7 @@ Get started with Graphite by following along to a hands-on quickstart tutorial.
 
 <div class="block video-container">
 <div>
-<div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="7gjUhl_3X10" loading="lazy" src="https://static.graphite.art/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
-</div>
+{{ youtube_embed(id="7gjUhl_3X10", title="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite") }}
 </div>
 </div>
 

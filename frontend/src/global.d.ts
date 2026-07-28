@@ -6,6 +6,9 @@ interface Window {
 	receiveNativeMessage?: (buffer: ArrayBuffer) => void;
 }
 
+// Build-time constant injected by the `wasmSplitting` plugin in `vite.config.ts`
+declare const __WASM_PART_COUNT__: number;
+
 // Graphite's custom "pointerlockmove" event dispatched by input.ts for pointer lock in the CEF desktop app
 interface WindowEventMap {
 	pointerlockmove: CustomEvent<{ x: number; y: number }>;
