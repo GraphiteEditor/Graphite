@@ -1,5 +1,5 @@
 use super::InputConnector;
-use super::editor_delta::EditorDelta;
+use super::editor_delta::{EditorDelta, construct_batch};
 use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
@@ -27,9 +27,8 @@ fn convert(editor: &EditorTestUtils) -> Registry {
 	.registry
 }
 
-fn construct(editor: &EditorTestUtils, delta: &EditorDelta, working: &Registry) -> Vec<RegistryDelta> {
-	delta
-		.to_registry_deltas(working, &editor.active_document().resources.registry, PEER)
+fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
+	construct_batch(deltas, working, &editor.active_document().resources.registry, PEER)
 		.expect("construction should succeed")
 		.ops
 }
@@ -84,7 +83,7 @@ async fn set_input_value_constructs_the_exact_diff_op() {
 		input,
 	});
 
-	let constructed = construct(&editor, &delta, &working);
+	let constructed = construct(&editor, std::slice::from_ref(&delta), &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_eq!(constructed, diffed, "A value edit should construct exactly the diff's op");
 }
@@ -105,7 +104,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 		input_index: 1,
 		input: wire,
 	});
-	let constructed = construct(&editor, &delta, &working);
+	let constructed = construct(&editor, std::slice::from_ref(&delta), &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_eq!(constructed, diffed, "A wiring edit should construct exactly the diff's op");
 
@@ -117,7 +116,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 		export_index: 0,
 		input: export,
 	});
-	let constructed = construct(&editor, &delta, &working);
+	let constructed = construct(&editor, std::slice::from_ref(&delta), &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_eq!(constructed, diffed, "An export edit should construct exactly the diff's op");
 }
@@ -148,7 +147,7 @@ async fn adding_a_node_as_structure_plus_metadata_matches_the_diff() {
 		},
 	];
 
-	let constructed = deltas.iter().flat_map(|delta| construct(&editor, delta, &working)).collect();
+	let constructed = construct(&editor, &deltas, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "node addition");
 }
@@ -163,12 +162,21 @@ async fn metadata_edits_construct_the_exact_diff_ops() {
 	{
 		let network_interface = &mut editor.active_document_mut().network_interface;
 		network_interface.set_display_name(&node, "Renamed".to_string(), &[]);
+		network_interface.set_visibility(&node, &[], false);
 		network_interface.set_locked(&node, &[], true);
 		network_interface.set_pinned(&node, &[], true);
 		network_interface.shift_node(&node, glam::IVec2::new(3, 5), &[]);
 	}
 
-	let constructed = construct(&editor, &node_metadata_delta(&editor, node), &working);
+	let deltas = [
+		node_metadata_delta(&editor, node),
+		EditorDelta::Graph(RuntimeDelta::SetVisibility {
+			network_path: Vec::new(),
+			node_id: node,
+			visible: false,
+		}),
+	];
+	let constructed = construct(&editor, &deltas, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_eq!(constructed, diffed, "Metadata edits should construct exactly the diff's attribute ops");
 }
@@ -227,12 +235,7 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 		}
 	}
 
-	let without_resource_ops = |ops: Vec<RegistryDelta>| {
-		ops.into_iter()
-			.filter(|op| !matches!(op, RegistryDelta::RemoveResource { .. } | RegistryDelta::AddResource { .. }))
-			.collect::<Vec<_>>()
-	};
-	let constructed = without_resource_ops(deltas.iter().flat_map(|delta| construct(&editor, delta, &working)).collect());
-	let diffed = without_resource_ops(compute_deltas(&working, &convert(&editor)));
+	let constructed = construct(&editor, &deltas, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "nested network removal");
 }

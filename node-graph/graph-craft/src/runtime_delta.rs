@@ -27,4 +27,9 @@ pub enum RuntimeDelta {
 		export_index: usize,
 		input: NodeInput,
 	},
+	SetVisibility {
+		network_path: Vec<NodeId>,
+		node_id: NodeId,
+		visible: bool,
+	},
 }
