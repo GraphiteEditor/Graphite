@@ -8,9 +8,14 @@ use graph_craft::document::NodeId;
 use graph_craft::runtime_delta::RuntimeDelta;
 use std::collections::HashSet;
 
+/// A [`RuntimeDelta`] extended with the editor-only change kind: a wholesale copy of a node's
+/// persistent metadata, which storage diffs against the working registry so minimal attribute ops
+/// fall out. The compiler consumes only the `Graph` variant.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditorDelta {
 	Graph(RuntimeDelta),
+	/// The copy includes the metadata of everything nested under the node, so one delta covers a
+	/// group and its contents.
 	NodeMetadata {
 		network_path: Vec<NodeId>,
 		node_id: NodeId,
@@ -23,6 +28,10 @@ pub struct ConstructedOps {
 	pub declaration_bytes: DeclarationBytes,
 }
 
+/// Constructs the storage ops for one gesture's deltas, in delta order. Removal closures and
+/// resource liveness are computed against the whole batch, since several removals in one gesture
+/// can jointly orphan a resource that each alone would not. Op timestamps are placeholders,
+/// re-stamped by the staging clock.
 pub fn construct_batch(deltas: &[EditorDelta], working: &Registry, resources: &ResourceRegistry, peer: document_graph_storage::PeerId) -> Result<ConstructedOps, ConversionError> {
 	let resolver = PathResolver::new(peer);
 	let mut ops = Vec::new();
@@ -117,6 +126,8 @@ impl EditorDelta {
 	}
 }
 
+/// Converts through the same encoders as a whole-document conversion, with `NoMetadata` as the
+/// source: ui attributes arrive via the gesture's paired `NodeMetadata` delta.
 #[allow(clippy::too_many_arguments)]
 fn construct_structural_additions(
 	network_path: &[NodeId],
@@ -238,6 +249,8 @@ fn construct_metadata_changes(
 	Ok(())
 }
 
+/// Minimal ops transforming the `ui::`-prefixed subset of `current` into `encoded`, comparing
+/// values only, since timestamps are re-stamped at staging.
 fn ui_attribute_deltas(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
 	let owned = |key: &str| key.starts_with("ui::");
 	let mut deltas = Vec::new();
@@ -284,6 +297,8 @@ fn construct_removals(node_id: document_graph_storage::NodeId, working: &Registr
 	}
 }
 
+/// Emits removals for resources referenced only by the batch's removed nodes, checked after every
+/// removal is known.
 fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::NodeId], working: &Registry, ops: &mut Vec<RegistryDelta>) {
 	let removed_node_set: HashSet<_> = batch_removed_nodes.iter().copied().collect();
 	let mut candidates: Vec<ResourceId> = batch_removed_nodes
@@ -334,6 +349,8 @@ fn collect_removal_closure(node_id: document_graph_storage::NodeId, working: &Re
 	}
 }
 
+/// Serves a metadata copy as the [`document_graph_storage::NodeMetadataSource`] for its own
+/// encoding, resolving requested paths relative to the anchor node the copy was taken from.
 struct MetadataCopySource<'a> {
 	anchor_path: &'a [NodeId],
 	anchor_id: NodeId,
