@@ -67,7 +67,7 @@ impl Arrow {
 		let document_to_viewport = document.metadata().document_to_viewport;
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arrow::ArrowToInput),
 			input: NodeInput::value(TaggedValue::DVec2(arrow_to), false),
 		});
 		let downstream = document.metadata().downstream_transform_to_viewport(layer);

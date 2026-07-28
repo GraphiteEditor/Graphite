@@ -106,7 +106,7 @@ impl Circle {
 		let radius: f64 = if dimensions.x > dimensions.y { dimensions.y / 2. } else { dimensions.x / 2. };
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::circle::RadiusInput),
 			input: NodeInput::value(TaggedValue::F64(radius), false),
 		});
 

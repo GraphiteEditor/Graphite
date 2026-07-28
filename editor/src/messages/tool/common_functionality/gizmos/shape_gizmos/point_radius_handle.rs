@@ -8,12 +8,14 @@ use crate::messages::portfolio::document::{overlays::utility_types::OverlayConte
 use crate::messages::prelude::FrontendMessage;
 use crate::messages::prelude::Responses;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::ParameterRef;
+use graphene_std::vector::generator_nodes::{regular_polygon, star};
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
@@ -30,7 +32,8 @@ pub enum PointRadiusHandleState {
 pub struct PointRadiusHandle {
 	pub layer: Option<LayerNodeIdentifier>,
 	point: u32,
-	radius_index: usize,
+	/// The radius parameter the hovered or dragged handle writes to: a star's first or second radius, or a polygon's radius.
+	radius_parameter: Option<ParameterRef>,
 	snap_radii: Vec<f64>,
 	initial_radius: f64,
 	handle_state: PointRadiusHandleState,
@@ -63,7 +66,11 @@ impl PointRadiusHandle {
 					let viewport = document.metadata().transform_to_viewport(layer);
 
 					for i in 0..2 * sides {
-						let (radius, radius_index) = if i % 2 == 0 { (radius1, 2) } else { (radius2, 3) };
+						let (radius, radius_parameter) = if i % 2 == 0 {
+							(radius1, ParameterRef::from(star::Radius1Input))
+						} else {
+							(radius2, ParameterRef::from(star::Radius2Input))
+						};
 						let point = star_vertex_position(viewport, i as i32, sides, radius1, radius2);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
@@ -73,10 +80,10 @@ impl PointRadiusHandle {
 						}
 
 						if point.distance(mouse_position) < 5. {
-							self.radius_index = radius_index;
+							self.snap_radii = Self::calculate_snap_radii(document, layer, &radius_parameter);
+							self.radius_parameter = Some(radius_parameter);
 							self.layer = Some(layer);
 							self.point = i;
-							self.snap_radii = Self::calculate_snap_radii(document, layer, radius_index);
 							self.initial_radius = radius;
 							responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 							self.update_state(PointRadiusHandleState::Hover);
@@ -100,7 +107,7 @@ impl PointRadiusHandle {
 						}
 
 						if point.distance(mouse_position) < 5. {
-							self.radius_index = 2;
+							self.radius_parameter = Some(regular_polygon::RadiusInput.into());
 							self.layer = Some(layer);
 							self.point = i;
 							self.snap_radii.clear();
@@ -329,21 +336,20 @@ impl PointRadiusHandle {
 		}
 	}
 
-	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) -> Vec<f64> {
+	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_parameter: &ParameterRef) -> Vec<f64> {
 		let mut snap_radii = Vec::new();
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
-		else {
+		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(star::IDENTIFIER) else {
 			return snap_radii;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
 			return snap_radii;
 		};
 
-		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
+		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 
-		let Some(&TaggedValue::U32(sides)) = node_inputs[1].as_value() else {
+		let Some(&TaggedValue::U32(sides)) = parameters.value(star::SidesInput) else {
 			return snap_radii;
 		};
 
@@ -415,14 +421,15 @@ impl PointRadiusHandle {
 
 	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
 		let Some(layer) = self.layer else { return };
+		let Some(radius_parameter) = self.radius_parameter.clone() else { return };
 
-		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface)) else {
+		// The stored parameter names the node it belongs to (Star or Polygon), so locate that same node on the layer
+		let Some(node_id) = NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(radius_parameter.node_identifier.clone())) else {
 			return;
 		};
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 		let center = viewport_transform.transform_point2(DVec2::ZERO);
-		let radius_index = self.radius_index;
 
 		let original_radius = self.initial_radius;
 
@@ -436,7 +443,7 @@ impl PointRadiusHandle {
 
 		self.update_state(PointRadiusHandleState::Dragging);
 
-		self.check_if_radius_flipped(original_radius, new_radius, document, layer, radius_index);
+		self.check_if_radius_flipped(original_radius, new_radius, document, layer, &radius_parameter);
 
 		if let Some((index, snapped_delta)) = self.check_snapping(new_radius, original_radius) {
 			net_delta = snapped_delta;
@@ -444,29 +451,28 @@ impl PointRadiusHandle {
 		}
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, radius_index),
+			input_connector: InputConnector::node(node_id, radius_parameter),
 			input: NodeInput::value(TaggedValue::F64(original_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) {
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
-		else {
+	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_parameter: &ParameterRef) {
+		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(star::IDENTIFIER) else {
 			return;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
 			return;
 		};
 
-		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
+		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 
 		let flipped = (other_radius.is_sign_positive() && original_radius.is_sign_negative() && new_radius.is_sign_positive())
 			|| (other_radius.is_sign_negative() && original_radius.is_sign_positive() && new_radius.is_sign_negative());
 
 		if flipped {
-			self.snap_radii = Self::calculate_snap_radii(document, layer, radius_index);
+			self.snap_radii = Self::calculate_snap_radii(document, layer, radius_parameter);
 		}
 	}
 }

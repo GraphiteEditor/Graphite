@@ -63,7 +63,7 @@ async fn deleting_a_node_with_children_prunes_them_from_the_selection() {
 	assert!(network_interface.number_of_inputs(&parent, &[]) >= 2, "Test needs a secondary input to wire the child into");
 
 	// Wire the child into the parent's secondary input so it is a sole dependent, then select both and delete only the parent
-	network_interface.set_input(&InputConnector::node(parent, 1), NodeInput::node(child, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(parent, 1), NodeInput::node(child, 0), &[]);
 	network_interface.selected_nodes_mut(&[]).unwrap().set_selected_nodes(vec![parent, child]);
 	network_interface.delete_nodes(vec![parent], true, &[]);
 
@@ -86,8 +86,8 @@ async fn deleting_a_node_keeps_children_shared_with_other_nodes() {
 	let network_interface = &mut editor.active_document_mut().network_interface;
 
 	// Wire the same child into the secondary inputs of both nodes, then delete only the parent along with its children
-	network_interface.set_input(&InputConnector::node(parent, 1), NodeInput::node(shared_child, 0), &[]);
-	network_interface.set_input(&InputConnector::node(sibling, 1), NodeInput::node(shared_child, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(parent, 1), NodeInput::node(shared_child, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(sibling, 1), NodeInput::node(shared_child, 0), &[]);
 	network_interface.delete_nodes(vec![parent], true, &[]);
 
 	let nodes = &network_interface.document_network().nodes;
@@ -107,14 +107,14 @@ async fn cyclic_connection_is_rejected_without_side_effects() {
 	let b = editor.create_node_by_name(rectangle_definition()).await;
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
-	network_interface.set_input(&InputConnector::node(a, 1), NodeInput::node(b, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(a, 1), NodeInput::node(b, 0), &[]);
 
 	// Attempt to complete a cycle inside a transaction: the edit must be rejected without marking the transaction as modified
 	network_interface.start_transaction();
-	let input_before = network_interface.input_from_connector(&InputConnector::node(b, 1), &[]).cloned();
-	network_interface.set_input(&InputConnector::node(b, 1), NodeInput::node(a, 0), &[]);
+	let input_before = network_interface.input_from_connector(&InputConnector::node_at_index(b, 1), &[]).cloned();
+	network_interface.set_input(&InputConnector::node_at_index(b, 1), NodeInput::node(a, 0), &[]);
 
-	let input_after = network_interface.input_from_connector(&InputConnector::node(b, 1), &[]).cloned();
+	let input_after = network_interface.input_from_connector(&InputConnector::node_at_index(b, 1), &[]).cloned();
 	assert_eq!(input_before, input_after, "A rejected cyclic connection should leave the input unchanged");
 	assert_eq!(
 		network_interface.transaction_status(),
@@ -204,13 +204,13 @@ async fn layer_stacking_follows_wiring() {
 
 	// Wiring a layer into the bottom input of another layer converts it to stack positioning at its current visual spot
 	let lower_position_before = network_interface.position(&lower, &[]).expect("Lower layer should have a position");
-	network_interface.create_wire(&OutputConnector::node(lower, 0), &InputConnector::node(upper, 0), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(lower), &InputConnector::primary_input(upper), &[]);
 	assert!(network_interface.is_stack(&lower, &[]), "A layer feeding the bottom of a layer should be stack positioned");
 	let stacked_position = network_interface.position(&lower, &[]).expect("Stacked layer should have a position");
 	assert_eq!(stacked_position.y, lower_position_before.y, "Stacking should preserve the layer's vertical position");
 
 	// Disconnecting converts the layer back to absolute positioning without moving it
-	network_interface.disconnect_input(&InputConnector::node(upper, 0), &[]);
+	network_interface.disconnect_input(&InputConnector::primary_input(upper), &[]);
 	assert!(network_interface.is_absolute(&lower, &[]), "A disconnected stack layer should return to absolute positioning");
 	assert_eq!(network_interface.position(&lower, &[]), Some(stacked_position), "Unstacking should not move the layer");
 
@@ -229,7 +229,7 @@ async fn chain_membership_follows_wiring() {
 	network_interface.set_to_node_or_layer(&layer, &[], true);
 
 	// A node wired into a layer's secondary input from the same row, within chain distance, joins the chain
-	network_interface.create_wire(&OutputConnector::node(node, 0), &InputConnector::node(layer, 1), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::layer_secondary_input(layer), &[]);
 	assert!(
 		network_interface.is_chain(&node, &[]),
 		"A node feeding a layer's secondary input from chain range should become a chain node"
@@ -237,7 +237,7 @@ async fn chain_membership_follows_wiring() {
 
 	// Disconnecting breaks the chain and the node becomes absolute at its chain spot
 	let chained_y = network_interface.position(&node, &[]).expect("Chained node should have a position").y;
-	network_interface.disconnect_input(&InputConnector::node(layer, 1), &[]);
+	network_interface.disconnect_input(&InputConnector::layer_secondary_input(layer), &[]);
 	assert!(!network_interface.is_chain(&node, &[]), "Disconnecting should break the chain");
 	assert!(network_interface.is_absolute(&node, &[]));
 	assert_eq!(network_interface.position(&node, &[]).map(|position| position.y), Some(chained_y));
