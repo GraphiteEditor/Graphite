@@ -52,6 +52,13 @@ impl NodePropertiesContext<'_> {
 	}
 }
 
+/// Input position of the location parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
+pub const ARTBOARD_LOCATION_INPUT_INDEX: usize = 2;
+/// Input position of the dimensions parameter on the "Artboard" layer template, which follows the two layer-shaped inputs (stack and content) and maps through to the inner Create Artboard proto node.
+pub const ARTBOARD_DIMENSIONS_INPUT_INDEX: usize = 3;
+/// Input position of the control path parameter on the "Blend" network node template.
+pub const BLEND_PATH_INPUT_INDEX: usize = 4;
+
 /// The key used to access definitions for a network node or proto node.
 /// For proto nodes, this is their [`ProtoNodeIdentifier`].
 /// For network nodes, it doesn't necessarily have to be the same as the network's display name, but it often is.
@@ -1020,7 +1027,7 @@ fn static_input_properties() -> InputProperties {
 				});
 
 			Ok(vec![LayoutGroup::row(node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, blank_assist, context),
+				ParameterWidgetsInfo::at_index(node_id, index, blank_assist, context),
 				number_input,
 			))])
 		}),
@@ -1061,7 +1068,7 @@ fn static_input_properties() -> InputProperties {
 			};
 			// NOTE: The bool input MUST be at the input index directly before the f64 input!
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
-				ParameterWidgetsInfo::new(node_id, index, false, context),
+				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
 			))])
@@ -1074,7 +1081,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let number_input = NumberInput::default().percentage().min(0.).max(100.);
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
-				ParameterWidgetsInfo::new(node_id, index, false, context),
+				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
 			))])
@@ -1121,7 +1128,7 @@ fn static_input_properties() -> InputProperties {
 				.unwrap_or_default();
 
 			Ok(vec![node_properties::vec2_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				&x,
 				&y,
 				&unit,
@@ -1135,7 +1142,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let scale = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active),
 			);
 			Ok(vec![scale.into()])
@@ -1144,7 +1151,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
-			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context)).property_row();
 			Ok(vec![noise_type_row, LayoutGroup::row(Vec::new())])
 		}),
 	);
@@ -1153,7 +1160,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_type = enum_choice::<DomainWarpType>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![domain_warp_type])
@@ -1164,7 +1171,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let domain_warp_amplitude = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
 			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::row(Vec::new())])
@@ -1175,7 +1182,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_type_row = enum_choice::<FractalType>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active)
 				.property_row();
 			Ok(vec![fractal_type_row])
@@ -1186,7 +1193,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_octaves = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(1.)
@@ -1203,7 +1210,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_lacunarity = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1218,7 +1225,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_gain = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1233,7 +1240,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_weighted_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1248,7 +1255,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let fractal_ping_pong_strength = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.min(0.)
@@ -1263,7 +1270,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_distance_function_row])
@@ -1274,7 +1281,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_return_type = enum_choice::<CellularReturnType>()
-				.for_socket(ParameterWidgetsInfo::new(node_id, index, true, context))
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
 				.disabled(!coherent_noise_active || !cellular_noise_active)
 				.property_row();
 			Ok(vec![cellular_return_type])
@@ -1285,7 +1292,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let cellular_jitter = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
 					.mode_range()
 					.range_min(Some(0.))
@@ -1298,7 +1305,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default().allow_none(false));
+			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
@@ -1307,7 +1314,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let seed_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
 			);
 			Ok(vec![seed_row.into()])
@@ -1318,7 +1325,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let repeat_every_row = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default().min(0.).int().disabled(randomize_enabled),
 			);
 			Ok(vec![repeat_every_row.into()])
@@ -1327,7 +1334,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"transform_rotation".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
+			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
@@ -1341,7 +1348,7 @@ fn static_input_properties() -> InputProperties {
 						.mode(NumberInputMode::Range)
 						.range_min(Some(-180.))
 						.range_max(Some(180.))
-						.on_update(node_properties::update_value(
+						.on_update(node_properties::update_value_at_index(
 							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()),
 							node_id,
 							index,
@@ -1359,7 +1366,7 @@ fn static_input_properties() -> InputProperties {
 		"transform_translation".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![node_properties::vec2_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				"X",
 				"Y",
 				" px",
@@ -1371,13 +1378,22 @@ fn static_input_properties() -> InputProperties {
 	// Scale uses a Vec2 widget with W/H labels and an "x" unit suffix
 	map.insert(
 		"transform_scale".to_string(),
-		Box::new(|node_id, index, context| Ok(vec![node_properties::vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), "W", "H", "x", None, false)])),
+		Box::new(|node_id, index, context| {
+			Ok(vec![node_properties::vec2_widget(
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
+				"W",
+				"H",
+				"x",
+				None,
+				false,
+			)])
+		}),
 	);
 	// Skew has a custom override that maps to degrees
 	map.insert(
 		"transform_skew".to_string(),
 		Box::new(|node_id, index, context| {
-			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
+			let mut widgets = node_properties::start_widgets(&ParameterWidgetsInfo::at_index(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
 			let Some(input) = document_node.inputs.get(index) else {
@@ -1391,7 +1407,7 @@ fn static_input_properties() -> InputProperties {
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
-						.on_update(node_properties::update_value(
+						.on_update(node_properties::update_value_at_index(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), val.y)),
 							node_id,
 							index,
@@ -1404,7 +1420,7 @@ fn static_input_properties() -> InputProperties {
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
-						.on_update(node_properties::update_value(
+						.on_update(node_properties::update_value_at_index(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, input.value.unwrap())),
 							node_id,
 							index,
@@ -1419,7 +1435,7 @@ fn static_input_properties() -> InputProperties {
 	);
 	map.insert(
 		"text_area".to_string(),
-		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)))])),
+		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context)))])),
 	);
 	map.insert(
 		"text_font".to_string(),
@@ -1428,7 +1444,7 @@ fn static_input_properties() -> InputProperties {
 			if context.fonts.font_catalog.is_empty() {
 				context.responses.add(FontsMessage::LoadCatalog);
 			}
-			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
+			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::at_index(node_id, index, true, context));
 			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {
 				result.push(LayoutGroup::row(style));
@@ -1440,7 +1456,7 @@ fn static_input_properties() -> InputProperties {
 		"artboard_background".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![node_properties::color_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
+				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				ColorInput::default().allow_none(false),
 			)])
 		}),
@@ -1448,7 +1464,9 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"text_align".to_string(),
 		Box::new(|node_id, index, context| {
-			let choices = enum_choice::<text::TextAlign>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			let choices = enum_choice::<text::TextAlign>()
+				.for_socket(ParameterWidgetsInfo::at_index(node_id, index, true, context))
+				.property_row();
 			Ok(vec![choices])
 		}),
 	);

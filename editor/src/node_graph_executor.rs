@@ -15,7 +15,7 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, graphic_types};
-use graphene_std::{ATTR_TRANSFORM, Context, Graphic, NodeInputDecleration};
+use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -608,8 +608,8 @@ impl NodeGraphExecutor {
 				if fill_transform_unbaked(document, &network_path, fill_node_id) {
 					let absolute_gradient = gradient.to_absolute(bounding_box, item_transform);
 					let gradient_transform = absolute_gradient.transform * absolute_gradient.to_transform();
-					let has_transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput::INDEX);
-					let transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX);
+					let has_transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput);
+					let transform_input = InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput);
 					document
 						.network_interface
 						.set_input(&has_transform_input, NodeInput::value(TaggedValue::Bool(true), false), &network_path);
@@ -827,7 +827,7 @@ fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[Nod
 	};
 	let Some(node) = network.nodes.get(&fill_node_id) else { return false };
 	matches!(
-		node.inputs.get(graphene_std::vector::fill::HasTransformInput::INDEX).and_then(|input| input.as_value()),
+		node.input(graphene_std::vector::fill::HasTransformInput).and_then(|input| input.as_value()),
 		Some(TaggedValue::Bool(false))
 	)
 }
@@ -914,18 +914,10 @@ mod test {
 	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::NodeNetwork;
 	use graphene_std::Context;
-	use graphene_std::NodeInputDecleration;
+	use graphene_std::NodeParameter;
 	use graphene_std::list::Item;
 	use graphene_std::memo::IORecord;
 	use test_prelude::LayerNodeIdentifier;
-
-	/// A ranked input whose `Item<E>` Result carries an element `E`, recovered by `grab_ranked_input`.
-	pub trait RankedResult {
-		type Element: Send + Sync + Clone + 'static;
-	}
-	impl<E: Send + Sync + Clone + 'static> RankedResult for Item<E> {
-		type Element = E;
-	}
 
 	/// Stores all of the monitor nodes that have been attached to a graph
 	#[derive(Default)]
@@ -987,16 +979,6 @@ mod test {
 			instrumented
 		}
 
-		fn downcast<Input: NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
-		where
-			Input::Result: Send + Sync + Clone + 'static,
-		{
-			Self::downcast_record::<Input::Result>(dynamic).or_else(|| {
-				warn!("cannot downcast type for introspection");
-				None
-			})
-		}
-
 		/// Pulls a concrete output type out of a monitor record, tolerating the three context shapes the executor records against.
 		fn downcast_record<Output: Send + Sync + Clone + 'static>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Output> {
 			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Output>>() {
@@ -1010,25 +992,11 @@ mod test {
 			}
 		}
 
-		/// Grab all of the values of the input every time it occurs in the graph.
-		pub fn grab_all_input<'a, Input: NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
-		where
-			Input::Result: Send + Sync + Clone + 'static,
-		{
+		/// Grab all of the values of the input every time it occurs in the graph, downcast to the recorded `Output` type.
+		/// A record whose type does not match `Output` is skipped, so a wrong `Output` yields an empty iterator rather than an error.
+		pub fn grab_all_input<'a, Input: NodeParameter + 'a, Output: Send + Sync + Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
 			self.protonodes_by_name
-				.get(&Input::identifier())
-				.map_or([].as_slice(), |x| x.as_slice())
-				.iter()
-				.filter_map(|inputs| inputs.get(Input::INDEX))
-				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
-		}
-
-		/// Like [`Self::grab_all_input`], but downcasting the recorded values to `Output` instead of the marker's `Result`.
-		/// Useful when a stored value's wire form (e.g. `Item<Color>`) differs from the declared row types the marker's generic accepts.
-		pub fn grab_all_input_as<'a, Input: NodeInputDecleration + 'a, Output: Send + Sync + Clone + 'static>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Output> + 'a {
-			self.protonodes_by_name
-				.get(&Input::identifier())
+				.get(&Input::NODE_IDENTIFIER)
 				.map_or([].as_slice(), |x| x.as_slice())
 				.iter()
 				.filter_map(|inputs| inputs.get(Input::INDEX))
@@ -1036,35 +1004,31 @@ mod test {
 				.filter_map(Instrumented::downcast_record::<Output>)
 		}
 
-		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
-		where
-			Input::Result: Send + Sync + Clone + 'static,
-		{
+		pub fn grab_protonode_input<Input: NodeParameter, Output: Send + Sync + Clone + 'static>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Output> {
 			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
 
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
-			Self::downcast::<Input>(dynamic)
+			Self::downcast_record::<Output>(dynamic)
 		}
 
-		/// Grabs a ranked (`Item<E>`) input's recorded value as its bare element `E`.
-		/// A stored value materializes as an `Item<E>` wire, so the monitor records the whole cell and this unwraps its element.
-		pub fn grab_ranked_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<<Input::Result as RankedResult>::Element>
-		where
-			Input::Result: RankedResult,
-		{
+		/// Grabs a ranked input's recorded value as its bare element `Element`.
+		/// A stored value materializes as an `Item<Element>` wire, so the monitor records the whole cell and this unwraps its element.
+		pub fn grab_ranked_input<Input: NodeParameter, Element: Send + Sync + Clone + 'static>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Element> {
 			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
-			Self::downcast_record::<Item<<Input::Result as RankedResult>::Element>>(dynamic).map(|item| item.into_element())
+			Self::downcast_record::<Item<Element>>(dynamic).map(|item| item.into_element())
 		}
 
-		pub fn grab_input_from_layer<Input: NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
-		where
-			Input::Result: Send + Sync + Clone + 'static,
-		{
+		pub fn grab_input_from_layer<Input: NodeParameter, Output: Send + Sync + Clone + 'static>(
+			&self,
+			layer: LayerNodeIdentifier,
+			network_interface: &NodeNetworkInterface,
+			runtime: &NodeRuntime,
+		) -> Option<Output> {
 			let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
-			let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
-			self.grab_protonode_input::<Input>(&vec![node], runtime)
+			let node = node_graph_layer.upstream_node_id_from_protonode(Input::NODE_IDENTIFIER)?;
+			self.grab_protonode_input::<Input, Output>(&vec![node], runtime)
 		}
 	}
 }
