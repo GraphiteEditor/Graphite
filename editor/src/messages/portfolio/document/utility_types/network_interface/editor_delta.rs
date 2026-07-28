@@ -23,24 +23,67 @@ pub struct ConstructedOps {
 	pub declaration_bytes: DeclarationBytes,
 }
 
-impl EditorDelta {
-	pub fn to_registry_deltas(&self, working: &Registry, resources: &ResourceRegistry, peer: document_graph_storage::PeerId) -> Result<ConstructedOps, ConversionError> {
-		let resolver = PathResolver::new(peer);
-		let mut ops = Vec::new();
-		let mut declaration_bytes = DeclarationBytes::new();
+pub fn construct_batch(deltas: &[EditorDelta], working: &Registry, resources: &ResourceRegistry, peer: document_graph_storage::PeerId) -> Result<ConstructedOps, ConversionError> {
+	let resolver = PathResolver::new(peer);
+	let mut ops = Vec::new();
+	let mut declaration_bytes = DeclarationBytes::new();
+	let mut batch_removed_nodes = Vec::new();
+	let mut batch_removed_networks = Vec::new();
+	let mut batch_added_resources = HashSet::new();
 
+	for delta in deltas {
+		if let EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id } | RuntimeDelta::ReplaceNode { network_path, node_id, .. }) = delta {
+			collect_removal_closure(resolver.node_id(network_path, *node_id), working, &mut batch_removed_nodes, &mut batch_removed_networks);
+		}
+	}
+	batch_removed_nodes.sort();
+	batch_removed_nodes.dedup();
+	batch_removed_networks.sort();
+	batch_removed_networks.dedup();
+
+	for delta in deltas {
+		delta.construct(working, resources, peer, &resolver, &batch_removed_nodes, &mut batch_added_resources, &mut ops, &mut declaration_bytes)?;
+	}
+
+	construct_resource_removals(&batch_removed_nodes, working, &mut ops);
+	Ok(ConstructedOps { ops, declaration_bytes })
+}
+
+impl EditorDelta {
+	#[allow(clippy::too_many_arguments)]
+	fn construct(
+		&self,
+		working: &Registry,
+		resources: &ResourceRegistry,
+		peer: document_graph_storage::PeerId,
+		resolver: &PathResolver,
+		batch_removed_nodes: &[document_graph_storage::NodeId],
+		batch_added_resources: &mut HashSet<ResourceId>,
+		ops: &mut Vec<RegistryDelta>,
+		declaration_bytes: &mut DeclarationBytes,
+	) -> Result<(), ConversionError> {
 		match self {
 			EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, node }) => {
-				declaration_bytes = construct_structural_additions(network_path, *node_id, node, working, resources, peer, &mut ops)?;
+				construct_structural_additions(network_path, *node_id, node, working, resources, peer, batch_added_resources, ops, declaration_bytes)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::ReplaceNode { network_path, node_id, node }) => {
-				construct_removals(resolver.node_id(network_path, *node_id), working, &mut ops);
-				declaration_bytes = construct_structural_additions(network_path, *node_id, node, working, resources, peer, &mut ops)?;
+				construct_removals(resolver.node_id(network_path, *node_id), working, ops);
+				construct_structural_additions(network_path, *node_id, node, working, resources, peer, batch_added_resources, ops, declaration_bytes)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id }) => {
-				construct_removals(resolver.node_id(network_path, *node_id), working, &mut ops);
+				construct_removals(resolver.node_id(network_path, *node_id), working, ops);
+			}
+
+			EditorDelta::Graph(RuntimeDelta::SetVisibility { network_path, node_id, visible }) => {
+				ops.push(RegistryDelta::ChangeNodeAttribute {
+					id: resolver.node_id(network_path, *node_id),
+					delta: AttributeDelta {
+						key: node_attr::VISIBLE.to_string(),
+						value: (!visible).then_some(serde_json::Value::Bool(false)),
+					},
+				});
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetInput {
@@ -65,14 +108,16 @@ impl EditorDelta {
 			}
 
 			EditorDelta::NodeMetadata { network_path, node_id, metadata } => {
-				construct_metadata_changes(network_path, *node_id, metadata, working, &resolver, &mut ops)?;
+				construct_metadata_changes(network_path, *node_id, metadata, working, resolver, ops)?;
 			}
 		}
 
-		Ok(ConstructedOps { ops, declaration_bytes })
+		let _ = batch_removed_nodes;
+		Ok(())
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn construct_structural_additions(
 	network_path: &[NodeId],
 	node_id: NodeId,
@@ -80,12 +125,14 @@ fn construct_structural_additions(
 	working: &Registry,
 	resources: &ResourceRegistry,
 	peer: document_graph_storage::PeerId,
+	batch_added_resources: &mut HashSet<ResourceId>,
 	ops: &mut Vec<RegistryDelta>,
-) -> Result<DeclarationBytes, ConversionError> {
+	declaration_bytes: &mut DeclarationBytes,
+) -> Result<(), ConversionError> {
 	let mut scoped = ScopedConversion::new(&NoMetadata, peer);
 	let mut scratch = Registry::default();
 	scoped.convert_node_at(&mut scratch, network_path, node_id, node, true)?;
-	let declaration_bytes = scoped.finish();
+	declaration_bytes.extend(scoped.finish());
 
 	let mut networks: Vec<_> = scratch.networks.iter().collect();
 	networks.sort_by_key(|(id, _)| **id);
@@ -102,7 +149,9 @@ fn construct_structural_additions(
 	let mut new_resources: Vec<_> = scratch.resources.iter().filter(|(id, _)| !working.resources.contains_key(id)).collect();
 	new_resources.sort_by_key(|(id, _)| **id);
 	for (id, entry) in new_resources {
-		ops.push(RegistryDelta::AddResource { id: *id, entry: entry.clone() });
+		if batch_added_resources.insert(*id) {
+			ops.push(RegistryDelta::AddResource { id: *id, entry: entry.clone() });
+		}
 	}
 	let mut tagged: Vec<ResourceId> = scratch.node_instances.values().flat_map(node_value_resource_refs).collect();
 	tagged.sort();
@@ -110,13 +159,15 @@ fn construct_structural_additions(
 	for id in tagged {
 		if !working.resources.contains_key(&id)
 			&& !scratch.resources.contains_key(&id)
+			&& !batch_added_resources.contains(&id)
 			&& let Some(entry) = convert_resource_entry(resources, id, peer)?
 		{
+			batch_added_resources.insert(id);
 			ops.push(RegistryDelta::AddResource { id, entry });
 		}
 	}
 
-	Ok(declaration_bytes)
+	Ok(())
 }
 
 fn construct_metadata_changes(
@@ -231,9 +282,11 @@ fn construct_removals(node_id: document_graph_storage::NodeId, working: &Registr
 			snapshot: working.networks[id].clone(),
 		});
 	}
+}
 
-	let removed_node_set: HashSet<_> = removed_nodes.iter().copied().collect();
-	let mut candidates: Vec<ResourceId> = removed_nodes
+fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::NodeId], working: &Registry, ops: &mut Vec<RegistryDelta>) {
+	let removed_node_set: HashSet<_> = batch_removed_nodes.iter().copied().collect();
+	let mut candidates: Vec<ResourceId> = batch_removed_nodes
 		.iter()
 		.flat_map(|id| {
 			let node = &working.node_instances[id];
