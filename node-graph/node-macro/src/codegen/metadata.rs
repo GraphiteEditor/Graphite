@@ -29,25 +29,21 @@ pub(crate) fn generate_node_input_references(
 			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
 			let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
 
-			// Only create structs with phantom data where necessary.
-			generated_input_accessor.push(if phantom_data_declerations.is_empty() {
-				quote! {
-					pub struct #struct_name;
-				}
-			} else {
-				quote! {
-					pub struct #struct_name <#(#used),*>{
-						#(#phantom_data_declerations,)*
-					}
-				}
-			});
+			// The marker is always a unit struct so it can be passed as a value; its generics would only have described
+			// `Result`, which nothing reads through the marker.
+			let _ = &phantom_data_declerations;
 			generated_input_accessor.push(quote! {
-				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+				pub struct #struct_name;
+			});
+			let result_ty = if used.is_empty() { quote!(#ty) } else { quote!(()) };
+			let _ = &fn_generic_params;
+			generated_input_accessor.push(quote! {
+				impl #core_types::NodeInputDecleration for #struct_name {
 					const INDEX: usize = #input_index;
 					fn identifier() -> #core_types::ProtoNodeIdentifier {
 						#inputs_module_name::IDENTIFIER.clone()
 					}
-					type Result = #ty;
+					type Result = #result_ty;
 				}
 			})
 		}
