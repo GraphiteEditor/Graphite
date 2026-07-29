@@ -166,8 +166,8 @@ url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.13", features = ["serde"] }
-vello = "0.9"
-vello_encoding = "0.9"
+vello = "0.10"
+vello_encoding = "0.10"
 resvg = "0.47"
 usvg = "0.47"
 parley = { version = "0.9", default-features = false, features = ["std"] }
