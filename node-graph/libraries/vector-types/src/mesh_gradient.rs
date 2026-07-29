@@ -1,6 +1,6 @@
 use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2, Vec4};
+use glam::{DAffine2, DMat2, DVec2, Vec4};
 use kurbo::{ParamCurve, PathSeg};
 
 use crate::{
@@ -8,6 +8,7 @@ use crate::{
 	subpath::{BezierHandles, pathseg_points},
 	vector::{
 		PointId, SegmentId, StrokeId,
+		algorithms::util::pathseg_tangent,
 		misc::{HandleId, HandleType, point_to_dvec2},
 	},
 };
@@ -31,6 +32,8 @@ pub struct MeshGradientEdge {
 /// Resolved patch of a mesh gradient.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MeshPatch {
+	/// Patch index in row-major order.
+	pub index: usize,
 	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
 	pub corners: [DVec2; 4],
 	/// Corner colors. [top-left, top-right, bottom-left, bottom-right]
@@ -261,6 +264,9 @@ impl MeshGradient {
 
 	/// Returns resolved patch by the provided row/column position, if any.
 	fn patch(&self, row: usize, column: usize) -> Option<MeshPatch> {
+		let patch_columns = self.corner_points.columns.saturating_sub(1);
+		let index = row * patch_columns + column;
+
 		let top_left_id = *self.corner_points.get(row, column)?;
 		let top_right_id = *self.corner_points.get(row, column + 1)?;
 		let bottom_left_id = *self.corner_points.get(row + 1, column)?;
@@ -292,7 +298,7 @@ impl MeshGradient {
 			self.mesh_geometry.path_segment_from_id(right_edge_id)?,
 		];
 
-		Some(MeshPatch { corners, colors, edges })
+		Some(MeshPatch { index, corners, colors, edges })
 	}
 
 	/// Iterator over all of the mesh gradient patches by row-major order, `None` if the patch is defined in unexpected structure.
@@ -557,6 +563,7 @@ impl MeshGradient {
 	}
 }
 
+// FIXME: Probably better not use this wrapper
 /// Single vertex of a subpatch. Only for rendering purpose.
 #[derive(Clone, Copy)]
 pub struct MeshSubpatchVertex {
@@ -576,7 +583,7 @@ struct MeshCornerDerivatives {
 
 /// A cached mesh patch for subdivision into subpatches in rendering phase.
 #[derive(Clone, Copy)]
-struct MeshPatchEvaluator {
+pub struct MeshPatchEvaluator {
 	/// Corner positions. [top-left, top-right, bottom-left, bottom-right]
 	pub corners: [DVec2; 4],
 	/// Edges defining the patch. [top, bottom, left, right]
@@ -631,23 +638,131 @@ impl MeshPatchEvaluator {
 		interpolated_gamma_color
 	}
 
-	fn eval_vertex(&self, u: f64, v: f64, mesh_transform: DAffine2) -> MeshSubpatchVertex {
+	/// Evaluate interpolated position by bilinearly-blended Coons patch.
+	fn eval_position(&self, u: f64, v: f64) -> DVec2 {
 		let [top_seg, bottom_seg, left_seg, right_seg] = self.edges;
 		let [top_left, top_right, bottom_left, bottom_right] = self.corners;
 
-		let top_u = point_to_dvec2(top_seg.eval(u));
-		let bottom_u = point_to_dvec2(bottom_seg.eval(u));
-		let left_v = point_to_dvec2(left_seg.eval(v));
-		let right_v = point_to_dvec2(right_seg.eval(v));
+		let top_u_pos = point_to_dvec2(top_seg.eval(u));
+		let bottom_u_pos = point_to_dvec2(bottom_seg.eval(u));
+		let left_v_pos = point_to_dvec2(left_seg.eval(v));
+		let right_v_pos = point_to_dvec2(right_seg.eval(v));
 
-		let s_c = (1. - v) * top_u + v * bottom_u;
-		let s_d = (1. - u) * left_v + u * right_v;
+		let s_c = (1. - v) * top_u_pos + v * bottom_u_pos;
+		let s_d = (1. - u) * left_v_pos + u * right_v_pos;
 		let s_b = top_left * (1. - u) * (1. - v) + top_right * u * (1. - v) + bottom_left * (1. - u) * v + bottom_right * u * v;
 
+		s_c + s_d - s_b
+	}
+
+	fn eval_vertex(&self, u: f64, v: f64, mesh_transform: DAffine2) -> MeshSubpatchVertex {
 		MeshSubpatchVertex {
-			position: mesh_transform.transform_point2(s_c + s_d - s_b),
+			position: mesh_transform.transform_point2(self.eval_position(u, v)),
 			gamma_color: self.eval_color(u as f32, v as f32),
 		}
+	}
+
+	/// Returns the Jacobian matrix of bilinearly blended Coons patch.
+	fn position_jacobian(&self, u: f64, v: f64) -> DMat2 {
+		let [top, bottom, left, right] = self.edges;
+		let [top_left, top_right, bottom_left, bottom_right] = self.corners;
+
+		let top_u_pos = point_to_dvec2(top.eval(u));
+		let bottom_u_pos = point_to_dvec2(bottom.eval(u));
+		let left_v_pos = point_to_dvec2(left.eval(v));
+		let right_v_pos = point_to_dvec2(right.eval(v));
+
+		let top_bottom_derivative_u = (1. - v) * pathseg_tangent(top, u) + v * pathseg_tangent(bottom, u);
+		let left_right_derivative_u = right_v_pos - left_v_pos;
+		let top_bottom_derivative_v = bottom_u_pos - top_u_pos;
+		let left_right_derivative_v = (1. - u) * pathseg_tangent(left, v) + u * pathseg_tangent(right, v);
+
+		let bilinear_derivative_u = (1. - v) * (top_right - top_left) + v * (bottom_right - bottom_left);
+		let bilinear_derivative_v = (1. - u) * (bottom_left - top_left) + u * (bottom_right - top_right);
+
+		let derivative_u = top_bottom_derivative_u + left_right_derivative_u - bilinear_derivative_u;
+		let derivative_v = top_bottom_derivative_v + left_right_derivative_v - bilinear_derivative_v;
+
+		DMat2::from_cols(derivative_u, derivative_v)
+	}
+
+	/// Returns 81 samples of (uv, position) tuples in the patch.
+	pub fn inverse_seeds(&self) -> Vec<(DVec2, DVec2)> {
+		const INITIAL_SUBDIVISIONS: usize = 8;
+		let seed_count = (INITIAL_SUBDIVISIONS + 1).pow(2);
+		let mut seeds = Vec::with_capacity(seed_count);
+
+		for row in 0..=INITIAL_SUBDIVISIONS {
+			let v = row as f64 / INITIAL_SUBDIVISIONS as f64;
+
+			for column in 0..=INITIAL_SUBDIVISIONS {
+				let u = column as f64 / INITIAL_SUBDIVISIONS as f64;
+				let uv = DVec2::new(u, v);
+				seeds.push((uv, self.eval_position(u, v)));
+			}
+		}
+
+		seeds
+	}
+
+	/// Returns 0.0-1.0 approximated uv by calculating the inverse of the bilinearly-blended Coons patch using Newton's method.
+	pub fn inverse_patch_position(&self, target_position: DVec2, initial_uv: DVec2) -> DVec2 {
+		const MAX_ITERATION: usize = 16;
+		const POSITION_TOLERANCE: f64 = 1e-6;
+		const JACOBIAN_EPSILON: f64 = 1e-12;
+		const LINE_SEARCH_STEPS: usize = 8;
+
+		let mut uv = initial_uv;
+
+		for _ in 0..MAX_ITERATION {
+			// Check if the current uv position is already within the tolerance
+			let position = self.eval_position(uv.x, uv.y);
+			let error = position - target_position;
+			let error_squared = error.length_squared();
+
+			if !error_squared.is_finite() {
+				break;
+			}
+
+			if error_squared <= POSITION_TOLERANCE * POSITION_TOLERANCE {
+				return uv.clamp(DVec2::ZERO, DVec2::ONE);
+			}
+
+			// If not, calculate the next uv by subtracting the inverse Jacobian multiplied by the error
+			let jacobian = self.position_jacobian(uv.x, uv.y);
+			let determinant = jacobian.determinant();
+			if !determinant.is_finite() || determinant.abs() <= JACOBIAN_EPSILON {
+				break;
+			}
+
+			let delta = jacobian.inverse() * error;
+			if !delta.is_finite() {
+				break;
+			}
+
+			// Try progressively smaller Newton steps until the error decreases
+			let mut step = 1.;
+			let mut next_uv = None;
+			for _ in 0..LINE_SEARCH_STEPS {
+				let candidate = uv - delta * step;
+				let candidate_error_squared = self.eval_position(candidate.x, candidate.y).distance_squared(target_position);
+
+				if candidate_error_squared.is_finite() && candidate_error_squared < error_squared {
+					next_uv = Some(candidate);
+					break;
+				}
+
+				step *= 0.5;
+			}
+
+			let Some(next_uv) = next_uv else {
+				break;
+			};
+			// Clamping each iteration to [0, 1] makes positions outside the patch resolve to a boundary uv, extending the patch's edge values outward.
+			uv = next_uv;
+		}
+
+		uv.clamp(DVec2::ZERO, DVec2::ONE)
 	}
 }
 
@@ -763,6 +878,7 @@ impl MeshGradientEvaluator {
 		Some(Self { patches: patch_color_data })
 	}
 
+	// TODO: Use `patch_evaluator` instead
 	fn eval_color(&self, patch_index: usize, u: f32, v: f32) -> [f32; 4] {
 		self.patches[patch_index].eval_color(u, v)
 	}
@@ -795,6 +911,7 @@ impl MeshGradientEvaluator {
 				let bottom_left = patch.eval_vertex(u_start, v_start + stride, mesh_transform);
 				let bottom_right = patch.eval_vertex(u_start + stride, v_start + stride, mesh_transform);
 				let corners = [top_left, top_right, bottom_left, bottom_right];
+				let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corners.map(|vertex| vertex.position);
 				let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = corners.map(|vertex| Vec4::from_array(vertex.gamma_color));
 
 				let mut within_tolerance = true;
@@ -802,12 +919,12 @@ impl MeshGradientEvaluator {
 					for &local_u in &samples {
 						let expected_vertex = patch.eval_vertex(u_start + local_u * stride, v_start + local_v * stride, mesh_transform);
 						// Approximiated position/color derived by bilerp, which simulates the values in the rendered parallelogram with two linear gradients
-						let approximated_position = top_left.position + (top_right.position - top_left.position) * local_u + (bottom_left.position - top_left.position) * local_v;
+						let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
 						let top_color = top_left_color.lerp(top_right_color, local_u as f32);
 						let bottom_color = bottom_left_color.lerp(bottom_right_color, local_u as f32);
 						let approximated_color = top_color.lerp(bottom_color, local_v as f32);
 
-						let position_error_vector = expected_vertex.position - approximated_position;
+						let position_error_vector = expected_vertex.position - approximated_pos;
 						let position_error = parent_to_viewport.transform_vector2(position_error_vector).length();
 						let color_error = (Vec4::from_array(expected_vertex.gamma_color) - approximated_color).abs().max_element();
 						if !position_error.is_finite() || !color_error.is_finite() || position_error > position_error_tolerance || color_error > color_error_tolerance {
@@ -833,6 +950,10 @@ impl MeshGradientEvaluator {
 		}
 
 		Some(subpatches)
+	}
+
+	pub fn patch_evaluator(&self, patch_index: usize) -> Option<&MeshPatchEvaluator> {
+		self.patches.get(patch_index)
 	}
 }
 

@@ -1,5 +1,6 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
+use base64::Engine;
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -26,6 +27,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
+use image::ImageEncoder;
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -273,7 +275,7 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 }
 
 // FIXME: Use minimum subpatch size in viewport instead
-const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 32;
+const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 16;
 const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 2.;
 const MESH_COLOR_ERROR_TOLERANCE: f32 = 5. / 255.;
 const MESH_BASE_CLIP_INFLATION: f64 = 0.01;
@@ -2311,37 +2313,280 @@ impl Render for List<Gradient> {
 
 impl Render for List<MeshGradient> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		const USE_DISPLACEMENT_MAP: bool = true;
+
 		for index in 0..self.len() {
 			let Some(mesh_gradient) = self.element(index) else { continue };
+			let Some(mesh_evaluator) = mesh_gradient.evaluator() else { continue };
 			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			// FIXME: use below attrs
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
-				evaluator.subdivide_patches_adaptive(
-					MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
-					mesh_transform,
-					render.transform,
-					MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
-					MESH_COLOR_ERROR_TOLERANCE,
+			if USE_DISPLACEMENT_MAP {
+				for patch in mesh_gradient.patches() {
+					let Some(patch) = patch else { continue };
+					let Some(patch_evaluator) = mesh_evaluator.patch_evaluator(patch.index) else { continue };
+					let mut unique_id = generate_uuid();
+
+					let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = patch.colors;
+
+					// Construct a closed path of the patch edge for calculating the bounding box and create a clipping mask.
+					let [top, bottom, left, right] = patch.edges;
+					let mut patch_boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
+					patch_boundary.close_path();
+
+					let bounds = patch_boundary.bounding_box();
+					let bounds_min = DVec2::new(bounds.x0, bounds.y0);
+					let bounds_max = DVec2::new(bounds.x1, bounds.y1);
+					let bounds_size = bounds_max - bounds_min;
+					// The patch transform is done by A*D, where..
+					// D := Displacement map that projects from a bicubicly colored unit rectangle to the patch shape in normalized map space
+					// A (displacement_map_to_patch) := Affine transform from the patch to the mesh space
+					// Keeping the affine transform outside the displacement map limits the map to the non-affine deformation,
+					// reducing quantization error when the patch is scaled.
+					let displacement_map_to_patch = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
+					let patch_to_displacement_map = displacement_map_to_patch.inverse();
+
+					// Collect pairs from a position in a source unit rectangle and a position in the target coons patch.
+					let mut displacements: Vec<(DVec2, DVec2)> = vec![];
+					const MAP_SIZE: u32 = 128;
+					let inverse_seeds = patch_evaluator.inverse_seeds();
+
+					for y in 0..MAP_SIZE {
+						for x in 0..MAP_SIZE {
+							// Adds 0.5 to evalute the center of a png pixel
+							let s = (x as f64 + 0.5) / MAP_SIZE as f64;
+							let t = (y as f64 + 0.5) / MAP_SIZE as f64;
+
+							// Position in the displaced result. This can be larger than [0, 1].
+							let target_pos = DVec2::new(s, t);
+							let target_mesh_pos = displacement_map_to_patch.transform_point2(target_pos);
+							// Calculate the original position where the target position is projected from. This should be [0, 1].
+							let initial_uv = inverse_seeds
+								.iter()
+								.min_by(|(_, first_position), (_, second_position)| first_position.distance_squared(target_mesh_pos).total_cmp(&second_position.distance_squared(target_mesh_pos)))
+								.map(|(uv, _)| *uv)
+								.unwrap_or(DVec2::splat(0.5));
+							let source_pos = patch_evaluator.inverse_patch_position(target_mesh_pos, initial_uv);
+
+							displacements.push((source_pos, target_pos));
+						}
+					}
+
+					let max_displacement = displacements
+						.iter()
+						.flat_map(|(original, target)| {
+							let displacement = target - original;
+							[displacement.x.abs(), displacement.y.abs()]
+						})
+						.fold(0., f64::max);
+					// feDisplacementMap represents offsets in [-scale / 2, scale / 2], so double the maximum absolute displacement
+					let scale = max_displacement * 2.;
+
+					let mut rgba16_bytes = Vec::with_capacity((MAP_SIZE * MAP_SIZE * 4 * size_of::<u16>() as u32) as usize);
+
+					let encode_displacement = |source: f64, target: f64| {
+						let max_channel = u16::MAX as f64;
+						let ideal = (0.5 + (source - target) / scale) * max_channel;
+						let minimum = ((0.5 - target / scale) * max_channel).ceil().max(0.);
+						let maximum = ((0.5 + (1. - target) / scale) * max_channel).floor().min(max_channel);
+
+						ideal.round().clamp(minimum, maximum) as u16
+					};
+					for displacement in displacements {
+						let (source_pos, target_pos) = displacement;
+						let red = encode_displacement(source_pos.x, target_pos.x);
+						let green = encode_displacement(source_pos.y, target_pos.y);
+
+						for channel in [red, green, 0, u16::MAX] {
+							rgba16_bytes.extend_from_slice(&channel.to_ne_bytes());
+						}
+					}
+
+					let mut displacement_map_png = Vec::new();
+					::image::codecs::png::PngEncoder::new(&mut displacement_map_png)
+						.write_image(&rgba16_bytes, MAP_SIZE, MAP_SIZE, ::image::ExtendedColorType::Rgba16)
+						.expect("failed to encode displacement map as 16-bit PNG");
+
+					let preamble = "data:image/png;base64,";
+					let mut data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
+					data_url.push_str(preamble);
+					base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut data_url);
+
+					// Padding for the source rectangle to allow displacement map's error caused by float calculation
+					const SOURCE_PADDING_IN_VIEWPORT_PX: f64 = 5.;
+					// Padding for the rendered patch to hide anti-aliasing gaps between patches
+					const PATCH_PADDING_IN_VIEWPORT_PX: f64 = 1.;
+					let map_to_viewport = render.transform * mesh_transform * displacement_map_to_patch;
+					let viewport_u_length = map_to_viewport.transform_vector2(DVec2::X).length();
+					let viewport_v_length = map_to_viewport.transform_vector2(DVec2::Y).length();
+					let padding_values = |target_padding_px: f64| {
+						let padding_u = target_padding_px / viewport_u_length;
+						let padding_v = target_padding_px / viewport_v_length;
+						let padded_x = -padding_u;
+						let padded_y = -padding_v;
+						let padded_width = 1. + 2. * padding_u;
+						let padded_height = 1. + 2. * padding_v;
+						[padded_x, padded_y, padded_width, padded_height]
+					};
+					let [source_padded_x, source_padded_y, source_padded_width, source_padded_height] = padding_values(SOURCE_PADDING_IN_VIEWPORT_PX);
+					let [patch_padded_x, patch_padded_y, patch_padded_width, patch_padded_height] = padding_values(PATCH_PADDING_IN_VIEWPORT_PX);
+
+					// linear gradient for the bottom line
+					write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+						mesh_gamma_color_to_srgba8(bottom_left_color.to_gamma_srgb_channels()).to_rgba_hex(),
+						mesh_gamma_color_to_srgba8(bottom_right_color.to_gamma_srgb_channels()).to_rgba_hex(),
+					)
+					.unwrap();
+
+					// linear gradient for the top line
+					write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+						mesh_gamma_color_to_srgba8(top_left_color.to_gamma_srgb_channels()).to_rgba_hex(),
+						mesh_gamma_color_to_srgba8(top_right_color.to_gamma_srgb_channels()).to_rgba_hex(),
+					)
+					.unwrap();
+
+					// Vertical gradient mask to blend top/bottom gradients
+					write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="gm{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>"##,
+					)
+					.unwrap();
+					write!(
+						&mut render.svg_defs,
+						r##"<mask id="mm{unique_id}" x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha"><rect x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" fill="url(#gm{unique_id})"/></mask>"##,
+					)
+					.unwrap();
+
+					write!(
+						&mut render.svg_defs,
+						r##"<filter
+							id="fd{unique_id}"
+							x="{source_padded_x}"
+							y="{source_padded_y}"
+							width="{source_padded_width}"
+							height="{source_padded_height}"
+							filterUnits="userSpaceOnUse"
+							primitiveUnits="userSpaceOnUse"
+							color-interpolation-filters="sRGB">
+							<feImage
+								href="{data_url}"
+								x="0"
+								y="0"
+								width="1"
+								height="1"
+								preserveAspectRatio="none"
+								result="gmmap{unique_id}"/>
+							<feDisplacementMap
+								x="{source_padded_x}"
+								y="{source_padded_y}"
+								width="{source_padded_width}"
+								height="{source_padded_height}"
+								in="SourceGraphic"
+								in2="gmmap{unique_id}"
+								scale="{scale}"
+								xChannelSelector="R"
+								yChannelSelector="G"/>
+						</filter>"##
+					)
+					.unwrap();
+
+					// Clip the mapped result by patch shape
+					let patch_clip_inflation = DAffine2::from_scale_angle_translation(DVec2::new(patch_padded_width, patch_padded_height), 0., DVec2::new(patch_padded_x, patch_padded_y));
+
+					let patch_clip_transform = patch_clip_inflation * patch_to_displacement_map;
+					patch_boundary.apply_affine(Affine::new(patch_clip_transform.to_cols_array()));
+					let patch_boundary_d = patch_boundary.to_svg();
+					write!(
+						&mut render.svg_defs,
+						r##"<mask
+						id="mc{unique_id}"
+						x="0"
+						y="0"
+						width="1"
+						height="1"
+						maskUnits="userSpaceOnUse"
+						maskContentUnits="userSpaceOnUse"
+						mask-type="alpha">
+						<path d="{patch_boundary_d}" fill="#fff"/>
+					</mask>"##
+					)
+					.unwrap();
+
+					render.parent_tag(
+						"g",
+						|attributes| {
+							attributes.push("transform", format_transform_matrix(mesh_transform * displacement_map_to_patch));
+						},
+						|render| {
+							render.parent_tag(
+								"g",
+								|attributes| {
+									attributes.push("mask", format!("url(#mc{unique_id})"));
+								},
+								|render| {
+									render.parent_tag(
+										"g",
+										|attributes| {
+											attributes.push("style", "isolation:isolate");
+											attributes.push("filter", format!("url(#fd{unique_id})"));
+										},
+										|render| {
+											render.leaf_tag("rect", |attributes| {
+												attributes.push("x", source_padded_x.to_string());
+												attributes.push("y", source_padded_y.to_string());
+												attributes.push("width", source_padded_width.to_string());
+												attributes.push("height", source_padded_height.to_string());
+												attributes.push("fill", format!("url(#gb{unique_id})"));
+											});
+
+											render.leaf_tag("rect", |attributes| {
+												attributes.push("x", source_padded_x.to_string());
+												attributes.push("y", source_padded_y.to_string());
+												attributes.push("width", source_padded_width.to_string());
+												attributes.push("height", source_padded_height.to_string());
+												attributes.push("fill", format!("url(#gt{unique_id})"));
+												attributes.push("mask", format!("url(#mm{unique_id})"));
+											});
+										},
+									);
+								},
+							);
+						},
+					);
+
+					unique_id += 1;
+				}
+			} else {
+				let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
+					evaluator.subdivide_patches_adaptive(
+						MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
+						mesh_transform,
+						render.transform,
+						MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
+						MESH_COLOR_ERROR_TOLERANCE,
+					)
+				}) else {
+					continue;
+				};
+
+				let inflation_buckets: Vec<_> = subpatches.iter().map(mesh_subpatch_inflation_bucket).collect();
+				let mut used_inflation_buckets = [false; MESH_MAXIMUM_INFLATION_BUCKET + 1];
+				inflation_buckets.iter().for_each(|&bucket| used_inflation_buckets[bucket] = true);
+
+				let shared_id = generate_uuid();
+				write!(
+					&mut render.svg_defs,
+					r##"<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
 				)
-			}) else {
-				continue;
-			};
-
-			let inflation_buckets: Vec<_> = subpatches.iter().map(mesh_subpatch_inflation_bucket).collect();
-			let mut used_inflation_buckets = [false; MESH_MAXIMUM_INFLATION_BUCKET + 1];
-			inflation_buckets.iter().for_each(|&bucket| used_inflation_buckets[bucket] = true);
-
-			let shared_id = generate_uuid();
-			write!(
-				&mut render.svg_defs,
-				r##"<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
-			)
-			.unwrap();
-			used_inflation_buckets
+				.unwrap();
+				used_inflation_buckets
 				.iter()
 				.enumerate()
 				.filter(|(_, used)| **used)
@@ -2356,68 +2601,69 @@ impl Render for List<MeshGradient> {
 					.unwrap();
 				});
 
-			let mut unique_id = generate_uuid();
-			subpatches.iter().zip(inflation_buckets).for_each(|(subpatch, bucket)| {
-				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
-				let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
-				let (_, _, paint_min, paint_size) = mesh_inflation_values(bucket);
+				let mut unique_id = generate_uuid();
+				subpatches.iter().zip(inflation_buckets).for_each(|(subpatch, bucket)| {
+					let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
+					let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
+					let (_, _, paint_min, paint_size) = mesh_inflation_values(bucket);
 
-				// linear gradient for the bottom line
-				write!(
-					&mut render.svg_defs,
-					r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-					mesh_gamma_color_to_srgba8(bottom_left.gamma_color).to_rgba_hex(),
-					mesh_gamma_color_to_srgba8(bottom_right.gamma_color).to_rgba_hex(),
-				)
-				.unwrap();
+					// linear gradient for the bottom line
+					write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+						mesh_gamma_color_to_srgba8(bottom_left.gamma_color).to_rgba_hex(),
+						mesh_gamma_color_to_srgba8(bottom_right.gamma_color).to_rgba_hex(),
+					)
+					.unwrap();
 
-				// linear gradient for the top line
-				write!(
-					&mut render.svg_defs,
-					r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-					mesh_gamma_color_to_srgba8(top_left.gamma_color).to_rgba_hex(),
-					mesh_gamma_color_to_srgba8(top_right.gamma_color).to_rgba_hex(),
-				)
-				.unwrap();
+					// linear gradient for the top line
+					write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+						mesh_gamma_color_to_srgba8(top_left.gamma_color).to_rgba_hex(),
+						mesh_gamma_color_to_srgba8(top_right.gamma_color).to_rgba_hex(),
+					)
+					.unwrap();
 
-				render.parent_tag(
-					"g",
-					|attributes| {
-						attributes.push(ATTR_TRANSFORM, subpatch_transform);
-						attributes.push("clip-path", format!("url(#mc{shared_id}-{bucket})"));
-					},
-					|render| {
-						// Force both gradient layers to composite before the outer clip applies edge coverage.
-						render.parent_tag(
-							"g",
-							|attributes| {
-								attributes.push("style", "isolation:isolate");
-								attributes.push("mask", format!("url(#mi{shared_id}-{bucket})"));
-							},
-							|render| {
-								render.leaf_tag("rect", |attributes| {
-									attributes.push("x", paint_min.to_string());
-									attributes.push("y", paint_min.to_string());
-									attributes.push("width", paint_size.to_string());
-									attributes.push("height", paint_size.to_string());
-									attributes.push("fill", format!("url(#gb{unique_id})"));
-								});
+					render.parent_tag(
+						"g",
+						|attributes| {
+							attributes.push("transform", subpatch_transform);
+							attributes.push("clip-path", format!("url(#mc{shared_id}-{bucket})"));
+						},
+						|render| {
+							// Force both gradient layers to composite before the outer clip applies edge coverage.
+							render.parent_tag(
+								"g",
+								|attributes| {
+									attributes.push("style", "isolation:isolate");
+									attributes.push("mask", format!("url(#mi{shared_id}-{bucket})"));
+								},
+								|render| {
+									render.leaf_tag("rect", |attributes| {
+										attributes.push("x", paint_min.to_string());
+										attributes.push("y", paint_min.to_string());
+										attributes.push("width", paint_size.to_string());
+										attributes.push("height", paint_size.to_string());
+										attributes.push("fill", format!("url(#gb{unique_id})"));
+									});
 
-								render.leaf_tag("rect", |attributes| {
-									attributes.push("x", paint_min.to_string());
-									attributes.push("y", paint_min.to_string());
-									attributes.push("width", paint_size.to_string());
-									attributes.push("height", paint_size.to_string());
-									attributes.push("fill", format!("url(#gt{unique_id})"));
-									attributes.push("mask", format!("url(#mm{shared_id}-{bucket})"));
-								});
-							},
-						);
-					},
-				);
+									render.leaf_tag("rect", |attributes| {
+										attributes.push("x", paint_min.to_string());
+										attributes.push("y", paint_min.to_string());
+										attributes.push("width", paint_size.to_string());
+										attributes.push("height", paint_size.to_string());
+										attributes.push("fill", format!("url(#gt{unique_id})"));
+										attributes.push("mask", format!("url(#mm{shared_id}-{bucket})"));
+									});
+								},
+							);
+						},
+					);
 
-				unique_id += 1;
-			});
+					unique_id += 1;
+				});
+			}
 		}
 	}
 

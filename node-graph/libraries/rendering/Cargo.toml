@@ -8,7 +8,12 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
-serde = ["dep:serde", "core-types/serde", "vector-types/serde", "graphic-types/serde"]
+serde = [
+    "dep:serde",
+    "core-types/serde",
+    "vector-types/serde",
+    "graphic-types/serde",
+]
 
 [dependencies]
 # Local dependencies
@@ -31,6 +36,7 @@ vello = { workspace = true }
 vello_encoding = { workspace = true }
 parley = { workspace = true }
 skrifa = { workspace = true }
+image = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
