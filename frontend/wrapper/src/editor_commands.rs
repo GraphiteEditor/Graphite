@@ -299,8 +299,19 @@ mod editor_commands {
 	}
 
 	/// Mouse movement within the screenspace bounds of the viewport
-	fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	fn on_mouse_move(x: f64, y: f64, mouse_keys: u8, modifiers: u8, time: Option<f64>, pressure: Option<f64>, tilt_x: Option<f64>, tilt_y: Option<f64>, twist: Option<f64>, tangential: Option<f64>, eraser: bool) -> Message {
+		let editor_mouse_state = EditorPointerState {
+			time,
+			pressure,
+			tilt: match (tilt_x, tilt_y) {
+				(Some(tilt_x), Some(tilt_y)) => Some((tilt_x, tilt_y).into()),
+				_ => None,
+			},
+			twist,
+			wheel: tangential,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }.into()
 	}
@@ -314,15 +325,37 @@ mod editor_commands {
 	}
 
 	/// A mouse button depressed within screenspace the bounds of the viewport
-	fn on_mouse_down(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	fn on_mouse_down(x: f64, y: f64, mouse_keys: u8, modifiers: u8, time: Option<f64>, pressure: Option<f64>, tilt_x: Option<f64>, tilt_y: Option<f64>, twist: Option<f64>, tangential: Option<f64>, eraser: bool) -> Message {
+		let editor_mouse_state = EditorPointerState {
+			time,
+			pressure,
+			tilt: match (tilt_x, tilt_y) {
+				(Some(tilt_x), Some(tilt_y)) => Some((tilt_x, tilt_y).into()),
+				_ => None,
+			},
+			twist,
+			wheel: tangential,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys }.into()
 	}
 
 	/// A mouse button released
-	fn on_mouse_up(x: f64, y: f64, mouse_keys: u8, modifiers: u8) -> Message {
-		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	fn on_mouse_up(x: f64, y: f64, mouse_keys: u8, modifiers: u8, time: Option<f64>, pressure: Option<f64>, tilt_x: Option<f64>, tilt_y: Option<f64>, twist: Option<f64>, tangential: Option<f64>, eraser: bool) -> Message {
+		let editor_mouse_state = EditorPointerState {
+			time,
+			pressure,
+			tilt: match (tilt_x, tilt_y) {
+				(Some(tilt_x), Some(tilt_y)) => Some((tilt_x, tilt_y).into()),
+				_ => None,
+			},
+			twist,
+			wheel: tangential,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys }.into()
 	}

@@ -123,7 +123,7 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 }
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
@@ -152,7 +152,7 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 	}
 }
 
@@ -170,7 +170,7 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	if (textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 }
 
 // Mouse events
@@ -275,6 +275,12 @@ export function onPaste(e: ClipboardEvent, editor: EditorWrapper) {
 
 export function onFocusOut() {
 	canvasFocused = false;
+}
+
+function pointerAttributes(e: PointerEvent): [number, number | undefined, number | undefined, number | undefined, number | undefined, number | undefined, boolean] {
+	const isPen = e.pointerType === "pen";
+	const eraser = isPen && (e.buttons & 0b10_0000) !== 0; // Pen eraser end is reported as the 32 button bit
+	return [e.timeStamp, isPen ? e.pressure : undefined, isPen ? e.tiltX : undefined, isPen ? e.tiltY : undefined, isPen ? e.twist : undefined, isPen ? e.tangentialPressure : undefined, eraser];
 }
 
 function detectShake(e: PointerEvent | MouseEvent): boolean {
