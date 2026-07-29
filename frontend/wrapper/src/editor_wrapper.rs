@@ -558,8 +558,16 @@ impl EditorWrapper {
 
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
-	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8, time: f64, pressure: Option<f64>, tilt_x: Option<f64>, tilt_y: Option<f64>, twist: Option<f64>, wheel: Option<f64>, eraser: bool) {
+		let editor_mouse_state = EditorPointerState {
+			time: Some(time),
+			pressure,
+			tilt: tilt_x.zip(tilt_y).map(|tilt| tilt.into()),
+			twist,
+			wheel,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
@@ -581,8 +589,16 @@ impl EditorWrapper {
 
 	/// A mouse button depressed within screenspace the bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseDown)]
-	pub fn on_mouse_down(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	pub fn on_mouse_down(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8, time: f64, pressure: Option<f64>, tilt_x: Option<f64>, tilt_y: Option<f64>, twist: Option<f64>, wheel: Option<f64>, eraser: bool) {
+		let editor_mouse_state = EditorPointerState {
+			time: Some(time),
+			pressure,
+			tilt: tilt_x.zip(tilt_y).map(|tilt| tilt.into()),
+			twist,
+			wheel,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
@@ -592,8 +608,16 @@ impl EditorWrapper {
 
 	/// A mouse button released
 	#[wasm_bindgen(js_name = onMouseUp)]
-	pub fn on_mouse_up(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+	pub fn on_mouse_up(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8, time: f64, pressure: Option<f64>, tilt_x: Option<f64>, tilt_y: Option<f64>, twist: Option<f64>, wheel: Option<f64>, eraser: bool) {
+		let editor_mouse_state = EditorPointerState {
+			time: Some(time),
+			pressure,
+			tilt: tilt_x.zip(tilt_y).map(|tilt| tilt.into()),
+			twist,
+			wheel,
+			eraser,
+			..EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into())
+		};
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
