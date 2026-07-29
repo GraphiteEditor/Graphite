@@ -123,7 +123,9 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
+
+	const samples = e.pointerType === "pen" ? e.getCoalescedEvents() : [e];
+	for (const sample of samples) editor.onMouseMove(sample.clientX, sample.clientY, sample.buttons, modifiers, ...pointerAttributes(sample));
 }
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
