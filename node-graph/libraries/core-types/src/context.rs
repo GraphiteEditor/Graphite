@@ -194,11 +194,72 @@ impl ContextFeatures {
 // CONTEXT DEPENDENCIES
 // ====================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
+	/// Must stay sorted.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub sources: Vec<SourceId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ContextModification {
+	pub features: ContextFeatures,
+	/// Must stay sorted.
+	pub sources: Vec<SourceId>,
+}
+
+impl core::ops::BitOrAssign<&ContextModification> for ContextModification {
+	fn bitor_assign(&mut self, other: &Self) {
+		self.features |= other.features;
+		merge_sorted_sources(&mut self.sources, &other.sources);
+	}
+}
+
+impl core::ops::BitOrAssign for ContextModification {
+	fn bitor_assign(&mut self, other: Self) {
+		*self |= &other;
+	}
+}
+
+impl core::ops::BitOrAssign<ContextFeatures> for ContextModification {
+	fn bitor_assign(&mut self, features: ContextFeatures) {
+		self.features |= features;
+	}
+}
+
+impl core::ops::BitAndAssign<ContextFeatures> for ContextModification {
+	fn bitand_assign(&mut self, features: ContextFeatures) {
+		self.features &= features;
+	}
+}
+
+impl ContextModification {
+	pub fn contains(&self, other: &Self) -> bool {
+		self.features.contains(other.features) && other.sources.iter().all(|id| self.sources.binary_search(id).is_ok())
+	}
+
+	pub fn difference(&self, other: &Self) -> Self {
+		Self {
+			features: self.features.difference(other.features),
+			sources: self.sources.iter().copied().filter(|id| other.sources.binary_search(id).is_err()).collect(),
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.features.is_empty() && self.sources.is_empty()
+	}
+}
+
+pub fn merge_sorted_sources(sources: &mut Vec<SourceId>, other: &[SourceId]) {
+	for &id in other {
+		if let Err(insert_at) = sources.binary_search(&id) {
+			sources.insert(insert_at, id);
+		}
+	}
 }
 
 impl From<&[ContextFeature]> for ContextDependencies {
@@ -227,7 +288,11 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				_ => ContextFeatures::empty(),
 			};
 		}
-		Self { extract, inject }
+		Self {
+			extract,
+			inject,
+			sources: Vec::new(),
+		}
 	}
 }
 
@@ -747,53 +812,52 @@ impl<'a> EvalScope<'a> {
 			arena,
 			hash: 0,
 		};
-		scope.hash = scope.compute_hash(None);
+		scope.hash = scope.compute_hash(|_| true);
 		scope
-	}
-
-	pub fn retained(&self, retain: &[SourceId]) -> EvalScope<'a> {
-		EvalScope {
-			hash: self.compute_hash(Some(retain)),
-			..*self
-		}
 	}
 
 	pub fn with_real_time(&self, real_time: Option<f64>) -> EvalScope<'a> {
 		let mut scope = EvalScope { real_time, ..*self };
-		scope.hash = scope.compute_hash(None);
+		scope.hash = scope.compute_hash(|_| true);
 		scope
 	}
 
 	pub fn with_animation_time(&self, animation_time: Option<f64>) -> EvalScope<'a> {
 		let mut scope = EvalScope { animation_time, ..*self };
-		scope.hash = scope.compute_hash(None);
+		scope.hash = scope.compute_hash(|_| true);
 		scope
 	}
 
 	pub fn with_pointer_position(&self, pointer_position: Option<DVec2>) -> EvalScope<'a> {
 		let mut scope = EvalScope { pointer_position, ..*self };
-		scope.hash = scope.compute_hash(None);
+		scope.hash = scope.compute_hash(|_| true);
 		scope
 	}
 
-	pub fn nullified(&self, keep: ContextFeatures) -> EvalScope<'a> {
+	pub fn nullified(&self, keep: ContextFeatures, retain: Option<&[SourceId]>) -> EvalScope<'a> {
 		let mut scope = EvalScope {
 			real_time: self.real_time.filter(|_| keep.contains(ContextFeatures::REAL_TIME)),
 			animation_time: self.animation_time.filter(|_| keep.contains(ContextFeatures::ANIMATION_TIME)),
 			pointer_position: self.pointer_position.filter(|_| keep.contains(ContextFeatures::POINTER_POSITION)),
 			..*self
 		};
-		scope.hash = scope.compute_hash(None);
+		scope.hash = scope.compute_hash(|source| retain.is_none_or(|retain| retain.contains(source)));
 		scope
 	}
 
-	fn compute_hash(&self, retain: Option<&[SourceId]>) -> u64 {
+	pub fn excluding(&self, source: SourceId) -> EvalScope<'a> {
+		let mut scope = *self;
+		scope.hash = scope.compute_hash(|candidate| *candidate != source);
+		scope
+	}
+
+	fn compute_hash(&self, keep_source: impl Fn(&SourceId) -> bool) -> u64 {
 		let mut hasher = std::hash::DefaultHasher::new();
 		self.real_time.map(f64::to_bits).hash(&mut hasher);
 		self.animation_time.map(f64::to_bits).hash(&mut hasher);
 		self.pointer_position.map(|position| (position.x.to_bits(), position.y.to_bits())).hash(&mut hasher);
 		for (source, generation) in self.generations {
-			if retain.is_none_or(|retain| retain.contains(source)) {
+			if keep_source(source) {
 				(source, generation).hash(&mut hasher);
 			}
 		}
@@ -1360,7 +1424,7 @@ mod context_impl_tests {
 		let bumped_retained = [(0, 1), (1, 4)];
 
 		let hash_with = |generations: &[(SourceId, u64)]| {
-			let scope = scope_fixture(generations, &arena).retained(&[1]);
+			let scope = scope_fixture(generations, &arena).nullified(ContextFeatures::all(), Some(&[1]));
 			let retained_scope_context = ContextImpl::root(&scope);
 			hash_of(&retained_scope_context)
 		};

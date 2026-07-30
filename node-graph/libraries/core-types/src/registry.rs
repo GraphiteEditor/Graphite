@@ -58,6 +58,7 @@ pub enum RegistryValueSource {
 	None,
 	Default(&'static str),
 	Scope(&'static str),
+	SourceId,
 }
 
 type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>>>;

@@ -12,7 +12,7 @@ use core_types::gnode::GNode;
 use core_types::gpoll::GPoll;
 use core_types::registry::{EdgeHandle, edge_type};
 use core_types::value::value_edge;
-use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
+use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -95,7 +95,7 @@ macro_rules! tagged_value {
 			DocumentNode(DocumentNode),
 			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
 			#[serde(skip)]
-			ContextFeatures(ContextFeatures),
+			ContextModification(ContextModification),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 			/// Only used by the `resource` node, should never be serialized
@@ -125,7 +125,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::NodeIdPath(path) => path.hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
-					Self::ContextFeatures(features) => features.cache_hash(state),
+					Self::ContextModification(modification) => modification.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 					Self::ResourceHash(x) => x.cache_hash(state),
@@ -180,7 +180,7 @@ macro_rules! tagged_value {
 						Box::new(list)
 					}
 					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(features),
+					Self::ContextModification(modification) => Box::new(modification),
 					Self::EditorApi(x) => Box::new(x),
 					Self::ResourceHash(x) => Box::new(x),
 				}
@@ -230,7 +230,7 @@ macro_rules! tagged_value {
 						Arc::new(list)
 					}
 					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(features),
+					Self::ContextModification(modification) => Arc::new(modification),
 					Self::EditorApi(x) => Arc::new(x),
 					Self::ResourceHash(x) => Arc::new(x),
 				}
@@ -258,7 +258,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::NodeIdPath(_) => concrete!(List<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => concrete!(ContextFeatures),
+					Self::ContextModification(_) => concrete!(ContextModification),
 					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
 				}
@@ -308,7 +308,7 @@ macro_rules! tagged_value {
 						Ok(value_edge(list))
 					}
 					Self::DocumentNode(node) => Ok(value_edge(node)),
-					Self::ContextFeatures(features) => Ok(value_edge(features)),
+					Self::ContextModification(modification) => Ok(value_edge(modification)),
 					Self::EditorApi(x) => Ok(value_edge(x)),
 					Self::ResourceHash(x) => Ok(value_edge(x)),
 				}
@@ -441,7 +441,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
-					Self::ContextFeatures(features) => format!("ContextFeatures({features:?})"),
+					Self::ContextModification(modification) => format!("ContextModification({modification:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 					Self::ResourceHash(hash) => format!("ResourceHash({hash:?})"),
 				}

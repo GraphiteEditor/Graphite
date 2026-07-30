@@ -279,6 +279,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 					}
 				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
+				RegistryValueSource::SourceId => return NodeInput::Reflection(DocumentNodeMetadata::SourceId),
 			};
 
 			if let Some(type_default) = TaggedValue::from_type(ty) {

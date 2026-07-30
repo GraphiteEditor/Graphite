@@ -40,8 +40,8 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			.collect(),
 		None => vec![quote!(#core_types::Ctx)],
 	};
-	if async_source {
-		ctx_bounds.push(quote!(#core_types::CacheHash));
+	if async_source && !snapshot_ctx {
+		ctx_bounds.push(quote!(#core_types::context::DeriveCtx));
 	}
 	if snapshot_ctx {
 		ctx_bounds.extend([
@@ -144,7 +144,7 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		}
 	});
 
-	let async_bounds = match (async_fn, future_kernel) {
+	let mut async_bounds = match (async_fn, future_kernel) {
 		(false, false) => Vec::new(),
 		(false, true) => vec![quote!(#trait_output: Clone)],
 		(true, _) => {
@@ -160,6 +160,9 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			output_clone.chain(value_clones).chain(data_clones).collect()
 		}
 	};
+	if async_source {
+		async_bounds.push(quote!(for<'__derived> #core_types::context::Derived<'__derived, #ctx_ident>: #core_types::CacheHash));
+	}
 
 	let clampable_bounds = regular_fields.iter().filter_map(|field| {
 		let ParsedFieldType::Regular(RegularParsedField { ty, number_hard_min, number_hard_max, .. }) = &field.ty else {
@@ -326,7 +329,8 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		None => quote!(#core_types::gpoll::GPoll::Pending),
 	};
 	let slot_check = quote! {
-		let __key = #core_types::registry::cache_key(__input);
+		let __scope = #core_types::context::DeriveCtx::scope(__input).excluding(_source);
+		let __key = #core_types::registry::cache_key(&#core_types::context::DeriveCtx::with_scope(__input, &__scope));
 		{
 			let __entries = self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 			if let Some(__state) = __entries.get(&__key) {

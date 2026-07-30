@@ -308,7 +308,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
 
@@ -338,7 +338,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_value_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextModification(context_deps))),
 				call_argument: concrete!(Context),
 				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
@@ -365,36 +365,40 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
-		let mut combined_deps = ContextFeatures::default();
+		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let context_features = self.nodes[node_index].1.context_features;
+		let context_features = self.nodes[node_index].1.context_features.clone();
+		let own_deps = ContextModification {
+			features: context_features.extract,
+			sources: context_features.sources.clone(),
+		};
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
+			ConstructionArgs::Value(_) => return (own_deps, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+			ConstructionArgs::Inline(_) => return (own_deps, Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
 			let branch = self.find_context_dependencies(node);
 
+			combined_deps |= &branch.0;
 			branch_dependencies.push(branch);
-			combined_deps |= branch.0;
 		}
-		let mut new_deps = combined_deps;
+		let mut new_deps = combined_deps.clone();
 
 		// Remove requirements which this node provides
 		new_deps &= !context_features.inject;
 		// Add requirements we have
-		new_deps |= context_features.extract;
+		new_deps |= own_deps;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
-		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+		let we_introduce_new_deps = !combined_deps.contains(&new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
 		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
@@ -410,15 +414,15 @@ impl ProtoNetwork {
 		let net_injections = context_features.inject.difference(context_features.extract);
 
 		// Which dependencies still need to be met after this node?
-		let remaining_deps_from_children = combined_deps.difference(net_injections);
+		let remaining_deps_from_children = combined_deps.features.difference(net_injections);
 
 		// Do we satisfy any existing dependencies?
-		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+		let we_supply_existing_deps = !combined_deps.features.difference(remaining_deps_from_children).is_empty();
 
 		let mut new_id = None;
 		if we_supply_existing_deps {
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+			new_id = Some(self.insert_context_nullification_node(id, new_deps.clone()));
 		}
 
 		(new_deps, new_id)

@@ -409,8 +409,7 @@ mod tests {
 
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
-		let source_scope = scope.retained(&[]);
-		let ctx = ContextImpl::root(&source_scope);
+		let ctx = ContextImpl::root(&scope);
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
 		assert!(!runtime.take_dirty());
 
@@ -420,9 +419,8 @@ mod tests {
 		assert_eq!(bumped, vec![(11, 1)]);
 
 		let bumped_scope = EvalScope::new(None, None, None, &bumped, &arena);
-		let bumped_source_scope = bumped_scope.retained(&[]);
-		let bumped_ctx = ContextImpl::root(&bumped_source_scope);
-		assert_eq!(GNode::eval(&graph, &bumped_ctx), GPoll::Final(42.0), "the retained key replays the landed slot");
+		let bumped_ctx = ContextImpl::root(&bumped_scope);
+		assert_eq!(GNode::eval(&graph, &bumped_ctx), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
 		assert_eq!(runtime.spawner().drain(), 0, "a slot hit must not respawn");
 
 		let downstream_key = crate::registry::cache_key(&ContextImpl::root(&scope));

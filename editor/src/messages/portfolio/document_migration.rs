@@ -2406,7 +2406,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
 	{
-		let context_features = node_definition.node_template.document_node.context_features;
+		let context_features = node_definition.node_template.document_node.context_features.clone();
 		document.network_interface.set_context_features(node_id, network_path, context_features);
 	}
 

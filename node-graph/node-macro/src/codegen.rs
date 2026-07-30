@@ -149,6 +149,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						quote!(RegistryValueSource::Scope(#data.as_static_str()))
 					}
 				}
+				ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
 				_ => quote!(RegistryValueSource::None),
 			},
 			_ => quote!(RegistryValueSource::None),

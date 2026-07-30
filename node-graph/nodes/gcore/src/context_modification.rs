@@ -1,5 +1,5 @@
 use core::f64;
-use core_types::context::{Context, ContextFeatures, Ctx, DeriveCtx};
+use core_types::context::{Context, ContextModification, Ctx, DeriveCtx};
 use core_types::gpoll::GPoll;
 use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
@@ -44,8 +44,8 @@ fn context_modification<T>(
 	)]
 	value: impl Node<Context<'_>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
-	features_to_keep: ContextFeatures,
+	modification: ContextModification,
 ) -> GPoll<T> {
-	let scope = ctx.scope().nullified(features_to_keep);
-	value.eval(&ctx.nullified(features_to_keep, &scope))
+	let scope = ctx.scope().nullified(modification.features, Some(&modification.sources));
+	value.eval(&ctx.nullified(modification.features, &scope))
 }

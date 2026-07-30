@@ -72,6 +72,7 @@ pub enum ParsedValueSource {
 	None,
 	Default(TokenStream2),
 	Scope(Expr),
+	SourceId,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -1063,7 +1064,7 @@ impl ParsedNodeFn {
 			parse_quote!(#core_types::runtime::RuntimeHandle),
 			ParsedValueSource::Scope(parse_quote!("graphene_std::runtime::RuntimeNode")),
 		));
-		self.fields.push(hidden_field("_source", parse_quote!(#core_types::SourceId), ParsedValueSource::None));
+		self.fields.push(hidden_field("_source", parse_quote!(#core_types::SourceId), ParsedValueSource::SourceId));
 	}
 }
 
