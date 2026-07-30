@@ -22,7 +22,7 @@ pub unsafe fn assume_init_prefix_mut<T>(scratch: &mut [MaybeUninit<T>], len: usi
 	unsafe { std::slice::from_raw_parts_mut(scratch.as_mut_ptr().cast::<T>(), len) }
 }
 
-pub trait GNode<Input> {
+pub trait Node<Input> {
 	type Output;
 
 	fn eval(&self, input: &Input) -> GPoll<Self::Output>;
@@ -80,9 +80,9 @@ pub trait GNode<Input> {
 	}
 }
 
-impl<Input, N> GNode<Input> for &N
+impl<Input, N> Node<Input> for &N
 where
-	N: GNode<Input> + ?Sized,
+	N: Node<Input> + ?Sized,
 {
 	type Output = N::Output;
 
@@ -102,9 +102,9 @@ where
 	}
 }
 
-impl<Input, N> GNode<Input> for Box<N>
+impl<Input, N> Node<Input> for Box<N>
 where
-	N: GNode<Input> + ?Sized,
+	N: Node<Input> + ?Sized,
 {
 	type Output = N::Output;
 
@@ -124,9 +124,9 @@ where
 	}
 }
 
-impl<Input, N> GNode<Input> for std::sync::Arc<N>
+impl<Input, N> Node<Input> for std::sync::Arc<N>
 where
-	N: GNode<Input> + ?Sized,
+	N: Node<Input> + ?Sized,
 {
 	type Output = N::Output;
 
@@ -171,7 +171,7 @@ impl StatusCell {
 		Self { no_partial: true, ..Self::new() }
 	}
 
-	pub fn eval_input<Input, N: GNode<Input>>(&self, input_index: usize, node: &N, input: &Input) -> Result<N::Output, Interrupt> {
+	pub fn eval_input<Input, N: Node<Input>>(&self, input_index: usize, node: &N, input: &Input) -> Result<N::Output, Interrupt> {
 		match node.eval(input) {
 			GPoll::Final(value) => Ok(value),
 			GPoll::Partial(_) if self.no_partial => Err(Interrupt::Pending),
@@ -233,15 +233,15 @@ impl<'a, N> LazyInput<'a, N> {
 
 	pub fn eval<Input>(&self, ctx: &Input) -> Result<N::Output, Interrupt>
 	where
-		N: GNode<Input>,
+		N: Node<Input>,
 	{
 		self.cell.eval_input(self.input_index, self.node, ctx)
 	}
 }
 
-impl<'a, Input, N> GNode<Input> for LazyInput<'a, N>
+impl<'a, Input, N> Node<Input> for LazyInput<'a, N>
 where
-	N: GNode<Input>,
+	N: Node<Input>,
 {
 	type Output = N::Output;
 
@@ -279,7 +279,7 @@ mod tests {
 
 	struct Double;
 
-	impl GNode<TestInput> for Double {
+	impl Node<TestInput> for Double {
 		type Output = u64;
 
 		fn eval(&self, input: &TestInput) -> GPoll<u64> {
@@ -315,7 +315,7 @@ mod tests {
 	#[test]
 	fn partial_lane_downgrades_batch_finality() {
 		struct PartialAtThree;
-		impl GNode<TestInput> for PartialAtThree {
+		impl Node<TestInput> for PartialAtThree {
 			type Output = u64;
 			fn eval(&self, input: &TestInput) -> GPoll<u64> {
 				match input.index {
@@ -344,7 +344,7 @@ mod tests {
 			}
 		}
 		struct PendingAtTwo;
-		impl GNode<TestInput> for PendingAtTwo {
+		impl Node<TestInput> for PendingAtTwo {
 			type Output = Probe;
 			fn eval(&self, input: &TestInput) -> GPoll<Probe> {
 				match input.index {
@@ -362,7 +362,7 @@ mod tests {
 
 	#[test]
 	fn trait_is_object_safe_across_erased_edges() {
-		let erased: Box<dyn GNode<TestInput, Output = u64>> = Box::new(Double);
+		let erased: Box<dyn Node<TestInput, Output = u64>> = Box::new(Double);
 		let input = TestInput { index: 21 };
 		assert_eq!(erased.eval(&input), GPoll::Final(42));
 		let mut scratch = [const { MaybeUninit::uninit() }; 2];

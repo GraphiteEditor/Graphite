@@ -1,9 +1,9 @@
 use crate::node_registry;
 use core_types::arena::Arena;
 use core_types::context::{ContextImpl, DynSlot, EvalScope, VarArg, VarArgLink, VarArgSlots};
-use core_types::gnode::GNode;
 use core_types::gpoll::GPoll;
-use core_types::registry::{EdgeHandle, ErasedGNode};
+use core_types::node::Node;
+use core_types::registry::{EdgeHandle, ErasedNode};
 use core_types::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
@@ -34,7 +34,6 @@ pub struct DynamicExecutor {
 fn noop_runtime() -> Arc<DynGraphRuntime> {
 	Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>))
 }
-
 
 impl Default for DynamicExecutor {
 	fn default() -> Self {
@@ -291,7 +290,7 @@ impl BorrowTree {
 		self.nodes.insert(id, (node, path));
 	}
 
-	/// Calls the `GNode::serialize` for that specific node, returning for example the captured io record for a monitor node. The node path must match the document node path.
+	/// Calls the `Node::serialize` for that specific node, returning for example the captured io record for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
@@ -305,7 +304,7 @@ impl BorrowTree {
 	/// Evaluate a node of the [`BorrowTree`], downcasting its edge to the expected output type.
 	pub fn eval<I, T: 'static>(&self, id: NodeId, input: &I) -> Option<GPoll<T>>
 	where
-		ErasedGNode<T>: GNode<I, Output = T>,
+		ErasedNode<T>: Node<I, Output = T>,
 	{
 		let (node, _path) = self.nodes.get(&id)?;
 		let edge = node.duplicate().downcast::<T>().ok()?;

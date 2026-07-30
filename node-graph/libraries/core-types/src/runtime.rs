@@ -152,8 +152,8 @@ mod tests {
 	use super::*;
 	use crate::arena::Arena;
 	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
-	use crate::gnode::GNode;
 	use crate::gpoll::GPoll;
+	use crate::node::Node;
 	use crate::transform::Footprint;
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -208,7 +208,7 @@ mod tests {
 
 	struct SourceNode<T>(T);
 
-	impl<T: Clone, Input> GNode<Input> for SourceNode<T> {
+	impl<T: Clone, Input> Node<Input> for SourceNode<T> {
 		type Output = T;
 
 		fn eval(&self, _input: &Input) -> GPoll<T> {
@@ -264,7 +264,7 @@ mod tests {
 
 	struct GatedSource(Arc<std::sync::atomic::AtomicBool>, f64);
 
-	impl<Input> GNode<Input> for GatedSource {
+	impl<Input> Node<Input> for GatedSource {
 		type Output = f64;
 
 		fn eval(&self, _input: &Input) -> GPoll<f64> {
@@ -289,13 +289,13 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = SlowDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(7u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 0);
 		assert_eq!(runtime.drain(), vec![7]);
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 1);
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
 		assert_eq!(SLOW_DOUBLE_RUNS.load(Ordering::Relaxed), 1);
 	}
 
@@ -309,9 +309,9 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = PreviewDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(1u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Partial(-1.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Partial(-1.0));
 		runtime.drain();
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
 	}
 
 	#[test]
@@ -324,9 +324,9 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = StrictDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(2u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
 	}
 
 	#[test]
@@ -339,12 +339,12 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = StagedDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(8u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "the prologue runs synchronously on the miss");
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "in flight must not rerun the prologue");
 		assert_eq!(runtime.drain(), vec![8]);
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1);
 	}
 
@@ -359,12 +359,12 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = StagedSumNode::new(SourceNode(40.0f64), GatedSource(gate.clone(), 2.0), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(9u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), Vec::<SourceId>::new(), "an interrupted prologue must not spawn or claim the slot");
 		gate.store(true, Ordering::Relaxed);
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), vec![9]);
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
 	}
 
 	#[test]
@@ -383,9 +383,9 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = SnapshotVarargNode::new(SourceNode(()), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(5u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(21.5));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(21.5));
 	}
 
 	#[test]
@@ -400,9 +400,9 @@ mod tests {
 		let runtime = Arc::new(MockRuntime::default());
 		let graph = SnapshotResolutionNode::new(SourceNode(()), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(3u64));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(Footprint::DEFAULT.resolution.x));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(Footprint::DEFAULT.resolution.x));
 	}
 
 	#[test]
@@ -492,7 +492,7 @@ mod tests {
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
 		let ctx = ContextImpl::root(&scope);
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert!(!runtime.take_dirty());
 
 		assert_eq!(runtime.spawner().drain(), 1);
@@ -502,7 +502,7 @@ mod tests {
 
 		let bumped_scope = EvalScope::new(None, None, None, &bumped, &arena);
 		let bumped_ctx = ContextImpl::root(&bumped_scope);
-		assert_eq!(GNode::eval(&graph, &bumped_ctx), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
+		assert_eq!(Node::eval(&graph, &bumped_ctx), GPoll::Final(42.0), "the own-generation-excluded key replays the landed slot");
 		assert_eq!(runtime.spawner().drain(), 0, "a slot hit must not respawn");
 
 		let downstream_key = crate::registry::cache_key(&ContextImpl::root(&scope));

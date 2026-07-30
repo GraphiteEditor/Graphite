@@ -1,10 +1,10 @@
 use core_types::arena::{Arena, ArenaCell};
 use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll};
 use core_types::frame_table::{FrameTable, Lookup};
-use core_types::gnode::GNode;
 use core_types::gpoll::{Extent, Finality, GPoll, Interrupt};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
+use core_types::node::Node;
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -35,7 +35,7 @@ fn memoize<I: CacheHash, T: Clone>(input: I, #[data] cache: Arc<Mutex<Option<(u6
 fn memoize_extent<C, T, NodeContent>(node: &MemoizeNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
 where
 	T: Clone,
-	NodeContent: GNode<C, Output = T>,
+	NodeContent: Node<C, Output = T>,
 {
 	node.content.extent(ctx)
 }
@@ -71,7 +71,7 @@ fn frame_memo<'e, T: Clone + 'static>(ctx: impl Ctx + CacheHash + ExtractArena<'
 fn frame_memo_extent<C, T, NodeContent>(node: &FrameMemoNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
 where
 	T: Clone + 'static,
-	NodeContent: GNode<C, Output = T>,
+	NodeContent: Node<C, Output = T>,
 {
 	node.content.extent(ctx)
 }
@@ -129,12 +129,12 @@ mod tests {
 	use core_types::Type;
 	use core_types::concrete;
 	use core_types::context::{ContextImpl, EvalScope};
-	use core_types::registry::{EdgeHandle, ErasedGNode, ErasedLendGNode};
+	use core_types::registry::{EdgeHandle, ErasedLendNode, ErasedNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	struct CountingNode(AtomicU32);
 
-	impl<Input> GNode<Input> for CountingNode {
+	impl<Input> Node<Input> for CountingNode {
 		type Output = u32;
 
 		fn eval(&self, _input: &Input) -> GPoll<u32> {
@@ -144,7 +144,7 @@ mod tests {
 
 	struct PartialCountingNode(AtomicU32);
 
-	impl<Input> GNode<Input> for PartialCountingNode {
+	impl<Input> Node<Input> for PartialCountingNode {
 		type Output = u32;
 
 		fn eval(&self, _input: &Input) -> GPoll<u32> {
@@ -154,7 +154,7 @@ mod tests {
 
 	struct ValueNode<T>(T);
 
-	impl<T: Clone, Input> GNode<Input> for ValueNode<T> {
+	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
 		type Output = T;
 
 		fn eval(&self, _input: &Input) -> GPoll<T> {
@@ -173,7 +173,7 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let handle = EdgeHandle::new(Arc::new(MonitorNode::new(ValueNode(11u32))) as Arc<ErasedGNode<u32>>);
+		let handle = EdgeHandle::new(Arc::new(MonitorNode::new(ValueNode(11u32))) as Arc<ErasedNode<u32>>);
 		assert!(handle.serialize().is_none(), "no record before the first eval");
 
 		let edge = handle.duplicate().downcast::<u32>().unwrap();
@@ -233,8 +233,8 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let edge = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedGNode<u32>>);
-		let memoized = EdgeHandle::new(Arc::new(MemoizeNode::new(edge.downcast::<u32>().unwrap())) as Arc<ErasedGNode<u32>>);
+		let edge = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedNode<u32>>);
+		let memoized = EdgeHandle::new(Arc::new(MemoizeNode::new(edge.downcast::<u32>().unwrap())) as Arc<ErasedNode<u32>>);
 		let stacked = MemoizeNode::new(memoized.downcast::<u32>().unwrap());
 
 		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
@@ -248,8 +248,8 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let edge = EdgeHandle::new(Arc::new(ValueNode("lent out".to_string())) as Arc<ErasedGNode<String>>);
-		let lending = EdgeHandle::new_ref(Arc::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Arc<ErasedLendGNode<String>>);
+		let edge = EdgeHandle::new(Arc::new(ValueNode("lent out".to_string())) as Arc<ErasedNode<String>>);
+		let lending = EdgeHandle::new_ref(Arc::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Arc<ErasedLendNode<String>>);
 		assert_eq!(*lending.ty(), core_types::registry::lend_edge_type::<String>());
 
 		let node = lending.downcast_lend::<String>().unwrap();

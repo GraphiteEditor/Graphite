@@ -13,7 +13,7 @@ use graphene_std::raster::GPU;
 use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::registry::{ConstructionError, EdgeHandle, ErasedGNode, NodeIOTypes, RegistryEntry};
+use graphene_std::registry::{ConstructionError, EdgeHandle, ErasedNode, NodeIOTypes, RegistryEntry};
 use graphene_std::render_node::RenderIntermediate;
 use graphene_std::runtime::RuntimeHandle;
 use graphene_std::transform::Footprint;
@@ -367,7 +367,7 @@ mod node_registry_macros {
 						}
 						let mut inputs = inputs.into_iter();
 						let node = <$path>::new(inputs.next().unwrap().downcast::<$first>()? $(, inputs.next().unwrap().downcast::<$type>()?)*);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedGNode<$first>>))
+						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$first>>))
 					},
 				},
 			)
@@ -386,7 +386,7 @@ mod node_registry_macros {
 						}
 						let mut inputs = inputs.into_iter();
 						let node = graphene_std::ops::IntoNode::<$to, _>::new(inputs.next().unwrap().downcast::<$from>()?);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedGNode<$to>>))
+						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$to>>))
 					},
 				},
 			)
@@ -454,7 +454,7 @@ mod node_registry_macros {
 							inputs.next().unwrap().downcast::<RuntimeHandle>()?,
 							inputs.next().unwrap().downcast::<SourceId>()?,
 						);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedGNode<$to>>))
+						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$to>>))
 					},
 				},
 			)
@@ -470,7 +470,7 @@ mod node_registry_macros {
 						}
 						let mut inputs = inputs.into_iter();
 						let node = graphene_std::ops::ConvertNode::<$to, _, _>::new(inputs.next().unwrap().downcast::<$from>()?, inputs.next().unwrap().downcast::<$convert>()?);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedGNode<$to>>))
+						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$to>>))
 					},
 				},
 			)

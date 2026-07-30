@@ -23,7 +23,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 
 fn validate_async_source(parsed: &ParsedNodeFn) {
 	let snapshot_ctx = matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
-	let future_kernel = crate::gcodegen::is_source_kernel(&parsed.output_type);
+	let future_kernel = crate::codegen::is_source_kernel(&parsed.output_type);
 	if parsed.is_async && future_kernel {
 		emit_error!(
 			parsed.output_type.span(),

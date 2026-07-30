@@ -3,9 +3,6 @@ use core_types::runtime::SourceFuture;
 use core_types::{Ctx, ExtractFootprint, ops::Convert, ops::ConvertAsync, transform::Footprint};
 use std::marker::PhantomData;
 
-// Re-export TypeNode from core-types for convenience
-pub use core_types::ops::TypeNode;
-
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
 #[node_macro::node(category("General"), skip_impl)]
 fn passthrough<'i, T: 'i + Send>(_: impl Ctx, content: T) -> T {

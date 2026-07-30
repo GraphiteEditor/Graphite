@@ -1,13 +1,12 @@
 use crate::concrete;
 use crate::context::{Context, ContextImpl};
-use crate::gnode::GNode;
+use crate::node::Node;
 use crate::{ContextFeature, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
 use dyn_any::DynAny;
 use graphene_hash::CacheHash;
 pub use no_std_types::registry::types;
 use std::collections::HashMap;
 use std::hash::Hasher;
-use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
 
 // Translation struct between macro and definition
@@ -70,13 +69,13 @@ pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetada
 pub use crate::NodeIOTypes;
 
 #[cfg(not(target_family = "wasm"))]
-pub type ErasedGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = T> + Send + Sync;
+pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T> + Send + Sync;
 #[cfg(target_family = "wasm")]
-pub type ErasedGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = T>;
+pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T>;
 #[cfg(not(target_family = "wasm"))]
-pub type ErasedLendGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = &'c T> + Send + Sync;
+pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T> + Send + Sync;
 #[cfg(target_family = "wasm")]
-pub type ErasedLendGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = &'c T>;
+pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T>;
 
 #[cfg(not(target_family = "wasm"))]
 type DynEdge = dyn std::any::Any + Send + Sync;
@@ -127,9 +126,9 @@ unsafe impl<N: ?Sized + Send + Sync> Send for SharedEdge<N> {}
 // SAFETY: as in Send.
 unsafe impl<N: ?Sized + Send + Sync> Sync for SharedEdge<N> {}
 
-impl<Input, N> GNode<Input> for SharedEdge<N>
+impl<Input, N> Node<Input> for SharedEdge<N>
 where
-	N: GNode<Input> + ?Sized,
+	N: Node<Input> + ?Sized,
 {
 	type Output = N::Output;
 
@@ -149,7 +148,7 @@ where
 		unsafe { self.ptr.as_ref() }.serialize()
 	}
 
-	fn eval_batch<'a>(&self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::gnode::BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::node::BatchStatus<'a, Self::Output>
 	where
 		Input: crate::context::InjectIndex + Copy,
 	{
@@ -179,23 +178,23 @@ unsafe impl Send for EdgeHandle {}
 unsafe impl Sync for EdgeHandle {}
 
 impl EdgeHandle {
-	pub fn new<T: 'static>(node: std::sync::Arc<ErasedGNode<T>>) -> Self {
+	pub fn new<T: 'static>(node: std::sync::Arc<ErasedNode<T>>) -> Self {
 		Self::new_erased(node, edge_type::<T>())
 	}
 
-	pub fn new_ref<T: 'static>(node: std::sync::Arc<ErasedLendGNode<T>>) -> Self {
+	pub fn new_ref<T: 'static>(node: std::sync::Arc<ErasedLendNode<T>>) -> Self {
 		Self::new_erased(node, lend_edge_type::<T>())
 	}
 
 	pub fn new_erased<N: ?Sized + 'static>(node: std::sync::Arc<N>, ty: Type) -> Self
 	where
-		N: for<'c> GNode<ContextImpl<'c>>,
+		N: for<'c> Node<ContextImpl<'c>>,
 		SharedEdge<N>: WasmNotSend + WasmNotSync,
 	{
 		Self {
 			node: Box::new(SharedEdge::new(node)),
 			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
-			serialize: |edge| GNode::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
+			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
 			ty,
 		}
 	}
@@ -217,11 +216,11 @@ impl EdgeHandle {
 		(self.serialize)(&*self.node)
 	}
 
-	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedGNode<T>>, ConstructionError> {
+	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedNode<T>>, ConstructionError> {
 		self.downcast_erased(edge_type::<T>())
 	}
 
-	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendGNode<T>>, ConstructionError> {
+	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendNode<T>>, ConstructionError> {
 		self.downcast_erased(lend_edge_type::<T>())
 	}
 
@@ -257,7 +256,6 @@ pub fn construct(entry: &RegistryEntry, inputs: Vec<EdgeHandle>) -> Result<EdgeH
 	(entry.constructor)(inputs)
 }
 
-pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
 #[cfg(not(target_family = "wasm"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
 #[cfg(target_family = "wasm")]
@@ -275,7 +273,7 @@ mod tests {
 
 	struct CountingNode(AtomicU32);
 
-	impl<Input> GNode<Input> for CountingNode {
+	impl<Input> Node<Input> for CountingNode {
 		type Output = u32;
 
 		fn eval(&self, _input: &Input) -> GPoll<u32> {
@@ -285,7 +283,7 @@ mod tests {
 
 	struct ValueNode<T>(T);
 
-	impl<T: Clone, Input> GNode<Input> for ValueNode<T> {
+	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
 		type Output = T;
 
 		fn eval(&self, _input: &Input) -> GPoll<T> {
@@ -295,7 +293,7 @@ mod tests {
 
 	struct LendNode(String);
 
-	impl<'e, Input: Ctx + ExtractArena<ArenaRef = &'e Arena>> GNode<Input> for LendNode {
+	impl<'e, Input: Ctx + ExtractArena<ArenaRef = &'e Arena>> Node<Input> for LendNode {
 		type Output = &'e String;
 
 		fn eval(&self, input: &Input) -> GPoll<&'e String> {
@@ -318,10 +316,10 @@ mod tests {
 			content: Node0,
 		}
 
-		impl<'e, Input, Node0> GNode<Input> for SplitNode<Node0>
+		impl<'e, Input, Node0> Node<Input> for SplitNode<Node0>
 		where
 			Input: Ctx,
-			Node0: GNode<Input, Output = &'e String>,
+			Node0: Node<Input, Output = &'e String>,
 		{
 			type Output = SplitBorrow<'e>;
 
@@ -330,14 +328,14 @@ mod tests {
 			}
 		}
 
-		type ErasedSplitEdge = dyn for<'c> GNode<ContextImpl<'c>, Output = SplitBorrow<'c>> + Send + Sync;
+		type ErasedSplitEdge = dyn for<'c> Node<ContextImpl<'c>, Output = SplitBorrow<'c>> + Send + Sync;
 
 		let arena = Arena::new(4096);
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let lending = EdgeHandle::new_ref(Arc::new(LendNode("held".to_string())) as Arc<ErasedLendGNode<String>>);
+		let lending = EdgeHandle::new_ref(Arc::new(LendNode("held".to_string())) as Arc<ErasedLendNode<String>>);
 		let upstream = lending.downcast_lend::<String>().unwrap();
 		let node: Arc<ErasedSplitEdge> = Arc::new(SplitNode { content: upstream });
 		let handle = EdgeHandle::new_erased(node, concrete!(SplitBorrow<'static>));
@@ -359,10 +357,10 @@ mod tests {
 			content: Node0,
 		}
 
-		impl<C, T, Node0> GNode<C> for RepeatNode<Node0>
+		impl<C, T, Node0> Node<C> for RepeatNode<Node0>
 		where
 			C: Ctx + DeriveCtx,
-			Node0: for<'x> GNode<Derived<'x, C>, Output = T>,
+			Node0: for<'x> Node<Derived<'x, C>, Output = T>,
 		{
 			type Output = Vec<T>;
 
@@ -382,7 +380,7 @@ mod tests {
 
 		struct LevelsNode;
 
-		impl<Input: ExtractIndex> GNode<Input> for LevelsNode {
+		impl<Input: ExtractIndex> Node<Input> for LevelsNode {
 			type Output = Vec<usize>;
 
 			fn eval(&self, input: &Input) -> GPoll<Vec<usize>> {
@@ -398,7 +396,7 @@ mod tests {
 		let nested = RepeatNode {
 			content: RepeatNode { content: LevelsNode },
 		};
-		let erased: Box<ErasedGNode<Vec<Vec<Vec<usize>>>>> = Box::new(nested);
+		let erased: Box<ErasedNode<Vec<Vec<Vec<usize>>>>> = Box::new(nested);
 
 		let GPoll::Final(outer) = erased.eval(&ctx) else {
 			panic!("nested repeat must evaluate");
@@ -417,10 +415,10 @@ mod tests {
 			content: Node0,
 		}
 
-		impl<C, T, Node0> GNode<C> for ShiftFootprintNode<Node0>
+		impl<C, T, Node0> Node<C> for ShiftFootprintNode<Node0>
 		where
 			C: Ctx + DeriveCtx + ExtractFootprint,
-			Node0: for<'x> GNode<Derived<'x, C>, Output = T>,
+			Node0: for<'x> Node<Derived<'x, C>, Output = T>,
 		{
 			type Output = T;
 
@@ -434,7 +432,7 @@ mod tests {
 
 		struct ResolutionNode;
 
-		impl<Input: ExtractFootprint> GNode<Input> for ResolutionNode {
+		impl<Input: ExtractFootprint> Node<Input> for ResolutionNode {
 			type Output = u32;
 
 			fn eval(&self, input: &Input) -> GPoll<u32> {
@@ -447,7 +445,7 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let graph: Box<ErasedGNode<u32>> = Box::new(ShiftFootprintNode {
+		let graph: Box<ErasedNode<u32>> = Box::new(ShiftFootprintNode {
 			content: ShiftFootprintNode { content: ResolutionNode },
 		});
 		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x + 14));
@@ -459,19 +457,19 @@ mod tests {
 			let mut args = args.into_iter();
 			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast::<String>()?;
 			drop(value);
-			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedGNode<u32>>))
+			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedNode<u32>>))
 		}
 		let entry = RegistryEntry {
 			io: NodeIOTypes::new(concrete!(Context), concrete!(u32), vec![edge_type::<String>()]),
 			constructor: construct_strlen,
 		};
 
-		let owned = EdgeHandle::new(Arc::new(ValueNode("typed".to_string())) as Arc<ErasedGNode<String>>);
+		let owned = EdgeHandle::new(Arc::new(ValueNode("typed".to_string())) as Arc<ErasedNode<String>>);
 		assert!(construct(&entry, vec![owned]).is_ok());
 
 		assert_eq!(construct(&entry, vec![]).unwrap_err(), ConstructionError::Arity { expected: 1, got: 0 });
 
-		let mistyped = EdgeHandle::new(Arc::new(ValueNode(1.0f64)) as Arc<ErasedGNode<f64>>);
+		let mistyped = EdgeHandle::new(Arc::new(ValueNode(1.0f64)) as Arc<ErasedNode<f64>>);
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {
@@ -480,7 +478,7 @@ mod tests {
 			}
 		);
 
-		let lent = EdgeHandle::new_ref(Arc::new(LendNode("typed".to_string())) as Arc<ErasedLendGNode<String>>);
+		let lent = EdgeHandle::new_ref(Arc::new(LendNode("typed".to_string())) as Arc<ErasedLendNode<String>>);
 		assert_eq!(
 			construct(&entry, vec![lent]).unwrap_err(),
 			ConstructionError::Type {
@@ -497,7 +495,7 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let handle = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedGNode<u32>>);
+		let handle = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedNode<u32>>);
 		let duplicate = handle.duplicate();
 		assert_eq!(*duplicate.ty(), edge_type::<u32>());
 

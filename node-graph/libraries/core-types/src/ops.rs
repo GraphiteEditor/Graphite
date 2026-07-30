@@ -1,43 +1,7 @@
-use crate::Node;
 use crate::list::{Attribute, AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
 use graphene_hash::CacheHash;
-use std::future::Future;
-use std::marker::PhantomData;
-
-// Type
-// TODO: Document this
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct TypeNode<N: for<'a> Node<'a, I>, I, O>(pub N, pub PhantomData<(I, O)>);
-impl<'i, N, I: 'i, O: 'i> Node<'i, I> for TypeNode<N, I, O>
-where
-	N: for<'n> Node<'n, I, Output = O>,
-{
-	type Output = O;
-	fn eval(&'i self, input: I) -> Self::Output {
-		self.0.eval(input)
-	}
-
-	fn reset(&self) {
-		self.0.reset();
-	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.0.serialize()
-	}
-}
-impl<'i, N: for<'a> Node<'a, I>, I: 'i> TypeNode<N, I, <N as Node<'i, I>>::Output> {
-	pub fn new(node: N) -> Self {
-		Self(node, PhantomData)
-	}
-}
-impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as Node<'i, I>>::Output> {
-	fn clone(&self) -> Self {
-		Self(self.0.clone(), self.1)
-	}
-}
-impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
 /// Because number casting is lossy, we cannot use the normal [`Into`] trait like we do for other types.

@@ -190,14 +190,14 @@ mod tests {
 	use super::*;
 	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope, VarArgsResult};
-	use core_types::gnode::GNode;
 	use core_types::gpoll::GPoll;
+	use core_types::node::Node;
 	use core_types::{ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
 	use graphene_application_io::TimingInformation;
 
 	struct ProbeNode;
 
-	impl<'a> GNode<ContextImpl<'a>> for ProbeNode {
+	impl<'a> Node<ContextImpl<'a>> for ProbeNode {
 		type Output = RenderOutput;
 
 		fn eval(&self, ctx: &ContextImpl<'a>) -> GPoll<RenderOutput> {
@@ -241,7 +241,7 @@ mod tests {
 		let ctx = root.with_varargs(&varargs);
 
 		let graph = CreateContextNode::new(ProbeNode);
-		let GPoll::Final(result) = <CreateContextNode<ProbeNode> as GNode<ContextImpl>>::eval(&graph, &ctx) else {
+		let GPoll::Final(result) = <CreateContextNode<ProbeNode> as Node<ContextImpl>>::eval(&graph, &ctx) else {
 			panic!("create_context must complete synchronously");
 		};
 		assert_eq!(

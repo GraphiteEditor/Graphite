@@ -1066,15 +1066,15 @@ mod graphene_test {
 	use super::*;
 	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope, ExtractIndex};
-	use core_types::gnode::{BatchStatus, GNode};
 	use core_types::gpoll::{Finality, GPoll};
-	use core_types::registry::{EdgeHandle, ErasedGNode, construct};
+	use core_types::node::{BatchStatus, Node};
+	use core_types::registry::{EdgeHandle, ErasedNode, construct};
 	use std::mem::MaybeUninit;
 	use std::sync::Arc;
 
 	struct SourceNode<T>(T);
 
-	impl<T: Clone, Input> GNode<Input> for SourceNode<T> {
+	impl<T: Clone, Input> Node<Input> for SourceNode<T> {
 		type Output = T;
 
 		fn eval(&self, _input: &Input) -> GPoll<T> {
@@ -1084,7 +1084,7 @@ mod graphene_test {
 
 	struct IndexNode;
 
-	impl<Input: ExtractIndex> GNode<Input> for IndexNode {
+	impl<Input: ExtractIndex> Node<Input> for IndexNode {
 		type Output = f64;
 
 		fn eval(&self, input: &Input) -> GPoll<f64> {
@@ -1097,13 +1097,13 @@ mod graphene_test {
 	}
 
 	#[test]
-	fn generated_add_evaluates_through_the_gnode_path() {
+	fn generated_add_evaluates_through_the_node_path() {
 		let arena = Arena::new(64);
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
 		let graph = AddNode::new(SourceNode(1.0f64), SourceNode(2.0f64));
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(3.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(3.0));
 	}
 
 	#[test]
@@ -1112,7 +1112,7 @@ mod graphene_test {
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let erased: Box<ErasedGNode<f64>> = Box::new(AddNode::new(IndexNode, SourceNode(10.0f64)));
+		let erased: Box<ErasedNode<f64>> = Box::new(AddNode::new(IndexNode, SourceNode(10.0f64)));
 		let mut scratch = [const { MaybeUninit::uninit() }; 4];
 		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
 		let BatchStatus::Filled(lanes, finality) = status else {
@@ -1129,11 +1129,11 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let entries = logical_or_entries();
-		let value = EdgeHandle::new(Arc::new(SourceNode(true)) as Arc<ErasedGNode<bool>>);
-		let other_value = EdgeHandle::new(Arc::new(SourceNode(false)) as Arc<ErasedGNode<bool>>);
+		let value = EdgeHandle::new(Arc::new(SourceNode(true)) as Arc<ErasedNode<bool>>);
+		let other_value = EdgeHandle::new(Arc::new(SourceNode(false)) as Arc<ErasedNode<bool>>);
 		let wired = construct(&entries[0], vec![value, other_value]).unwrap().downcast::<bool>().unwrap();
 
-		assert_eq!(GNode::eval(&wired, &ctx), GPoll::Final(true));
+		assert_eq!(Node::eval(&wired, &ctx), GPoll::Final(true));
 	}
 
 	#[test]
@@ -1159,11 +1159,11 @@ mod graphene_test {
 		assert_eq!(entries[3].io.inputs, vec![core_types::concrete!(DVec2), core_types::concrete!(DVec2)]);
 		assert_eq!(entries[3].io.output, core_types::concrete!(DVec2));
 
-		let augend = EdgeHandle::new(Arc::new(SourceNode(1.5f64)) as Arc<ErasedGNode<f64>>);
-		let addend = EdgeHandle::new(Arc::new(SourceNode(2.5f64)) as Arc<ErasedGNode<f64>>);
+		let augend = EdgeHandle::new(Arc::new(SourceNode(1.5f64)) as Arc<ErasedNode<f64>>);
+		let addend = EdgeHandle::new(Arc::new(SourceNode(2.5f64)) as Arc<ErasedNode<f64>>);
 		let wired = construct(&entries[0], vec![augend, addend]).unwrap().downcast::<f64>().unwrap();
 
-		assert_eq!(GNode::eval(&wired, &ctx), GPoll::Final(4.0));
+		assert_eq!(Node::eval(&wired, &ctx), GPoll::Final(4.0));
 	}
 
 	#[test]
@@ -1173,7 +1173,7 @@ mod graphene_test {
 
 		struct CountingSource(Arc<AtomicU32>, f64);
 
-		impl<Input> GNode<Input> for CountingSource {
+		impl<Input> Node<Input> for CountingSource {
 			type Output = f64;
 
 			fn eval(&self, _input: &Input) -> GPoll<f64> {
@@ -1190,7 +1190,7 @@ mod graphene_test {
 		let untaken = Arc::new(AtomicU32::new(0));
 		let graph = SwitchNode::new(SourceNode(true), CountingSource(taken.clone(), 1.0), CountingSource(untaken.clone(), 2.0));
 
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(1.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(1.0));
 		assert_eq!(taken.load(Ordering::Relaxed), 1);
 		assert_eq!(untaken.load(Ordering::Relaxed), 0);
 	}
@@ -1199,7 +1199,7 @@ mod graphene_test {
 	fn converted_switch_passes_branch_status_through() {
 		struct PendingSource;
 
-		impl<Input> GNode<Input> for PendingSource {
+		impl<Input> Node<Input> for PendingSource {
 			type Output = f64;
 
 			fn eval(&self, _input: &Input) -> GPoll<f64> {
@@ -1209,7 +1209,7 @@ mod graphene_test {
 
 		struct PartialSource;
 
-		impl<Input> GNode<Input> for PartialSource {
+		impl<Input> Node<Input> for PartialSource {
 			type Output = f64;
 
 			fn eval(&self, _input: &Input) -> GPoll<f64> {
@@ -1222,17 +1222,17 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let pending = SwitchNode::new(SourceNode(true), PendingSource, PartialSource);
-		assert_eq!(GNode::eval(&pending, &ctx), GPoll::Pending);
+		assert_eq!(Node::eval(&pending, &ctx), GPoll::Pending);
 
 		let partial = SwitchNode::new(SourceNode(false), PendingSource, PartialSource);
-		assert_eq!(GNode::eval(&partial, &ctx), GPoll::Partial(7.0));
+		assert_eq!(Node::eval(&partial, &ctx), GPoll::Partial(7.0));
 	}
 
 	#[test]
 	fn converted_switch_merges_condition_status_into_the_branch_result() {
 		struct PartialCondition;
 
-		impl<Input> GNode<Input> for PartialCondition {
+		impl<Input> Node<Input> for PartialCondition {
 			type Output = bool;
 
 			fn eval(&self, _input: &Input) -> GPoll<bool> {
@@ -1245,14 +1245,14 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let graph = SwitchNode::new(PartialCondition, SourceNode(1.0f64), SourceNode(2.0f64));
-		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Partial(1.0));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Partial(1.0));
 	}
 
 	#[test]
 	fn generated_eval_computes_on_stand_in_and_traces_fallback() {
 		struct FallbackNode;
 
-		impl<Input> GNode<Input> for FallbackNode {
+		impl<Input> Node<Input> for FallbackNode {
 			type Output = f64;
 
 			fn eval(&self, _input: &Input) -> GPoll<f64> {
@@ -1265,7 +1265,7 @@ mod graphene_test {
 		let ctx = ContextImpl::root(&scope);
 
 		let graph = AddNode::new(FallbackNode, SourceNode(5.0f64));
-		let GPoll::Fallback(boxed) = GNode::eval(&graph, &ctx) else {
+		let GPoll::Fallback(boxed) = Node::eval(&graph, &ctx) else {
 			panic!("fallback must propagate with the computed stand-in");
 		};
 		assert_eq!(boxed.0, 5.0);
