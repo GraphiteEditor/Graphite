@@ -194,7 +194,7 @@ fn create_canvas(_: impl Ctx) -> CanvasHandle {
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-fn rasterize<T: WasmNotSend + Clone>(
+async fn rasterize<T: WasmNotSend + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Vector>,

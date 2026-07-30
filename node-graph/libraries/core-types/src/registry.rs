@@ -180,6 +180,14 @@ impl std::fmt::Debug for EdgeHandle {
 	}
 }
 
+// SAFETY: wasm is single threaded, so the marker-free payload never actually crosses a thread;
+// mirrors the old NodeContainer assertion that let the executor live in a sync static.
+#[cfg(target_family = "wasm")]
+unsafe impl Send for EdgeHandle {}
+// SAFETY: as in Send.
+#[cfg(target_family = "wasm")]
+unsafe impl Sync for EdgeHandle {}
+
 impl EdgeHandle {
 	pub fn new<T: 'static>(node: std::sync::Arc<ErasedGNode<T>>) -> Self {
 		Self::new_erased(node, edge_type::<T>())
