@@ -1,7 +1,9 @@
 use crate::SourceId;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 #[cfg(not(target_family = "wasm"))]
 pub type SourceFuture<T = ()> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -28,6 +30,64 @@ impl std::fmt::Debug for RuntimeHandle {
 
 impl graphene_hash::CacheHash for RuntimeHandle {
 	fn cache_hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
+}
+
+pub trait Spawner {
+	fn spawn(&self, task: SourceFuture);
+}
+
+pub struct GraphRuntime<S> {
+	generations: Arc<Mutex<HashMap<SourceId, u64>>>,
+	dirty: Arc<AtomicBool>,
+	spawner: S,
+}
+
+impl<S> GraphRuntime<S> {
+	pub fn new(spawner: S) -> Self {
+		Self {
+			generations: Arc::default(),
+			dirty: Arc::default(),
+			spawner,
+		}
+	}
+
+	pub fn retain_sources(&self, live: &[SourceId]) {
+		let mut generations = self.generations.lock().unwrap_or_else(PoisonError::into_inner);
+		generations.retain(|source, _| live.contains(source));
+		for source in live {
+			generations.entry(*source).or_insert(0);
+		}
+	}
+
+	pub fn snapshot(&self) -> Vec<(SourceId, u64)> {
+		let generations = self.generations.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut snapshot: Vec<_> = generations.iter().map(|(source, generation)| (*source, *generation)).collect();
+		snapshot.sort_unstable();
+		snapshot
+	}
+
+	pub fn take_dirty(&self) -> bool {
+		self.dirty.swap(false, Ordering::Acquire)
+	}
+
+	pub fn spawner(&self) -> &S {
+		&self.spawner
+	}
+}
+
+impl<S: Spawner> Runtime for GraphRuntime<S> {
+	fn spawn(&self, source: SourceId, future: SourceFuture) {
+		let generations = Arc::clone(&self.generations);
+		let dirty = Arc::clone(&self.dirty);
+		self.spawner.spawn(Box::pin(async move {
+			future.await;
+			let mut generations = generations.lock().unwrap_or_else(PoisonError::into_inner);
+			if let Some(generation) = generations.get_mut(&source) {
+				*generation += 1;
+				dirty.store(true, Ordering::Release);
+			}
+		}));
+	}
 }
 
 #[cfg(test)]
@@ -63,6 +123,29 @@ mod tests {
 					source
 				})
 				.collect()
+		}
+	}
+
+	#[derive(Default)]
+	struct CollectSpawner {
+		tasks: Mutex<Vec<SourceFuture>>,
+	}
+
+	impl Spawner for CollectSpawner {
+		fn spawn(&self, task: SourceFuture) {
+			self.tasks.lock().unwrap().push(task);
+		}
+	}
+
+	impl CollectSpawner {
+		fn drain(&self) -> usize {
+			let tasks = std::mem::take(&mut *self.tasks.lock().unwrap());
+			let mut task_ctx = std::task::Context::from_waker(std::task::Waker::noop());
+			let count = tasks.len();
+			for mut task in tasks {
+				assert!(task.as_mut().poll(&mut task_ctx).is_ready());
+			}
+			count
 		}
 	}
 
@@ -268,5 +351,82 @@ mod tests {
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Final(Footprint::DEFAULT.resolution.x));
+	}
+
+	#[test]
+	fn the_epilogue_bumps_the_generation_and_sets_dirty() {
+		let runtime = GraphRuntime::new(CollectSpawner::default());
+		runtime.retain_sources(&[7]);
+
+		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		assert_eq!(runtime.snapshot(), vec![(7, 0)], "no bump before the future completes");
+		assert!(!runtime.take_dirty());
+
+		assert_eq!(runtime.spawner().drain(), 1);
+		assert_eq!(runtime.snapshot(), vec![(7, 1)]);
+		assert!(runtime.take_dirty());
+		assert!(!runtime.take_dirty(), "take_dirty drains the flag");
+	}
+
+	#[test]
+	fn the_epilogue_of_a_removed_source_is_inert() {
+		let runtime = GraphRuntime::new(CollectSpawner::default());
+		runtime.retain_sources(&[7]);
+
+		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		runtime.retain_sources(&[]);
+		assert_eq!(runtime.spawner().drain(), 1);
+
+		assert_eq!(runtime.snapshot(), Vec::<(SourceId, u64)>::new());
+		assert!(!runtime.take_dirty(), "a removed source must not invalidate");
+	}
+
+	#[test]
+	fn retain_sources_preserves_live_generations() {
+		let runtime = GraphRuntime::new(CollectSpawner::default());
+		runtime.retain_sources(&[7]);
+		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		runtime.spawner().drain();
+
+		runtime.retain_sources(&[7, 9]);
+		assert_eq!(runtime.snapshot(), vec![(7, 1), (9, 0)]);
+
+		runtime.retain_sources(&[9]);
+		assert_eq!(runtime.snapshot(), vec![(9, 0)]);
+	}
+
+	#[node_macro::node(category(""))]
+	async fn epilogue_double(_: impl Ctx, value: f64) -> f64 {
+		value * 2.
+	}
+
+	#[test]
+	fn a_source_slot_lands_through_the_runtime_while_downstream_keys_invalidate() {
+		let arena = Arena::new(64);
+		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
+		runtime.retain_sources(&[11]);
+		let graph = EpilogueDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(11u64));
+
+		let snapshot = runtime.snapshot();
+		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
+		let source_scope = scope.retained(&[]);
+		let ctx = ContextImpl::root(&source_scope);
+		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
+		assert!(!runtime.take_dirty());
+
+		assert_eq!(runtime.spawner().drain(), 1);
+		assert!(runtime.take_dirty());
+		let bumped = runtime.snapshot();
+		assert_eq!(bumped, vec![(11, 1)]);
+
+		let bumped_scope = EvalScope::new(None, None, None, &bumped, &arena);
+		let bumped_source_scope = bumped_scope.retained(&[]);
+		let bumped_ctx = ContextImpl::root(&bumped_source_scope);
+		assert_eq!(GNode::eval(&graph, &bumped_ctx), GPoll::Final(42.0), "the retained key replays the landed slot");
+		assert_eq!(runtime.spawner().drain(), 0, "a slot hit must not respawn");
+
+		let downstream_key = crate::registry::cache_key(&ContextImpl::root(&scope));
+		let bumped_downstream_key = crate::registry::cache_key(&ContextImpl::root(&bumped_scope));
+		assert_ne!(downstream_key, bumped_downstream_key, "unretained keys see the bump");
 	}
 }

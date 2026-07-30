@@ -2,6 +2,7 @@
 pub enum ErrorKind {
 	Node(&'static str),
 	ArenaExhausted,
+	Panic,
 }
 
 impl PartialEq<&str> for ErrorKind {
@@ -128,6 +129,13 @@ impl<T> GPoll<T> {
 	pub fn arena_exhausted() -> Self {
 		GPoll::Error(Box::new(GraphError {
 			kind: ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		}))
+	}
+
+	pub fn panicked() -> Self {
+		GPoll::Error(Box::new(GraphError {
+			kind: ErrorKind::Panic,
 			trace: Vec::new(),
 		}))
 	}
