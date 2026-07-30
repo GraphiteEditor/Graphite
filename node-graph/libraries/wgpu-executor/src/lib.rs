@@ -9,11 +9,11 @@ use crate::texture_cache::TextureCache;
 use anyhow::Result;
 use core_types::Color;
 use core_types::color::SRGBA8;
-use std::sync::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
 use raster_types::Texture;
 use std::sync::Arc;
+use std::sync::Mutex;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::{Origin3d, TextureAspect};
 

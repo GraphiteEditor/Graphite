@@ -33,7 +33,10 @@ fn validate_async_source(parsed: &ParsedNodeFn) {
 	}
 	if !parsed.is_async {
 		if snapshot_ctx {
-			emit_error!(parsed.input.pat_ident.span(), "`CtxSnapshot` is the async source context; synchronous nodes take `impl Ctx` and read through extract bounds");
+			emit_error!(
+				parsed.input.pat_ident.span(),
+				"`CtxSnapshot` is the async source context; synchronous nodes take `impl Ctx` and read through extract bounds"
+			);
 		}
 		if !future_kernel {
 			return;

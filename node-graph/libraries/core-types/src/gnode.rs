@@ -168,10 +168,7 @@ impl StatusCell {
 	}
 
 	pub fn no_partial() -> Self {
-		Self {
-			no_partial: true,
-			..Self::new()
-		}
+		Self { no_partial: true, ..Self::new() }
 	}
 
 	pub fn eval_input<Input, N: GNode<Input>>(&self, input_index: usize, node: &N, input: &Input) -> Result<N::Output, Interrupt> {

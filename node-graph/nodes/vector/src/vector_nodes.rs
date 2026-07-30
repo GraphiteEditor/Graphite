@@ -3,11 +3,11 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::gpoll::Interrupt;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::gpoll::Interrupt;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color, Context,
 	Ctx, DeriveCtx,
@@ -116,7 +116,7 @@ fn assign_colors<T>(
 	repeat_every: u32,
 ) -> T
 where
-	T: VectorListIterMut+ Send,
+	T: VectorListIterMut + Send,
 {
 	let Some(row) = gradient.into_iter().next() else { return content };
 
@@ -157,7 +157,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-fn fill<V: VectorListIterMut+ Send, F: IntoGraphicList+ Send + 'static>(
+fn fill<V: VectorListIterMut + Send, F: IntoGraphicList + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(
@@ -252,7 +252,7 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-fn stroke<V, L: IntoF64Vec, P: IntoGraphicList+ Send + 'static>(
+fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(
@@ -324,7 +324,7 @@ fn stroke<V, L: IntoF64Vec, P: IntoGraphicList+ Send + 'static>(
 	dash_offset: f64,
 ) -> List<V>
 where
-	List<V>: VectorListIterMut+ Send,
+	List<V>: VectorListIterMut + Send,
 {
 	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
 

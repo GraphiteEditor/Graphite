@@ -1,5 +1,6 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
+use core_types::Ctx;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
@@ -8,7 +9,6 @@ use core_types::math::bbox::{AxisAlignedBbox, Bbox};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
-use core_types::Ctx;
 use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
 use raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
@@ -295,10 +295,12 @@ fn brush(
 				_ => BlendMode::Restore,
 			};
 
-			erase_restore_mask = blit(&(), List::new_from_item(erase_restore_mask), brush_texture, positions, move |a, b| blend_colors(a, b, mask_blend_mode, 1.))
-				.into_iter()
-				.next()
-				.unwrap_or_default();
+			erase_restore_mask = blit(&(), List::new_from_item(erase_restore_mask), brush_texture, positions, move |a, b| {
+				blend_colors(a, b, mask_blend_mode, 1.)
+			})
+			.into_iter()
+			.next()
+			.unwrap_or_default();
 		}
 
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));

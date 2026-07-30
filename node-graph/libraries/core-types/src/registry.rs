@@ -117,10 +117,7 @@ impl<N: ?Sized> SharedEdge<N> {
 	}
 
 	pub fn share(&self) -> Self {
-		Self {
-			ptr: self.ptr,
-			own: self.own.clone(),
-		}
+		Self { ptr: self.ptr, own: self.own.clone() }
 	}
 }
 
@@ -152,12 +149,7 @@ where
 		unsafe { self.ptr.as_ref() }.serialize()
 	}
 
-	fn eval_batch<'a>(
-		&self,
-		input: &'a Input,
-		range: std::ops::Range<u64>,
-		scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>,
-	) -> crate::gnode::BatchStatus<'a, Self::Output>
+	fn eval_batch<'a>(&self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::gnode::BatchStatus<'a, Self::Output>
 	where
 		Input: crate::context::InjectIndex + Copy,
 	{
@@ -235,10 +227,7 @@ impl EdgeHandle {
 
 	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
 		let found = self.ty;
-		self.node
-			.downcast::<SharedEdge<N>>()
-			.map(|edge| *edge)
-			.map_err(|_| ConstructionError::Type { expected, found })
+		self.node.downcast::<SharedEdge<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type { expected, found })
 	}
 }
 
@@ -364,7 +353,7 @@ mod tests {
 
 	#[test]
 	fn derive_ctx_repeat_pushes_index_levels_through_the_erased_edge() {
-		use crate::context::{Derived, DeriveCtx, ExtractIndex};
+		use crate::context::{DeriveCtx, Derived, ExtractIndex};
 
 		struct RepeatNode<Node0> {
 			content: Node0,
@@ -421,7 +410,7 @@ mod tests {
 
 	#[test]
 	fn derive_ctx_footprint_replace_reaches_the_content() {
-		use crate::context::{Derived, DeriveCtx, ExtractFootprint};
+		use crate::context::{DeriveCtx, Derived, ExtractFootprint};
 		use crate::transform::Footprint;
 
 		struct ShiftFootprintNode<Node0> {

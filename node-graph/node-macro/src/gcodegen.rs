@@ -165,7 +165,10 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 	}
 
 	let clampable_bounds = regular_fields.iter().filter_map(|field| {
-		let ParsedFieldType::Regular(RegularParsedField { ty, number_hard_min, number_hard_max, .. }) = &field.ty else {
+		let ParsedFieldType::Regular(RegularParsedField {
+			ty, number_hard_min, number_hard_max, ..
+		}) = &field.ty
+		else {
 			return None;
 		};
 		(number_hard_min.is_some() || number_hard_max.is_some()).then(|| quote!(#ty: #core_types::misc::Clampable))
@@ -617,9 +620,7 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 		let types = row.iter();
 		let edge_types = row.iter().map(|ty| quote!(gcore::registry::SharedEdge<gcore::registry::ErasedGNode<#ty>>));
 		let output = quote!(<#struct_name<#(#edge_types),*> as gcore::gnode::GNode<gcore::context::ContextImpl<'static>>>::Output);
-		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| {
-			quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;)
-		});
+		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;));
 		quote! {
 			gcore::registry::RegistryEntry {
 				io: gcore::registry::NodeIOTypes::new(
@@ -666,15 +667,14 @@ fn implementation_rows(parsed: &ParsedNodeFn, regular_fields: &[&ParsedField]) -
 			},
 			ParsedFieldType::Node(NodeParsedField { output_type, implementations, .. }) => match implementations.is_empty() {
 				false => Some(implementations.iter().map(|implementation| implementation.output.clone()).collect()),
-				true => open_generics.iter().all(|generic| !crate::codegen::type_contains_ident(output_type, generic)).then(|| vec![output_type.clone()]),
+				true => open_generics
+					.iter()
+					.all(|generic| !crate::codegen::type_contains_ident(output_type, generic))
+					.then(|| vec![output_type.clone()]),
 			},
 		})
 		.collect::<Option<_>>()?;
 
 	let row_count = candidates.iter().map(|types| types.len()).max().unwrap_or(1).max(1);
-	Some(
-		(0..row_count)
-			.map(|row| candidates.iter().map(|types| types[row.min(types.len() - 1)].clone()).collect())
-			.collect(),
-	)
+	Some((0..row_count).map(|row| candidates.iter().map(|types| types[row.min(types.len() - 1)].clone()).collect()).collect())
 }

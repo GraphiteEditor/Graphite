@@ -459,10 +459,10 @@ impl BorrowTree {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graph_craft::document::value::TaggedValue;
 	use core_types::arena::ArenaCell;
 	use core_types::context::{ExtractFootprint, ExtractVarArgs};
 	use core_types::runtime::{SourceFuture, Spawner};
+	use graph_craft::document::value::TaggedValue;
 
 	struct InertSpawner;
 

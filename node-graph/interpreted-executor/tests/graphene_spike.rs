@@ -86,10 +86,7 @@ struct LendStringNode {
 
 impl LendStringNode {
 	fn new(value: String) -> Self {
-		Self {
-			value,
-			cell: ArenaCell::new(),
-		}
+		Self { value, cell: ArenaCell::new() }
 	}
 }
 

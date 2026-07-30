@@ -209,7 +209,11 @@ mod tests {
 			assert_eq!(ctx.try_animation_time(), Some(2.0));
 			assert_eq!(ctx.try_pointer_position(), Some(glam::DVec2::new(3.0, 4.0)));
 			GPoll::Final(RenderOutput {
-				data: RenderOutputType::Buffer { data: Vec::new(), width: 0, height: 0 },
+				data: RenderOutputType::Buffer {
+					data: Vec::new(),
+					width: 0,
+					height: 0,
+				},
 				metadata: RenderMetadata::default(),
 			})
 		}
@@ -240,6 +244,13 @@ mod tests {
 		let GPoll::Final(result) = <CreateContextNode<ProbeNode> as GNode<ContextImpl>>::eval(&graph, &ctx) else {
 			panic!("create_context must complete synchronously");
 		};
-		assert_eq!(result.data, RenderOutputType::Buffer { data: Vec::new(), width: 0, height: 0 });
+		assert_eq!(
+			result.data,
+			RenderOutputType::Buffer {
+				data: Vec::new(),
+				width: 0,
+				height: 0
+			}
+		);
 	}
 }

@@ -300,12 +300,7 @@ mod tests {
 
 		let gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = StagedSumNode::new(
-			SourceNode(40.0f64),
-			GatedSource(gate.clone(), 2.0),
-			SourceNode(RuntimeHandle(runtime.clone())),
-			SourceNode(9u64),
-		);
+		let graph = StagedSumNode::new(SourceNode(40.0f64), GatedSource(gate.clone(), 2.0), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(9u64));
 
 		assert_eq!(GNode::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), Vec::<SourceId>::new(), "an interrupted prologue must not spawn or claim the slot");

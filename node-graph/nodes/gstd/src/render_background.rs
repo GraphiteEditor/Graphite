@@ -12,11 +12,7 @@ use wgpu::util::DeviceExt;
 use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-fn render_background<'a>(
-	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
-	data: RenderOutput,
-) -> RenderOutput {
+fn render_background<'a>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, #[scope(composite_background_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache, data: RenderOutput) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
