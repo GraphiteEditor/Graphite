@@ -9,7 +9,7 @@ use graph_craft::Type;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, ProtoNetwork, ProtoNode, TypingContext};
+use graph_craft::proto::{ConstructionArgs, GraphError, ProtoNetwork, ProtoNode, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -65,12 +65,12 @@ pub struct ResolvedDocumentNodeTypesDelta {
 }
 
 impl DynamicExecutor {
-	pub async fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
+	pub fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
 		let sources = proto_network.source_ids();
-		let tree = BorrowTree::new(proto_network, &typing_context).await?;
+		let tree = BorrowTree::new(proto_network, &typing_context)?;
 		let runtime = noop_runtime();
 		runtime.retain_sources(&sources);
 
@@ -96,7 +96,7 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
@@ -120,11 +120,7 @@ impl DynamicExecutor {
 		})?;
 
 		let sources = proto_network.source_ids();
-		let (add, orphaned) = self
-			.tree
-			.update(proto_network, &self.typing_context)
-			.await
-			.map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		self.runtime.retain_sources(&sources);
 		self.live_sources = sources;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
@@ -174,27 +170,25 @@ impl<I> Executor<I, GPoll<TaggedValue>> for &DynamicExecutor
 where
 	I: VarArg + Send + Sync + std::panic::RefUnwindSafe,
 {
-	fn execute(&self, input: I) -> LocalFuture<'_, Result<GPoll<TaggedValue>, Box<dyn Error>>> {
-		Box::pin(async move {
-			let Some(handle) = self.tree.get(self.output) else {
-				return Err("Output node not found in executor".into());
-			};
-			let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-			let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
-				Ok(poll) => poll.map(Ok),
-				Err(error) => GPoll::Final(Err(error)),
-			});
-			match result {
-				GPoll::Final(value) => Ok(GPoll::Final(value?)),
-				GPoll::Partial(value) => Ok(GPoll::Partial(value?)),
-				GPoll::Fallback(boxed) => {
-					let (value, error) = *boxed;
-					Ok(GPoll::Fallback(Box::new((value?, error))))
-				}
-				GPoll::Pending => Ok(GPoll::Pending),
-				GPoll::Error(error) => Ok(GPoll::Error(error)),
+	fn execute(&self, input: I) -> Result<GPoll<TaggedValue>, Box<dyn Error>> {
+		let Some(handle) = self.tree.get(self.output) else {
+			return Err("Output node not found in executor".into());
+		};
+		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+		let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
+			Ok(poll) => poll.map(Ok),
+			Err(error) => GPoll::Final(Err(error)),
+		});
+		match result {
+			GPoll::Final(value) => Ok(GPoll::Final(value?)),
+			GPoll::Partial(value) => Ok(GPoll::Partial(value?)),
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				Ok(GPoll::Fallback(Box::new((value?, error))))
 			}
-		})
+			GPoll::Pending => Ok(GPoll::Pending),
+			GPoll::Error(error) => Ok(GPoll::Error(error)),
+		}
 	}
 }
 pub fn eval_root<S, T>(arena: &mut Arena, runtime: &GraphRuntime<S>, call_argument: DynSlot, eval: impl FnOnce(&ContextImpl) -> GPoll<T>) -> GPoll<T> {
@@ -264,23 +258,23 @@ pub struct BorrowTree {
 }
 
 impl BorrowTree {
-	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
+	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
-			nodes.push_node(id, node, typing_context).await?
+			nodes.push_node(id, node, typing_context)?
 		}
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
-	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
+	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		let mut new_nodes: Vec<_> = Vec::new();
 		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
-				self.push_node(id, node, typing_context).await?;
+				self.push_node(id, node, typing_context)?;
 			} else if self.update_source_map(id, typing_context, &node) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 			}
@@ -342,10 +336,10 @@ impl BorrowTree {
 	/// use interpreted_executor::node_registry;
 	///
 	///
-	/// async fn example() -> Result<(), GraphErrors> {
+	/// fn example() -> Result<(), GraphErrors> {
 	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
 	///     let typing_context = TypingContext::default();
-	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
+	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context)?;
 	///
 	///     // Assert that the node exists in the BorrowTree
 	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist before removal");
@@ -442,7 +436,7 @@ impl BorrowTree {
 	///   - `Nodes`: Constructs a node using other nodes as dependencies.
 	/// - Uses the constructor function from the `typing_context` for `Nodes` construction arguments.
 	/// - Returns an error if no constructor is found for the given node ID.
-	async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
+	fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		self.update_source_map(id, typing_context, &proto_node);
 		let path = proto_node.original_location.path.clone().unwrap_or_default();
 
@@ -534,8 +528,7 @@ mod test {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
 		let context = TypingContext::default();
-		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
-		futures::executor::block_on(future).unwrap();
+		tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 		let _node = tree.get(NodeId(0)).unwrap();
 
 		let arena = Arena::new(64);

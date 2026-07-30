@@ -1,3 +1,4 @@
+use futures::executor::block_on;
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
@@ -14,10 +15,10 @@ use std::time::Duration;
 
 const SOURCE_COMPLETION_TIMEOUT: Duration = Duration::from_secs(30);
 
-async fn execute_until_final(executor: &DynamicExecutor, render_config: RenderConfig, completion: &Receiver<()>) -> Result<TaggedValue, Box<dyn Error>> {
+fn execute_until_final(executor: &DynamicExecutor, render_config: RenderConfig, completion: &Receiver<()>) -> Result<TaggedValue, Box<dyn Error>> {
 	loop {
 		while completion.try_recv().is_ok() {}
-		match executor.execute(render_config.clone()).await? {
+		match executor.execute(render_config.clone())? {
 			GPoll::Final(value) => return Ok(value),
 			GPoll::Fallback(boxed) => {
 				let (value, error) = *boxed;
@@ -52,7 +53,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 	}
 }
 
-pub async fn export_document(
+pub fn export_document(
 	executor: &DynamicExecutor,
 	wgpu_executor: wgpu_executor::WgpuExecutorHandle,
 	output_path: PathBuf,
@@ -82,7 +83,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = execute_until_final(executor, render_config, completion).await?;
+	let result = execute_until_final(executor, render_config, completion)?;
 
 	// Handle the result based on output type
 	match result {
@@ -95,7 +96,7 @@ pub async fn export_document(
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
-				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
+				let cpu_raster: Raster<CPU> = block_on(gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()));
 				let (data, width, height) = cpu_raster.to_flat_u8();
 
 				// Encode and write raster image
@@ -174,7 +175,7 @@ impl AnimationParams {
 }
 
 /// Export an animated GIF by rendering multiple frames at different animation times
-pub async fn export_gif(
+pub fn export_gif(
 	executor: &DynamicExecutor,
 	wgpu_executor: wgpu_executor::WgpuExecutorHandle,
 	output_path: PathBuf,
@@ -221,14 +222,14 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = execute_until_final(executor, render_config, completion).await?;
+		let result = execute_until_final(executor, render_config, completion)?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
 			TaggedValue::RenderOutput(output) => match output.data {
 				RenderOutputType::Texture(texture) => {
 					let gpu_raster = Raster::<GPU>::new_gpu(texture);
-					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
+					let cpu_raster: Raster<CPU> = block_on(gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()));
 					cpu_raster.to_flat_u8()
 				}
 				RenderOutputType::Buffer { data, width, height } => (data, width, height),

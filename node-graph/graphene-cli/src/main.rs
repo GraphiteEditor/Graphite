@@ -125,8 +125,7 @@ struct GlobalOpts {
 	verbose: u8,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
 	let app = App::parse();
 
 	let log_level = app.global_opts.verbose;
@@ -154,9 +153,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let gdd = if is_gdd {
 		let archive = std::fs::read(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
 		let container = AnyContainer::Memory(MemoryBackend::new());
-		let gdd = document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)
-			.await
-			.map_err(|error| format!("Failed to open document: {error}"))?;
+		let gdd = block_on(document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)).map_err(|error| format!("Failed to open document: {error}"))?;
 		Some(gdd)
 	} else {
 		None
@@ -164,7 +161,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	if let Command::ExtractLegacyDoc { ref document } = app.command {
 		let Some(gdd) = &gdd else { return Err("ExtractLegacyDoc requires a .gdd document".into()) };
-		let Some(legacy_doc) = gdd.read_legacy_document().await else {
+		let Some(legacy_doc) = block_on(gdd.read_legacy_document()) else {
 			return Err("gdd file did not contain a legacy .graphite document".into());
 		};
 		let mut new_path = document.clone();
@@ -177,7 +174,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// Build the runtime network: from the `.gdd` registry, or by loading a legacy `.graphite` document.
 	let node_network = match &gdd {
 		Some(gdd) => {
-			let declarations = gdd.declarations(gdd).await;
+			let declarations = block_on(gdd.declarations(gdd));
 			let (node_network, _metadata) = gdd.registry().to_runtime_with_metadata(&declarations)?;
 			node_network
 		}
@@ -188,7 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	};
 
 	log::info!("Creating GPU context");
-	let mut application_io = PlatformApplicationIo::new().await;
+	let mut application_io = block_on(PlatformApplicationIo::new());
 	if let Some(gdd) = &gdd {
 		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
 	}
@@ -257,9 +254,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Perform export based on file type
 			if file_type == export::FileType::Gif {
 				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref.clone(), output, scale, (width, height), animation, &completion_receiver).await?;
+				export::export_gif(&executor, wgpu_executor_ref.clone(), output, scale, (width, height), animation, &completion_receiver)?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref.clone(), output, file_type, scale, (width, height), transparent, &completion_receiver).await?;
+				export::export_document(&executor, wgpu_executor_ref.clone(), output, file_type, scale, (width, height), transparent, &completion_receiver)?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
@@ -316,7 +313,7 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 }
 
 fn create_executor(proto_network: ProtoNetwork, runtime: Arc<DynGraphRuntime>) -> Result<DynamicExecutor, Box<dyn Error>> {
-	let mut executor = block_on(DynamicExecutor::new(proto_network)).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
+	let mut executor = DynamicExecutor::new(proto_network).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
 	executor.set_runtime(runtime);
 	Ok(executor)
 }

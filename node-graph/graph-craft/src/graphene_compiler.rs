@@ -1,5 +1,5 @@
 use crate::document::NodeNetwork;
-use crate::proto::{LocalFuture, ProtoNetwork};
+use crate::proto::ProtoNetwork;
 use std::error::Error;
 
 pub struct Compiler {}
@@ -33,5 +33,5 @@ impl Compiler {
 }
 
 pub trait Executor<I, O> {
-	fn execute(&self, input: I) -> LocalFuture<'_, Result<O, Box<dyn Error>>>;
+	fn execute(&self, input: I) -> Result<O, Box<dyn Error>>;
 }

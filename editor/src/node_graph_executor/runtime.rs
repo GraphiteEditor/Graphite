@@ -268,7 +268,7 @@ impl NodeRuntime {
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
 						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
+						let _ = self.update_network(graph);
 					}
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
@@ -283,7 +283,7 @@ impl NodeRuntime {
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
-					let result = self.update_network(network).await;
+					let result = self.update_network(network);
 					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.update_thumbnails = true;
@@ -298,7 +298,7 @@ impl NodeRuntime {
 						render_config.export_format = ExportFormat::Svg;
 					}
 
-					let result = self.execute_network(render_config).await;
+					let result = self.execute_network(render_config);
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					if !render_config.for_eyedropper {
@@ -406,7 +406,7 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
@@ -429,16 +429,16 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|(types, e)| {
+		self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		})
 	}
 
-	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		match (&self.executor).execute(render_config).await.map_err(|e| e.to_string())? {
+		match (&self.executor).execute(render_config).map_err(|e| e.to_string())? {
 			GPoll::Final(value) | GPoll::Partial(value) => Ok(value),
 			GPoll::Fallback(boxed) => {
 				let (value, error) = *boxed;
@@ -609,7 +609,7 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 	[center - half, center + half]
 }
 
-pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
+pub fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 	let runtime = NODE_RUNTIME.lock();
 	if let Some(ref mut runtime) = runtime.as_ref() {
 		return runtime.executor.introspect(path);
