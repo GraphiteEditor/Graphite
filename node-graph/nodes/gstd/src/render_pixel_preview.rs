@@ -72,9 +72,9 @@ pub fn render_pixel_preview(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn pixel_preview_pipeline<'a>(
+fn pixel_preview_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> WgpuPipelineCache {
 	if let Some(executor) = executor {

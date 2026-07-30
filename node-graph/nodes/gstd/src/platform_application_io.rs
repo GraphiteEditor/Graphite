@@ -264,12 +264,12 @@ where
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn editor_api<'a>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a PlatformEditorApi {
+pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Arc<PlatformEditorApi>) -> Arc<PlatformEditorApi> {
 	editor_api
 }
 
 #[node_macro::node(category(""))]
-pub fn resource<'a>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> SourceFuture<GPoll<Resource>> {
+pub fn resource(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> SourceFuture<GPoll<Resource>> {
 	let application_io = editor_api.application_io.clone();
 	Box::pin(async move {
 		let Some(application_io) = application_io else {
@@ -283,26 +283,18 @@ pub fn resource<'a>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIF
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn wgpu_executor<'a>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
-	editor_api
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not not available")
-		.gpu_executor()
-		.expect("GPU executor not available")
+pub fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> ::wgpu_executor::WgpuExecutorHandle {
+	::wgpu_executor::WgpuExecutorHandle(
+		editor_api
+			.application_io
+			.as_ref()
+			.expect("ApplicationIo not not available")
+			.gpu_executor_arc()
+			.expect("GPU executor not available"),
+	)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn try_wgpu_executor<'a>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
-	editor_api.application_io.as_ref()?.gpu_executor()
-}
-
-#[node_macro::node(category(""), inject_scope)]
-pub fn wgpu_executor_arc<'a>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> std::sync::Arc<::wgpu_executor::WgpuExecutor> {
-	editor_api
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not available")
-		.gpu_executor_arc()
-		.expect("GPU executor not available")
+pub fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> Option<::wgpu_executor::WgpuExecutorHandle> {
+	editor_api.application_io.as_ref()?.gpu_executor_arc().map(::wgpu_executor::WgpuExecutorHandle)
 }

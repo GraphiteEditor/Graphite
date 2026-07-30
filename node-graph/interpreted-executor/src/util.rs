@@ -114,7 +114,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 			..Default::default()
 		},
 	];
-	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&PlatformEditorApi)))];
+	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(std::sync::Arc<PlatformEditorApi>)))];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],

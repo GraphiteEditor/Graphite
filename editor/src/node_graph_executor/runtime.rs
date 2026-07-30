@@ -257,10 +257,10 @@ impl NodeRuntime {
 								.application_io
 								.as_ref()
 								.unwrap()
-								.gpu_executor()
+								.gpu_executor_arc()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, wgpu_executor::WgpuExecutorHandle(executor)).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -281,10 +281,10 @@ impl NodeRuntime {
 								.application_io
 								.as_ref()
 								.unwrap()
-								.gpu_executor()
+								.gpu_executor_arc()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, wgpu_executor::WgpuExecutorHandle(executor)).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;

@@ -119,9 +119,9 @@ fn render_background<'a>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn composite_background_pipeline<'a>(
+fn composite_background_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> WgpuPipelineCache {
 	if let Some(executor) = executor {

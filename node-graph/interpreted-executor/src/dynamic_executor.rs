@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 const ARENA_CAPACITY: usize = 1 << 20;
 
-/// Dropped tasks never complete; replaced by the host spawner when the runtime scope wiring lands.
+/// Dropped tasks never complete.
 pub struct NoopSpawner;
 
 impl Spawner for NoopSpawner {

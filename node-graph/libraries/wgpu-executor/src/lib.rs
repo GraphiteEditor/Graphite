@@ -60,6 +60,18 @@ impl std::fmt::Debug for WgpuExecutor {
 	}
 }
 
+/// Owned Arc handle carrying the executor as an ordinary wire value.
+#[derive(Clone, Debug)]
+pub struct WgpuExecutorHandle(pub std::sync::Arc<WgpuExecutor>);
+
+impl std::ops::Deref for WgpuExecutorHandle {
+	type Target = WgpuExecutor;
+
+	fn deref(&self) -> &WgpuExecutor {
+		&self.0
+	}
+}
+
 impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &'a WgpuExecutor {
 	fn from(editor_api: &'a EditorApi<T>) -> Self {
 		editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap()

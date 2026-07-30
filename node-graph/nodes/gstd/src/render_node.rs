@@ -72,9 +72,9 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 }
 
 #[node_macro::node(category(""))]
-fn render<'a>(
+fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	data: RenderIntermediate,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();

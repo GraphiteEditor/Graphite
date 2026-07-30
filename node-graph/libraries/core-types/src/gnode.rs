@@ -31,7 +31,7 @@ pub trait GNode<Input> {
 		GPoll::Final(Extent::Free)
 	}
 
-	/// Introspection access to node-resident records, for example the monitor's captured io; `None` for ordinary nodes.
+	/// Introspection access to node-resident records; `None` for ordinary nodes.
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		None
 	}

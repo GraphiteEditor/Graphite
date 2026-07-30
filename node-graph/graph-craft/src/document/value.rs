@@ -259,12 +259,12 @@ macro_rules! tagged_value {
 					Self::NodeIdPath(_) => concrete!(List<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextFeatures(_) => concrete!(ContextFeatures),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
+					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
 				}
 			}
 
-			/// Materializes the value exactly as [`Self::to_dynany`] does and wraps it in a `ClonedNode` behind an [`EdgeHandle`], whose type matches [`Self::ty`].
+			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
 			pub fn to_edge(self) -> Result<EdgeHandle, String> {
 				match self {
 					// ===============
@@ -309,12 +309,12 @@ macro_rules! tagged_value {
 					}
 					Self::DocumentNode(node) => Ok(value_edge(node)),
 					Self::ContextFeatures(features) => Ok(value_edge(features)),
-					Self::EditorApi(_) => Err("EditorApi values are wired by the executor, not as value edges".to_string()),
+					Self::EditorApi(x) => Ok(value_edge(x)),
 					Self::ResourceHash(x) => Ok(value_edge(x)),
 				}
 			}
 
-			/// Evaluates a typed edge and converts the landed value into a tagged value; the eval-boundary companion of [`Self::to_edge`] with the coverage of [`Self::try_from_any`].
+			/// Evaluates a typed edge and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
 			pub fn from_edge(handle: EdgeHandle, ctx: &Context) -> Result<GPoll<Self>, String> {
 				let ty = handle.ty().clone();
 				// ===============

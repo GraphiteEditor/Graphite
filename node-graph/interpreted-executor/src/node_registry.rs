@@ -23,7 +23,7 @@ use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, SourceId, co
 use node_registry_macros::{async_node, convert_node, into_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
-use wgpu_executor::WgpuExecutor;
+use wgpu_executor::WgpuExecutorHandle;
 
 fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 	let mut node_types: Vec<(ProtoNodeIdentifier, RegistryEntry)> = vec![
@@ -90,8 +90,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Graphic>, to: AttributeValueDyn),
 		// into_node!(from: List<Raster<CPU>>, to: List<Raster<SRGBA8>>),
-		#[cfg(feature = "gpu")]
-		into_node!(from: &PlatformEditorApi, to: &WgpuExecutor),
 		convert_node!(from: DVec2, to: DVec2),
 		convert_node!(from: List<Vector>, to: List<Vector>),
 		convert_node!(from: DVec2, to: List<Vector>),
@@ -101,13 +99,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		convert_node!(from: IVec2, to: String),
 		convert_node!(from: DAffine2, to: String),
 		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>, converter: &WgpuExecutor),
+		convert_node!(from: List<Raster<CPU>>, to: List<Raster<CPU>>, converter: WgpuExecutorHandle),
 		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<CPU>>, to: List<Raster<GPU>>, converter: &WgpuExecutor),
+		convert_node!(from: List<Raster<CPU>>, to: List<Raster<GPU>>, converter: WgpuExecutorHandle),
 		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>, converter: &WgpuExecutor),
+		convert_node!(from: List<Raster<GPU>>, to: List<Raster<GPU>>, converter: WgpuExecutorHandle),
 		#[cfg(feature = "gpu")]
-		convert_node!(from: List<Raster<GPU>>, to: List<Raster<CPU>>, converter: &WgpuExecutor, async),
+		convert_node!(from: List<Raster<GPU>>, to: List<Raster<CPU>>, converter: WgpuExecutorHandle, async),
 		// =============
 		// MONITOR NODES
 		// =============

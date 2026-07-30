@@ -180,8 +180,7 @@ impl std::fmt::Debug for EdgeHandle {
 	}
 }
 
-// SAFETY: wasm is single threaded, so the marker-free payload never actually crosses a thread;
-// mirrors the old NodeContainer assertion that let the executor live in a sync static.
+// SAFETY: wasm is single threaded, so the marker-free payload never actually crosses a thread.
 #[cfg(target_family = "wasm")]
 unsafe impl Send for EdgeHandle {}
 // SAFETY: as in Send.

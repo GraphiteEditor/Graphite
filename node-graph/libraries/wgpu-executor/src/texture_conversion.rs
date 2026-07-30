@@ -8,6 +8,7 @@ use core_types::runtime::SourceFuture;
 use core_types::transform::Footprint;
 use raster_types::Image;
 use raster_types::{CPU, GPU, Raster};
+use crate::WgpuExecutorHandle;
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 
@@ -41,15 +42,15 @@ fn upload_to_texture(device: &wgpu::Device, queue: &wgpu::Queue, image: &Raster<
 
 
 /// Passthrough conversion for GPU `List`s - no conversion needed
-impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
-	fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<GPU>> {
+impl Convert<List<Raster<GPU>>, WgpuExecutorHandle> for List<Raster<GPU>> {
+	fn convert(self, _: Footprint, _converter: WgpuExecutorHandle) -> List<Raster<GPU>> {
 		self
 	}
 }
 
 /// Converts a `List<Raster<CPU>>` to `List<Raster<GPU>>` by uploading each image to a texture
-impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
-	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
+impl Convert<List<Raster<GPU>>, WgpuExecutorHandle> for List<Raster<CPU>> {
+	fn convert(self, _: Footprint, executor: WgpuExecutorHandle) -> List<Raster<GPU>> {
 		let device = &executor.context().device;
 		let queue = executor.context().queue.lock();
 		let list = self
@@ -68,8 +69,8 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 }
 
 /// Converts single CPU raster to GPU by uploading to texture
-impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
-	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
+impl Convert<Raster<GPU>, WgpuExecutorHandle> for Raster<CPU> {
+	fn convert(self, _: Footprint, executor: WgpuExecutorHandle) -> Raster<GPU> {
 		let device = &executor.context().device;
 		let queue = executor.context().queue.lock();
 		let texture = upload_to_texture(device, &queue, &self);
@@ -80,8 +81,8 @@ impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 }
 
 /// Passthrough conversion for CPU `List`s - no conversion needed
-impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
-	fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<CPU>> {
+impl Convert<List<Raster<CPU>>, WgpuExecutorHandle> for List<Raster<CPU>> {
+	fn convert(self, _: Footprint, _converter: WgpuExecutorHandle) -> List<Raster<CPU>> {
 		self
 	}
 }
@@ -191,8 +192,8 @@ impl RasterGpuToRasterCpuConverter {
 }
 
 /// Converts a `List<Raster<GPU>>` to `List<Raster<CPU>>` by downloading texture data in one go then asynchronously maps all buffers and processes the results.
-impl<'i> ConvertAsync<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
-	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> SourceFuture<List<Raster<CPU>>> {
+impl ConvertAsync<List<Raster<CPU>>, WgpuExecutorHandle> for List<Raster<GPU>> {
+	fn convert(self, _: Footprint, executor: WgpuExecutorHandle) -> SourceFuture<List<Raster<CPU>>> {
 		let device = executor.context().device.clone();
 		let queue = executor.context().queue.lock();
 
@@ -235,8 +236,8 @@ impl<'i> ConvertAsync<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<GPU>>
 }
 
 /// Converts single GPU raster to CPU by downloading texture data
-impl<'i> ConvertAsync<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
-	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> SourceFuture<Raster<CPU>> {
+impl ConvertAsync<Raster<CPU>, WgpuExecutorHandle> for Raster<GPU> {
+	fn convert(self, _: Footprint, executor: WgpuExecutorHandle) -> SourceFuture<Raster<CPU>> {
 		let device = executor.context().device.clone();
 		let queue = executor.context().queue.lock();
 
@@ -256,10 +257,10 @@ impl<'i> ConvertAsync<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 ///
 /// Accepts either individual raster data or a `List` of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
 #[node_macro::node(category(""))]
-pub fn upload_texture<'a, T: Convert<List<Raster<GPU>>, &'a WgpuExecutor>>(
+pub fn upload_texture<T: Convert<List<Raster<GPU>>, WgpuExecutorHandle>>(
 	_: impl Ctx,
 	#[implementations(List<Raster<CPU>>, List<Raster<GPU>>)] input: T,
-	executor: &'a WgpuExecutor,
+	executor: WgpuExecutorHandle,
 ) -> List<Raster<GPU>> {
 	input.convert(Footprint::DEFAULT, executor)
 }

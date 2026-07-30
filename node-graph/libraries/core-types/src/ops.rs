@@ -47,9 +47,7 @@ pub trait Convert<T, C>: Sized {
 	fn convert(self, footprint: Footprint, converter: C) -> T;
 }
 
-/// The genuinely asynchronous counterpart of [`Convert`], for conversions whose work completes outside
-/// the evaluation, such as the GPU-to-CPU texture readback. Consumed by the `convert_async` kernel on
-/// the async source tier; a conversion pair implements exactly one of the two traits.
+/// The asynchronous counterpart of [`Convert`]; a conversion pair implements exactly one of the two traits.
 pub trait ConvertAsync<T, C>: Sized {
 	#[must_use]
 	fn convert(self, footprint: Footprint, converter: C) -> crate::runtime::SourceFuture<T>;
