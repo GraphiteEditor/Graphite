@@ -176,7 +176,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let application_io_for_api = application_io_arc.clone();
 
 	// Get reference to wgpu executor and clone device handle
-	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
+	let wgpu_executor_ref = wgpu_executor::WgpuExecutorHandle(application_io_arc.gpu_executor_arc().unwrap());
 	let device = wgpu_executor_ref.context().device.clone();
 
 	let preferences = EditorPreferences {
@@ -227,9 +227,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Perform export based on file type
 			if file_type == export::FileType::Gif {
 				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation).await?;
+				export::export_gif(&executor, wgpu_executor_ref.clone(), output, scale, (width, height), animation).await?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+				export::export_document(&executor, wgpu_executor_ref.clone(), output, file_type, scale, (width, height), transparent).await?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),

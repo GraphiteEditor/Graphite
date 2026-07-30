@@ -1,7 +1,7 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
-use graphene_std::core_types::ops::{Convert, ConvertAsync};
+use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -30,7 +30,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 
 pub async fn export_document(
 	executor: &DynamicExecutor,
-	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	wgpu_executor: wgpu_executor::WgpuExecutorHandle,
 	output_path: PathBuf,
 	file_type: FileType,
 	scale: f64,
@@ -73,7 +73,7 @@ pub async fn export_document(
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
-				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
 
 				// Encode and write raster image
@@ -154,7 +154,7 @@ impl AnimationParams {
 /// Export an animated GIF by rendering multiple frames at different animation times
 pub async fn export_gif(
 	executor: &DynamicExecutor,
-	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	wgpu_executor: wgpu_executor::WgpuExecutorHandle,
 	output_path: PathBuf,
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
@@ -208,7 +208,7 @@ pub async fn export_gif(
 			TaggedValue::RenderOutput(output) => match output.data {
 				RenderOutputType::Texture(texture) => {
 					let gpu_raster = Raster::<GPU>::new_gpu(texture);
-					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
 					cpu_raster.to_flat_u8()
 				}
 				RenderOutputType::Buffer { data, width, height } => (data, width, height),
