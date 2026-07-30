@@ -1137,6 +1137,16 @@ mod graphene_test {
 	}
 
 	#[test]
+	fn ctor_registration_populates_the_node_registry() {
+		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let rows = registry
+			.iter()
+			.find_map(|(id, rows)| id.as_str().ends_with("::AddNode").then_some(rows))
+			.expect("AddNode rows registered at startup");
+		assert_eq!(rows.len(), 6);
+	}
+
+	#[test]
 	fn generic_add_registers_one_entry_per_implementation() {
 		let arena = Arena::new(64);
 		let scope = scope_fixture(&arena);

@@ -1,7 +1,7 @@
 use crate::concrete;
-use crate::context::ContextImpl;
+use crate::context::{Context, ContextImpl};
 use crate::gnode::GNode;
-use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{ContextFeature, Node, NodeIO, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
 use dyn_any::{DynAny, StaticType};
 use graphene_hash::CacheHash;
 pub use no_std_types::registry::types;
@@ -62,14 +62,35 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
-type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(DynNodeConstructor, NodeIOTypes)>>>>;
+type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub use crate::NodeIOTypes;
+
+#[cfg(not(target_family = "wasm"))]
+pub type ErasedGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = T> + Send + Sync;
+#[cfg(target_family = "wasm")]
 pub type ErasedGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = T>;
+#[cfg(not(target_family = "wasm"))]
+pub type ErasedLendGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = &'c T> + Send + Sync;
+#[cfg(target_family = "wasm")]
 pub type ErasedLendGNode<T> = dyn for<'c> GNode<ContextImpl<'c>, Output = &'c T>;
+
+#[cfg(not(target_family = "wasm"))]
+type DynEdge = dyn std::any::Any + Send + Sync;
+#[cfg(target_family = "wasm")]
+type DynEdge = dyn std::any::Any;
+
+pub fn edge_type<T: 'static>() -> Type {
+	Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(T)))
+}
+
+pub fn lend_edge_type<T: 'static>() -> Type {
+	Type::Fn(Box::new(concrete!(Context)), Box::new(Type::Ref(Box::new(concrete!(T)))))
+}
 
 pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
 	let mut hasher = std::hash::DefaultHasher::new();
@@ -104,6 +125,12 @@ impl<N: ?Sized> SharedEdge<N> {
 	}
 }
 
+// SAFETY: `ptr` is derived from the owned Arc and never mutated through, so the edge is exactly as
+// thread safe as the payload it shares.
+unsafe impl<N: ?Sized + Send + Sync> Send for SharedEdge<N> {}
+// SAFETY: as in Send.
+unsafe impl<N: ?Sized + Send + Sync> Sync for SharedEdge<N> {}
+
 impl<Input, N> GNode<Input> for SharedEdge<N>
 where
 	N: GNode<Input> + ?Sized,
@@ -136,8 +163,8 @@ where
 }
 
 pub struct EdgeHandle {
-	node: Box<dyn std::any::Any>,
-	share: fn(&dyn std::any::Any) -> Box<dyn std::any::Any>,
+	node: Box<DynEdge>,
+	share: fn(&DynEdge) -> Box<DynEdge>,
 	ty: Type,
 }
 
@@ -149,14 +176,17 @@ impl std::fmt::Debug for EdgeHandle {
 
 impl EdgeHandle {
 	pub fn new<T: 'static>(node: std::sync::Arc<ErasedGNode<T>>) -> Self {
-		Self::new_erased(node, concrete!(T))
+		Self::new_erased(node, edge_type::<T>())
 	}
 
 	pub fn new_ref<T: 'static>(node: std::sync::Arc<ErasedLendGNode<T>>) -> Self {
-		Self::new_erased(node, Type::Ref(Box::new(concrete!(T))))
+		Self::new_erased(node, lend_edge_type::<T>())
 	}
 
-	pub fn new_erased<N: ?Sized + 'static>(node: std::sync::Arc<N>, ty: Type) -> Self {
+	pub fn new_erased<N: ?Sized + 'static>(node: std::sync::Arc<N>, ty: Type) -> Self
+	where
+		SharedEdge<N>: WasmNotSend + WasmNotSync,
+	{
 		Self {
 			node: Box::new(SharedEdge::new(node)),
 			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
@@ -177,11 +207,11 @@ impl EdgeHandle {
 	}
 
 	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedGNode<T>>, ConstructionError> {
-		self.downcast_erased(concrete!(T))
+		self.downcast_erased(edge_type::<T>())
 	}
 
 	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendGNode<T>>, ConstructionError> {
-		self.downcast_erased(Type::Ref(Box::new(concrete!(T))))
+		self.downcast_erased(lend_edge_type::<T>())
 	}
 
 	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
@@ -193,15 +223,11 @@ impl EdgeHandle {
 	}
 }
 
-pub struct NodeIoRecord {
-	pub inputs: Vec<Type>,
-	pub output: Type,
-}
-
 pub type NodeConstructor = fn(Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError>;
 
+#[derive(Clone)]
 pub struct RegistryEntry {
-	pub io: NodeIoRecord,
+	pub io: NodeIOTypes,
 	pub constructor: NodeConstructor,
 }
 
@@ -519,7 +545,7 @@ mod tests {
 			}
 		}
 
-		type ErasedSplitEdge = dyn for<'c> GNode<ContextImpl<'c>, Output = SplitBorrow<'c>>;
+		type ErasedSplitEdge = dyn for<'c> GNode<ContextImpl<'c>, Output = SplitBorrow<'c>> + Send + Sync;
 
 		let arena = Arena::new(4096);
 		let generations = [];
@@ -651,10 +677,7 @@ mod tests {
 			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedGNode<u32>>))
 		}
 		let entry = RegistryEntry {
-			io: NodeIoRecord {
-				inputs: vec![concrete!(String)],
-				output: concrete!(u32),
-			},
+			io: NodeIOTypes::new(concrete!(Context), concrete!(u32), vec![edge_type::<String>()]),
 			constructor: construct_strlen,
 		};
 
@@ -667,8 +690,8 @@ mod tests {
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {
-				expected: concrete!(String),
-				found: concrete!(f64),
+				expected: edge_type::<String>(),
+				found: edge_type::<f64>(),
 			}
 		);
 
@@ -676,8 +699,8 @@ mod tests {
 		assert_eq!(
 			construct(&entry, vec![lent]).unwrap_err(),
 			ConstructionError::Type {
-				expected: concrete!(String),
-				found: Type::Ref(Box::new(concrete!(String))),
+				expected: edge_type::<String>(),
+				found: lend_edge_type::<String>(),
 			}
 		);
 	}
@@ -691,7 +714,7 @@ mod tests {
 
 		let handle = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedGNode<u32>>);
 		let duplicate = handle.duplicate();
-		assert_eq!(*duplicate.ty(), concrete!(u32));
+		assert_eq!(*duplicate.ty(), edge_type::<u32>());
 
 		let first = handle.downcast::<u32>().unwrap();
 		let second = duplicate.downcast::<u32>().unwrap();

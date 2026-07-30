@@ -255,6 +255,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let gnode = crate::gcodegen::generate_gnode_code(crate_ident, parsed)?;
 	let gnode_in_mod = gnode.in_mod;
 	let gnode_top_level = gnode.top_level;
+	let entries_name = format_ident!("{}_entries", parsed.fn_name);
+	let register_entries = match gnode_in_mod.is_empty() {
+		true => quote!(),
+		false => quote!(gcore::registry::NODE_REGISTRY.lock().unwrap().entry(#identifier()).or_default().extend(#entries_name());),
+	};
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
@@ -371,6 +376,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					],
 				};
 				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
+				#register_entries
 			}
 		}
 

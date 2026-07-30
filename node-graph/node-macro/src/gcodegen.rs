@@ -604,10 +604,11 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 		});
 		quote! {
 			gcore::registry::RegistryEntry {
-				io: gcore::registry::NodeIoRecord {
-					inputs: vec![#(gcore::concrete!(#types)),*],
-					output: gcore::concrete!(#output),
-				},
+				io: gcore::registry::NodeIOTypes::new(
+					gcore::concrete!(gcore::context::ContextImpl<'static>),
+					gcore::concrete!(#output),
+					vec![#(gcore::registry::edge_type::<#types>()),*],
+				),
 				constructor: |inputs| {
 					if inputs.len() != #arity {
 						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });

@@ -1,5 +1,5 @@
 use core_types::arena::{Arena, ArenaCell};
-use core_types::context::Ctx;
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gnode::GNode;
 use core_types::gpoll::{Extent, Finality, GPoll, Interrupt};
@@ -102,26 +102,26 @@ pub fn park<'e, T>(arena: &'e Arena, result: GPoll<T>) -> GPoll<&'e T> {
 	}
 }
 
-type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
+type MonitorValue<T> = Arc<Mutex<Option<Arc<IORecord<CtxSnapshot, T>>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
-fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
-	input: I,
+fn monitor<T: Clone + 'static + Send + Sync>(
+	ctx: impl Ctx + DeriveCtx + ExtractAll,
 	#[allow(clippy::type_complexity)]
 	#[data]
-	io: MonitorValue<I, T>,
-	content: impl Node<I, Output = T>,
+	io: MonitorValue<T>,
+	content: impl Node<Context<'_>, Output = T>,
 ) -> Result<T, Interrupt> {
-	let output = content.eval(input)?;
+	let output = content.eval(&ctx.derived())?;
 	*io.lock().unwrap() = Some(Arc::new(IORecord {
-		input: input.clone(),
+		input: CtxSnapshot::capture(ctx),
 		output: output.clone(),
 	}));
 	Ok(output)
 }
 
-fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(io: &MonitorValue<I, T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+fn serialize_monitor<T: Clone + 'static + Send + Sync>(io: &MonitorValue<T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
 	let io = io.lock().unwrap();
 	io.as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
 }
