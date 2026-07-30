@@ -1208,7 +1208,9 @@ fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> R
 		Old(Option<Type>),
 	}
 
+	// TODO: Eventually remove this migration document upgrade code
 	Ok(match CallArg::deserialize(deserializer)? {
+		CallArg::New(Type::Concrete(descriptor)) if descriptor.name.ends_with("OwnedContextImpl>>") => concrete!(Context),
 		CallArg::New(ty) => ty,
 		CallArg::Old(ty) => ty.unwrap_or_default(),
 	})
