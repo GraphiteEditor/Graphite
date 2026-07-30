@@ -29,7 +29,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
 	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
 	let node_registry = NODE_REGISTRY.lock().unwrap();
-	let empty_implementations: Vec<(NodeConstructor, NodeIOTypes)> = Vec::new();
+	let empty_implementations: Vec<RegistryEntry> = Vec::new();
 	let context_type = concrete!(Context);
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
 		let identifier = DefinitionIdentifier::ProtoNode(id.clone());
@@ -48,12 +48,12 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 
 		let implementations = node_registry.get(id).unwrap_or(&empty_implementations);
 
-		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
+		let first_node_io = implementations.first().map(|entry| &entry.io).unwrap_or(const { &NodeIOTypes::empty() });
 
 		let call_arguments: Vec<&Type> = if !implementations.is_empty() {
-			implementations.iter().map(|(_, io)| &io.call_argument).collect()
+			implementations.iter().map(|entry| &entry.io.call_argument).collect()
 		} else if let Some(impls) = extended_node_registry.get(id) {
-			impls.keys().map(|io| &io.call_argument).collect()
+			impls.iter().map(|entry| &entry.io.call_argument).collect()
 		} else {
 			Vec::new()
 		};

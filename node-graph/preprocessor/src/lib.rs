@@ -118,11 +118,11 @@ impl Preprocessor {
 
 			let NodeMetadata { fields, memoize, inject_scope, .. } = metadata;
 			let Some(implementations) = node_registry.get(&id) else { continue };
-			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
-			let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
+			let valid_call_args: HashSet<_> = implementations.iter().map(|entry| entry.io.call_argument.clone()).collect();
+			let first_node_io = implementations.first().map(|entry| &entry.io).unwrap_or(const { &NodeIOTypes::empty() });
 			let mut node_io_types = vec![HashSet::new(); fields.len()];
-			for (_, node_io) in implementations.iter() {
-				for (i, ty) in node_io.inputs.iter().enumerate() {
+			for entry in implementations.iter() {
+				for (i, ty) in entry.io.inputs.iter().enumerate() {
 					node_io_types[i].insert(ty.clone());
 				}
 			}
@@ -238,7 +238,7 @@ impl Preprocessor {
 			// If `inject_scope` is requested, prepare the proto node template and type info needed
 			if *inject_scope
 				&& let Some(implementations) = node_registry.get(&id)
-				&& let Some((_, node_io)) = implementations.first()
+				&& let Some(node_io) = implementations.first().map(|entry| &entry.io)
 			{
 				let template = DocumentNode {
 					inputs: node_inputs(fields, node_io),

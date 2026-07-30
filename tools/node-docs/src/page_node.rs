@@ -23,8 +23,8 @@ pub fn write_node_page(index: usize, id: &core_types::ProtoNodeIdentifier, metad
 
 	// Input types
 	let mut valid_input_types = vec![Vec::new(); metadata.fields.len()];
-	for (_, node_io) in implementations.iter() {
-		for (i, ty) in node_io.inputs.iter().enumerate() {
+	for entry in implementations.iter() {
+		for (i, ty) in entry.io.inputs.iter().enumerate() {
 			valid_input_types[i].push(ty.nested_type().clone());
 		}
 	}
@@ -35,7 +35,7 @@ pub fn write_node_page(index: usize, id: &core_types::ProtoNodeIdentifier, metad
 	}
 
 	// Primary output types
-	let valid_primary_outputs = implementations.iter().map(|(_, node_io)| node_io.return_value.nested_type().clone()).collect::<Vec<_>>();
+	let valid_primary_outputs = implementations.iter().map(|entry| entry.io.return_value.nested_type().clone()).collect::<Vec<_>>();
 
 	// Write sections to the file
 	write_frontmatter(&mut page, metadata, index + 1);

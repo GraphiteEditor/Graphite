@@ -545,6 +545,7 @@ pub enum GraphErrorType {
 	},
 	NoImplementations,
 	NoConstructor,
+	ConstructionFailed(String),
 	/// The `inputs` represents a formatted list of input indices corresponding to their types.
 	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
 	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
@@ -565,6 +566,7 @@ impl Debug for GraphErrorType {
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
+			GraphErrorType::ConstructionFailed(error) => write!(f, "Construction failed: {error}"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
 				let format_error = |(index, (found, expected)): &(usize, (Type, Type))| {
 					let index = index + 1;
@@ -631,14 +633,14 @@ pub type GraphErrors = Vec<GraphError>;
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
-	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, DynNodeConstructor>>>,
+	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
-	constructor: HashMap<NodeId, DynNodeConstructor>,
+	constructor: HashMap<NodeId, NodeConstructor>,
 }
 
 impl TypingContext {
 	/// Creates a new `TypingContext` with the given lookup table.
-	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, DynNodeConstructor>>) -> Self {
+	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
 			..Default::default()
@@ -662,7 +664,7 @@ impl TypingContext {
 	}
 
 	/// Returns the node constructor for a given node id.
-	pub fn constructor(&self, node_id: NodeId) -> Option<DynNodeConstructor> {
+	pub fn constructor(&self, node_id: NodeId) -> Option<NodeConstructor> {
 		self.constructor.get(&node_id).copied()
 	}
 
@@ -682,7 +684,7 @@ impl TypingContext {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -702,6 +704,7 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let call_argument = &node.call_argument;
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
+		let candidates: Vec<(NodeIOTypes, NodeConstructor)> = impls.iter().map(|entry| (entry.io.clone(), entry.constructor)).collect();
 
 		if let Some(index) = inputs.iter().position(|p| {
 			matches!(p,
@@ -716,8 +719,6 @@ impl TypingContext {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
 				// Direct comparison of two function types.
 				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
@@ -740,25 +741,24 @@ impl TypingContext {
 		}
 
 		// List of all implementations that match the input types
-		let valid_output_types = impls
-			.keys()
-			.filter(|node_io| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
+		let valid_output_types = candidates
+			.iter()
+			.filter(|(node_io, _)| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
 		let substitution_results = valid_output_types
 			.iter()
-			.map(|node_io| {
+			.map(|(node_io, constructor)| {
 				let generics_lookup: Result<HashMap<_, _>, _> = collect_generics(node_io)
 					.iter()
 					.map(|generic| check_generic(node_io, call_argument, &inputs, generic).map(|x| (generic.to_string(), x)))
 					.collect();
 
 				generics_lookup.map(|generics_lookup| {
-					let orig_node_io = (*node_io).clone();
-					let mut new_node_io = orig_node_io.clone();
+					let mut new_node_io = node_io.clone();
 					replace_generics(&mut new_node_io, &generics_lookup);
-					(new_node_io, orig_node_io)
+					(new_node_io, *constructor)
 				})
 			})
 			.collect::<Vec<_>>();
@@ -771,7 +771,7 @@ impl TypingContext {
 				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
-				for node_io in impls.keys() {
+				for (node_io, _) in &candidates {
 					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
@@ -806,36 +806,36 @@ impl TypingContext {
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
-			[(node_io, org_nio)] => {
+			[(node_io, constructor)] => {
 				let node_io = node_io.clone();
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
-				self.constructor.insert(node_id, impls[org_nio]);
+				self.constructor.insert(node_id, *constructor);
 				Ok(node_io)
 			}
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
 				if first.0.call_argument != second.0.call_argument {
-					for (node_io, orig_nio) in [first, second] {
+					for (node_io, constructor) in [first, second] {
 						if node_io.call_argument != concrete!(()) {
 							continue;
 						}
 
 						// Save the inferred type
 						self.inferred.insert(node_id, node_io.clone());
-						self.constructor.insert(node_id, impls[orig_nio]);
+						self.constructor.insert(node_id, *constructor);
 						return Ok(node_io.clone());
 					}
 				}
 				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
-				let valid = valid_output_types.into_iter().cloned().collect();
+				let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
 				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
-				let valid = valid_output_types.into_iter().cloned().collect();
+				let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 		}
