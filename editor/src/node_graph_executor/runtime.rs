@@ -16,6 +16,7 @@ use graphene_std::ops::{Convert, ConvertAsync};
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
+use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner, RuntimeHandle};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -120,8 +121,12 @@ pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = onc
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
+		let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>));
+		let mut executor = DynamicExecutor::default();
+		executor.set_runtime(Arc::clone(&graph_runtime));
+
 		Self {
-			executor: DynamicExecutor::default(),
+			executor,
 			receiver,
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			editor_preferences: EditorPreferences::default(),
@@ -132,6 +137,7 @@ impl NodeRuntime {
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
+				runtime: RuntimeHandle(graph_runtime),
 
 				#[cfg(not(test))]
 				application_io: None,
@@ -202,6 +208,7 @@ impl NodeRuntime {
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
+						runtime: self.editor_api.runtime.clone(),
 					}
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
@@ -575,6 +582,7 @@ impl NodeRuntime {
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(self.sender.clone()),
 			editor_preferences: Box::new(self.editor_preferences.clone()),
+			runtime: self.editor_api.runtime.clone(),
 		}
 		.into();
 	}

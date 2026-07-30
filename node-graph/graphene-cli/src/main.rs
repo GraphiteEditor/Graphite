@@ -14,6 +14,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
+use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner, RuntimeHandle};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -182,10 +183,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let preferences = EditorPreferences {
 		max_render_region_size: EditorPreferences::default().max_render_region_size,
 	};
+	let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>));
 	let editor_api = Arc::new(PlatformEditorApi {
 		application_io: Some(application_io_for_api),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
+		runtime: RuntimeHandle(graph_runtime.clone()),
 	});
 	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref())?;
 
@@ -218,7 +221,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let file_type = export::detect_file_type(&output)?;
 
 			// Create executor
-			let executor = create_executor(proto_graph)?;
+			let executor = create_executor(proto_graph, graph_runtime)?;
 
 			if fps <= 0. {
 				return Err("Fps number must be positive".into());
@@ -285,7 +288,8 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 	compiler.compile_single(network).map_err(|x| x.into())
 }
 
-fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
-	let executor = block_on(DynamicExecutor::new(proto_network)).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
+fn create_executor(proto_network: ProtoNetwork, runtime: Arc<DynGraphRuntime>) -> Result<DynamicExecutor, Box<dyn Error>> {
+	let mut executor = block_on(DynamicExecutor::new(proto_network)).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
+	executor.set_runtime(runtime);
 	Ok(executor)
 }

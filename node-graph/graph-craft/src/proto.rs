@@ -294,6 +294,10 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
+	pub fn source_ids(&self) -> Vec<SourceId> {
+		self.nodes.iter().flat_map(|(_, node)| node.context_features.sources.iter().copied()).collect()
+	}
+
 	/// Inserts context nullification nodes to optimize caching.
 	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
 	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {

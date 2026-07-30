@@ -4,7 +4,7 @@ use core_types::context::{ContextImpl, DynSlot, EvalScope, VarArg, VarArgLink, V
 use core_types::gnode::GNode;
 use core_types::gpoll::GPoll;
 use core_types::registry::{EdgeHandle, ErasedGNode};
-use core_types::runtime::{GraphRuntime, SourceFuture, Spawner};
+use core_types::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
@@ -17,15 +17,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 const ARENA_CAPACITY: usize = 1 << 20;
 
-/// Dropped tasks never complete.
-pub struct NoopSpawner;
-
-impl Spawner for NoopSpawner {
-	fn spawn(&self, _task: SourceFuture) {
-		log::warn!("async source spawned before a host spawner is wired; the task is dropped");
-	}
-}
-
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 pub struct DynamicExecutor {
 	output: NodeId,
@@ -36,8 +27,14 @@ pub struct DynamicExecutor {
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: HashSet<NodeId>,
 	arena: Mutex<Arena>,
-	runtime: Arc<GraphRuntime<NoopSpawner>>,
+	runtime: Arc<DynGraphRuntime>,
+	live_sources: Vec<core_types::SourceId>,
 }
+
+fn noop_runtime() -> Arc<DynGraphRuntime> {
+	Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>))
+}
+
 
 impl Default for DynamicExecutor {
 	fn default() -> Self {
@@ -47,7 +44,8 @@ impl Default for DynamicExecutor {
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
 			arena: Mutex::new(Arena::new(ARENA_CAPACITY)),
-			runtime: Arc::new(GraphRuntime::new(NoopSpawner)),
+			runtime: noop_runtime(),
+			live_sources: Vec::new(),
 		}
 	}
 }
@@ -71,7 +69,10 @@ impl DynamicExecutor {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
+		let sources = proto_network.source_ids();
 		let tree = BorrowTree::new(proto_network, &typing_context).await?;
+		let runtime = noop_runtime();
+		runtime.retain_sources(&sources);
 
 		Ok(Self {
 			tree,
@@ -79,8 +80,18 @@ impl DynamicExecutor {
 			typing_context,
 			orphaned_nodes: HashSet::new(),
 			arena: Mutex::new(Arena::new(ARENA_CAPACITY)),
-			runtime: Arc::new(GraphRuntime::new(NoopSpawner)),
+			runtime,
+			live_sources: sources,
 		})
+	}
+
+	pub fn set_runtime(&mut self, runtime: Arc<DynGraphRuntime>) {
+		runtime.retain_sources(&self.live_sources);
+		self.runtime = runtime;
+	}
+
+	pub fn take_dirty(&self) -> bool {
+		self.runtime.take_dirty()
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
@@ -108,11 +119,14 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
+		let sources = proto_network.source_ids();
 		let (add, orphaned) = self
 			.tree
 			.update(proto_network, &self.typing_context)
 			.await
 			.map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		self.runtime.retain_sources(&sources);
+		self.live_sources = sources;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {

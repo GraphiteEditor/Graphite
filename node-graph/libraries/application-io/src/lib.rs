@@ -112,6 +112,7 @@ pub struct EditorApi<Io> {
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
 	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
 	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
+	pub runtime: core_types::runtime::RuntimeHandle,
 }
 
 impl<Io> Eq for EditorApi<Io> {}
@@ -122,6 +123,7 @@ impl<Io: Default> Default for EditorApi<Io> {
 			application_io: None,
 			node_graph_message_sender: Box::new(Logger),
 			editor_preferences: Box::new(DummyPreferences),
+			runtime: Default::default(),
 		}
 	}
 }

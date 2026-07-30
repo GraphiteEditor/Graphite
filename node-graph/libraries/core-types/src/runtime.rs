@@ -36,6 +36,34 @@ pub trait Spawner {
 	fn spawn(&self, task: SourceFuture);
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub type DynSpawner = dyn Spawner + Send + Sync;
+#[cfg(target_family = "wasm")]
+pub type DynSpawner = dyn Spawner;
+
+impl<S: Spawner + ?Sized> Spawner for Box<S> {
+	fn spawn(&self, task: SourceFuture) {
+		(**self).spawn(task)
+	}
+}
+
+/// Dropped tasks never complete.
+pub struct NoopSpawner;
+
+impl Spawner for NoopSpawner {
+	fn spawn(&self, _task: SourceFuture) {
+		log::warn!("async source spawned before a host spawner is wired; the task is dropped");
+	}
+}
+
+pub type DynGraphRuntime = GraphRuntime<Box<DynSpawner>>;
+
+impl Default for RuntimeHandle {
+	fn default() -> Self {
+		Self(Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>)))
+	}
+}
+
 pub struct GraphRuntime<S> {
 	generations: Arc<Mutex<HashMap<SourceId, u64>>>,
 	dirty: Arc<AtomicBool>,
