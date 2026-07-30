@@ -22,6 +22,13 @@ pub trait Runtime {
 #[derive(Clone)]
 pub struct RuntimeHandle(pub Arc<DynRuntime>);
 
+// SAFETY: wasm is single threaded, so the handle never actually crosses a thread.
+#[cfg(target_family = "wasm")]
+unsafe impl Send for RuntimeHandle {}
+// SAFETY: as in Send.
+#[cfg(target_family = "wasm")]
+unsafe impl Sync for RuntimeHandle {}
+
 impl std::fmt::Debug for RuntimeHandle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("RuntimeHandle").finish_non_exhaustive()
@@ -69,6 +76,13 @@ pub struct GraphRuntime<S> {
 	dirty: Arc<AtomicBool>,
 	spawner: S,
 }
+
+// SAFETY: wasm is single threaded, so the runtime never actually crosses a thread.
+#[cfg(target_family = "wasm")]
+unsafe impl<S> Send for GraphRuntime<S> {}
+// SAFETY: as in Send.
+#[cfg(target_family = "wasm")]
+unsafe impl<S> Sync for GraphRuntime<S> {}
 
 impl<S> GraphRuntime<S> {
 	pub fn new(spawner: S) -> Self {
