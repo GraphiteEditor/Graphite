@@ -148,6 +148,11 @@ where
 		unsafe { self.ptr.as_ref() }.extent(input)
 	}
 
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.serialize()
+	}
+
 	fn eval_batch<'a>(
 		&self,
 		input: &'a Input,
@@ -165,6 +170,7 @@ where
 pub struct EdgeHandle {
 	node: Box<DynEdge>,
 	share: fn(&DynEdge) -> Box<DynEdge>,
+	serialize: fn(&DynEdge) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
 	ty: Type,
 }
 
@@ -185,11 +191,13 @@ impl EdgeHandle {
 
 	pub fn new_erased<N: ?Sized + 'static>(node: std::sync::Arc<N>, ty: Type) -> Self
 	where
+		N: for<'c> GNode<ContextImpl<'c>>,
 		SharedEdge<N>: WasmNotSend + WasmNotSync,
 	{
 		Self {
 			node: Box::new(SharedEdge::new(node)),
 			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
+			serialize: |edge| GNode::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
 			ty,
 		}
 	}
@@ -202,8 +210,13 @@ impl EdgeHandle {
 		Self {
 			node: (self.share)(&*self.node),
 			share: self.share,
+			serialize: self.serialize,
 			ty: self.ty.clone(),
 		}
+	}
+
+	pub fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(self.serialize)(&*self.node)
 	}
 
 	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedGNode<T>>, ConstructionError> {

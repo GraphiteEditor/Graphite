@@ -19,7 +19,7 @@ use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRend
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic};
+use graphene_std::{Artboard, CtxSnapshot, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
@@ -413,7 +413,7 @@ impl NodeRuntime {
 			};
 
 			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<Graphic>>>() {
 				if update_thumbnails {
 					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
@@ -421,19 +421,19 @@ impl NodeRuntime {
 			}
 			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
 			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<Artboard>>>() {
 				if update_thumbnails {
 					let bounds = artboard_clip_bounds(&io.output);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
 			// Vector list: vector modifications
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<Vector>>>() {
 				// Insert the vector modify
 				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
 			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<String>>>() {
 				if update_thumbnails {
 					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)

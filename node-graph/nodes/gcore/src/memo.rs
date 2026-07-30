@@ -171,6 +171,24 @@ mod tests {
 	}
 
 	#[test]
+	fn monitor_serialize_exposes_the_io_record_through_the_edge() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let handle = EdgeHandle::new(Arc::new(MonitorNode::new(ValueNode(11u32))) as Arc<ErasedGNode<u32>>);
+		assert!(handle.serialize().is_none(), "no record before the first eval");
+
+		let edge = handle.duplicate().downcast::<u32>().unwrap();
+		assert_eq!(edge.eval(&ctx), GPoll::Final(11));
+
+		let record = handle.serialize().expect("the eval landed a record");
+		let record = record.downcast_ref::<IORecord<CtxSnapshot, u32>>().expect("the record is the monitor io");
+		assert_eq!(record.output, 11);
+	}
+
+	#[test]
 	fn memoize_caches_across_evals() {
 		let arena = Arena::new(1024);
 		let generations = [];
@@ -236,7 +254,7 @@ mod tests {
 
 		let edge = EdgeHandle::new(Arc::new(ValueNode("lent out".to_string())) as Arc<ErasedGNode<String>>);
 		let lending = EdgeHandle::new_ref(Arc::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Arc<ErasedLendGNode<String>>);
-		assert_eq!(*lending.ty(), Type::Ref(Box::new(concrete!(String))));
+		assert_eq!(*lending.ty(), core_types::registry::lend_edge_type::<String>());
 
 		let node = lending.downcast_lend::<String>().unwrap();
 		let GPoll::Final(first) = node.eval(&ctx) else {

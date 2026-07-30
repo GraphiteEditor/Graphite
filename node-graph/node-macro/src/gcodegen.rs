@@ -234,6 +234,18 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 		}
 	};
 
+	let serialize_impl = match &parsed.attributes.serialize {
+		Some(path) => {
+			let data_refs = data_names.iter().map(|name| quote!(&self.#name));
+			quote! {
+				fn serialize(&self) -> Option<::std::sync::Arc<dyn ::std::any::Any + Send + Sync>> {
+					#path(#(#data_refs),*)
+				}
+			}
+		}
+		None => quote!(),
+	};
+
 	let batch_impl = match &parsed.attributes.batch {
 		Some(path) => quote! {
 			fn eval_batch<'__batch>(
@@ -431,6 +443,8 @@ pub(crate) fn generate_gnode_code(crate_ident: &CrateIdent, parsed: &ParsedNodeF
 			}
 
 			#extent_impl
+
+			#serialize_impl
 
 			#batch_impl
 		}

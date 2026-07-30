@@ -282,11 +282,11 @@ impl BorrowTree {
 		self.nodes.insert(id, (node, path));
 	}
 
-	/// Returns the introspection record for that specific node, for example the cached value for a monitor node. The node path must match the document node path.
+	/// Calls the `GNode::serialize` for that specific node, returning for example the captured io record for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
-		let (_node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
-		Err(IntrospectError::NoData)
+		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
+		node.serialize().ok_or(IntrospectError::NoData)
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<EdgeHandle> {

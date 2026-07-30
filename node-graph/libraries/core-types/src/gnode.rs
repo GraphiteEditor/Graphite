@@ -31,6 +31,11 @@ pub trait GNode<Input> {
 		GPoll::Final(Extent::Free)
 	}
 
+	/// Introspection access to node-resident records, for example the monitor's captured io; `None` for ordinary nodes.
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		None
+	}
+
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
