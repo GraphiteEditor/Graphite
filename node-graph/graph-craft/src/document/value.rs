@@ -7,6 +7,11 @@ use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
+use core_types::context::Context;
+use core_types::gnode::GNode;
+use core_types::gpoll::GPoll;
+use core_types::registry::{EdgeHandle, edge_type};
+use core_types::value::value_edge;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -257,6 +262,82 @@ macro_rules! tagged_value {
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
 				}
+			}
+
+			/// Materializes the value exactly as [`Self::to_dynany`] does and wraps it in a `ClonedNode` behind an [`EdgeHandle`], whose type matches [`Self::ty`].
+			pub fn to_edge(self) -> Result<EdgeHandle, String> {
+				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
+					Self::None => Ok(value_edge(())),
+					Self::TypeDefault(td) => {
+						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
+						let name = td.name.as_ref();
+						macro_rules! check {
+							($type_default:ty) => {
+								if name == std::any::type_name::<$type_default>() { return Ok(value_edge(<$type_default>::default())); }
+							};
+						}
+						for_each_type_default!(check);
+						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
+					}
+					Self::F64Array(values) => {
+						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					Self::Color(color) => {
+						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					Self::Gradient(stops) => Ok(value_edge(List::<GradientStops>::new_from_element(stops))),
+					Self::BrushStrokes(strokes) => {
+						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
+					$( Self::$identifier(x) => Ok(value_edge(x)), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
+					Self::RenderOutput(x) => Ok(value_edge(x)),
+					Self::NodeIdPath(path) => {
+						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					Self::DocumentNode(node) => Ok(value_edge(node)),
+					Self::ContextFeatures(features) => Ok(value_edge(features)),
+					Self::EditorApi(_) => Err("EditorApi values are wired by the executor, not as value edges".to_string()),
+					Self::ResourceHash(x) => Ok(value_edge(x)),
+				}
+			}
+
+			/// Evaluates a typed edge and converts the landed value into a tagged value; the eval-boundary companion of [`Self::to_edge`] with the coverage of [`Self::try_from_any`].
+			pub fn from_edge(handle: EdgeHandle, ctx: &Context) -> Result<GPoll<Self>, String> {
+				let ty = handle.ty().clone();
+				// ===============
+				// MANUAL VARIANTS
+				// ===============
+				if ty == edge_type::<()>() {
+					return Ok(handle.downcast::<()>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(|_| TaggedValue::None));
+				}
+				// =======================
+				// AUTO-GENERATED VARIANTS
+				// =======================
+				$(
+					if ty == edge_type::<$ty>() {
+						return Ok(handle.downcast::<$ty>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::$identifier));
+					}
+				)*
+				// =======================
+				// NON-SERIALIZED VARIANTS
+				// =======================
+				if ty == edge_type::<RenderOutput>() {
+					return Ok(handle.downcast::<RenderOutput>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::RenderOutput));
+				}
+				Err(format!("Cannot convert edge of type {ty} to TaggedValue"))
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value

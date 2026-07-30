@@ -3,7 +3,6 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -12,7 +11,7 @@ use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateM
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
-use graphene_std::ops::Convert;
+use graphene_std::ops::{Convert, ConvertAsync};
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
@@ -377,12 +376,11 @@ impl NodeRuntime {
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		match self.executor.input_type() {
-			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
+		let (value, evaluation_error) = (&self.executor).execute(render_config).await.map_err(|e| e.to_string())?;
+		if let Some(error) = evaluation_error {
+			error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
 		}
+		Ok(value)
 	}
 
 	/// Updates state data

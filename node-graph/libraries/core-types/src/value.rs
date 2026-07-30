@@ -98,6 +98,18 @@ impl<'i, T: Clone + 'i, I> Node<'i, I> for ClonedNode<T> {
 	}
 }
 
+impl<T: Clone, Input> crate::gnode::GNode<Input> for ClonedNode<T> {
+	type Output = T;
+
+	fn eval(&self, _input: &Input) -> crate::gpoll::GPoll<T> {
+		crate::gpoll::GPoll::Final(self.0.clone())
+	}
+}
+
+pub fn value_edge<T: Clone + crate::WasmNotSend + crate::WasmNotSync + 'static>(value: T) -> crate::registry::EdgeHandle {
+	crate::registry::EdgeHandle::new(std::sync::Arc::new(ClonedNode(value)) as std::sync::Arc<crate::registry::ErasedGNode<T>>)
+}
+
 impl<T: Clone> ClonedNode<T> {
 	pub const fn new(value: T) -> ClonedNode<T> {
 		ClonedNode(value)

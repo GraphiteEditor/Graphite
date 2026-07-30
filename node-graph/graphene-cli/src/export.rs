@@ -1,7 +1,7 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
-use graphene_std::core_types::ops::Convert;
+use graphene_std::core_types::ops::{Convert, ConvertAsync};
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -57,7 +57,10 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor.execute(render_config).await?;
+	let (result, evaluation_error) = executor.execute(render_config).await?;
+	if let Some(error) = evaluation_error {
+		log::error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+	}
 
 	// Handle the result based on output type
 	match result {
@@ -195,7 +198,10 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor.execute(render_config).await?;
+		let (result, evaluation_error) = executor.execute(render_config).await?;
+		if let Some(error) = evaluation_error {
+			log::error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+		}
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
