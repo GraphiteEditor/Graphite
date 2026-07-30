@@ -41,11 +41,7 @@ where
 }
 
 #[node_macro::node(category(""), path(graphene_core::memo), skip_impl, extent(frame_memo_extent))]
-fn frame_memo<'e, T: Clone + 'static>(
-	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
-	#[data] cell: ArenaCell<FrameTable<T, 32>>,
-	content: impl Node<Context<'_>, Output = T>,
-) -> GPoll<&'e T> {
+fn frame_memo<'e, T: Clone + 'static>(ctx: impl Ctx + CacheHash + ExtractArena<'e>, #[data] cell: ArenaCell<FrameTable<T, 32>>, content: impl Node<Context<'_>, Output = T>) -> GPoll<&'e T> {
 	let arena = ctx.arena();
 	let table = match cell.load(arena) {
 		Some(table) => table,
@@ -130,10 +126,10 @@ fn serialize_monitor<T: Clone + 'static + Send + Sync>(io: &MonitorValue<T>) -> 
 mod tests {
 	use super::*;
 	use core_types::SourceId;
+	use core_types::Type;
 	use core_types::concrete;
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::registry::{EdgeHandle, ErasedGNode, ErasedLendGNode};
-	use core_types::Type;
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	struct CountingNode(AtomicU32);

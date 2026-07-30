@@ -1,7 +1,7 @@
 use core_types::gpoll::Interrupt;
 use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
-use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, Color, Context, Ctx, DeriveCtx, ExtractFootprint};
+use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, Color, Context, Ctx, DeriveCtx, ModifyFootprint};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -11,7 +11,7 @@ use vector_types::GradientStops;
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
 pub fn create_artboard<T: IntoGraphicList>(
-	ctx: impl Ctx + ExtractFootprint + DeriveCtx,
+	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
 	/// Graphics to include within the artboard.
 	#[implementations(
 		Context -> List<Graphic>,

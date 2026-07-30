@@ -1,9 +1,9 @@
 use core::f64;
 use core_types::color::Color;
+use core_types::gpoll::Interrupt;
 use core_types::list::{List, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::gpoll::Interrupt;
-use core_types::{ATTR_TRANSFORM, Context, Ctx, DeriveCtx, ExtractFootprint, InjectFootprint, ModifyFootprint};
+use core_types::{ATTR_TRANSFORM, Context, Ctx, DeriveCtx, InjectFootprint, ModifyFootprint};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -13,7 +13,7 @@ use vector_types::GradientStops;
 /// Applies the specified transform to the input value, which may be a graphic type or another transform.
 #[node_macro::node(category("Math: Transform"))]
 fn transform<T: ApplyTransform + 'static>(
-	ctx: impl Ctx + ExtractFootprint + DeriveCtx + ModifyFootprint,
+	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,

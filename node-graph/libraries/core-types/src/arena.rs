@@ -11,6 +11,12 @@ pub struct Arena {
 	drops: Mutex<Vec<DropEntry>>,
 }
 
+impl std::fmt::Debug for Arena {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Arena").field("generation", &self.generation).field("size", &self.buf.len()).finish()
+	}
+}
+
 struct DropEntry {
 	offset: usize,
 	drop_fn: unsafe fn(*mut u8),

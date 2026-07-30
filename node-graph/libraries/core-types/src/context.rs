@@ -288,11 +288,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				_ => ContextFeatures::empty(),
 			};
 		}
-		Self {
-			extract,
-			inject,
-			sources: Vec::new(),
-		}
+		Self { extract, inject, sources: Vec::new() }
 	}
 }
 
@@ -792,7 +788,13 @@ pub struct VarArgLink<'a> {
 	pub outer: Option<&'a VarArgLink<'a>>,
 }
 
-#[derive(Clone, Copy)]
+impl<'a> std::fmt::Debug for VarArgLink<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("VarArgLink").field("args_len", &self.args.len()).field("outer", &self.outer).finish()
+	}
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct EvalScope<'a> {
 	real_time: Option<f64>,
 	animation_time: Option<f64>,
@@ -1084,7 +1086,7 @@ impl CtxFamily for ContextImplFamily {
 	type Ctx<'s> = ContextImpl<'s>;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ContextImpl<'a> {
 	index: IndexLink<'a>,
 	position: Option<&'a PositionLink<'a>>,
