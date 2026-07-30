@@ -233,7 +233,7 @@ impl std::fmt::Display for IntrospectError {
 ///
 /// # Fields
 ///
-/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`SharedNodeContainer`] and [`Path`].
+/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`EdgeHandle`] and [`Path`].
 ///   This stores the actual node instances and their associated paths.
 ///
 /// * `source_map`: A [`HashMap`] from [`Path`] to tuples of [`NodeId`] and [`NodeTypes`].

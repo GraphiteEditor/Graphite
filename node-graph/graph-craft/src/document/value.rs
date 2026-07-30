@@ -1,7 +1,7 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
-use crate::proto::{Any as DAny, FutureAny};
+use crate::proto::Any as DAny;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -764,39 +764,6 @@ impl Display for TaggedValue {
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
-	}
-}
-
-pub struct UpcastNode {
-	value: MemoHash<TaggedValue>,
-}
-impl<'input> Node<'input, DAny<'input>> for UpcastNode {
-	type Output = FutureAny<'input>;
-
-	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		let memo_clone = MemoHash::clone(&self.value);
-		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
-	}
-}
-impl UpcastNode {
-	pub fn new(value: MemoHash<TaggedValue>) -> Self {
-		Self { value }
-	}
-}
-#[derive(Default, Debug, Clone, Copy)]
-pub struct UpcastAsRefNode<T: AsRef<U> + Sync + Send, U: Sync + Send>(pub T, PhantomData<U>);
-
-impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
-	type Output = FutureAny<'i>;
-	#[inline(always)]
-	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(self.0.as_ref()) as DAny<'i> })
-	}
-}
-
-impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
-	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
-		UpcastAsRefNode(value, PhantomData)
 	}
 }
 
