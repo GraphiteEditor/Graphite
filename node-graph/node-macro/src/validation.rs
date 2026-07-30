@@ -49,22 +49,6 @@ fn validate_async_source(parsed: &ParsedNodeFn) {
 			}
 		}
 	}
-	let ctx_ident = match &parsed.input.ty {
-		Type::Path(path) => path.path.get_ident(),
-		_ => None,
-	};
-	for param in &parsed.fn_generics {
-		let GenericParam::Type(type_param) = param else { continue };
-		if Some(&type_param.ident) == ctx_ident {
-			continue;
-		}
-		if crate::codegen::type_contains_ident(&parsed.output_type, &type_param.ident) {
-			emit_error!(
-				parsed.output_type.span(),
-				"async source nodes do not support generic output types yet; the slot map needs the output type stated per implementation row, which is not wired up until a node requires it"
-			);
-		}
-	}
 }
 
 fn validate_min_max(parsed: &ParsedNodeFn) {
