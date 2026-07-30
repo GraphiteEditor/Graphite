@@ -16,7 +16,8 @@ use graphene_std::ops::{Convert, ConvertAsync};
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner, RuntimeHandle};
+use graphene_std::core_types::gpoll::GPoll;
+use graphene_std::runtime::{DynGraphRuntime, DynNotifier, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -40,6 +41,9 @@ pub struct NodeRuntime {
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
+	graph_runtime: Arc<DynGraphRuntime>,
+	/// The last plain render request, replayed when an async source completion marks the graph dirty.
+	last_render: Option<ExecutionRequest>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -119,9 +123,51 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
+#[cfg(not(target_family = "wasm"))]
+pub struct TokioSpawner(Option<tokio::runtime::Runtime>);
+
+#[cfg(not(target_family = "wasm"))]
+impl TokioSpawner {
+	pub fn new() -> Self {
+		Self(Some(tokio::runtime::Runtime::new().expect("Failed to start the async source runtime")))
+	}
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Spawner for TokioSpawner {
+	fn spawn(&self, task: SourceFuture) {
+		self.0.as_ref().expect("runtime lives until drop").spawn(task);
+	}
+}
+
+/// Dropping a tokio runtime blocks on its tasks, which panics inside an async context; the tests drop
+/// [`NodeRuntime`] from one, so shut down in the background instead.
+#[cfg(not(target_family = "wasm"))]
+impl Drop for TokioSpawner {
+	fn drop(&mut self) {
+		if let Some(runtime) = self.0.take() {
+			runtime.shutdown_background();
+		}
+	}
+}
+
+#[cfg(target_family = "wasm")]
+pub struct WasmSpawner;
+
+#[cfg(target_family = "wasm")]
+impl Spawner for WasmSpawner {
+	fn spawn(&self, task: SourceFuture) {
+		wasm_bindgen_futures::spawn_local(task);
+	}
+}
+
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
-		let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>));
+		#[cfg(not(target_family = "wasm"))]
+		let spawner: Box<DynSpawner> = Box::new(TokioSpawner::new());
+		#[cfg(target_family = "wasm")]
+		let spawner: Box<DynSpawner> = Box::new(WasmSpawner);
+		let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(spawner));
 		let mut executor = DynamicExecutor::default();
 		executor.set_runtime(Arc::clone(&graph_runtime));
 
@@ -133,6 +179,8 @@ impl NodeRuntime {
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
+			graph_runtime: Arc::clone(&graph_runtime),
+			last_render: None,
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
@@ -178,6 +226,9 @@ impl NodeRuntime {
 					}
 
 					let for_export = execution_request.render_config.for_export;
+					if !for_export {
+						self.last_render = Some(execution_request.clone());
+					}
 
 					execution = Some(request);
 
@@ -196,6 +247,10 @@ impl NodeRuntime {
 		{
 			eyedropper.render_config.time = execution.render_config.time;
 			eyedropper.render_config.pointer = execution.render_config.pointer;
+		}
+
+		if self.executor.take_dirty() && execution.is_none() {
+			execution = self.last_render.clone().map(GraphRuntimeRequest::ExecutionRequest);
 		}
 
 		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
@@ -383,11 +438,16 @@ impl NodeRuntime {
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		let (value, evaluation_error) = (&self.executor).execute(render_config).await.map_err(|e| e.to_string())?;
-		if let Some(error) = evaluation_error {
-			error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+		match (&self.executor).execute(render_config).await.map_err(|e| e.to_string())? {
+			GPoll::Final(value) | GPoll::Partial(value) => Ok(value),
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+				Ok(value)
+			}
+			GPoll::Pending => Err("Node graph evaluation is pending".to_string()),
+			GPoll::Error(error) => Err(format!("Node graph evaluation failed: {error:?}")),
 		}
-		Ok(value)
 	}
 
 	/// Updates state data
@@ -573,6 +633,13 @@ pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
 		node_runtime.replace_application_io(application_io);
+	}
+}
+
+pub fn set_completion_notifier(notifier: Arc<DynNotifier>) {
+	let node_runtime = NODE_RUNTIME.lock();
+	if let Some(node_runtime) = &*node_runtime {
+		node_runtime.graph_runtime.set_notifier(notifier);
 	}
 }
 

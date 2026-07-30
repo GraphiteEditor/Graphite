@@ -170,11 +170,11 @@ impl DynamicExecutor {
 	}
 }
 
-impl<I> Executor<I, (TaggedValue, Option<core_types::gpoll::GraphError>)> for &DynamicExecutor
+impl<I> Executor<I, GPoll<TaggedValue>> for &DynamicExecutor
 where
 	I: VarArg + Send + Sync + std::panic::RefUnwindSafe,
 {
-	fn execute(&self, input: I) -> LocalFuture<'_, Result<(TaggedValue, Option<core_types::gpoll::GraphError>), Box<dyn Error>>> {
+	fn execute(&self, input: I) -> LocalFuture<'_, Result<GPoll<TaggedValue>, Box<dyn Error>>> {
 		Box::pin(async move {
 			let Some(handle) = self.tree.get(self.output) else {
 				return Err("Output node not found in executor".into());
@@ -185,13 +185,14 @@ where
 				Err(error) => GPoll::Final(Err(error)),
 			});
 			match result {
-				GPoll::Final(value) | GPoll::Partial(value) => Ok((value?, None)),
+				GPoll::Final(value) => Ok(GPoll::Final(value?)),
+				GPoll::Partial(value) => Ok(GPoll::Partial(value?)),
 				GPoll::Fallback(boxed) => {
 					let (value, error) = *boxed;
-					Ok((value?, Some(error)))
+					Ok(GPoll::Fallback(Box::new((value?, error))))
 				}
-				GPoll::Pending => Err("Node graph evaluation is pending".into()),
-				GPoll::Error(error) => Err(format!("Node graph evaluation failed: {error:?}").into()),
+				GPoll::Pending => Ok(GPoll::Pending),
+				GPoll::Error(error) => Ok(GPoll::Error(error)),
 			}
 		})
 	}

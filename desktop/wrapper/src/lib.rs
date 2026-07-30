@@ -52,6 +52,10 @@ impl DesktopWrapper {
 		executor.execute()
 	}
 
+	pub fn set_completion_notifier(notifier: impl Fn() + Send + Sync + 'static) {
+		graphite_editor::node_graph_executor::set_completion_notifier(Arc::new(notifier));
+	}
+
 	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
 		let result = graphite_editor::node_graph_executor::run_node_graph().await;
 		match result {

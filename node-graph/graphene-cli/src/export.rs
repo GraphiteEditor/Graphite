@@ -1,6 +1,7 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
+use graphene_std::core_types::gpoll::GPoll;
 use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -8,7 +9,30 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
+
+const SOURCE_COMPLETION_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn execute_until_final(executor: &DynamicExecutor, render_config: RenderConfig, completion: &Receiver<()>) -> Result<TaggedValue, Box<dyn Error>> {
+	loop {
+		while completion.try_recv().is_ok() {}
+		match executor.execute(render_config.clone()).await? {
+			GPoll::Final(value) => return Ok(value),
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				log::error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+				return Ok(value);
+			}
+			GPoll::Partial(_) | GPoll::Pending => {
+				completion
+					.recv_timeout(SOURCE_COMPLETION_TIMEOUT)
+					.map_err(|_| format!("Timed out after {}s waiting for async sources to complete", SOURCE_COMPLETION_TIMEOUT.as_secs()))?;
+			}
+			GPoll::Error(error) => return Err(format!("Node graph evaluation failed: {error:?}").into()),
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
@@ -36,6 +60,7 @@ pub async fn export_document(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	transparent: bool,
+	completion: &Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
@@ -57,10 +82,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let (result, evaluation_error) = executor.execute(render_config).await?;
-	if let Some(error) = evaluation_error {
-		log::error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
-	}
+	let result = execute_until_final(executor, render_config, completion).await?;
 
 	// Handle the result based on output type
 	match result {
@@ -159,6 +181,7 @@ pub async fn export_gif(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	animation: AnimationParams,
+	completion: &Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
 	use image::codecs::gif::{GifEncoder, Repeat};
 	use image::{Frame, RgbaImage};
@@ -198,10 +221,7 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let (result, evaluation_error) = executor.execute(render_config).await?;
-		if let Some(error) = evaluation_error {
-			log::error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
-		}
+		let result = execute_until_final(executor, render_config, completion).await?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {

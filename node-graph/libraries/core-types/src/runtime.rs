@@ -48,6 +48,11 @@ pub type DynSpawner = dyn Spawner + Send + Sync;
 #[cfg(target_family = "wasm")]
 pub type DynSpawner = dyn Spawner;
 
+#[cfg(not(target_family = "wasm"))]
+pub type DynNotifier = dyn Fn() + Send + Sync;
+#[cfg(target_family = "wasm")]
+pub type DynNotifier = dyn Fn();
+
 impl<S: Spawner + ?Sized> Spawner for Box<S> {
 	fn spawn(&self, task: SourceFuture) {
 		(**self).spawn(task)
@@ -74,6 +79,7 @@ impl Default for RuntimeHandle {
 pub struct GraphRuntime<S> {
 	generations: Arc<Mutex<HashMap<SourceId, u64>>>,
 	dirty: Arc<AtomicBool>,
+	notifier: Arc<Mutex<Arc<DynNotifier>>>,
 	spawner: S,
 }
 
@@ -89,8 +95,13 @@ impl<S> GraphRuntime<S> {
 		Self {
 			generations: Arc::default(),
 			dirty: Arc::default(),
+			notifier: Arc::new(Mutex::new(Arc::new(|| {}))),
 			spawner,
 		}
+	}
+
+	pub fn set_notifier(&self, notifier: Arc<DynNotifier>) {
+		*self.notifier.lock().unwrap_or_else(PoisonError::into_inner) = notifier;
 	}
 
 	pub fn retain_sources(&self, live: &[SourceId]) {
@@ -121,12 +132,16 @@ impl<S: Spawner> Runtime for GraphRuntime<S> {
 	fn spawn(&self, source: SourceId, future: SourceFuture) {
 		let generations = Arc::clone(&self.generations);
 		let dirty = Arc::clone(&self.dirty);
+		let notifier = Arc::clone(&self.notifier);
 		self.spawner.spawn(Box::pin(async move {
 			future.await;
 			let mut generations = generations.lock().unwrap_or_else(PoisonError::into_inner);
 			if let Some(generation) = generations.get_mut(&source) {
 				*generation += 1;
 				dirty.store(true, Ordering::Release);
+				drop(generations);
+				let notifier = Arc::clone(&notifier.lock().unwrap_or_else(PoisonError::into_inner));
+				notifier();
 			}
 		}));
 	}
@@ -403,6 +418,36 @@ mod tests {
 		assert_eq!(runtime.snapshot(), vec![(7, 1)]);
 		assert!(runtime.take_dirty());
 		assert!(!runtime.take_dirty(), "take_dirty drains the flag");
+	}
+
+	#[test]
+	fn the_epilogue_notifies_after_setting_dirty() {
+		let runtime = GraphRuntime::new(CollectSpawner::default());
+		runtime.retain_sources(&[7]);
+		let observed_dirty = Arc::new(AtomicBool::new(false));
+		let dirty_at_notify = Arc::clone(&runtime.dirty);
+		let observed = Arc::clone(&observed_dirty);
+		runtime.set_notifier(Arc::new(move || {
+			observed.store(dirty_at_notify.load(Ordering::Acquire), Ordering::Relaxed);
+		}));
+
+		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		assert_eq!(runtime.spawner().drain(), 1);
+		assert!(observed_dirty.load(Ordering::Relaxed), "the notifier must observe the dirty flag already set");
+	}
+
+	#[test]
+	fn the_epilogue_of_a_removed_source_does_not_notify() {
+		let runtime = GraphRuntime::new(CollectSpawner::default());
+		runtime.retain_sources(&[7]);
+		let notified = Arc::new(AtomicBool::new(false));
+		let flag = Arc::clone(&notified);
+		runtime.set_notifier(Arc::new(move || flag.store(true, Ordering::Relaxed)));
+
+		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		runtime.retain_sources(&[]);
+		assert_eq!(runtime.spawner().drain(), 1);
+		assert!(!notified.load(Ordering::Relaxed));
 	}
 
 	#[test]
