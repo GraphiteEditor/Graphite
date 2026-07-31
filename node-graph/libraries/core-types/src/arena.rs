@@ -54,13 +54,15 @@ fn next_generation() -> Option<u64> {
 }
 
 /// Rewinds the shared generation counter so previously issued values are reused.
-/// Returns `false` without rewinding while any [`Arena`] is still live.
+/// Returns `false` without rewinding when an [`Arena`] is live at the time of the
+/// check, which is a debugging aid rather than a guarantee.
 ///
 /// # Safety
 ///
 /// No [`ArenaWeak`] minted before this call may be upgraded afterwards. Dropping
 /// every [`Arena`] is not sufficient, since nodes also hold handles in
-/// [`ArenaCell`]s; those nodes must be dropped too.
+/// [`ArenaCell`]s; those nodes must be dropped too. No arena may be constructed
+/// concurrently either, since the live check and the rewind are separate steps.
 pub unsafe fn reset_generation_counter() -> bool {
 	if LIVE_ARENAS.load(Ordering::Acquire) != 0 {
 		return false;
@@ -261,10 +263,12 @@ impl<T> ArenaCell<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::sync::PoisonError;
 	use std::sync::atomic::AtomicU32;
 
 	#[test]
 	fn alloc_upgrade_reset_miss() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		let mut arena = Arena::new(1024).unwrap();
 		let cell = ArenaCell::new();
 		let (value, weak) = arena.alloc(41u32).unwrap();
@@ -277,6 +281,7 @@ mod tests {
 
 	#[test]
 	fn capacity_survives_reset() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		let mut arena = Arena::new(64 + align_of::<u32>() - 1).unwrap();
 		for _ in 0..10 {
 			for _ in 0..16 {
@@ -289,6 +294,7 @@ mod tests {
 
 	#[test]
 	fn panics_leave_the_arena_coherent() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		fn assert_ref_unwind_safe<T: std::panic::RefUnwindSafe>() {}
 		assert_ref_unwind_safe::<Arena>();
 
@@ -314,8 +320,13 @@ mod tests {
 		assert!(arena.alloc(0u32).is_some(), "the arena stays usable");
 	}
 
+	/// Held by every test that perturbs [`NEXT_GENERATION`], so a swapped-out counter
+	/// is never observed by a concurrently constructing test.
+	static COUNTER_GUARD: Mutex<()> = Mutex::new(());
+
 	#[test]
 	fn an_exhausted_reset_parks_the_arena_and_refuses_handles() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		let mut arena = Arena::new(1024).unwrap();
 		let (_, weak) = arena.alloc(41u32).unwrap();
 
@@ -330,6 +341,7 @@ mod tests {
 
 	#[test]
 	fn the_generation_counter_rewinds_only_without_live_arenas() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		let arena = Arena::new(64).unwrap();
 		assert!(!unsafe { reset_generation_counter() }, "a live arena must block the rewind");
 		drop(arena);
@@ -337,6 +349,7 @@ mod tests {
 
 	#[test]
 	fn handles_do_not_upgrade_against_a_foreign_arena() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		let first = Arena::new(1024).unwrap();
 		let second = Arena::new(1024).unwrap();
 		let (_, weak) = first.alloc(41u32).unwrap();
@@ -347,6 +360,7 @@ mod tests {
 
 	#[test]
 	fn reset_drops_dependents_before_their_dependencies() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		static ORDER: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 		struct Probe(u32);
 		impl Drop for Probe {
@@ -364,6 +378,7 @@ mod tests {
 
 	#[test]
 	fn drop_glue_runs_on_reset() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
 		static DROPS: AtomicU32 = AtomicU32::new(0);
 		struct Probe(#[allow(dead_code)] String);
 		impl Drop for Probe {

@@ -43,7 +43,7 @@ pub trait Node<Input> {
 		let Some(scratch) = scratch else {
 			return BatchStatus::NeedBuffer;
 		};
-		let Some(len) = range.end.checked_sub(range.start).map(|len| len as usize) else {
+		let Some(len) = range.end.checked_sub(range.start).and_then(|len| usize::try_from(len).ok()) else {
 			return BatchStatus::InvalidRange;
 		};
 		if scratch.len() < len {
