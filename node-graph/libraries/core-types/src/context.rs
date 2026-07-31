@@ -199,18 +199,52 @@ impl ContextFeatures {
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
-	/// Must stay sorted.
 	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "deserialize_sorted_sources"))]
-	pub sources: Vec<SourceId>,
+	sources: Vec<SourceId>,
+}
+
+impl ContextDependencies {
+	pub fn new(extract: ContextFeatures, inject: ContextFeatures) -> Self {
+		Self { extract, inject, sources: Vec::new() }
+	}
+
+	pub fn sources(&self) -> &[SourceId] {
+		&self.sources
+	}
+
+	pub fn add_sources(&mut self, sources: &[SourceId]) {
+		merge_sorted_sources(&mut self.sources, sources);
+	}
+
+	pub fn from_sources(sources: &[SourceId]) -> Self {
+		let mut dependencies = Self::default();
+		dependencies.add_sources(sources);
+		dependencies
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContextModification {
 	pub features: ContextFeatures,
-	/// Must stay sorted.
 	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_sorted_sources"))]
-	pub sources: Vec<SourceId>,
+	sources: Vec<SourceId>,
+}
+
+impl ContextModification {
+	pub fn sources(&self) -> &[SourceId] {
+		&self.sources
+	}
+
+	pub fn add_sources(&mut self, sources: &[SourceId]) {
+		merge_sorted_sources(&mut self.sources, sources);
+	}
+
+	pub fn from_sources(features: ContextFeatures, sources: &[SourceId]) -> Self {
+		let mut modification = Self { features, sources: Vec::new() };
+		modification.add_sources(sources);
+		modification
+	}
 }
 
 /// Restores the sorted-and-deduplicated invariant that `contains` and `difference`
@@ -251,10 +285,12 @@ impl core::ops::BitAndAssign<ContextFeatures> for ContextModification {
 
 impl ContextModification {
 	pub fn contains(&self, other: &Self) -> bool {
+		debug_assert!(self.sources.is_sorted() && other.sources.is_sorted());
 		self.features.contains(other.features) && other.sources.iter().all(|id| self.sources.binary_search(id).is_ok())
 	}
 
 	pub fn difference(&self, other: &Self) -> Self {
+		debug_assert!(other.sources.is_sorted());
 		Self {
 			features: self.features.difference(other.features),
 			sources: self.sources.iter().copied().filter(|id| other.sources.binary_search(id).is_err()).collect(),
@@ -266,12 +302,12 @@ impl ContextModification {
 	}
 }
 
+/// Sorts and deduplicates unconditionally, so the result is ordered no matter what
+/// order the inputs arrived in.
 pub fn merge_sorted_sources(sources: &mut Vec<SourceId>, other: &[SourceId]) {
-	for &id in other {
-		if let Err(insert_at) = sources.binary_search(&id) {
-			sources.insert(insert_at, id);
-		}
-	}
+	sources.extend_from_slice(other);
+	sources.sort_unstable();
+	sources.dedup();
 }
 
 impl From<&[ContextFeature]> for ContextDependencies {
@@ -1559,6 +1595,17 @@ mod context_impl_tests {
 		let empty = CtxSnapshot::capture(&root);
 		assert_eq!(empty.varargs_len(), Err(VarArgsResult::NoVarArgs));
 		assert!(matches!(empty.vararg(0), Err(VarArgsResult::NoVarArgs)));
+	}
+
+	#[test]
+	fn sources_are_normalized_regardless_of_insertion_order() {
+		let mut dependencies = ContextDependencies::default();
+		dependencies.add_sources(&[9, 3, 9]);
+		dependencies.add_sources(&[5, 1]);
+		assert_eq!(dependencies.sources(), &[1, 3, 5, 9]);
+
+		let modification = ContextModification::from_sources(ContextFeatures::empty(), &[7, 2, 7]);
+		assert_eq!(modification.sources(), &[2, 7]);
 	}
 
 	#[test]
