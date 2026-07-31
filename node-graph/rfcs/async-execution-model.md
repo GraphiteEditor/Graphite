@@ -34,6 +34,8 @@ enum GPoll<T> {
 
 The variants split into "has a value" (`Final`, `Partial`, `Fallback`) and "has no value" (`Pending`, `Error`). Value-carrying statuses flow through computation: a node receiving `Partial` computes normally and downgrades its own output; a node receiving `Fallback` computes on the stand-in and forwards the error. Valueless statuses stop the cone for this frame. Statuses combine with a meet (`Final ∧ Final = Final`, anything else drags the result down; `Error` dominates `Pending`).
 
+`meet(Partial, Fallback)` collapses to `Fallback`, which alone would make an error from a still-incomplete source indistinguishable from a final document error. Finality therefore rides a separate `Finality` (`AllFinal ∧ Partial`) tracked beside the status rather than a sixth variant, so the executor can withhold provisional errors from the document without widening `GPoll`.
+
 Layout: one tag plus one payload word for pointer-sized values (`GPoll<Arc<T>>` is 16 bytes); the stand-in and its error share a box, and `Error` boxes the error alone, so it crosses node boundaries without reallocating. Progress percentages are deliberately not part of the value: they change at high frequency and must not invalidate the dataflow, so they ride the monitor side channel.
 
 `GraphError` records the path from the error source upward as a list of input indices (names are ambiguous; a node can have two inputs of the same type). Its kind is structured: `ErrorKind::Node(&'static str)` for node-declared failures versus operational failures such as `ErrorKind::ArenaExhausted`, which the executor answers by resetting or growing the arena and re-rendering, never by reporting a document error.
@@ -74,9 +76,12 @@ Each async node is a source identified by its stable node id (injected like moni
 
 ```rs
 future.await;                       // write result into the node's slot
-generation.fetch_add(1, Release);   // counter captured by the wrapper
+*generations.lock()                 // bump under the table lock; absent means the
+    .get_mut(&source)? += 1;        // source was dropped, so the epilogue is inert
 dirty.store(true, Release);         // request a re-render (coalesced)
 ```
+
+The slot map is `Arc<Mutex<HashMap<ContextHash, Option<GPoll<T>>>>>`, cloned into the spawned future rather than borrowed from the node, so a task still in flight when `BorrowTree` rebuilds the node writes into live storage. `Option` carries the in-flight marker: absent is "never spawned", `None` is "spawned, not landed", `Some` is the landed value. The same mutex that guards the map publishes the write to the next `eval`, so neither the slot nor the generation needs a separate release/acquire protocol.
 
 At the start of each evaluation the runtime injects a snapshot of `(SourceId, generation)` pairs into the root context, sorted by id so hashing is deterministic. Memos hash the context as usual, generations included, so after a bump exactly the memos downstream of that source miss, and every other branch hits. No cache-tracking logic, no runtime graph walking, identical behavior in the interpreter and a precompiled DAG.
 
@@ -102,7 +107,7 @@ trait Runtime { fn spawn(&self, source: SourceId, future: BoxFuture); }
 trait Spawner { fn spawn(&self, task: BoxFuture); }
 
 struct GraphRuntime<S: Spawner> {
-    generations: Mutex<HashMap<NodeId, Arc<AtomicU64>>>,
+    generations: Arc<Mutex<HashMap<SourceId, u64>>>,
     dirty: Arc<AtomicBool>,
     spawner: S,
 }
@@ -114,7 +119,7 @@ The execution path itself is synchronous: executor construction, update, and `ex
 
 Wakers are deliberately not the graph-level notification mechanism: wakers resume suspended computations and this graph never suspends; a re-evaluation is a fresh call. Wake also does not mean completion, and wakers do not survive composition across host executors. The host avoids busy-waiting with one coarse notification (park/unpark or event-loop message) shared by task wakes and the dirty epilogue.
 
-Scheduling semantics: generations are read once per evaluation (completions landing mid-frame affect the next one); the dirty flag is drained once per frame (N completions, one re-render); on recompile, tasks of removed sources are dropped and the epilogue never runs, so no spurious invalidation.
+Scheduling semantics: generations are read once per evaluation (completions landing mid-frame affect the next one); the dirty flag is drained once per frame (N completions, one re-render); on recompile, `retain_sources` drops removed sources from the table, so their epilogue still runs but finds no entry and bumps nothing, neither invalidating nor waking the host. Tasks are not cancelled; they are made inert.
 
 # Reference-level explanation
 
@@ -195,7 +200,6 @@ Codegen requirements: the stand-in and error share a box, the status axis is fla
 
 # Unresolved questions
 
-- The remaining half of the status-product question: `meet(Partial, Fallback)` masks partiality; whether finality and error need to be carried as a pair. (The no-stand-in half is resolved by `Error`.)
 - Partial epochs: futures that publish intermediate data (streams, progressive decode) want a weaker invalidation than completion.
 - Arena ownership and reset policy in the editor executor (the largest undesigned integration piece).
 - LRU capacity policy; exact policy for provisional errors.
