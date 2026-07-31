@@ -17,6 +17,8 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	(executor, proto_network)
 }
 
+// Some benches in this module's include set drive the demos themselves.
+#[allow(dead_code)]
 pub fn bench_for_each_demo<M: Measurement, F>(group: &mut BenchmarkGroup<M>, f: F)
 where
 	F: Fn(&str, &mut BenchmarkGroup<M>),
