@@ -4,11 +4,14 @@ use std::mem::MaybeUninit;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-/// Handle word layout: 24 generation bits above 40 offset bits, so a 1 TiB arena
-/// is addressable and generations wrap after ~3 days of 60fps resets.
+/// Handle word layout: 24 generation bits above 40 offset bits, so a 1 TiB arena is
+/// addressable and generations run out after ~3 days of 60fps resets.
 const OFFSET_BITS: u32 = 40;
 const OFFSET_MASK: u64 = (1 << OFFSET_BITS) - 1;
 const GENERATION_MASK: u64 = (1 << (64 - OFFSET_BITS)) - 1;
+
+/// Out of the encodable range, so no handle, including `NULL`, matches it.
+const PARKED_GENERATION: u64 = GENERATION_MASK + 1;
 
 pub struct Arena {
 	generation: AtomicU64,
@@ -41,25 +44,42 @@ impl std::panic::RefUnwindSafe for Arena {}
 /// Shared by all arenas, so a foreign handle misses like a stale one.
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
-/// Skips generations whose encoded bits are zero, which would let `NULL` upgrade.
-fn next_generation() -> u64 {
-	loop {
-		let generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
-		if generation & GENERATION_MASK != 0 {
-			return generation;
-		}
+static LIVE_ARENAS: AtomicUsize = AtomicUsize::new(0);
+
+/// `None` past [`GENERATION_MASK`], where a reissued generation would let an ancient
+/// handle upgrade against a current arena. Recovered by `reset_generation_counter`.
+fn next_generation() -> Option<u64> {
+	let generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
+	(generation <= GENERATION_MASK).then_some(generation)
+}
+
+/// Rewinds the shared generation counter so previously issued values are reused.
+/// Returns `false` without rewinding while any [`Arena`] is still live.
+///
+/// # Safety
+///
+/// No [`ArenaWeak`] minted before this call may be upgraded afterwards. Dropping
+/// every [`Arena`] is not sufficient, since nodes also hold handles in
+/// [`ArenaCell`]s; those nodes must be dropped too.
+pub unsafe fn reset_generation_counter() -> bool {
+	if LIVE_ARENAS.load(Ordering::Acquire) != 0 {
+		return false;
 	}
+	NEXT_GENERATION.store(1, Ordering::Release);
+	true
 }
 
 impl Arena {
-	pub fn new(capacity: usize) -> Self {
+	pub fn new(capacity: usize) -> Option<Self> {
+		let generation = next_generation()?;
 		let buf = (0..capacity).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect();
-		Self {
-			generation: AtomicU64::new(next_generation()),
+		LIVE_ARENAS.fetch_add(1, Ordering::Release);
+		Some(Self {
+			generation: AtomicU64::new(generation),
 			offset: AtomicUsize::new(0),
 			buf,
 			drops: Mutex::new(Vec::new()),
-		}
+		})
 	}
 
 	pub fn generation(&self) -> u64 {
@@ -126,7 +146,9 @@ impl Arena {
 		Some(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
 	}
 
-	pub fn reset(&mut self) {
+	/// `false` once generations are exhausted, parking the arena on [`PARKED_GENERATION`]
+	/// where every handle misses and further allocation is refused.
+	pub fn reset(&mut self) -> bool {
 		let base = self.base();
 		for entry in self.drops.get_mut().unwrap().drain(..).rev() {
 			// SAFETY: registered at alloc time; insert-only means the region was
@@ -134,13 +156,19 @@ impl Arena {
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
 		}
 		*self.offset.get_mut() = 0;
-		self.generation.store(next_generation(), Ordering::Release);
+		let Some(generation) = next_generation() else {
+			self.generation.store(PARKED_GENERATION, Ordering::Release);
+			return false;
+		};
+		self.generation.store(generation, Ordering::Release);
+		true
 	}
 }
 
 impl Drop for Arena {
 	fn drop(&mut self) {
 		self.reset();
+		LIVE_ARENAS.fetch_sub(1, Ordering::Release);
 	}
 }
 
@@ -159,19 +187,19 @@ impl<T> Copy for ArenaWeak<T> {}
 impl<T> ArenaWeak<T> {
 	pub const NULL: Self = ArenaWeak { word: 0, _marker: PhantomData };
 
-	/// `None` once the offset leaves the encodable range, so an oversized arena
-	/// refuses to hand out a handle rather than truncating it to a live address.
+	/// `None` once either field leaves its encodable range, so an oversized or parked
+	/// arena refuses to hand out a handle rather than truncating it to a live address.
 	fn new(generation: u64, offset: usize) -> Option<Self> {
 		let offset = u64::try_from(offset).ok().filter(|offset| *offset <= OFFSET_MASK)?;
-		Some(Self {
-			word: ((generation & GENERATION_MASK) << OFFSET_BITS) | offset,
+		(generation <= GENERATION_MASK).then_some(Self {
+			word: (generation << OFFSET_BITS) | offset,
 			_marker: PhantomData,
 		})
 	}
 
 	pub fn upgrade(self, arena: &Arena) -> Option<&T> {
 		let generation = self.word >> OFFSET_BITS;
-		if generation != arena.generation() & GENERATION_MASK {
+		if generation != arena.generation() {
 			return None;
 		}
 		let offset = (self.word & OFFSET_MASK) as usize;
@@ -237,7 +265,7 @@ mod tests {
 
 	#[test]
 	fn alloc_upgrade_reset_miss() {
-		let mut arena = Arena::new(1024);
+		let mut arena = Arena::new(1024).unwrap();
 		let cell = ArenaCell::new();
 		let (value, weak) = arena.alloc(41u32).unwrap();
 		assert_eq!(*value, 41);
@@ -249,7 +277,7 @@ mod tests {
 
 	#[test]
 	fn capacity_survives_reset() {
-		let mut arena = Arena::new(64 + align_of::<u32>() - 1);
+		let mut arena = Arena::new(64 + align_of::<u32>() - 1).unwrap();
 		for _ in 0..10 {
 			for _ in 0..16 {
 				assert!(arena.alloc(0u32).is_some());
@@ -271,7 +299,7 @@ mod tests {
 				DROPS.fetch_add(1, Ordering::Relaxed);
 			}
 		}
-		let mut arena = Arena::new(1024);
+		let mut arena = Arena::new(1024).unwrap();
 		let cell = ArenaCell::new();
 		let result = std::panic::catch_unwind(|| {
 			let (_, weak) = arena.alloc(Probe("pre-panic".into())).unwrap();
@@ -287,9 +315,30 @@ mod tests {
 	}
 
 	#[test]
+	fn an_exhausted_reset_parks_the_arena_and_refuses_handles() {
+		let mut arena = Arena::new(1024).unwrap();
+		let (_, weak) = arena.alloc(41u32).unwrap();
+
+		let restore = NEXT_GENERATION.swap(GENERATION_MASK + 1, Ordering::Relaxed);
+		assert!(!arena.reset(), "an exhausted counter must report failure");
+		NEXT_GENERATION.store(restore, Ordering::Relaxed);
+
+		assert_eq!(weak.upgrade(&arena), None, "a parked arena resolves no handle");
+		assert_eq!(ArenaWeak::<u32>::NULL.upgrade(&arena), None, "not even the null handle");
+		assert!(arena.alloc(0u32).is_none(), "a parked arena refuses allocation");
+	}
+
+	#[test]
+	fn the_generation_counter_rewinds_only_without_live_arenas() {
+		let arena = Arena::new(64).unwrap();
+		assert!(!unsafe { reset_generation_counter() }, "a live arena must block the rewind");
+		drop(arena);
+	}
+
+	#[test]
 	fn handles_do_not_upgrade_against_a_foreign_arena() {
-		let first = Arena::new(1024);
-		let second = Arena::new(1024);
+		let first = Arena::new(1024).unwrap();
+		let second = Arena::new(1024).unwrap();
 		let (_, weak) = first.alloc(41u32).unwrap();
 		assert_eq!(weak.upgrade(&first), Some(&41));
 		assert_eq!(weak.upgrade(&second), None, "a handle must not resolve against another arena");
@@ -305,7 +354,7 @@ mod tests {
 				ORDER.lock().unwrap().push(self.0);
 			}
 		}
-		let mut arena = Arena::new(1024);
+		let mut arena = Arena::new(1024).unwrap();
 		for id in 0..3 {
 			arena.alloc(Probe(id)).unwrap();
 		}
@@ -322,7 +371,7 @@ mod tests {
 				DROPS.fetch_add(1, Ordering::Relaxed);
 			}
 		}
-		let mut arena = Arena::new(1024);
+		let mut arena = Arena::new(1024).unwrap();
 		arena.alloc(Probe("owns heap".into())).unwrap();
 		arena.alloc(Probe("me too".into())).unwrap();
 		assert_eq!(DROPS.load(Ordering::Relaxed), 0);

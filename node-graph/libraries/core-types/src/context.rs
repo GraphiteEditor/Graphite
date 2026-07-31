@@ -1349,7 +1349,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn equal_contexts_hash_equal() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [(0, 1), (1, 3)];
 		let scope = scope_fixture(&generations, &arena);
 		let a = ContextImpl::root(&scope);
@@ -1359,7 +1359,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn each_axis_changes_the_hash() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [(0, 1)];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -1383,7 +1383,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn index_level_order_matters() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -1401,7 +1401,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn axis_boundaries_are_unambiguous() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -1419,7 +1419,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn retain_scopes_generation_invalidation() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let initial = [(0, 1), (1, 3)];
 		let bumped_unretained = [(0, 2), (1, 3)];
 		let bumped_retained = [(0, 1), (1, 4)];
@@ -1435,7 +1435,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn excluding_keys_ignore_own_source_bumps() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let initial = [(7, 1), (9, 5)];
 		let own_bumped = [(7, 2), (9, 5)];
 		let other_bumped = [(7, 1), (9, 6)];
@@ -1450,7 +1450,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn unretained_scope_sees_every_bump() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let initial = [(0, 1)];
 		let bumped = [(0, 2)];
 		let hash_with = |generations: &[(SourceId, u64)]| {
@@ -1462,7 +1462,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn set_index_is_visible_and_keeps_outer_levels() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -1475,7 +1475,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn vararg_chain_concatenates_innermost_first() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -1506,7 +1506,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn snapshot_captures_vararg_levels() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -1551,7 +1551,7 @@ mod context_impl_tests {
 
 	#[test]
 	fn scope_arena_reaches_kernels_through_extract_arena() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
