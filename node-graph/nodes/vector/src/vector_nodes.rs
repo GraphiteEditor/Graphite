@@ -3,13 +3,14 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::gpoll::Interrupt;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color, Ctx,
+	DeriveCtx,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -88,7 +89,7 @@ impl VectorListIterMut for List<Vector> {
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn assign_colors<T>(
+fn assign_colors<T>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill and/or stroke style to.
 	#[implementations(List<Graphic>, List<Vector>)]
@@ -115,7 +116,7 @@ async fn assign_colors<T>(
 	repeat_every: u32,
 ) -> T
 where
-	T: VectorListIterMut + 'n + Send,
+	T: VectorListIterMut + Send,
 {
 	let Some(row) = gradient.into_iter().next() else { return content };
 
@@ -156,7 +157,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V: VectorListIterMut + 'n + Send, F: IntoGraphicList + 'n + Send + 'static>(
+fn fill<V: VectorListIterMut + Send, F: IntoGraphicList + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(
@@ -251,7 +252,7 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
+fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + Send + 'static>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(
@@ -323,7 +324,7 @@ async fn stroke<V, L: IntoF64Vec, P: IntoGraphicList + 'n + Send + 'static>(
 	dash_offset: f64,
 ) -> List<V>
 where
-	List<V>: VectorListIterMut + 'n + Send,
+	List<V>: VectorListIterMut + Send,
 {
 	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
 
@@ -356,7 +357,7 @@ where
 }
 
 #[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
-async fn copy_to_points<I: 'n + Send + Clone>(
+fn copy_to_points<I: Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
@@ -440,7 +441,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn round_corners(
+fn round_corners(
 	_: impl Ctx,
 	source: List<Vector>,
 	#[hard(0..)]
@@ -777,7 +778,7 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn extrude(_: impl Ctx, mut source: List<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> List<Vector> {
+fn extrude(_: impl Ctx, mut source: List<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> List<Vector> {
 	for vector in source.iter_element_values_mut() {
 		extrude_algorithms::extrude(vector, direction, joining_algorithm);
 	}
@@ -785,7 +786,7 @@ async fn extrude(_: impl Ctx, mut source: List<Vector>, direction: DVec2, joinin
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn box_warp(_: impl Ctx, content: List<Vector>, #[expose] rectangle: List<Vector>) -> List<Vector> {
+fn box_warp(_: impl Ctx, content: List<Vector>, #[expose] rectangle: List<Vector>) -> List<Vector> {
 	let Some(target) = rectangle.element(0).cloned() else { return content };
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
@@ -870,7 +871,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn pack_strips<T: 'n + Send + Clone>(
+fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -991,7 +992,7 @@ where
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
 #[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(core_types::vector))]
-async fn auto_tangents(
+fn auto_tangents(
 	_: impl Ctx,
 	source: List<Vector>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
@@ -1145,7 +1146,7 @@ async fn auto_tangents(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn bounding_box(_: impl Ctx, content: List<Vector>) -> List<Vector> {
+fn bounding_box(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 	content
 		.into_iter()
 		.map(|mut row| {
@@ -1170,7 +1171,7 @@ async fn bounding_box(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn dimensions(_: impl Ctx, content: List<Vector>) -> DVec2 {
+fn dimensions(_: impl Ctx, content: List<Vector>) -> DVec2 {
 	(0..content.len())
 		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM, index)))
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
@@ -1186,7 +1187,7 @@ fn as_vector(_: impl Ctx, value: List<Vector>) -> List<Vector> {
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-async fn points_to_polyline(_: impl Ctx, mut points: List<Vector>, #[default(true)] closed: bool) -> List<Vector> {
+fn points_to_polyline(_: impl Ctx, mut points: List<Vector>, #[default(true)] closed: bool) -> List<Vector> {
 	for vector in points.iter_element_values_mut() {
 		let mut segment_domain = SegmentDomain::new();
 		let mut next_id = SegmentId::ZERO;
@@ -1214,7 +1215,7 @@ async fn points_to_polyline(_: impl Ctx, mut points: List<Vector>, #[default(tru
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-async fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> List<Vector> {
+fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> List<Vector> {
 	content
 		.into_iter()
 		.map(|mut row| {
@@ -1258,7 +1259,7 @@ async fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: St
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
+fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
 	let graphic_list = content.into_graphic_list();
@@ -1366,7 +1367,7 @@ async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
+fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 	content
 		.into_iter()
 		.flat_map(|row| {
@@ -1397,7 +1398,7 @@ async fn separate_subpaths(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 
 /// Determines if the subpath at the given index (across all vector element subpaths) is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
-async fn path_is_closed(
+fn path_is_closed(
 	_: impl Ctx,
 	/// The vector content whose subpaths are inspected.
 	content: List<Vector>,
@@ -1412,25 +1413,25 @@ async fn path_is_closed(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> List<Vector> {
+fn map_points(ctx: impl Ctx + DeriveCtx, content: List<Vector>, mapped: impl Node<Context<'_>, Output = DVec2>) -> Result<List<Vector>, Interrupt> {
+	let spilled = ctx.index_head();
 	let mut content = content;
 	let mut index = 0;
 
 	for vector in content.iter_element_values_mut() {
 		for (_, position) in vector.point_domain.positions_mut() {
-			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
+			let scoped = ctx.push_position(*position);
+			*position = mapped.eval(&scoped.ctx().promoted(&spilled, index))?;
 			index += 1;
-
-			*position = mapped.eval(owned_ctx.into_context()).await;
 		}
 	}
 
-	content
+	Ok(content)
 }
 
 // TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
+pub fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
 	let graphic_list = content.into_graphic_list();
 	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
 
@@ -1486,7 +1487,7 @@ pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(Lis
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
-async fn sample_polyline(
+fn sample_polyline(
 	_: impl Ctx,
 	content: List<Vector>,
 	spacing: PointSpacingType,
@@ -1572,7 +1573,7 @@ async fn sample_polyline(
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn simplify(
+fn simplify(
 	_: impl Ctx,
 	/// The vector paths to simplify.
 	content: List<Vector>,
@@ -1616,7 +1617,7 @@ async fn simplify(
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn decimate(
+fn decimate(
 	_: impl Ctx,
 	/// The vector paths to decimate.
 	content: List<Vector>,
@@ -1744,7 +1745,7 @@ async fn decimate(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn cut_path(
+fn cut_path(
 	_: impl Ctx,
 	/// The path to insert a cut into.
 	mut content: List<Vector>,
@@ -1795,7 +1796,7 @@ async fn cut_path(
 
 /// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn cut_segments(_: impl Ctx, mut content: List<Vector>) -> List<Vector> {
+fn cut_segments(_: impl Ctx, mut content: List<Vector>) -> List<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
 	for vector in content.iter_element_values_mut() {
 		let points_count = vector.point_domain.ids().len();
@@ -1854,7 +1855,7 @@ async fn cut_segments(_: impl Ctx, mut content: List<Vector>) -> List<Vector> {
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
-async fn position_on_path(
+fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: List<Vector>,
@@ -1892,7 +1893,7 @@ async fn position_on_path(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
-async fn tangent_on_path(
+fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: List<Vector>,
@@ -1940,7 +1941,7 @@ async fn tangent_on_path(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
-async fn scatter_points(
+fn scatter_points(
 	_: impl Ctx,
 	content: List<Vector>,
 	#[unit(" px")]
@@ -1990,7 +1991,7 @@ async fn scatter_points(
 }
 
 #[node_macro::node(name("Spline"), category("Vector: Modifier"), path(core_types::vector))]
-async fn spline(_: impl Ctx, content: List<Vector>) -> List<Vector> {
+fn spline(_: impl Ctx, content: List<Vector>) -> List<Vector> {
 	content
 		.into_iter()
 		.filter_map(|mut row| {
@@ -2090,7 +2091,7 @@ fn apply_point_deltas(element: &mut Vector, deltas: &[DVec2], transform: DAffine
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn jitter_points(
+fn jitter_points(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
 	content: List<Vector>,
@@ -2140,7 +2141,7 @@ async fn jitter_points(
 /// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
 /// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn offset_points(
+fn offset_points(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
 	content: List<Vector>,
@@ -2177,7 +2178,7 @@ async fn offset_points(
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph<I: IntoGraphicList>(
+fn morph<I: IntoGraphicList>(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	#[implementations(List<Graphic>, List<Vector>)]
@@ -3124,19 +3125,19 @@ fn point_inside(_: impl Ctx, source: List<Vector>, point: DVec2) -> bool {
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements(_: impl Ctx, content: ListDyn) -> f64 {
+fn count_elements(_: impl Ctx, content: ListDyn) -> f64 {
 	content.len() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn count_points(_: impl Ctx, content: List<Vector>) -> f64 {
+fn count_points(_: impl Ctx, content: List<Vector>) -> f64 {
 	content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum()
 }
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `List` of vector elements.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn index_points(
+fn index_points(
 	_: impl Ctx,
 	/// The vector element or elements containing the anchor points to be retrieved.
 	content: List<Vector>,
@@ -3170,7 +3171,7 @@ async fn index_points(
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
+fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
 	(0..source.len())
 		.map(|index| {
 			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
@@ -3189,26 +3190,24 @@ async fn path_length(_: impl Ctx, source: List<Vector>) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>) -> f64 {
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let vector = content.eval(new_ctx).await;
+fn area(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = List<Vector>>) -> Result<f64, Interrupt> {
+	let vector = content.eval(&ctx.with_footprint(&Footprint::DEFAULT))?;
 
-	(0..vector.len())
+	Ok((0..vector.len())
 		.map(|index| {
 			let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let area_scale = transform.matrix2.determinant().abs();
 			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
 		})
-		.sum()
+		.sum())
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = List<Vector>>, centroid_type: CentroidType) -> DVec2 {
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let vector = content.eval(new_ctx).await;
+fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = List<Vector>>, centroid_type: CentroidType) -> Result<DVec2, Interrupt> {
+	let vector = content.eval(&ctx.with_footprint(&Footprint::DEFAULT))?;
 
 	if vector.is_empty() {
-		return DVec2::ZERO;
+		return Ok(DVec2::ZERO);
 	}
 
 	// All subpath centroid positions added together as if they were vectors from the origin.
@@ -3234,7 +3233,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	}
 
 	if sum > 0. {
-		centroid / sum
+		Ok(centroid / sum)
 	}
 	// Without a summed denominator, return the average of all positions instead
 	else {
@@ -3255,7 +3254,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 			.inspect(|_| count += 1)
 			.sum::<DVec2>();
 
-		if count != 0 { summed_positions / (count as f64) } else { DVec2::ZERO }
+		if count != 0 { Ok(summed_positions / (count as f64)) } else { Ok(DVec2::ZERO) }
 	}
 }
 

@@ -7,10 +7,11 @@ mod text_context;
 mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
+use core_types::gpoll::Interrupt;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::registry::types::{SignedInteger, TextArea};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
+use core_types::{Context, Ctx, DeriveCtx, ExtractVarArgs};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use unicode_segmentation::UnicodeSegmentation;
@@ -768,25 +769,25 @@ fn string_join(
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
 #[node_macro::node(category("Text"))]
-async fn map_string(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+fn map_string(
+	ctx: impl Ctx + DeriveCtx,
 	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> String)]
-	mapped: impl Node<Context<'static>, Output = String>,
-) -> List<String> {
+	mapped: impl Node<Context<'_>, Output = String>,
+) -> Result<List<String>, Interrupt> {
+	let spilled = ctx.index_head();
 	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
 		let string = row.into_element();
-		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
-		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
+		let scoped = ctx.push_vararg(&string);
+		let mapped_string = mapped.eval(&scoped.ctx().promoted(&spilled, i as u64))?;
 
 		result.push(Item::new_from_element(mapped_string));
 	}
 
-	result
+	Ok(result)
 }
 
 /// Reads the current string from within a **Map String** node's loop.

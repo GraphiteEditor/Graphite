@@ -126,6 +126,12 @@ pub trait ModifyIndex: ExtractIndex + InjectIndex {}
 pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
 ```
 
+### Authoring rule: forward with Modify*, consume with Extract*
+
+Declare a feature via `Modify*` when the node only reads it to compute a new value it injects for its children (a "forward"), and via `Extract*` only when the node genuinely consumes the value for its own output (a "sink").
+
+The analysis skips `Modify*` bounds but treats every `Extract*` bound as an *unconditional* requirement. Because `Modify*` is a supertrait of `Extract*`, a `Modify*` bound already grants the read capability (e.g. `modify_footprint`, which is `where Self: ExtractFootprint`), so it is a mistake to list both. Writing `impl Ctx + ExtractFootprint + ModifyFootprint` on a forwarding node re-introduces the feature as a hard dependency at every such node, which propagates up the whole tree and pins upstream memos to a value the node never actually consumes (e.g. a viewport pan invalidating a render cache that renders in local space). Use `impl Ctx + ModifyFootprint` alone.
+
 ### Conditional Context Dependencies
 
 Modify* traits represent a special case in context analysis:

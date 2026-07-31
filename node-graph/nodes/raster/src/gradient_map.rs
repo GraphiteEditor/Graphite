@@ -10,7 +10,7 @@ use vector_types::GradientStops;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn gradient_map<T: Adjust<Color>>(
+fn gradient_map<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		List<Raster<CPU>>,

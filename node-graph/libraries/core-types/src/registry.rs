@@ -1,10 +1,12 @@
-use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
-use dyn_any::{DynAny, StaticType};
+use crate::concrete;
+use crate::context::{Context, ContextImpl};
+use crate::node::Node;
+use crate::{ContextFeature, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
+use dyn_any::DynAny;
+use graphene_hash::CacheHash;
 pub use no_std_types::registry::types;
 use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::ops::Deref;
-use std::pin::Pin;
+use std::hash::Hasher;
 use std::sync::{LazyLock, Mutex};
 
 // Translation struct between macro and definition
@@ -55,239 +57,457 @@ pub enum RegistryValueSource {
 	None,
 	Default(&'static str),
 	Scope(&'static str),
+	SourceId,
 }
 
-type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
+type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub use crate::NodeIOTypes;
+
 #[cfg(not(target_family = "wasm"))]
-pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
+pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T> + Send + Sync;
 #[cfg(target_family = "wasm")]
-pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
-pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
+pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T>;
+#[cfg(not(target_family = "wasm"))]
+pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T> + Send + Sync;
+#[cfg(target_family = "wasm")]
+pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T>;
+
+#[cfg(not(target_family = "wasm"))]
+type DynEdge = dyn std::any::Any + Send + Sync;
+#[cfg(target_family = "wasm")]
+type DynEdge = dyn std::any::Any;
+
+pub fn edge_type<T: 'static>() -> Type {
+	Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(T)))
+}
+
+pub fn lend_edge_type<T: 'static>() -> Type {
+	Type::Fn(Box::new(concrete!(Context)), Box::new(Type::Ref(Box::new(concrete!(T)))))
+}
+
+pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
+	let mut hasher = graphene_hash::FxHasher64::new();
+	ctx.cache_hash(&mut hasher);
+	hasher.finish()
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ConstructionError {
+	Arity { expected: usize, got: usize },
+	Type { expected: Box<Type>, found: Box<Type> },
+}
+
+pub struct SharedEdge<N: ?Sized> {
+	ptr: std::ptr::NonNull<N>,
+	own: std::sync::Arc<N>,
+}
+
+impl<N: ?Sized> SharedEdge<N> {
+	pub fn new(own: std::sync::Arc<N>) -> Self {
+		Self {
+			ptr: std::ptr::NonNull::from(&*own),
+			own,
+		}
+	}
+
+	pub fn share(&self) -> Self {
+		Self { ptr: self.ptr, own: self.own.clone() }
+	}
+}
+
+// SAFETY: `ptr` is derived from the owned Arc and never mutated through, so the edge is exactly as
+// thread safe as the payload it shares.
+unsafe impl<N: ?Sized + Send + Sync> Send for SharedEdge<N> {}
+// SAFETY: as in Send.
+unsafe impl<N: ?Sized + Send + Sync> Sync for SharedEdge<N> {}
+
+impl<Input, N> Node<Input> for SharedEdge<N>
+where
+	N: Node<Input> + ?Sized,
+{
+	type Output = N::Output;
+
+	fn eval(&self, input: &Input) -> crate::gpoll::GPoll<Self::Output> {
+		// SAFETY: `own` keeps the payload alive for `self`'s lifetime and Arc
+		// payloads are address stable.
+		unsafe { self.ptr.as_ref() }.eval(input)
+	}
+
+	fn extent(&self, input: &Input) -> crate::gpoll::GPoll<crate::gpoll::Extent> {
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.extent(input)
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.serialize()
+	}
+
+	fn eval_batch<'a>(&self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::node::BatchStatus<'a, Self::Output>
+	where
+		Input: crate::context::InjectIndex + Copy,
+	{
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.eval_batch(input, range, scratch)
+	}
+}
+
+pub struct EdgeHandle {
+	node: Box<DynEdge>,
+	share: fn(&DynEdge) -> Box<DynEdge>,
+	serialize: fn(&DynEdge) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+	ty: Type,
+}
+
+impl std::fmt::Debug for EdgeHandle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("EdgeHandle").field("ty", &self.ty).finish_non_exhaustive()
+	}
+}
+
+// SAFETY: wasm is single threaded, so the marker-free payload never actually crosses a thread.
+#[cfg(target_family = "wasm")]
+unsafe impl Send for EdgeHandle {}
+// SAFETY: as in Send.
+#[cfg(target_family = "wasm")]
+unsafe impl Sync for EdgeHandle {}
+
+impl EdgeHandle {
+	pub fn new<T: 'static>(node: std::sync::Arc<ErasedNode<T>>) -> Self {
+		Self::new_erased(node, edge_type::<T>())
+	}
+
+	pub fn new_ref<T: 'static>(node: std::sync::Arc<ErasedLendNode<T>>) -> Self {
+		Self::new_erased(node, lend_edge_type::<T>())
+	}
+
+	pub fn new_erased<N>(node: std::sync::Arc<N>, ty: Type) -> Self
+	where
+		N: ?Sized + 'static + for<'c> Node<ContextImpl<'c>>,
+		SharedEdge<N>: WasmNotSend + WasmNotSync,
+	{
+		Self {
+			node: Box::new(SharedEdge::new(node)),
+			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
+			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
+			ty,
+		}
+	}
+
+	pub fn ty(&self) -> &Type {
+		&self.ty
+	}
+
+	pub fn duplicate(&self) -> Self {
+		Self {
+			node: (self.share)(&*self.node),
+			share: self.share,
+			serialize: self.serialize,
+			ty: self.ty.clone(),
+		}
+	}
+
+	pub fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(self.serialize)(&*self.node)
+	}
+
+	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedNode<T>>, ConstructionError> {
+		self.downcast_erased(edge_type::<T>())
+	}
+
+	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendNode<T>>, ConstructionError> {
+		self.downcast_erased(lend_edge_type::<T>())
+	}
+
+	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
+		let found = self.ty;
+		self.node.downcast::<SharedEdge<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type {
+			expected: Box::new(expected),
+			found: Box::new(found),
+		})
+	}
+}
+
+pub type NodeConstructor = fn(Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError>;
+
+#[derive(Clone)]
+pub struct RegistryEntry {
+	pub io: NodeIOTypes,
+	pub constructor: NodeConstructor,
+}
+
+pub fn construct(entry: &RegistryEntry, inputs: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
+	if inputs.len() != entry.io.inputs.len() {
+		return Err(ConstructionError::Arity {
+			expected: entry.io.inputs.len(),
+			got: inputs.len(),
+		});
+	}
+	for (handle, expected) in inputs.iter().zip(&entry.io.inputs) {
+		if handle.ty() != expected {
+			return Err(ConstructionError::Type {
+				expected: Box::new(expected.clone()),
+				found: Box::new(handle.ty().clone()),
+			});
+		}
+	}
+	(entry.constructor)(inputs)
+}
+
 #[cfg(not(target_family = "wasm"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
 #[cfg(target_family = "wasm")]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
-pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
-// TODO: is this safe? This is assumed to be send+sync.
-#[cfg(not(target_family = "wasm"))]
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
-#[cfg(target_family = "wasm")]
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
-pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
-pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
-pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::SourceId;
+	use crate::arena::Arena;
+	use crate::context::{Ctx, EvalScope, ExtractArena};
+	use crate::gpoll::GPoll;
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicU32, Ordering};
 
-pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+	struct CountingNode(AtomicU32);
 
-#[derive(Clone)]
-pub struct NodeContainer {
-	#[cfg(feature = "dealloc_nodes")]
-	pub node: *const TypeErasedNode<'static>,
-	#[cfg(not(feature = "dealloc_nodes"))]
-	pub node: TypeErasedRef<'static>,
-}
+	impl<Input> Node<Input> for CountingNode {
+		type Output = u32;
 
-impl Deref for NodeContainer {
-	type Target = TypeErasedNode<'static>;
-
-	#[cfg(feature = "dealloc_nodes")]
-	fn deref(&self) -> &Self::Target {
-		unsafe { &*(self.node) }
-		#[cfg(not(feature = "dealloc_nodes"))]
-		self.node
-	}
-	#[cfg(not(feature = "dealloc_nodes"))]
-	fn deref(&self) -> &Self::Target {
-		self.node
-	}
-}
-
-/// # Safety
-/// Marks NodeContainer as Sync. This dissallows the use of threadlocal storage for nodes as this would invalidate references to them.
-// TODO: implement this on a higher level wrapper to avoid missuse
-#[cfg(feature = "dealloc_nodes")]
-unsafe impl Send for NodeContainer {}
-#[cfg(feature = "dealloc_nodes")]
-unsafe impl Sync for NodeContainer {}
-
-#[cfg(feature = "dealloc_nodes")]
-impl Drop for NodeContainer {
-	fn drop(&mut self) {
-		unsafe { self.dealloc_unchecked() }
-	}
-}
-
-impl std::fmt::Debug for NodeContainer {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeContainer").finish()
-	}
-}
-
-impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
-		let node = Box::leak(node);
-		Self { node }.into()
-	}
-
-	#[cfg(feature = "dealloc_nodes")]
-	unsafe fn dealloc_unchecked(&mut self) {
-		unsafe {
-			drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		fn eval(&self, _input: &Input) -> GPoll<u32> {
+			GPoll::Final(self.0.fetch_add(1, Ordering::Relaxed) + 1)
 		}
 	}
-}
 
-/// Boxes the input and downcasts the output.
-/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
-#[derive(Clone)]
-pub struct DowncastBothNode<I, O> {
-	node: SharedNodeContainer,
-	_i: PhantomData<I>,
-	_o: PhantomData<O>,
-}
-impl<'input, O, I> Node<'input, I> for DowncastBothNode<I, O>
-where
-	O: 'input + StaticType + WasmNotSend,
-	I: 'input + StaticType + WasmNotSend,
-{
-	type Output = DynFuture<'input, O>;
-	#[inline]
-	#[track_caller]
-	fn eval(&'input self, input: I) -> Self::Output {
+	struct ValueNode<T>(T);
+
+	impl<T: Clone, Input> Node<Input> for ValueNode<T> {
+		type Output = T;
+
+		fn eval(&self, _input: &Input) -> GPoll<T> {
+			GPoll::Final(self.0.clone())
+		}
+	}
+
+	struct LendNode(String);
+
+	impl<'e, Input: Ctx + ExtractArena<ArenaRef = &'e Arena>> Node<Input> for LendNode {
+		type Output = &'e String;
+
+		fn eval(&self, input: &Input) -> GPoll<&'e String> {
+			match input.arena().alloc(self.0.clone()) {
+				Some((parked, _)) => GPoll::Final(parked),
+				None => GPoll::arena_exhausted(),
+			}
+		}
+	}
+
+	fn scope_fixture<'a>(generations: &'a [(SourceId, u64)], arena: &'a Arena) -> EvalScope<'a> {
+		EvalScope::new(Some(0.5), None, None, generations, arena)
+	}
+
+	#[test]
+	fn borrow_carrying_value_types_wire_through_the_general_constructor() {
+		struct SplitBorrow<'c>(&'c str, usize);
+
+		struct SplitNode<Node0> {
+			content: Node0,
+		}
+
+		impl<'e, Input, Node0> Node<Input> for SplitNode<Node0>
+		where
+			Input: Ctx,
+			Node0: Node<Input, Output = &'e String>,
 		{
-			let node_name = self.node.node_name();
-			let input = Box::new(input);
-			let future = self.node.eval(input);
-			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode wrong output type: {e} in: \n{node_name}"));
-				*out
-			})
+			type Output = SplitBorrow<'e>;
+
+			fn eval(&self, input: &Input) -> GPoll<SplitBorrow<'e>> {
+				self.content.eval(input).map(|value| SplitBorrow(value, value.len()))
+			}
 		}
-	}
-	fn reset(&self) {
-		self.node.reset();
-	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
-	}
-}
-impl<I, O> DowncastBothNode<I, O> {
-	pub const fn new(node: SharedNodeContainer) -> Self {
-		Self {
-			node,
-			_i: PhantomData,
-			_o: PhantomData,
-		}
-	}
-}
-pub struct FutureWrapperNode<Node> {
-	node: Node,
-}
+		type ErasedSplitEdge = dyn for<'c> Node<ContextImpl<'c>, Output = SplitBorrow<'c>> + Send + Sync;
 
-impl<'i, T: 'i + WasmNotSend, N> Node<'i, T> for FutureWrapperNode<N>
-where
-	N: Node<'i, T, Output: WasmNotSend> + WasmNotSend,
-{
-	type Output = DynFuture<'i, N::Output>;
-	#[inline(always)]
-	fn eval(&'i self, input: T) -> Self::Output {
-		let result = self.node.eval(input);
-		Box::pin(async move { result })
-	}
-	#[inline(always)]
-	fn reset(&self) {
-		self.node.reset();
-	}
+		let arena = Arena::new(4096);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
 
-	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
-	}
-}
+		let lending = EdgeHandle::new_ref(Arc::new(LendNode("held".to_string())) as Arc<ErasedLendNode<String>>);
+		let upstream = lending.downcast_lend::<String>().unwrap();
+		let node: Arc<ErasedSplitEdge> = Arc::new(SplitNode { content: upstream });
+		let handle = EdgeHandle::new_erased(node, concrete!(SplitBorrow<'static>));
+		assert_eq!(*handle.ty(), concrete!(SplitBorrow<'static>));
 
-impl<N> FutureWrapperNode<N> {
-	pub const fn new(node: N) -> Self {
-		Self { node }
-	}
-}
-
-pub struct DynAnyNode<I, O, Node> {
-	node: Node,
-	_i: PhantomData<I>,
-	_o: PhantomData<O>,
-}
-
-impl<'input, I, O, N> Node<'input, Any<'input>> for DynAnyNode<I, O, N>
-where
-	I: 'input + StaticType + WasmNotSend,
-	O: 'input + StaticType + WasmNotSend,
-	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
-{
-	type Output = FutureAny<'input>;
-	#[inline]
-	fn eval(&'input self, input: Any<'input>) -> Self::Output {
-		let node_name = std::any::type_name::<N>();
-		let output = |input| {
-			let result = self.node.eval(input);
-			async move { Box::new(result.await) as Any<'input> }
+		let wired = handle.downcast_erased::<ErasedSplitEdge>(concrete!(SplitBorrow<'static>)).unwrap();
+		let GPoll::Final(split) = wired.eval(&ctx) else {
+			panic!("borrow-carrying output must eval through the erased edge");
 		};
-		match dyn_any::downcast(input) {
-			Ok(input) => Box::pin(output(*input)),
-			Err(e) => panic!("DynAnyNode Input, {e} in:\n{node_name}"),
+		assert_eq!(split.0, "held");
+		assert_eq!(split.1, 4);
+	}
+
+	#[test]
+	fn derive_ctx_repeat_pushes_index_levels_through_the_erased_edge() {
+		use crate::context::{DeriveCtx, Derived, ExtractIndex};
+
+		struct RepeatNode<Node0> {
+			content: Node0,
 		}
-	}
 
-	fn reset(&self) {
-		self.node.reset();
-	}
+		impl<C, T, Node0> Node<C> for RepeatNode<Node0>
+		where
+			C: Ctx + DeriveCtx,
+			Node0: for<'x> Node<Derived<'x, C>, Output = T>,
+		{
+			type Output = Vec<T>;
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
-	}
-}
-impl<'input, I, O, N> DynAnyNode<I, O, N>
-where
-	I: 'input + StaticType,
-	O: 'input + StaticType,
-	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
-{
-	pub const fn new(node: N) -> Self {
-		Self {
-			node,
-			_i: PhantomData,
-			_o: PhantomData,
+			fn eval(&self, input: &C) -> GPoll<Vec<T>> {
+				let spilled = input.index_head();
+				let mut result = Vec::new();
+				for index in 0..3 {
+					let derived = input.promoted(&spilled, index);
+					match self.content.eval(&derived) {
+						GPoll::Final(value) => result.push(value),
+						other => return other.map(|_| Vec::new()),
+					}
+				}
+				GPoll::Final(result)
+			}
 		}
+
+		struct LevelsNode;
+
+		impl<Input: ExtractIndex> Node<Input> for LevelsNode {
+			type Output = Vec<usize>;
+
+			fn eval(&self, input: &Input) -> GPoll<Vec<usize>> {
+				GPoll::Final(input.try_index().map(|levels| levels.collect()).unwrap_or_default())
+			}
+		}
+
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let nested = RepeatNode {
+			content: RepeatNode { content: LevelsNode },
+		};
+		let erased: Box<ErasedNode<Vec<Vec<Vec<usize>>>>> = Box::new(nested);
+
+		let GPoll::Final(outer) = erased.eval(&ctx) else {
+			panic!("nested repeat must evaluate");
+		};
+		assert_eq!(outer.len(), 3);
+		assert_eq!(outer[2][1], vec![1, 2, 0]);
+		assert_eq!(outer[0][0], vec![0, 0, 0]);
+	}
+
+	#[test]
+	fn derive_ctx_footprint_replace_reaches_the_content() {
+		use crate::context::{DeriveCtx, Derived, ExtractFootprint};
+		use crate::transform::Footprint;
+
+		struct ShiftFootprintNode<Node0> {
+			content: Node0,
+		}
+
+		impl<C, T, Node0> Node<C> for ShiftFootprintNode<Node0>
+		where
+			C: Ctx + DeriveCtx + ExtractFootprint,
+			Node0: for<'x> Node<Derived<'x, C>, Output = T>,
+		{
+			type Output = T;
+
+			fn eval(&self, input: &C) -> GPoll<T> {
+				let mut footprint = input.try_footprint().copied().unwrap_or(Footprint::DEFAULT);
+				footprint.resolution.x += 7;
+				let derived = input.with_footprint(&footprint);
+				self.content.eval(&derived)
+			}
+		}
+
+		struct ResolutionNode;
+
+		impl<Input: ExtractFootprint> Node<Input> for ResolutionNode {
+			type Output = u32;
+
+			fn eval(&self, input: &Input) -> GPoll<u32> {
+				GPoll::Final(input.try_footprint().map(|footprint| footprint.resolution.x).unwrap_or(0))
+			}
+		}
+
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let graph: Box<ErasedNode<u32>> = Box::new(ShiftFootprintNode {
+			content: ShiftFootprintNode { content: ResolutionNode },
+		});
+		assert_eq!(graph.eval(&ctx), GPoll::Final(Footprint::DEFAULT.resolution.x + 14));
+	}
+
+	#[test]
+	fn construct_checks_arity_and_types() {
+		fn construct_strlen(args: Vec<EdgeHandle>) -> Result<EdgeHandle, ConstructionError> {
+			let mut args = args.into_iter();
+			let value = args.next().ok_or(ConstructionError::Arity { expected: 1, got: 0 })?.downcast::<String>()?;
+			drop(value);
+			Ok(EdgeHandle::new(Arc::new(ValueNode(0u32)) as Arc<ErasedNode<u32>>))
+		}
+		let entry = RegistryEntry {
+			io: NodeIOTypes::new(concrete!(Context), concrete!(u32), vec![edge_type::<String>()]),
+			constructor: construct_strlen,
+		};
+
+		let owned = EdgeHandle::new(Arc::new(ValueNode("typed".to_string())) as Arc<ErasedNode<String>>);
+		assert!(construct(&entry, vec![owned]).is_ok());
+
+		assert_eq!(construct(&entry, vec![]).unwrap_err(), ConstructionError::Arity { expected: 1, got: 0 });
+
+		let mistyped = EdgeHandle::new(Arc::new(ValueNode(1.0f64)) as Arc<ErasedNode<f64>>);
+		assert_eq!(
+			construct(&entry, vec![mistyped]).unwrap_err(),
+			ConstructionError::Type {
+				expected: Box::new(edge_type::<String>()),
+				found: Box::new(edge_type::<f64>()),
+			}
+		);
+
+		let lent = EdgeHandle::new_ref(Arc::new(LendNode("typed".to_string())) as Arc<ErasedLendNode<String>>);
+		assert_eq!(
+			construct(&entry, vec![lent]).unwrap_err(),
+			ConstructionError::Type {
+				expected: Box::new(edge_type::<String>()),
+				found: Box::new(lend_edge_type::<String>()),
+			}
+		);
+	}
+
+	#[test]
+	fn duplicated_edges_share_one_instance_and_outlive_each_other() {
+		let arena = Arena::new(1024);
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let handle = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedNode<u32>>);
+		let duplicate = handle.duplicate();
+		assert_eq!(*duplicate.ty(), edge_type::<u32>());
+
+		let first = handle.downcast::<u32>().unwrap();
+		let second = duplicate.downcast::<u32>().unwrap();
+		assert_eq!(first.eval(&ctx), GPoll::Final(1));
+		assert_eq!(second.eval(&ctx), GPoll::Final(2));
+
+		drop(first);
+		assert_eq!(second.eval(&ctx), GPoll::Final(3));
 	}
 }
-pub struct PanicNode<I: WasmNotSend, O: WasmNotSend>(PhantomData<I>, PhantomData<O>);
-
-impl<'i, I: 'i + WasmNotSend, O: 'i + WasmNotSend> Node<'i, I> for PanicNode<I, O> {
-	type Output = O;
-	fn eval(&'i self, _: I) -> Self::Output {
-		unimplemented!("This node should never be evaluated")
-	}
-}
-
-impl<I: WasmNotSend, O: WasmNotSend> PanicNode<I, O> {
-	pub const fn new() -> Self {
-		Self(PhantomData, PhantomData)
-	}
-}
-
-impl<I: WasmNotSend, O: WasmNotSend> Default for PanicNode<I, O> {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-// TODO: Evaluate safety
-unsafe impl<I: WasmNotSend, O: WasmNotSend> Sync for PanicNode<I, O> {}

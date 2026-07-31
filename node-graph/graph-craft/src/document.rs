@@ -8,7 +8,6 @@ pub use core_types::uuid::generate_uuid;
 use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use dyn_any::DynAny;
 use glam::IVec2;
-use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -215,12 +214,14 @@ impl InlineRust {
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
+	SourceId,
 }
 
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
 			DocumentNodeMetadata::DocumentNodePath => concrete!(core_types::list::List<NodeId>),
+			DocumentNodeMetadata::SourceId => concrete!(u64),
 		}
 	}
 }
@@ -273,7 +274,7 @@ impl NodeInput {
 			NodeInput::Import { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
-			NodeInput::Reflection(_) => concrete!(Metadata),
+			NodeInput::Reflection(metadata) => metadata.ty(),
 		}
 	}
 
@@ -879,7 +880,7 @@ impl NodeNetwork {
 
 		// Replace value inputs with dedicated value nodes
 		if node.implementation != DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")) {
-			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
+			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id, Some(&mut node.context_features));
 		}
 
 		let DocumentNodeImplementation::Network(mut inner_network) = node.implementation else {
@@ -898,6 +899,7 @@ impl NodeNetwork {
 			gen_id,
 			map_ids,
 			id,
+			None,
 		);
 
 		// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
@@ -978,6 +980,12 @@ impl NodeNetwork {
 		}
 	}
 
+	fn source_id_for_path(path: &[NodeId]) -> u64 {
+		let mut hasher = graphene_hash::FxHasher64::new();
+		path.hash(&mut hasher);
+		hasher.finish()
+	}
+
 	#[inline(never)]
 	fn replace_value_inputs_with_nodes(
 		inputs: &mut [NodeInput],
@@ -986,6 +994,7 @@ impl NodeNetwork {
 		gen_id: impl Fn() -> NodeId + Copy,
 		map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy,
 		id: NodeId,
+		mut context_features: Option<&mut ContextDependencies>,
 	) {
 		// Replace value exports and imports with value nodes, added inside the nested network
 		for export in inputs {
@@ -996,6 +1005,13 @@ impl NodeNetwork {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
 					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
+					DocumentNodeMetadata::SourceId => {
+						let source_id = Self::source_id_for_path(path);
+						if let Some(context_features) = context_features.as_deref_mut() {
+							core_types::context::merge_sorted_sources(&mut context_features.sources, &[source_id]);
+						}
+						(TaggedValue::U64(source_id).into(), false)
+					}
 				},
 				previous_export => {
 					*export = previous_export;
@@ -1208,7 +1224,9 @@ fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> R
 		Old(Option<Type>),
 	}
 
+	// TODO: Eventually remove this migration document upgrade code
 	Ok(match CallArg::deserialize(deserializer)? {
+		CallArg::New(Type::Concrete(descriptor)) if descriptor.name.ends_with("OwnedContextImpl>>") => concrete!(Context),
 		CallArg::New(ty) => ty,
 		CallArg::Old(ty) => ty.unwrap_or_default(),
 	})

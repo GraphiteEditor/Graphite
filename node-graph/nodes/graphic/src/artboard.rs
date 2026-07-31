@@ -1,6 +1,7 @@
+use core_types::gpoll::Interrupt;
 use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
-use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, Color, Context, Ctx, DeriveCtx, ModifyFootprint};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -9,8 +10,8 @@ use vector_types::GradientStops;
 
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
-pub async fn create_artboard<T: IntoGraphicList>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+pub fn create_artboard<T: IntoGraphicList>(
+	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
 	/// Graphics to include within the artboard.
 	#[implementations(
 		Context -> List<Graphic>,
@@ -22,7 +23,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 		Context -> List<GradientStops>,
 		Context -> DAffine2,
 	)]
-	content: impl Node<Context<'static>, Output = T>,
+	content: impl Node<Context<'_>, Output = T>,
 	/// Coordinate of the top-left corner of the artboard within the document.
 	location: DVec2,
 	/// Width and height of the artboard within the document.
@@ -32,14 +33,9 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: bool,
-) -> List<Artboard> {
-	let footprint = ctx.try_footprint().copied();
-	let mut new_ctx = OwnedContextImpl::from(ctx);
-	if let Some(mut footprint) = footprint {
-		footprint.translate(location);
-		new_ctx = new_ctx.with_footprint(footprint);
-	}
-	let content = content.eval(new_ctx.into_context()).await.into_graphic_list();
+) -> Result<List<Artboard>, Interrupt> {
+	let translated = ctx.modify_footprint(|footprint| footprint.translate(location));
+	let content = content.eval(&translated.ctx())?.into_graphic_list();
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
@@ -50,11 +46,11 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	List::new_from_item(
+	Ok(List::new_from_item(
 		Item::new_from_element(Artboard::new(content))
 			.with_attribute(ATTR_LOCATION, normalized_location)
 			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
 			.with_attribute(ATTR_BACKGROUND, background)
 			.with_attribute(ATTR_CLIP, clip),
-	)
+	))
 }
