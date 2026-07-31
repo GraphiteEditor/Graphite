@@ -4,6 +4,12 @@ use std::mem::MaybeUninit;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
+/// Handle word layout: 24 generation bits above 40 offset bits, so a 1 TiB arena
+/// is addressable and generations wrap after ~3 days of 60fps resets.
+const OFFSET_BITS: u32 = 40;
+const OFFSET_MASK: u64 = (1 << OFFSET_BITS) - 1;
+const GENERATION_MASK: u64 = (1 << (64 - OFFSET_BITS)) - 1;
+
 pub struct Arena {
 	generation: AtomicU64,
 	offset: AtomicUsize,
@@ -70,6 +76,9 @@ impl Arena {
 
 	pub fn alloc<T>(&self, value: T) -> Option<(&T, ArenaWeak<T>)> {
 		let offset = self.reserve(size_of::<T>(), align_of::<T>())?;
+		// Built before the write so an unencodable offset drops `value` here
+		// rather than stranding it in the arena without drop glue.
+		let weak = ArenaWeak::new(self.generation(), offset)?;
 		let ptr = unsafe { self.base().add(offset) }.cast::<T>();
 		// SAFETY: freshly reserved, aligned, in-bounds, unaliased.
 		unsafe { ptr.write(value) };
@@ -80,7 +89,7 @@ impl Arena {
 			self.drops.lock().unwrap().push(DropEntry { offset, drop_fn: glue::<T> });
 		}
 		// SAFETY: initialized above; insert-only, so no `&mut` to it can exist.
-		Some((unsafe { &*ptr }, ArenaWeak::new(self.generation(), offset)))
+		Some((unsafe { &*ptr }, weak))
 	}
 
 	pub fn alloc_slice_copy<T: Copy>(&self, src: &[T]) -> Option<&[T]> {
@@ -137,20 +146,22 @@ impl<T> Copy for ArenaWeak<T> {}
 impl<T> ArenaWeak<T> {
 	pub const NULL: Self = ArenaWeak { word: 0, _marker: PhantomData };
 
-	fn new(generation: u64, offset: usize) -> Self {
-		debug_assert!(offset < u32::MAX as usize);
-		Self {
-			word: ((generation & 0xFFFF_FFFF) << 32) | offset as u64,
+	/// `None` once the offset leaves the encodable range, so an oversized arena
+	/// refuses to hand out a handle rather than truncating it to a live address.
+	fn new(generation: u64, offset: usize) -> Option<Self> {
+		let offset = u64::try_from(offset).ok().filter(|offset| *offset <= OFFSET_MASK)?;
+		Some(Self {
+			word: ((generation & GENERATION_MASK) << OFFSET_BITS) | offset,
 			_marker: PhantomData,
-		}
+		})
 	}
 
 	pub fn upgrade(self, arena: &Arena) -> Option<&T> {
-		let generation = self.word >> 32;
-		if generation != arena.generation() & 0xFFFF_FFFF {
+		let generation = self.word >> OFFSET_BITS;
+		if generation != arena.generation() & GENERATION_MASK {
 			return None;
 		}
-		let offset = (self.word & 0xFFFF_FFFF) as usize;
+		let offset = (self.word & OFFSET_MASK) as usize;
 		// SAFETY: same generation means the entry was fully written before its
 		// word was published (Release) and cannot move or be overwritten within
 		// a generation (insert-only); the Acquire load that produced this word

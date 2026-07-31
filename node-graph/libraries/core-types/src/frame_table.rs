@@ -45,8 +45,8 @@ impl<T, const CAP: usize> FrameTable<T, CAP> {
 	}
 
 	pub fn lookup(&self, hash: u64) -> Lookup<'_, T> {
-		// Keys are forced odd so the empty sentinel (0) can never collide.
-		let key = hash | 1;
+		// Only hash 0 is remapped, so distinct hashes stay distinct keys.
+		let key = if hash == 0 { 1 } else { hash };
 		for probe in 0..CAP {
 			let slot = &self.slots[(key as usize).wrapping_add(probe) % CAP];
 			let stored = slot.key.load(Ordering::Acquire);
@@ -121,6 +121,25 @@ mod tests {
 		let Lookup::Vacant(slot) = table.lookup(7) else { unreachable!() };
 		slot.release();
 		assert!(matches!(table.lookup(7), Lookup::Vacant(_)));
+	}
+
+	#[test]
+	fn neighboring_hashes_do_not_share_an_entry() {
+		let table = FrameTable::<u32, 8>::new();
+		let Lookup::Vacant(slot) = table.lookup(6) else { unreachable!() };
+		slot.publish(600, Finality::AllFinal);
+		assert!(matches!(table.lookup(7), Lookup::Vacant(_)), "an even hash must not answer for its odd neighbor");
+	}
+
+	#[test]
+	fn the_zero_hash_round_trips() {
+		let table = FrameTable::<u32, 8>::new();
+		let Lookup::Vacant(slot) = table.lookup(0) else { unreachable!() };
+		slot.publish(11, Finality::AllFinal);
+		let Lookup::Hit(_, value) = table.lookup(0) else {
+			panic!("the remapped sentinel hash must still hit");
+		};
+		assert_eq!(*value, 11);
 	}
 
 	#[test]

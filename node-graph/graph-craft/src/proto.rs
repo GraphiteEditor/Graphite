@@ -370,13 +370,16 @@ impl ProtoNetwork {
 		let mut combined_deps = ContextFeatures::default();
 		let node_index = id.0 as usize;
 
-		let context_features = self.nodes[node_index].1.context_features.clone();
+		let (extract, inject) = {
+			let dependencies = &self.nodes[node_index].1.context_features;
+			(dependencies.extract, dependencies.inject)
+		};
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
+			ConstructionArgs::Value(_) => return (extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+			ConstructionArgs::Inline(_) => return (extract, Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
@@ -389,9 +392,9 @@ impl ProtoNetwork {
 		let mut new_deps = combined_deps;
 
 		// Remove requirements which this node provides
-		new_deps &= !context_features.inject;
+		new_deps &= !inject;
 		// Add requirements we have
-		new_deps |= context_features.extract;
+		new_deps |= extract;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
 		let we_introduce_new_deps = !combined_deps.contains(new_deps);
@@ -407,7 +410,7 @@ impl ProtoNetwork {
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
 		// Which dependencies do we supply (and don't need ourselves)?
-		let net_injections = context_features.inject.difference(context_features.extract);
+		let net_injections = inject.difference(extract);
 
 		// Which dependencies still need to be met after this node?
 		let remaining_deps_from_children = combined_deps.difference(net_injections);
