@@ -1,6 +1,5 @@
 use criterion::BenchmarkGroup;
 use criterion::measurement::Measurement;
-use futures::executor::block_on;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile, load_from_name};
 use graphene_std::application_io::EditorApi;
@@ -14,7 +13,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);
-	let executor = block_on(DynamicExecutor::new(proto_network.clone())).unwrap();
+	let executor = DynamicExecutor::new(proto_network.clone()).unwrap();
 	(executor, proto_network)
 }
 

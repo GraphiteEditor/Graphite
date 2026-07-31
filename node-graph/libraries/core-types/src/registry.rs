@@ -333,7 +333,7 @@ mod tests {
 
 		type ErasedSplitEdge = dyn for<'c> Node<ContextImpl<'c>, Output = SplitBorrow<'c>> + Send + Sync;
 
-		let arena = Arena::new(4096);
+		let arena = Arena::new(4096).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -391,7 +391,7 @@ mod tests {
 			}
 		}
 
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -443,7 +443,7 @@ mod tests {
 			}
 		}
 
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -493,7 +493,7 @@ mod tests {
 
 	#[test]
 	fn duplicated_edges_share_one_instance_and_outlive_each_other() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);

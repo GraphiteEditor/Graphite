@@ -41,7 +41,11 @@ where
 }
 
 #[node_macro::node(category(""), path(graphene_core::memo), skip_impl, extent(frame_memo_extent))]
-fn frame_memo<'e, T: Clone + 'static>(ctx: impl Ctx + CacheHash + ExtractArena<'e>, #[data] cell: ArenaCell<FrameTable<T, 32>>, content: impl Node<Context<'_>, Output = T>) -> GPoll<&'e T> {
+fn frame_memo<'e, T: Clone + 'static + Send + Sync>(
+	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
+	#[data] cell: ArenaCell<FrameTable<T, 32>>,
+	content: impl Node<Context<'_>, Output = T>,
+) -> GPoll<&'e T> {
 	let arena = ctx.arena();
 	let table = match cell.load(arena) {
 		Some(table) => table,
@@ -70,13 +74,13 @@ fn frame_memo<'e, T: Clone + 'static>(ctx: impl Ctx + CacheHash + ExtractArena<'
 
 fn frame_memo_extent<C, T, NodeContent>(node: &FrameMemoNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
 where
-	T: Clone + 'static,
+	T: Clone + 'static + Send + Sync,
 	NodeContent: Node<C, Output = T>,
 {
 	node.content.extent(ctx)
 }
 
-pub fn park<T>(arena: &Arena, result: GPoll<T>) -> GPoll<&T> {
+pub fn park<T: Send + Sync>(arena: &Arena, result: GPoll<T>) -> GPoll<&T> {
 	match result {
 		GPoll::Final(value) => match arena.alloc(value) {
 			Some((parked, _)) => GPoll::Final(parked),
@@ -126,8 +130,6 @@ fn serialize_monitor<T: Clone + 'static + Send + Sync>(io: &MonitorValue<T>) -> 
 mod tests {
 	use super::*;
 	use core_types::SourceId;
-	use core_types::Type;
-	use core_types::concrete;
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::registry::{EdgeHandle, ErasedLendNode, ErasedNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -168,7 +170,7 @@ mod tests {
 
 	#[test]
 	fn monitor_serialize_exposes_the_io_record_through_the_edge() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -186,7 +188,7 @@ mod tests {
 
 	#[test]
 	fn memoize_caches_across_evals() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -199,7 +201,7 @@ mod tests {
 
 	#[test]
 	fn memo_invalidates_on_generation_bump() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let source: SourceId = 7;
 		let before = [(source, 1)];
 		let after = [(source, 2)];
@@ -215,7 +217,7 @@ mod tests {
 
 	#[test]
 	fn memo_replays_partiality_on_hit() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -228,7 +230,7 @@ mod tests {
 
 	#[test]
 	fn memoized_edges_stack_and_rewire() {
-		let arena = Arena::new(1024);
+		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -243,7 +245,7 @@ mod tests {
 
 	#[test]
 	fn frame_memo_turns_an_owned_edge_into_a_lending_edge() {
-		let arena = Arena::new(4096);
+		let arena = Arena::new(4096).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);

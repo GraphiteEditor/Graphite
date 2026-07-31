@@ -68,7 +68,7 @@ mod test {
 	#[test]
 	fn test_image_color_palette() {
 		let result = image_color_palette(
-			(),
+			&(),
 			List::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
@@ -77,6 +77,6 @@ mod test {
 			})),
 			1,
 		);
-		assert_eq!(futures::executor::block_on(result), List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
+		assert_eq!(result, List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
 	}
 }

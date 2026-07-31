@@ -1008,7 +1008,7 @@ impl NodeNetwork {
 					DocumentNodeMetadata::SourceId => {
 						let source_id = Self::source_id_for_path(path);
 						if let Some(context_features) = context_features.as_deref_mut() {
-							core_types::context::merge_sorted_sources(&mut context_features.sources, &[source_id]);
+							context_features.add_sources(&[source_id]);
 						}
 						(TaggedValue::U64(source_id).into(), false)
 					}

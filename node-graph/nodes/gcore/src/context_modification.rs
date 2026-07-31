@@ -46,6 +46,6 @@ fn context_modification<T>(
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
 	modification: ContextModification,
 ) -> GPoll<T> {
-	let scope = ctx.scope().nullified(modification.features, Some(&modification.sources));
+	let scope = ctx.scope().nullified(modification.features, Some(modification.sources()));
 	value.eval(&ctx.nullified(modification.features, &scope))
 }

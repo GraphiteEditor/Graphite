@@ -989,8 +989,6 @@ fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Node;
-	use core_types::generic::FnNode;
 
 	#[test]
 	pub fn dot_product_function() {
@@ -1027,12 +1025,6 @@ mod test {
 	fn test_invalid_expression() {
 		let result = math(&(), 0., "invalid".to_string(), 0.);
 		assert_eq!(result, 0.);
-	}
-
-	#[test]
-	pub fn foo() {
-		let fnn = FnNode::new(|(a, b)| (b, a));
-		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
 	}
 
 	#[test]
@@ -1098,7 +1090,7 @@ mod graphene_test {
 
 	#[test]
 	fn generated_add_evaluates_through_the_node_path() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
@@ -1108,7 +1100,7 @@ mod graphene_test {
 
 	#[test]
 	fn generated_add_batches_through_the_erased_edge() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
@@ -1118,13 +1110,13 @@ mod graphene_test {
 		let BatchStatus::Filled(lanes, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
-		assert_eq!(lanes, &[12.0, 13.0, 14.0, 15.0]);
+		assert_eq!(lanes.values(), &[12.0, 13.0, 14.0, 15.0]);
 		assert_eq!(finality, Finality::AllFinal);
 	}
 
 	#[test]
 	fn generated_wire_constructor_resolves_and_wires() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
@@ -1148,16 +1140,16 @@ mod graphene_test {
 
 	#[test]
 	fn generic_add_registers_one_entry_per_implementation() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
 		let entries = add_entries();
 		assert_eq!(entries.len(), 6);
 		assert_eq!(entries[0].io.inputs, vec![core_types::concrete!(f64), core_types::concrete!(f64)]);
-		assert_eq!(entries[0].io.output, core_types::concrete!(f64));
+		assert_eq!(entries[0].io.return_value, core_types::concrete!(f64));
 		assert_eq!(entries[3].io.inputs, vec![core_types::concrete!(DVec2), core_types::concrete!(DVec2)]);
-		assert_eq!(entries[3].io.output, core_types::concrete!(DVec2));
+		assert_eq!(entries[3].io.return_value, core_types::concrete!(DVec2));
 
 		let augend = EdgeHandle::new(Arc::new(SourceNode(1.5f64)) as Arc<ErasedNode<f64>>);
 		let addend = EdgeHandle::new(Arc::new(SourceNode(2.5f64)) as Arc<ErasedNode<f64>>);
@@ -1182,7 +1174,7 @@ mod graphene_test {
 			}
 		}
 
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
@@ -1217,7 +1209,7 @@ mod graphene_test {
 			}
 		}
 
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
@@ -1240,7 +1232,7 @@ mod graphene_test {
 			}
 		}
 
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 
@@ -1260,7 +1252,7 @@ mod graphene_test {
 			}
 		}
 
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let scope = scope_fixture(&arena);
 		let ctx = ContextImpl::root(&scope);
 

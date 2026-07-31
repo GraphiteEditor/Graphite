@@ -17,6 +17,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 const ARENA_CAPACITY: usize = 1 << 20;
 
+fn new_arena() -> Arena {
+	Arena::new(ARENA_CAPACITY).unwrap_or_else(|| {
+		log::error!("arena generations exhausted; continuing without frame caching");
+		Arena::parked()
+	})
+}
+
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 pub struct DynamicExecutor {
 	output: NodeId,
@@ -42,7 +49,7 @@ impl Default for DynamicExecutor {
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
-			arena: Mutex::new(Arena::new(ARENA_CAPACITY)),
+			arena: Mutex::new(new_arena()),
 			runtime: noop_runtime(),
 			live_sources: Vec::new(),
 		}
@@ -78,7 +85,7 @@ impl DynamicExecutor {
 			output,
 			typing_context,
 			orphaned_nodes: HashSet::new(),
-			arena: Mutex::new(Arena::new(ARENA_CAPACITY)),
+			arena: Mutex::new(new_arena()),
 			runtime,
 			live_sources: sources,
 		})
@@ -480,7 +487,7 @@ mod test {
 
 	#[test]
 	fn eval_root_builds_the_bare_root_with_the_call_argument_as_vararg_0() {
-		let mut arena = Arena::new(64);
+		let mut arena = Arena::new(64).unwrap();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let argument = 21.5f64;
 		let result = eval_root(&mut arena, &runtime, &argument, |ctx| {
@@ -492,7 +499,7 @@ mod test {
 
 	#[test]
 	fn eval_root_resets_the_arena_at_eval_start() {
-		let mut arena = Arena::new(64);
+		let mut arena = Arena::new(64).unwrap();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let cell = ArenaCell::new();
 		eval_root(&mut arena, &runtime, &(), |ctx| {
@@ -509,7 +516,7 @@ mod test {
 
 	#[test]
 	fn a_panicking_eval_reports_the_error_and_resets_the_arena() {
-		let mut arena = Arena::new(64);
+		let mut arena = Arena::new(64).unwrap();
 		let runtime = GraphRuntime::new(InertSpawner);
 		let cell = ArenaCell::new();
 		let result: GPoll<()> = eval_root(&mut arena, &runtime, &(), |ctx| {
@@ -530,7 +537,7 @@ mod test {
 		tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 		let _node = tree.get(NodeId(0)).unwrap();
 
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);

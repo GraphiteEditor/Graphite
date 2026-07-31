@@ -281,7 +281,7 @@ mod tests {
 
 	#[test]
 	fn async_source_spawns_once_and_lands_via_the_slot() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -301,7 +301,7 @@ mod tests {
 
 	#[test]
 	fn async_source_reports_the_placeholder_while_in_flight() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -316,7 +316,7 @@ mod tests {
 
 	#[test]
 	fn no_partial_maps_the_placeholder_frame_to_pending() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -331,7 +331,7 @@ mod tests {
 
 	#[test]
 	fn prologue_runs_sync_and_spawns_once() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -350,7 +350,7 @@ mod tests {
 
 	#[test]
 	fn prologue_interrupt_defers_the_spawn() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
@@ -369,7 +369,7 @@ mod tests {
 
 	#[test]
 	fn async_kernels_read_captured_varargs() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -390,7 +390,7 @@ mod tests {
 
 	#[test]
 	fn async_kernels_read_the_captured_context_snapshot() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let root = ContextImpl::root(&scope);
@@ -484,7 +484,7 @@ mod tests {
 
 	#[test]
 	fn a_source_slot_lands_through_the_runtime_while_downstream_keys_invalidate() {
-		let arena = Arena::new(64);
+		let arena = Arena::new(64).unwrap();
 		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
 		runtime.retain_sources(&[11]);
 		let graph = EpilogueDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(11u64));

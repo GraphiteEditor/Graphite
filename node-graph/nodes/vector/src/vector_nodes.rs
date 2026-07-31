@@ -3261,23 +3261,9 @@ fn centroid(ctx: impl Ctx + DeriveCtx, content: impl Node<Context<'_>, Output = 
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Node;
 	use kurbo::{CubicBez, Ellipse, Point, Rect};
-	use std::future::Future;
-	use std::pin::Pin;
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
-
-	#[derive(Clone)]
-	pub struct FutureWrapperNode<T: Clone>(T);
-
-	impl<'i, T: 'i + Clone + Send> Node<'i, Footprint> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, _input: Footprint) -> Self::Output {
-			let value = self.0.clone();
-			Box::pin(async move { value })
-		}
-	}
 
 	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
 		List::new_from_element(Vector::from_bezpath(bezpath))
@@ -3289,9 +3275,9 @@ mod test {
 		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
 	}
 
-	#[tokio::test]
-	async fn bounding_box() {
-		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
+	#[test]
+	fn bounding_box() {
+		let bounding_box = super::bounding_box(&(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)));
 		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
@@ -3309,7 +3295,7 @@ mod test {
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = List::new_from_element(square);
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
-		let bounding_box = BoundingBoxNode { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
+		let bounding_box = super::bounding_box(&(), square);
 		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
@@ -3326,15 +3312,15 @@ mod test {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
-	#[tokio::test]
-	async fn copy_to_points() {
+	#[test]
+	fn copy_to_points() {
 		let points = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
 		let element = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
 
 		let expected_points = Vector::from_bezpath(points.clone()).point_domain.positions().to_vec();
 
-		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node_from_bezpath(points), vector_node_from_bezpath(element), 1., 1., 0., 0, 0., 0).await;
-		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
+		let copy_to_points = super::copy_to_points(&Footprint::default(), vector_node_from_bezpath(points), vector_node_from_bezpath(element), 1., 1., 0., 0, 0., 0);
+		let flatten_path = super::flatten_path(&Footprint::default(), copy_to_points);
 		let flattened_copy_to_points = flatten_path.element(0).unwrap();
 
 		assert_eq!(flattened_copy_to_points.region_manipulator_groups().count(), expected_points.len());
@@ -3349,35 +3335,34 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn sample_polyline() {
+	#[test]
+	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 30., 0, 0., 0., false).await;
+		let sample_polyline = super::sample_polyline(&Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 30., 0, 0., 0., false);
 		let sample_polyline = sample_polyline.element(0).unwrap();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
-	#[tokio::test]
-	async fn sample_polyline_adaptive_spacing() {
+	#[test]
+	fn sample_polyline_adaptive_spacing() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 18., 0, 45., 10., true).await;
+		let sample_polyline = super::sample_polyline(&Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 18., 0, 45., 10., true);
 		let sample_polyline = sample_polyline.element(0).unwrap();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
-	#[tokio::test]
-	async fn poisson() {
+	#[test]
+	fn poisson() {
 		let poisson_points = super::scatter_points(
-			Footprint::default(),
+			&Footprint::default(),
 			vector_node_from_bezpath(Ellipse::from_rect(Rect::new(-50., -50., 50., 50.)).to_path(DEFAULT_ACCURACY)),
 			10. * std::f64::consts::SQRT_2,
 			0,
-		)
-		.await;
+		);
 		let poisson_points = poisson_points.element(0).unwrap();
 		assert!(
 			(20..=40).contains(&poisson_points.point_domain.positions().len()),
@@ -3388,33 +3373,33 @@ mod test {
 			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
 		}
 	}
-	#[tokio::test]
-	async fn path_length() {
+	#[test]
+	fn path_length() {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
 		let row = create_vector_item(bezpath, transform);
 		let list = (0..5).map(|_| row.clone()).collect::<List<Vector>>();
 
-		let length = super::path_length(Footprint::default(), list).await;
+		let length = super::path_length(&Footprint::default(), list);
 
 		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
 		assert_eq!(length, 101. * 4. * 2. * 5.);
 	}
-	#[tokio::test]
-	async fn spline() {
-		let spline = super::spline(Footprint::default(), vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY))).await;
+	#[test]
+	fn spline() {
+		let spline = super::spline(&Footprint::default(), vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY)));
 		let spline = spline.element(0).unwrap();
 		assert_eq!(spline.stroke_bezpath_iter().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
-	#[tokio::test]
-	async fn morph() {
+	#[test]
+	fn morph() {
 		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
 		let mut second_rectangle = rectangles.clone_item(0).unwrap();
 		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
-		let morphed = super::morph(Footprint::default(), rectangles, 0.5, false, InterpolationDistribution::default(), List::default()).await;
+		let morphed = super::morph(&Footprint::default(), rectangles, 0.5, false, InterpolationDistribution::default(), List::default());
 		let morphed_element = morphed.element(0).unwrap();
 		// Geometry stays in local space (original rectangle coordinates)
 		assert_eq!(
@@ -3425,8 +3410,8 @@ mod test {
 		assert!((morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
 	}
 
-	#[tokio::test]
-	async fn morph_interpolates_fill() {
+	#[test]
+	fn morph_interpolates_fill() {
 		let rect = || {
 			let mut v = Vector::default();
 			v.append_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
@@ -3443,7 +3428,7 @@ mod test {
 		let mut content = List::new_from_item(item_a);
 		content.push(item_b);
 
-		let morphed = super::morph(Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default()).await;
+		let morphed = super::morph(&Footprint::default(), content, 0.5, false, InterpolationDistribution::default(), List::default());
 
 		let fill = graphic_list_at(&morphed, 0, ATTR_FILL).expect("Morph should keep the fill paint at the midpoint");
 
@@ -3470,10 +3455,10 @@ mod test {
 		);
 	}
 
-	#[tokio::test]
-	async fn bevel_rect() {
+	#[test]
+	fn bevel_rect() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let beveled = super::bevel(Footprint::default(), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
+		let beveled = super::bevel(&Footprint::default(), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
 		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
@@ -3492,8 +3477,8 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(10., 100.), Point::new(0., 90.))));
 	}
 
-	#[tokio::test]
-	async fn bevel_open_curve() {
+	#[test]
+	fn bevel_open_curve() {
 		let curve = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(10., 0.), Point::new(10., 100.), Point::new(100., 0.)));
 
 		let mut source = BezPath::new();
@@ -3501,7 +3486,7 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
-		let beveled = super::bevel((), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
+		let beveled = super::bevel(&(), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
 		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -3516,8 +3501,8 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(-8.2, 0.), trimmed.start())));
 	}
 
-	#[tokio::test]
-	async fn bevel_with_transform() {
+	#[test]
+	fn bevel_with_transform() {
 		let curve = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(10., 0.), Point::new(10., 100.), Point::new(100., 0.)));
 
 		let mut source = BezPath::new();
@@ -3530,7 +3515,7 @@ mod test {
 
 		vector_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
 
-		let beveled = super::bevel((), List::new_from_element(vector), 2_f64.sqrt() * 10.);
+		let beveled = super::bevel(&(), List::new_from_element(vector), 2_f64.sqrt() * 10.);
 		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -3545,15 +3530,15 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(-8.2, 0.), trimmed.start())));
 	}
 
-	#[tokio::test]
-	async fn bevel_too_high() {
+	#[test]
+	fn bevel_too_high() {
 		let mut source = BezPath::new();
 		source.move_to(Point::ZERO);
 		source.line_to(Point::new(100., 0.));
 		source.line_to(Point::new(100., 100.));
 		source.line_to(Point::new(0., 100.));
 
-		let beveled = super::bevel(Footprint::default(), vector_node_from_bezpath(source), 999.);
+		let beveled = super::bevel(&Footprint::default(), vector_node_from_bezpath(source), 999.);
 		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
@@ -3569,15 +3554,15 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(100., 50.), Point::new(50., 100.))));
 	}
 
-	#[tokio::test]
-	async fn bevel_repeated_point() {
+	#[test]
+	fn bevel_repeated_point() {
 		let line = PathSeg::Line(Line::new(Point::ZERO, Point::new(100., 0.)));
 		let point = PathSeg::Cubic(CubicBez::new(Point::new(100., 0.), Point::ZERO, Point::ZERO, Point::new(100., 0.)));
 		let curve = PathSeg::Cubic(CubicBez::new(Point::new(100., 0.), Point::new(110., 0.), Point::new(110., 200.), Point::new(200., 0.)));
 
 		let subpath = BezPath::from_path_segments([line, point, curve].into_iter());
 
-		let beveled_list = super::bevel(Footprint::default(), vector_node_from_bezpath(subpath), 5.);
+		let beveled_list = super::bevel(&Footprint::default(), vector_node_from_bezpath(subpath), 5.);
 		let beveled = beveled_list.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
