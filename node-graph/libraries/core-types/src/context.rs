@@ -1435,6 +1435,21 @@ mod context_impl_tests {
 	}
 
 	#[test]
+	fn excluding_keys_ignore_own_source_bumps() {
+		let arena = Arena::new(64);
+		let initial = [(7, 1), (9, 5)];
+		let own_bumped = [(7, 2), (9, 5)];
+		let other_bumped = [(7, 1), (9, 6)];
+
+		let hash_with = |generations: &[(SourceId, u64)]| {
+			let scope = scope_fixture(generations, &arena).excluding(7);
+			hash_of(&ContextImpl::root(&scope))
+		};
+		assert_eq!(hash_with(&initial), hash_with(&own_bumped), "a source's own generation bump must not change its slot key");
+		assert_ne!(hash_with(&initial), hash_with(&other_bumped), "bumps of other sources must change the slot key");
+	}
+
+	#[test]
 	fn unretained_scope_sees_every_bump() {
 		let arena = Arena::new(64);
 		let initial = [(0, 1)];

@@ -963,6 +963,81 @@ mod test {
 		);
 	}
 
+	#[test]
+	fn retain_filter_placement_on_source_free_branch() {
+		let mut network = source_branch_network(vec![1], vec![]);
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		let filters = nullification_filters(&network);
+		assert_eq!(filters.len(), 1, "only the source-free branch gets a filter");
+		let (filter_id, wrapped, retained) = &filters[0];
+		assert_eq!(wrapped, "source_b");
+		assert!(retained.is_empty(), "the source-free branch retains no sources");
+
+		let (source_a_id, _) = find_node(&network, "source_a");
+		let (_, join) = find_node(&network, "join");
+		let ConstructionArgs::Nodes(join_args) = &join.construction_args else {
+			panic!("join args must be nodes")
+		};
+		assert_eq!(join_args, &vec![source_a_id, *filter_id], "the source branch stays direct, the filter replaces the source-free branch");
+	}
+
+	#[test]
+	fn diverging_source_sets_filter_each_branch() {
+		let mut network = source_branch_network(vec![1], vec![2]);
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		let mut filters = nullification_filters(&network);
+		filters.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+		let summary: Vec<_> = filters.iter().map(|(_, wrapped, retained)| (wrapped.as_str(), retained.as_slice())).collect();
+		assert_eq!(
+			summary,
+			vec![("source_a", &[1u64][..]), ("source_b", &[2u64][..])],
+			"each diverging branch is filtered down to its own source set"
+		);
+	}
+
+	#[test]
+	fn matching_source_sets_insert_no_filter() {
+		let mut network = source_branch_network(vec![1], vec![1]);
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		assert!(nullification_filters(&network).is_empty(), "equal branch source sets need no filter");
+	}
+
+	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {
+		network
+			.nodes
+			.iter()
+			.find(|(_, node)| node.identifier.as_str() == name)
+			.map(|(id, node)| (*id, node))
+			.unwrap_or_else(|| panic!("node {name} not found"))
+	}
+
+	fn nullification_filters(network: &ProtoNetwork) -> Vec<(NodeId, String, Vec<SourceId>)> {
+		let node = |id: NodeId| &network.nodes[id.0 as usize].1;
+		network
+			.nodes
+			.iter()
+			.filter(|(_, candidate)| candidate.identifier.as_str() == graphene_core::context_modification::context_modification::IDENTIFIER.as_str())
+			.map(|(id, candidate)| {
+				let ConstructionArgs::Nodes(args) = &candidate.construction_args else {
+					panic!("filter args must be nodes")
+				};
+				let ConstructionArgs::Nodes(memoized) = &node(args[0]).construction_args else {
+					panic!("filter memoize args must be nodes")
+				};
+				let ConstructionArgs::Value(value) = &node(args[1]).construction_args else {
+					panic!("filter payload must be a value")
+				};
+				let value::TaggedValue::ContextModification(modification) = &**value else {
+					panic!("filter payload must be a context modification")
+				};
+				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.clone())
+			})
+			.collect()
+	}
+
 	fn test_network() -> ProtoNetwork {
 		ProtoNetwork {
 			inputs: vec![NodeId(10)],
@@ -1010,6 +1085,44 @@ mod test {
 						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+		}
+	}
+
+	fn source_branch_network(branch_a_sources: Vec<SourceId>, branch_b_sources: Vec<SourceId>) -> ProtoNetwork {
+		let branch = |name: &str, sources: Vec<SourceId>| ProtoNode {
+			identifier: ProtoNodeIdentifier::with_owned_string(name.to_string()),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
+			context_features: ContextDependencies { sources, ..Default::default() },
+			..Default::default()
+		};
+		ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: [
+				(
+					NodeId(0),
+					ProtoNode {
+						identifier: ProtoNodeIdentifier::new("value"),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
+						..Default::default()
+					},
+				),
+				(NodeId(1), branch("source_a", branch_a_sources)),
+				(NodeId(2), branch("source_b", branch_b_sources)),
+				(
+					NodeId(3),
+					ProtoNode {
+						identifier: ProtoNodeIdentifier::new("join"),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(1), NodeId(2)]),
 						..Default::default()
 					},
 				),
