@@ -91,7 +91,7 @@ pub fn lend_edge_type<T: 'static>() -> Type {
 }
 
 pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
-	let mut hasher = std::hash::DefaultHasher::new();
+	let mut hasher = graphene_hash::FxHasher64::new();
 	ctx.cache_hash(&mut hasher);
 	hasher.finish()
 }

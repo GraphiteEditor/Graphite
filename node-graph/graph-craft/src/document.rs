@@ -981,7 +981,7 @@ impl NodeNetwork {
 	}
 
 	fn source_id_for_path(path: &[NodeId]) -> u64 {
-		let mut hasher = DefaultHasher::new();
+		let mut hasher = graphene_hash::FxHasher64::new();
 		path.hash(&mut hasher);
 		hasher.finish()
 	}
