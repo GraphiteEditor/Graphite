@@ -15,15 +15,15 @@ use std::sync::Mutex;
 #[node_macro::node(category("General"), path(graphene_core::memo), skip_impl, extent(memoize_extent))]
 fn memoize<I: CacheHash, T: Clone>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T, Finality)>>>, content: impl Node<I, Output = T>) -> GPoll<T> {
 	let key = cache_key(&input);
-	if let Some((hash, value, finality)) = cache.lock().unwrap().as_ref() {
-		if *hash == key {
-			return match finality {
-				Finality::AllFinal => GPoll::Final(value.clone()),
-				Finality::Partial => GPoll::Partial(value.clone()),
-			};
-		}
+	if let Some((hash, value, finality)) = cache.lock().unwrap().as_ref()
+		&& *hash == key
+	{
+		return match finality {
+			Finality::AllFinal => GPoll::Final(value.clone()),
+			Finality::Partial => GPoll::Partial(value.clone()),
+		};
 	}
-	let result = content.eval(&input);
+	let result = content.eval(input);
 	match &result {
 		GPoll::Final(value) => *cache.lock().unwrap() = Some((key, value.clone(), Finality::AllFinal)),
 		GPoll::Partial(value) => *cache.lock().unwrap() = Some((key, value.clone(), Finality::Partial)),
@@ -76,7 +76,7 @@ where
 	node.content.extent(ctx)
 }
 
-pub fn park<'e, T>(arena: &'e Arena, result: GPoll<T>) -> GPoll<&'e T> {
+pub fn park<T>(arena: &Arena, result: GPoll<T>) -> GPoll<&T> {
 	match result {
 		GPoll::Final(value) => match arena.alloc(value) {
 			Some((parked, _)) => GPoll::Final(parked),

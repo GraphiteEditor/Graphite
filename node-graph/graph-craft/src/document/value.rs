@@ -24,7 +24,6 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 use text_nodes::Font;

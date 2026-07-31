@@ -99,7 +99,7 @@ pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
 #[derive(Debug, PartialEq)]
 pub enum ConstructionError {
 	Arity { expected: usize, got: usize },
-	Type { expected: Type, found: Type },
+	Type { expected: Box<Type>, found: Box<Type> },
 }
 
 pub struct SharedEdge<N: ?Sized> {
@@ -186,9 +186,9 @@ impl EdgeHandle {
 		Self::new_erased(node, lend_edge_type::<T>())
 	}
 
-	pub fn new_erased<N: ?Sized + 'static>(node: std::sync::Arc<N>, ty: Type) -> Self
+	pub fn new_erased<N>(node: std::sync::Arc<N>, ty: Type) -> Self
 	where
-		N: for<'c> Node<ContextImpl<'c>>,
+		N: ?Sized + 'static + for<'c> Node<ContextImpl<'c>>,
 		SharedEdge<N>: WasmNotSend + WasmNotSync,
 	{
 		Self {
@@ -226,7 +226,10 @@ impl EdgeHandle {
 
 	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {
 		let found = self.ty;
-		self.node.downcast::<SharedEdge<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type { expected, found })
+		self.node.downcast::<SharedEdge<N>>().map(|edge| *edge).map_err(|_| ConstructionError::Type {
+			expected: Box::new(expected),
+			found: Box::new(found),
+		})
 	}
 }
 
@@ -248,8 +251,8 @@ pub fn construct(entry: &RegistryEntry, inputs: Vec<EdgeHandle>) -> Result<EdgeH
 	for (handle, expected) in inputs.iter().zip(&entry.io.inputs) {
 		if handle.ty() != expected {
 			return Err(ConstructionError::Type {
-				expected: expected.clone(),
-				found: handle.ty().clone(),
+				expected: Box::new(expected.clone()),
+				found: Box::new(handle.ty().clone()),
 			});
 		}
 	}
@@ -473,8 +476,8 @@ mod tests {
 		assert_eq!(
 			construct(&entry, vec![mistyped]).unwrap_err(),
 			ConstructionError::Type {
-				expected: edge_type::<String>(),
-				found: edge_type::<f64>(),
+				expected: Box::new(edge_type::<String>()),
+				found: Box::new(edge_type::<f64>()),
 			}
 		);
 
@@ -482,8 +485,8 @@ mod tests {
 		assert_eq!(
 			construct(&entry, vec![lent]).unwrap_err(),
 			ConstructionError::Type {
-				expected: edge_type::<String>(),
-				found: lend_edge_type::<String>(),
+				expected: Box::new(edge_type::<String>()),
+				found: Box::new(lend_edge_type::<String>()),
 			}
 		);
 	}

@@ -1,4 +1,3 @@
-use crate::WgpuExecutor;
 use crate::WgpuExecutorHandle;
 use core_types::Color;
 use core_types::Ctx;

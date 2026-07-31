@@ -12,7 +12,7 @@ use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::core_types::gpoll::GPoll;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
-use graphene_std::ops::{Convert, ConvertAsync};
+use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
@@ -22,7 +22,7 @@ use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::{Artboard, CtxSnapshot, Graphic};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
 use std::sync::Arc;
@@ -130,6 +130,13 @@ pub struct TokioSpawner(Option<tokio::runtime::Runtime>);
 impl TokioSpawner {
 	pub fn new() -> Self {
 		Self(Some(tokio::runtime::Runtime::new().expect("Failed to start the async source runtime")))
+	}
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Default for TokioSpawner {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 

@@ -233,7 +233,7 @@ impl PerPixelAdjustCodegen<'_> {
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(std::sync::Arc<WgpuExecutor>),
 				exposed: true,
-				value_source: ParsedValueSource::Scope(parse_quote!("graphene_std::platform_application_io::WgpuExecutorArcNode")),
+				value_source: ParsedValueSource::Scope(Box::new(parse_quote!("graphene_std::platform_application_io::WgpuExecutorArcNode"))),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,

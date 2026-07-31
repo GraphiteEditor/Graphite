@@ -145,7 +145,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					}
 				}
 				ParsedValueSource::Scope(data) => {
-					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data {
+					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = &**data {
 						quote!(RegistryValueSource::Scope(#data))
 					} else {
 						quote!(RegistryValueSource::Scope(#data.as_static_str()))
@@ -1104,15 +1104,14 @@ fn kernel_kind(output: &Type) -> KernelKind {
 			let (Some(inner), Some(Type::Path(error_path))) = (types.next(), types.next()) else {
 				return plain();
 			};
-			if !error_path.path.segments.last().is_some_and(|segment| segment.ident == "Interrupt") {
+			if error_path.path.segments.last().is_none_or(|segment| segment.ident != "Interrupt") {
 				return plain();
 			}
-			if let Type::Path(inner_path) = inner {
-				if let Some(inner_segment) = inner_path.path.segments.last() {
-					if inner_segment.ident == "SourceFuture" {
-						return KernelKind::FutureInterrupt(source_future_payload(inner_segment));
-					}
-				}
+			if let Type::Path(inner_path) = inner
+				&& let Some(inner_segment) = inner_path.path.segments.last()
+				&& inner_segment.ident == "SourceFuture"
+			{
+				return KernelKind::FutureInterrupt(source_future_payload(inner_segment));
 			}
 			KernelKind::Interrupt(inner.clone())
 		}
@@ -1120,7 +1119,7 @@ fn kernel_kind(output: &Type) -> KernelKind {
 	}
 }
 
-fn context_param<'a>(parsed: &'a ParsedNodeFn) -> Option<&'a TypeParam> {
+fn context_param(parsed: &ParsedNodeFn) -> Option<&TypeParam> {
 	let Type::Path(path) = &parsed.input.ty else {
 		return None;
 	};

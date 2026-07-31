@@ -1,6 +1,6 @@
 use core_types::ExtractAll;
 use core_types::runtime::SourceFuture;
-use core_types::{Ctx, ExtractFootprint, ops::Convert, ops::ConvertAsync, transform::Footprint};
+use core_types::{Ctx, ops::Convert, ops::ConvertAsync, transform::Footprint};
 use std::marker::PhantomData;
 
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.

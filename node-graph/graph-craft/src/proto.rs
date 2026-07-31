@@ -405,7 +405,7 @@ impl ProtoNetwork {
 		let we_introduce_new_deps = !combined_deps.contains(&new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
 			} else if we_introduce_new_deps || deps != combined_deps {

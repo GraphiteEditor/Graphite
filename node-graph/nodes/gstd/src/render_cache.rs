@@ -3,7 +3,7 @@
 use core_types::gpoll::Interrupt;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{Context, Ctx, DeriveCtx, ExtractAll};
+use core_types::{Ctx, DeriveCtx, ExtractAll};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
@@ -12,7 +12,6 @@ use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
-use wgpu_executor::WgpuExecutor;
 
 pub const TILE_SIZE: u32 = 256;
 pub const MAX_CACHE_MEMORY_BYTES: usize = 512 * 1024 * 1024;

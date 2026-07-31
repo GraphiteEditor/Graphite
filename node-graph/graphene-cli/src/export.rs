@@ -18,7 +18,7 @@ const SOURCE_COMPLETION_TIMEOUT: Duration = Duration::from_secs(30);
 fn execute_until_final(executor: &DynamicExecutor, render_config: RenderConfig, completion: &Receiver<()>) -> Result<TaggedValue, Box<dyn Error>> {
 	loop {
 		while completion.try_recv().is_ok() {}
-		match executor.execute(render_config.clone())? {
+		match executor.execute(render_config)? {
 			GPoll::Final(value) => return Ok(value),
 			GPoll::Fallback(boxed) => {
 				let (value, error) = *boxed;
@@ -53,6 +53,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn export_document(
 	executor: &DynamicExecutor,
 	wgpu_executor: wgpu_executor::WgpuExecutorHandle,

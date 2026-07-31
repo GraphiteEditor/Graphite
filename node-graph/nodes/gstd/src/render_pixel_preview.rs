@@ -1,6 +1,6 @@
 use core_types::gpoll::Interrupt;
 use core_types::transform::{Footprint, Transform};
-use core_types::{Context, Ctx, DeriveCtx, ExtractAll};
+use core_types::{Ctx, DeriveCtx, ExtractAll};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;

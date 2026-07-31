@@ -9,7 +9,7 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use vector_types::GradientStops;
-use wgpu_executor::{RenderContext, WgpuExecutor};
+use wgpu_executor::RenderContext;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
