@@ -9,7 +9,7 @@ pub use graphene_application_io::ApplicationIo;
 #[derive(Default)]
 pub struct PlatformApplicationIo {
 	#[cfg(feature = "wgpu")]
-	gpu_executor: Option<WgpuExecutor>,
+	gpu_executor: Option<std::sync::Arc<WgpuExecutor>>,
 	resources: Option<Box<dyn resource::LoadResource>>,
 }
 
@@ -26,7 +26,7 @@ impl PlatformApplicationIo {
 
 		Self {
 			#[cfg(feature = "wgpu")]
-			gpu_executor: executor,
+			gpu_executor: executor.map(std::sync::Arc::new),
 			resources: None,
 		}
 	}
@@ -39,7 +39,7 @@ impl PlatformApplicationIo {
 		set_wgpu_available(wgpu_available);
 
 		Self {
-			gpu_executor: executor,
+			gpu_executor: executor.map(std::sync::Arc::new),
 			resources: None,
 		}
 	}
@@ -57,7 +57,12 @@ impl ApplicationIo for PlatformApplicationIo {
 
 	#[cfg(feature = "wgpu")]
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
-		self.gpu_executor.as_ref()
+		self.gpu_executor.as_deref()
+	}
+
+	#[cfg(feature = "wgpu")]
+	fn gpu_executor_arc(&self) -> Option<std::sync::Arc<Self::Executor>> {
+		self.gpu_executor.clone()
 	}
 
 	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {

@@ -3,9 +3,11 @@ use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
 use core_types::color::SRGBA8;
+use core_types::gpoll::GPoll;
 use core_types::list::{Item, List};
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
+use core_types::runtime::SourceFuture;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
@@ -137,7 +139,7 @@ fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Arc<[u8]> {
+async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: String) -> Arc<[u8]> {
 	let placeholder = || -> Arc<[u8]> { Arc::from(Vec::<u8>::new()) };
 
 	let response = match reqwest::Client::new().get(&url).send().await {
@@ -185,14 +187,14 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn create_canvas(_: impl Ctx) -> CanvasHandle {
+fn create_canvas(_: impl Ctx) -> CanvasHandle {
 	CanvasHandle::new()
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + Clone + 'n>(
+async fn rasterize<T: WasmNotSend + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Vector>,
@@ -262,29 +264,37 @@ where
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> &'a PlatformEditorApi {
+pub fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Arc<PlatformEditorApi>) -> Arc<PlatformEditorApi> {
 	editor_api
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Resource {
-	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
-	application_io.load_resource(hash).await.unwrap_or_else(|| {
-		panic!("Resource {hash} not found");
+pub fn resource(_: impl Ctx, hash: ResourceHash, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> SourceFuture<GPoll<Resource>> {
+	let application_io = editor_api.application_io.clone();
+	Box::pin(async move {
+		let Some(application_io) = application_io else {
+			return GPoll::error("ApplicationIo not available");
+		};
+		match application_io.load_resource(hash).await {
+			Some(resource) => GPoll::Final(resource),
+			None => GPoll::error("resource not found"),
+		}
 	})
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> &'a ::wgpu_executor::WgpuExecutor {
-	editor_api
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not not available")
-		.gpu_executor()
-		.expect("GPU executor not available")
+pub fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> ::wgpu_executor::WgpuExecutorHandle {
+	::wgpu_executor::WgpuExecutorHandle(
+		editor_api
+			.application_io
+			.as_ref()
+			.expect("ApplicationIo not not available")
+			.gpu_executor_arc()
+			.expect("GPU executor not available"),
+	)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: &'a PlatformEditorApi) -> Option<&'a ::wgpu_executor::WgpuExecutor> {
-	editor_api.application_io.as_ref()?.gpu_executor()
+pub fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Arc<PlatformEditorApi>) -> Option<::wgpu_executor::WgpuExecutorHandle> {
+	editor_api.application_io.as_ref()?.gpu_executor_arc().map(::wgpu_executor::WgpuExecutorHandle)
 }

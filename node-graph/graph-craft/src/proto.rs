@@ -294,6 +294,10 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
+	pub fn source_ids(&self) -> Vec<SourceId> {
+		self.nodes.iter().flat_map(|(_, node)| node.context_features.sources().iter().copied()).collect()
+	}
+
 	/// Inserts context nullification nodes to optimize caching.
 	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
 	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
@@ -308,7 +312,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
 
@@ -338,7 +342,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_value_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextModification(context_deps))),
 				call_argument: concrete!(Context),
 				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
@@ -365,42 +369,43 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
-		let mut combined_deps = ContextFeatures::default();
+		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let (extract, inject) = {
+		let (extract, inject, own_deps) = {
 			let dependencies = &self.nodes[node_index].1.context_features;
-			(dependencies.extract, dependencies.inject)
+			let own_deps = ContextModification::from_sources(dependencies.extract, dependencies.sources());
+			(dependencies.extract, dependencies.inject, own_deps)
 		};
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (extract, Some(id)),
+			ConstructionArgs::Value(_) => return (own_deps, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (extract, Some(id)),
+			ConstructionArgs::Inline(_) => return (own_deps, Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
 			let branch = self.find_context_dependencies(node);
 
+			combined_deps |= &branch.0;
 			branch_dependencies.push(branch);
-			combined_deps |= branch.0;
 		}
-		let mut new_deps = combined_deps;
+		let mut new_deps = combined_deps.clone();
 
 		// Remove requirements which this node provides
 		new_deps &= !inject;
 		// Add requirements we have
-		new_deps |= extract;
+		new_deps |= own_deps;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
-		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+		let we_introduce_new_deps = !combined_deps.contains(&new_deps);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
 			} else if we_introduce_new_deps || deps != combined_deps {
@@ -413,15 +418,15 @@ impl ProtoNetwork {
 		let net_injections = inject.difference(extract);
 
 		// Which dependencies still need to be met after this node?
-		let remaining_deps_from_children = combined_deps.difference(net_injections);
+		let remaining_deps_from_children = combined_deps.features.difference(net_injections);
 
 		// Do we satisfy any existing dependencies?
-		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+		let we_supply_existing_deps = !combined_deps.features.difference(remaining_deps_from_children).is_empty();
 
 		let mut new_id = None;
 		if we_supply_existing_deps {
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+			new_id = Some(self.insert_context_nullification_node(id, new_deps.clone()));
 		}
 
 		(new_deps, new_id)
@@ -548,6 +553,7 @@ pub enum GraphErrorType {
 	},
 	NoImplementations,
 	NoConstructor,
+	ConstructionFailed(String),
 	/// The `inputs` represents a formatted list of input indices corresponding to their types.
 	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
 	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
@@ -568,6 +574,7 @@ impl Debug for GraphErrorType {
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
+			GraphErrorType::ConstructionFailed(error) => write!(f, "Construction failed: {error}"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
 				let format_error = |(index, (found, expected)): &(usize, (Type, Type))| {
 					let index = index + 1;
@@ -634,14 +641,14 @@ pub type GraphErrors = Vec<GraphError>;
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
-	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
+	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
 }
 
 impl TypingContext {
 	/// Creates a new `TypingContext` with the given lookup table.
-	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>) -> Self {
+	pub fn new(lookup: &'static HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
 			..Default::default()
@@ -685,7 +692,7 @@ impl TypingContext {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -705,6 +712,7 @@ impl TypingContext {
 		// Get the node input type from the proto node declaration
 		let call_argument = &node.call_argument;
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
+		let candidates: Vec<(NodeIOTypes, NodeConstructor)> = impls.iter().map(|entry| (entry.io.clone(), entry.constructor)).collect();
 
 		if let Some(index) = inputs.iter().position(|p| {
 			matches!(p,
@@ -719,8 +727,6 @@ impl TypingContext {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
 				// Direct comparison of two function types.
 				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
@@ -743,25 +749,24 @@ impl TypingContext {
 		}
 
 		// List of all implementations that match the input types
-		let valid_output_types = impls
-			.keys()
-			.filter(|node_io| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
+		let valid_output_types = candidates
+			.iter()
+			.filter(|(node_io, _)| valid_type(&node_io.call_argument, call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
 		let substitution_results = valid_output_types
 			.iter()
-			.map(|node_io| {
+			.map(|(node_io, constructor)| {
 				let generics_lookup: Result<HashMap<_, _>, _> = collect_generics(node_io)
 					.iter()
 					.map(|generic| check_generic(node_io, call_argument, &inputs, generic).map(|x| (generic.to_string(), x)))
 					.collect();
 
 				generics_lookup.map(|generics_lookup| {
-					let orig_node_io = (*node_io).clone();
-					let mut new_node_io = orig_node_io.clone();
+					let mut new_node_io = node_io.clone();
 					replace_generics(&mut new_node_io, &generics_lookup);
-					(new_node_io, orig_node_io)
+					(new_node_io, *constructor)
 				})
 			})
 			.collect::<Vec<_>>();
@@ -774,7 +779,7 @@ impl TypingContext {
 				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
-				for node_io in impls.keys() {
+				for (node_io, _) in &candidates {
 					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
@@ -809,36 +814,36 @@ impl TypingContext {
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
-			[(node_io, org_nio)] => {
+			[(node_io, constructor)] => {
 				let node_io = node_io.clone();
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
-				self.constructor.insert(node_id, impls[org_nio]);
+				self.constructor.insert(node_id, *constructor);
 				Ok(node_io)
 			}
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
 				if first.0.call_argument != second.0.call_argument {
-					for (node_io, orig_nio) in [first, second] {
+					for (node_io, constructor) in [first, second] {
 						if node_io.call_argument != concrete!(()) {
 							continue;
 						}
 
 						// Save the inferred type
 						self.inferred.insert(node_id, node_io.clone());
-						self.constructor.insert(node_id, impls[orig_nio]);
+						self.constructor.insert(node_id, *constructor);
 						return Ok(node_io.clone());
 					}
 				}
 				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
-				let valid = valid_output_types.into_iter().cloned().collect();
+				let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
 				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
-				let valid = valid_output_types.into_iter().cloned().collect();
+				let valid = valid_output_types.into_iter().map(|(node_io, _)| node_io.clone()).collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 		}
@@ -958,6 +963,81 @@ mod test {
 		);
 	}
 
+	#[test]
+	fn retain_filter_placement_on_source_free_branch() {
+		let mut network = source_branch_network(vec![1], vec![]);
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		let filters = nullification_filters(&network);
+		assert_eq!(filters.len(), 1, "only the source-free branch gets a filter");
+		let (filter_id, wrapped, retained) = &filters[0];
+		assert_eq!(wrapped, "source_b");
+		assert!(retained.is_empty(), "the source-free branch retains no sources");
+
+		let (source_a_id, _) = find_node(&network, "source_a");
+		let (_, join) = find_node(&network, "join");
+		let ConstructionArgs::Nodes(join_args) = &join.construction_args else {
+			panic!("join args must be nodes")
+		};
+		assert_eq!(join_args, &vec![source_a_id, *filter_id], "the source branch stays direct, the filter replaces the source-free branch");
+	}
+
+	#[test]
+	fn diverging_source_sets_filter_each_branch() {
+		let mut network = source_branch_network(vec![1], vec![2]);
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		let mut filters = nullification_filters(&network);
+		filters.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+		let summary: Vec<_> = filters.iter().map(|(_, wrapped, retained)| (wrapped.as_str(), retained.as_slice())).collect();
+		assert_eq!(
+			summary,
+			vec![("source_a", &[1u64][..]), ("source_b", &[2u64][..])],
+			"each diverging branch is filtered down to its own source set"
+		);
+	}
+
+	#[test]
+	fn matching_source_sets_insert_no_filter() {
+		let mut network = source_branch_network(vec![1], vec![1]);
+		network.insert_context_nullification_nodes().expect("Error when calling 'insert_context_nullification_nodes'");
+
+		assert!(nullification_filters(&network).is_empty(), "equal branch source sets need no filter");
+	}
+
+	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {
+		network
+			.nodes
+			.iter()
+			.find(|(_, node)| node.identifier.as_str() == name)
+			.map(|(id, node)| (*id, node))
+			.unwrap_or_else(|| panic!("node {name} not found"))
+	}
+
+	fn nullification_filters(network: &ProtoNetwork) -> Vec<(NodeId, String, Vec<SourceId>)> {
+		let node = |id: NodeId| &network.nodes[id.0 as usize].1;
+		network
+			.nodes
+			.iter()
+			.filter(|(_, candidate)| candidate.identifier.as_str() == graphene_core::context_modification::context_modification::IDENTIFIER.as_str())
+			.map(|(id, candidate)| {
+				let ConstructionArgs::Nodes(args) = &candidate.construction_args else {
+					panic!("filter args must be nodes")
+				};
+				let ConstructionArgs::Nodes(memoized) = &node(args[0]).construction_args else {
+					panic!("filter memoize args must be nodes")
+				};
+				let ConstructionArgs::Value(value) = &node(args[1]).construction_args else {
+					panic!("filter payload must be a value")
+				};
+				let value::TaggedValue::ContextModification(modification) = &**value else {
+					panic!("filter payload must be a context modification")
+				};
+				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources().to_vec())
+			})
+			.collect()
+	}
+
 	fn test_network() -> ProtoNetwork {
 		ProtoNetwork {
 			inputs: vec![NodeId(10)],
@@ -1005,6 +1085,44 @@ mod test {
 						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+		}
+	}
+
+	fn source_branch_network(branch_a_sources: Vec<SourceId>, branch_b_sources: Vec<SourceId>) -> ProtoNetwork {
+		let branch = |name: &str, sources: Vec<SourceId>| ProtoNode {
+			identifier: ProtoNodeIdentifier::with_owned_string(name.to_string()),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
+			context_features: ContextDependencies::from_sources(&sources),
+			..Default::default()
+		};
+		ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: [
+				(
+					NodeId(0),
+					ProtoNode {
+						identifier: ProtoNodeIdentifier::new("value"),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
+						..Default::default()
+					},
+				),
+				(NodeId(1), branch("source_a", branch_a_sources)),
+				(NodeId(2), branch("source_b", branch_b_sources)),
+				(
+					NodeId(3),
+					ProtoNode {
+						identifier: ProtoNodeIdentifier::new("join"),
+						call_argument: concrete!(()),
+						construction_args: ConstructionArgs::Nodes(vec![NodeId(1), NodeId(2)]),
 						..Default::default()
 					},
 				),

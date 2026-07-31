@@ -9,17 +9,16 @@ use crate::texture_cache::TextureCache;
 use anyhow::Result;
 use core_types::Color;
 use core_types::color::SRGBA8;
-use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
 use raster_types::Texture;
 use std::sync::Arc;
+use std::sync::Mutex;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::{Origin3d, TextureAspect};
 
 pub use context::Context as WgpuContext;
 pub use context::ContextBuilder as WgpuContextBuilder;
-pub use pipeline::AsyncPipeline as AsyncWgpuPipeline;
 pub use pipeline::Pipeline as WgpuPipeline;
 pub use pipeline::PipelineCache as WgpuPipelineCache;
 pub use rendering::RenderContext;
@@ -61,6 +60,18 @@ impl std::fmt::Debug for WgpuExecutor {
 	}
 }
 
+/// Owned Arc handle carrying the executor as an ordinary wire value.
+#[derive(Clone, Debug)]
+pub struct WgpuExecutorHandle(pub std::sync::Arc<WgpuExecutor>);
+
+impl std::ops::Deref for WgpuExecutorHandle {
+	type Target = WgpuExecutor;
+
+	fn deref(&self) -> &WgpuExecutor {
+		&self.0
+	}
+}
+
 impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &'a WgpuExecutor {
 	fn from(editor_api: &'a EditorApi<T>) -> Self {
 		editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap()
@@ -68,8 +79,8 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 }
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
-		let texture = self.request_texture(size).await;
+	pub fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
+		let texture = self.request_texture(size);
 
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -82,7 +93,7 @@ impl WgpuExecutor {
 		};
 
 		{
-			let mut renderer = self.inner.vello_renderer.lock().await;
+			let mut renderer = self.inner.vello_renderer.lock().unwrap();
 			for (image_brush, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::TexelCopyTextureInfoBase {
 					texture: (**texture).clone(),
@@ -109,8 +120,8 @@ impl WgpuExecutor {
 		pipeline.init::<P>(self);
 	}
 
-	pub async fn request_texture(&self, size: UVec2) -> Texture {
-		self.inner.texture_cache.lock().await.request_texture(&self.context().device, size)
+	pub fn request_texture(&self, size: UVec2) -> Texture {
+		self.inner.texture_cache.lock().unwrap().request_texture(&self.context().device, size)
 	}
 }
 

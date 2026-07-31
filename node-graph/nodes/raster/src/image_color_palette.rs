@@ -4,7 +4,7 @@ use core_types::list::{Item, List};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
-async fn image_color_palette(
+fn image_color_palette(
 	_: impl Ctx,
 	image: List<Raster<CPU>>,
 	#[default(4)]

@@ -56,6 +56,14 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) memoize: bool,
 	/// Whether this node provides a scope
 	pub(crate) inject_scope: bool,
+	/// Function producing a stand-in value while an async source node's real value is in flight
+	pub(crate) placeholder: Option<Path>,
+	/// Function overriding the generated `extent` method
+	pub(crate) extent: Option<Path>,
+	/// Function overriding the generated `eval_batch` method
+	pub(crate) batch: Option<Path>,
+	/// Whether partial upstream values are mapped to `Pending` instead of flowing into this node
+	pub(crate) no_partial: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -63,7 +71,8 @@ pub enum ParsedValueSource {
 	#[default]
 	None,
 	Default(TokenStream2),
-	Scope(Expr),
+	Scope(Box<Expr>),
+	SourceId,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -311,6 +320,10 @@ impl Parse for NodeFnAttributes {
 		let mut serialize = None;
 		let mut memoize = false;
 		let mut inject_scope = false;
+		let mut placeholder = None;
+		let mut extent = None;
+		let mut batch = None;
+		let mut no_partial = false;
 
 		let content = input;
 		// let content;
@@ -453,13 +466,63 @@ impl Parse for NodeFnAttributes {
 					}
 					inject_scope = true;
 				}
+				// Function producing a stand-in value for an async source node while the spawned future is in flight.
+				// The node reports `Partial` with the stand-in until the real value lands; without a placeholder it reports `Pending`.
+				//
+				// Example usage:
+				// #[node_macro::node(..., placeholder(empty_image), ...)]
+				"placeholder" => {
+					let meta = meta.require_list()?;
+					if placeholder.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'placeholder' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'placeholder', e.g., placeholder(empty_image)"))?;
+					placeholder = Some(parsed_path);
+				}
+				// Function overriding the generated `extent` method, replacing the default meet over the node's inputs.
+				//
+				// Example usage:
+				// #[node_macro::node(..., extent(my_extent), ...)]
+				"extent" => {
+					let meta = meta.require_list()?;
+					if extent.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'extent' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'extent', e.g., extent(my_extent)"))?;
+					extent = Some(parsed_path);
+				}
+				// Function overriding the generated `eval_batch` method, replacing the trait's per-lane spec loop.
+				//
+				// Example usage:
+				// #[node_macro::node(..., batch(my_batch), ...)]
+				"batch" => {
+					let meta = meta.require_list()?;
+					if batch.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'batch' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'batch', e.g., batch(my_batch)"))?;
+					batch = Some(parsed_path);
+				}
+				// Instructs the generated eval to report `Pending` instead of passing partial upstream values into this node.
+				//
+				// Example usage:
+				// #[node_macro::node(..., no_partial, ...)]
+				"no_partial" => {
+					let path = meta.require_path_only()?;
+					if no_partial {
+						return Err(Error::new_spanned(path, "Multiple 'no_partial' attributes are not allowed"));
+					}
+					no_partial = true;
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', 'extent', 'batch', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -493,6 +556,10 @@ impl Parse for NodeFnAttributes {
 			serialize,
 			memoize,
 			inject_scope,
+			placeholder,
+			extent,
+			batch,
+			no_partial,
 		})
 	}
 }
@@ -723,7 +790,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
 		(Some(default_value), _) => ParsedValueSource::Default(default_value),
-		(_, Some(scope)) => ParsedValueSource::Scope(scope),
+		(_, Some(scope)) => ParsedValueSource::Scope(Box::new(scope)),
 		_ => ParsedValueSource::None,
 	};
 
@@ -931,6 +998,10 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 	let crate_ident = CrateIdent::default();
 	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
+	if parsed_node.is_async || crate::codegen::is_source_kernel(&parsed_node.output_type) {
+		let core_types = crate_ident.gcore()?.clone();
+		parsed_node.inject_async_source_fields(&core_types);
+	}
 	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation error:\n{e}")))?;
 	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code:\n{e}")))
 }
@@ -957,6 +1028,43 @@ impl ParsedNodeFn {
 		if self.input.pat_ident.ident == "_" {
 			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
+	}
+
+	pub fn inject_async_source_fields(&mut self, core_types: &TokenStream2) {
+		let hidden_field = |name: &str, ty: Type, value_source: ParsedValueSource| ParsedField {
+			pat_ident: PatIdent {
+				attrs: Vec::new(),
+				by_ref: None,
+				mutability: None,
+				ident: Ident::new(name, proc_macro2::Span::call_site()),
+				subpat: None,
+			},
+			name: None,
+			description: String::new(),
+			widget_override: ParsedWidgetOverride::Hidden,
+			ty: ParsedFieldType::Regular(RegularParsedField {
+				ty,
+				exposed: false,
+				value_source,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
+				number_mode_range: false,
+				implementations: Default::default(),
+				gpu_image: false,
+			}),
+			number_display_decimal_places: None,
+			number_step: None,
+			unit: None,
+			is_data_field: false,
+		};
+		self.fields.push(hidden_field(
+			"_runtime",
+			parse_quote!(#core_types::runtime::RuntimeHandle),
+			ParsedValueSource::Scope(Box::new(parse_quote!("graphene_std::runtime::RuntimeNode"))),
+		));
+		self.fields.push(hidden_field("_source", parse_quote!(#core_types::SourceId), ParsedValueSource::SourceId));
 	}
 }
 
@@ -1082,6 +1190,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1152,6 +1264,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1236,6 +1352,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1302,6 +1422,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1380,6 +1504,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1461,6 +1589,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1527,6 +1659,10 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				extent: None,
+				batch: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

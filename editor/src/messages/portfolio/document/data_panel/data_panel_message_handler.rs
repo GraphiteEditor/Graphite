@@ -14,7 +14,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
-use graphene_std::{Artboard, Color, Context, Graphic};
+use graphene_std::{Artboard, Color, CtxSnapshot, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -167,7 +167,7 @@ macro_rules! generate_layout_downcast {
 	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
 		if false { None }
 		$(
-			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
+			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<CtxSnapshot, $ty>>() {
 				Some(io.output.layout_with_breadcrumb($data))
 			}
 		)*
@@ -178,7 +178,7 @@ macro_rules! generate_layout_downcast {
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `List<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<NodeId>>>() {
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<NodeId>>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [

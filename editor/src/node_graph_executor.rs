@@ -15,7 +15,7 @@ use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, graphic_types};
-use graphene_std::{ATTR_TRANSFORM, Context, Graphic, NodeInputDecleration};
+use graphene_std::{ATTR_TRANSFORM, CtxSnapshot, Graphic, NodeInputDecleration};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -26,7 +26,7 @@ pub use runtime_io::NodeRuntimeIO;
 mod runtime;
 pub use runtime::*;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
@@ -375,10 +375,12 @@ impl NodeGraphExecutor {
 						}
 					}
 
-					let Some((queued_execution_id, execution_context)) = self.futures.pop_front() else {
+					let execution_context = if self.futures.front().is_some_and(|&(queued_execution_id, _)| queued_execution_id == execution_id) {
+						let (_, execution_context) = self.futures.pop_front().expect("front was just matched");
+						execution_context
+					} else {
 						panic!("InvalidGenerationId")
 					};
-					assert_eq!(queued_execution_id, execution_id, "Missmatch in execution id");
 
 					// TODO: Eventually remove this document upgrade code
 					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
@@ -892,7 +894,7 @@ fn introspected_output<T: Clone + Send + Sync + 'static>(data: &Arc<dyn Any + Se
 	if let Some(io) = data.downcast_ref::<IORecord<Footprint, T>>() {
 		return Some(io.output.clone());
 	}
-	if let Some(io) = data.downcast_ref::<IORecord<Context, T>>() {
+	if let Some(io) = data.downcast_ref::<IORecord<CtxSnapshot, T>>() {
 		return Some(io.output.clone());
 	}
 	None
@@ -911,7 +913,7 @@ mod test {
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
 	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::NodeNetwork;
-	use graphene_std::Context;
+	use graphene_std::CtxSnapshot;
 	use graphene_std::NodeInputDecleration;
 	use graphene_std::memo::IORecord;
 	use test_prelude::LayerNodeIdentifier;
@@ -979,7 +981,7 @@ mod test {
 				Some(x.output.clone())
 			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<CtxSnapshot, Input::Result>>() {
 				Some(x.output.clone())
 			} else {
 				warn!("cannot downcast type for introspection");

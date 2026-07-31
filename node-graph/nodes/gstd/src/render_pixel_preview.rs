@@ -1,22 +1,22 @@
+use core_types::gpoll::Interrupt;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{Ctx, DeriveCtx, ExtractAll};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
-use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
+use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-pub async fn render_pixel_preview<'a: 'n>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
+pub fn render_pixel_preview(
+	ctx: impl Ctx + ExtractAll + DeriveCtx,
 	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: WgpuPipelineCache,
-	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
-) -> RenderOutput {
+	data: impl Node<Context<'_>, Output = RenderOutput>,
+) -> Result<RenderOutput, Interrupt> {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");
-		let context = OwnedContextImpl::from(ctx).into_context();
-		return data.eval(context).await;
+		return data.eval(&ctx.derived());
 	};
 	let physical_scale = render_params.scale;
 
@@ -24,8 +24,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 	let viewport_zoom = footprint.scale_magnitudes().x;
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
-		let context = OwnedContextImpl::from(ctx).into_context();
-		return data.eval(context).await;
+		return data.eval(&ctx.derived());
 	}
 
 	let physical_resolution = footprint.resolution;
@@ -51,33 +50,31 @@ pub async fn render_pixel_preview<'a: 'n>(
 		quality: footprint.quality,
 	};
 
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(upstream_footprint).with_vararg(Box::new(render_params)).into_context();
-	let mut result = data.eval(new_ctx).await;
+	let scoped = ctx.push_vararg(&render_params);
+	let mut result = data.eval(&scoped.ctx().with_footprint(&upstream_footprint))?;
 
-	let RenderOutputType::Texture(ref source_texture) = result.data else { return result };
+	let RenderOutputType::Texture(ref source_texture) = result.data else { return Ok(result) };
 
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
 	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
-	let resampled = pipeline
-		.run::<PixelPreview>(&PixelPreviewArgs {
-			source: source_texture.as_ref(),
-			transform: &transform,
-			size: physical_resolution,
-		})
-		.await;
+	let resampled = pipeline.run::<PixelPreview>(&PixelPreviewArgs {
+		source: source_texture.as_ref(),
+		transform: &transform,
+		size: physical_resolution,
+	});
 
 	result.data = RenderOutputType::Texture(resampled);
 
 	result.metadata.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min));
 
-	result
+	Ok(result)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn pixel_preview_pipeline<'a: 'n>(
+fn pixel_preview_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> WgpuPipelineCache {
 	if let Some(executor) = executor {
@@ -97,7 +94,7 @@ pub struct PixelPreviewArgs<'a> {
 	size: UVec2,
 }
 
-impl AsyncWgpuPipeline for PixelPreview {
+impl WgpuPipeline for PixelPreview {
 	type Args<'a> = PixelPreviewArgs<'a>;
 	type Out = Texture;
 
@@ -169,11 +166,11 @@ impl AsyncWgpuPipeline for PixelPreview {
 		PixelPreview { pipeline, bind_group_layout }
 	}
 
-	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
+	fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
 		let context = &executor.context();
 		let &PixelPreviewArgs { source, transform, size } = args;
 
-		let output = executor.request_texture(size).await;
+		let output = executor.request_texture(size);
 
 		let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
 		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());

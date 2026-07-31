@@ -2360,7 +2360,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							return Vec::new();
 						};
 
-						let mut input_types = implementations.keys().filter_map(|item| item.inputs.get(input_index)).collect::<Vec<_>>();
+						let mut input_types = implementations.iter().filter_map(|entry| entry.io.inputs.get(input_index)).collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
 

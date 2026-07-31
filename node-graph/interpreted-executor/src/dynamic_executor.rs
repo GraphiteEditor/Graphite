@@ -1,17 +1,23 @@
 use crate::node_registry;
-use dyn_any::StaticType;
+use core_types::arena::Arena;
+use core_types::context::{ContextImpl, DynSlot, EvalScope, VarArg, VarArgLink, VarArgSlots};
+use core_types::gpoll::GPoll;
+use core_types::node::Node;
+use core_types::registry::{EdgeHandle, ErasedNode};
+use core_types::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
-use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
+use graph_craft::proto::{ConstructionArgs, GraphError, ProtoNetwork, ProtoNode, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
+
+const ARENA_CAPACITY: usize = 1 << 20;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
-#[derive(Clone)]
 pub struct DynamicExecutor {
 	output: NodeId,
 	/// Stores all of the dynamic node structs.
@@ -20,6 +26,13 @@ pub struct DynamicExecutor {
 	typing_context: TypingContext,
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: HashSet<NodeId>,
+	arena: Mutex<Arena>,
+	runtime: Arc<DynGraphRuntime>,
+	live_sources: Vec<core_types::SourceId>,
+}
+
+fn noop_runtime() -> Arc<DynGraphRuntime> {
+	Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>))
 }
 
 impl Default for DynamicExecutor {
@@ -29,6 +42,9 @@ impl Default for DynamicExecutor {
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
+			arena: Mutex::new(Arena::new(ARENA_CAPACITY)),
+			runtime: noop_runtime(),
+			live_sources: Vec::new(),
 		}
 	}
 }
@@ -48,23 +64,38 @@ pub struct ResolvedDocumentNodeTypesDelta {
 }
 
 impl DynamicExecutor {
-	pub async fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
+	pub fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
-		let tree = BorrowTree::new(proto_network, &typing_context).await?;
+		let sources = proto_network.source_ids();
+		let tree = BorrowTree::new(proto_network, &typing_context)?;
+		let runtime = noop_runtime();
+		runtime.retain_sources(&sources);
 
 		Ok(Self {
 			tree,
 			output,
 			typing_context,
 			orphaned_nodes: HashSet::new(),
+			arena: Mutex::new(Arena::new(ARENA_CAPACITY)),
+			runtime,
+			live_sources: sources,
 		})
+	}
+
+	pub fn set_runtime(&mut self, runtime: Arc<DynGraphRuntime>) {
+		runtime.retain_sources(&self.live_sources);
+		self.runtime = runtime;
+	}
+
+	pub fn take_dirty(&self) -> bool {
+		self.runtime.take_dirty()
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
@@ -87,11 +118,10 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
-		let (add, orphaned) = self
-			.tree
-			.update(proto_network, &self.typing_context)
-			.await
-			.map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		let sources = proto_network.source_ids();
+		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		self.runtime.retain_sources(&sources);
+		self.live_sources = sources;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {
@@ -135,27 +165,50 @@ impl DynamicExecutor {
 	}
 }
 
-impl<I> Executor<I, TaggedValue> for &DynamicExecutor
+impl<I> Executor<I, GPoll<TaggedValue>> for &DynamicExecutor
 where
-	I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe,
+	I: VarArg + Send + Sync + std::panic::RefUnwindSafe,
 {
-	fn execute(&self, input: I) -> LocalFuture<'_, Result<TaggedValue, Box<dyn Error>>> {
-		Box::pin(async move {
-			use futures::FutureExt;
-
-			let result = self.tree.eval_tagged_value(self.output, input);
-			let wrapped_result = std::panic::AssertUnwindSafe(result).catch_unwind().await;
-
-			match wrapped_result {
-				Ok(result) => result.map_err(|e| e.into()),
-				Err(e) => {
-					Box::leak(e);
-					Err("Node graph execution panicked".into())
-				}
+	fn execute(&self, input: I) -> Result<GPoll<TaggedValue>, Box<dyn Error>> {
+		let Some(handle) = self.tree.get(self.output) else {
+			return Err("Output node not found in executor".into());
+		};
+		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+		let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
+			Ok(poll) => poll.map(Ok),
+			Err(error) => GPoll::Final(Err(error)),
+		});
+		match result {
+			GPoll::Final(value) => Ok(GPoll::Final(value?)),
+			GPoll::Partial(value) => Ok(GPoll::Partial(value?)),
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				Ok(GPoll::Fallback(Box::new((value?, error))))
 			}
-		})
+			GPoll::Pending => Ok(GPoll::Pending),
+			GPoll::Error(error) => Ok(GPoll::Error(error)),
+		}
 	}
 }
+pub fn eval_root<S, T>(arena: &mut Arena, runtime: &GraphRuntime<S>, call_argument: DynSlot, eval: impl FnOnce(&ContextImpl) -> GPoll<T>) -> GPoll<T> {
+	arena.reset();
+	let generations = runtime.snapshot();
+	let scope = EvalScope::new(None, None, None, &generations, arena);
+	let root = ContextImpl::root(&scope);
+	let link = VarArgLink {
+		args: VarArgSlots::Single(call_argument),
+		outer: None,
+	};
+	let ctx = root.with_varargs(&link);
+	match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| eval(&ctx))) {
+		Ok(result) => result,
+		Err(_) => {
+			arena.reset();
+			GPoll::panicked()
+		}
+	}
+}
+
 pub struct InputMapping {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -188,39 +241,39 @@ impl std::fmt::Display for IntrospectError {
 ///
 /// # Fields
 ///
-/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`SharedNodeContainer`] and [`Path`].
+/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`EdgeHandle`] and [`Path`].
 ///   This stores the actual node instances and their associated paths.
 ///
 /// * `source_map`: A [`HashMap`] from [`Path`] to tuples of [`NodeId`] and [`NodeTypes`].
 ///   This maps document paths to node IDs and their associated type information.
 ///
 /// A store of the dynamically typed nodes and also the source map.
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
-	nodes: HashMap<NodeId, (SharedNodeContainer, Path)>,
+	nodes: HashMap<NodeId, (EdgeHandle, Path)>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 }
 
 impl BorrowTree {
-	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
+	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
-			nodes.push_node(id, node, typing_context).await?
+			nodes.push_node(id, node, typing_context)?
 		}
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
-	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
+	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		let mut new_nodes: Vec<_> = Vec::new();
 		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
-				self.push_node(id, node, typing_context).await?;
+				self.push_node(id, node, typing_context)?;
 			} else if self.update_source_map(id, typing_context, &node) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 			}
@@ -229,44 +282,33 @@ impl BorrowTree {
 		Ok((new_nodes, old_nodes))
 	}
 
-	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {
-		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.clone()).collect()
+	fn node_deps(&self, nodes: &[NodeId]) -> Vec<EdgeHandle> {
+		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.duplicate()).collect()
 	}
 
-	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId, path: Path) {
+	fn store_node(&mut self, node: EdgeHandle, id: NodeId, path: Path) {
 		self.nodes.insert(id, (node, path));
 	}
 
-	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
+	/// Calls the `Node::serialize` for that specific node, returning for example the captured io record for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
 		node.serialize().ok_or(IntrospectError::NoData)
 	}
 
-	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
-		self.nodes.get(&id).map(|(node, _)| node.clone())
+	pub fn get(&self, id: NodeId) -> Option<EdgeHandle> {
+		self.nodes.get(&id).map(|(node, _)| node.duplicate())
 	}
 
-	/// Evaluate the output node of the [`BorrowTree`].
-	pub async fn eval<'i, I, O>(&'i self, id: NodeId, input: I) -> Option<O>
+	/// Evaluate a node of the [`BorrowTree`], downcasting its edge to the expected output type.
+	pub fn eval<I, T: 'static>(&self, id: NodeId, input: &I) -> Option<GPoll<T>>
 	where
-		I: StaticType + 'i + Send + Sync,
-		O: StaticType + 'i,
+		ErasedNode<T>: Node<I, Output = T>,
 	{
-		let (node, _path) = self.nodes.get(&id).cloned()?;
-		let output = node.eval(Box::new(input));
-		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
-	}
-	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
-	/// This ensures that no borrowed data can escape the node graph.
-	pub async fn eval_tagged_value<I>(&self, id: NodeId, input: I) -> Result<TaggedValue, String>
-	where
-		I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe,
-	{
-		let (node, _path) = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
-		let output = node.eval(Box::new(input));
-		TaggedValue::try_from_any(output.await)
+		let (node, _path) = self.nodes.get(&id)?;
+		let edge = node.duplicate().downcast::<T>().ok()?;
+		Some(edge.eval(input))
 	}
 
 	/// Removes a node from the [`BorrowTree`] and returns its associated path.
@@ -293,10 +335,10 @@ impl BorrowTree {
 	/// use interpreted_executor::node_registry;
 	///
 	///
-	/// async fn example() -> Result<(), GraphErrors> {
+	/// fn example() -> Result<(), GraphErrors> {
 	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
-	///     let typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
-	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
+	///     let typing_context = TypingContext::default();
+	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context)?;
 	///
 	///     // Assert that the node exists in the BorrowTree
 	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist before removal");
@@ -393,30 +435,23 @@ impl BorrowTree {
 	///   - `Nodes`: Constructs a node using other nodes as dependencies.
 	/// - Uses the constructor function from the `typing_context` for `Nodes` construction arguments.
 	/// - Returns an error if no constructor is found for the given node ID.
-	async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
+	fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		self.update_source_map(id, typing_context, &proto_node);
 		let path = proto_node.original_location.path.clone().unwrap_or_default();
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = if let TaggedValue::EditorApi(api) = &**value {
-					let editor_api = UpcastAsRefNode::new(api.clone());
-					let node = Box::new(editor_api) as TypeErasedBox<'_>;
-					NodeContainer::new(node)
-				} else {
-					let upcasted = UpcastNode::new(value.to_owned());
-					let node = Box::new(upcasted) as TypeErasedBox<'_>;
-					NodeContainer::new(node)
-				};
+				let node = (**value)
+					.clone()
+					.to_edge()
+					.map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(error))])?;
 				self.store_node(node, id, path.into());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
-				let ids = ids.to_vec();
-				let construction_nodes = self.node_deps(&ids);
+				let construction_nodes = self.node_deps(ids);
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
-				let node = constructor(construction_nodes).await;
-				let node = NodeContainer::new(node);
+				let node = constructor(construction_nodes).map_err(|error| vec![GraphError::new(&proto_node, GraphErrorType::ConstructionFailed(format!("{error:?}")))])?;
 				self.store_node(node, id, path.into());
 			}
 		};
@@ -432,17 +467,74 @@ impl BorrowTree {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core_types::arena::ArenaCell;
+	use core_types::context::{ExtractFootprint, ExtractVarArgs};
+	use core_types::runtime::{SourceFuture, Spawner};
 	use graph_craft::document::value::TaggedValue;
+
+	struct InertSpawner;
+
+	impl Spawner for InertSpawner {
+		fn spawn(&self, _task: SourceFuture) {}
+	}
+
+	#[test]
+	fn eval_root_builds_the_bare_root_with_the_call_argument_as_vararg_0() {
+		let mut arena = Arena::new(64);
+		let runtime = GraphRuntime::new(InertSpawner);
+		let argument = 21.5f64;
+		let result = eval_root(&mut arena, &runtime, &argument, |ctx| {
+			assert!(ctx.try_footprint().is_none(), "the bare root carries no axes");
+			GPoll::Final(ctx.vararg(0).ok().and_then(|slot| slot.downcast_ref::<f64>()).copied().unwrap_or(0.))
+		});
+		assert_eq!(result, GPoll::Final(21.5));
+	}
+
+	#[test]
+	fn eval_root_resets_the_arena_at_eval_start() {
+		let mut arena = Arena::new(64);
+		let runtime = GraphRuntime::new(InertSpawner);
+		let cell = ArenaCell::new();
+		eval_root(&mut arena, &runtime, &(), |ctx| {
+			let (_, weak) = ctx.scope().arena().alloc(5u32).unwrap();
+			cell.store(weak);
+			GPoll::Final(())
+		});
+		assert!(cell.load(&arena).is_some(), "the introspection window spans until the next eval");
+		eval_root(&mut arena, &runtime, &(), |ctx| {
+			assert!(cell.load(ctx.scope().arena()).is_none(), "the reset at eval start reclaims the previous frame");
+			GPoll::Final(())
+		});
+	}
+
+	#[test]
+	fn a_panicking_eval_reports_the_error_and_resets_the_arena() {
+		let mut arena = Arena::new(64);
+		let runtime = GraphRuntime::new(InertSpawner);
+		let cell = ArenaCell::new();
+		let result: GPoll<()> = eval_root(&mut arena, &runtime, &(), |ctx| {
+			let (_, weak) = ctx.scope().arena().alloc(5u32).unwrap();
+			cell.store(weak);
+			panic!("mid-eval");
+		});
+		assert_eq!(result, GPoll::panicked());
+		assert!(cell.load(&arena).is_none(), "reset-on-panic leaves no stale records");
+		assert_eq!(eval_root(&mut arena, &runtime, &(), |_| GPoll::Final(7u32)), GPoll::Final(7));
+	}
 
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
 		let context = TypingContext::default();
-		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
-		futures::executor::block_on(future).unwrap();
+		tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 		let _node = tree.get(NodeId(0)).unwrap();
-		let result = futures::executor::block_on(tree.eval(NodeId(0), ()));
-		assert_eq!(result, Some(2u32));
+
+		let arena = Arena::new(64);
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let result: Option<GPoll<u32>> = tree.eval(NodeId(0), &ctx);
+		assert_eq!(result, Some(GPoll::Final(2)));
 	}
 }

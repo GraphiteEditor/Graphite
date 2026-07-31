@@ -1,8 +1,9 @@
 use core::f64;
 use core_types::color::Color;
+use core_types::gpoll::Interrupt;
 use core_types::list::{List, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
+use core_types::{ATTR_TRANSFORM, Context, Ctx, DeriveCtx, InjectFootprint, ModifyFootprint};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -11,8 +12,8 @@ use vector_types::GradientStops;
 
 /// Applies the specified transform to the input value, which may be a graphic type or another transform.
 #[node_macro::node(category("Math: Transform"))]
-async fn transform<T: ApplyTransform + 'n + 'static>(
-	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
+fn transform<T: ApplyTransform + 'static>(
+	ctx: impl Ctx + DeriveCtx + ModifyFootprint,
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
@@ -24,31 +25,24 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		Context -> List<Color>,
 		Context -> List<GradientStops>,
 	)]
-	content: impl Node<Context<'static>, Output = T>,
+	content: impl Node<Context<'_>, Output = T>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
 	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: f64,
 	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
 	#[default(1., 1.)]
 	scale: DVec2,
 	#[widget(ParsedWidgetOverride::Custom = "transform_skew")] skew: DVec2,
-) -> T {
+) -> Result<T, Interrupt> {
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
 	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
 	let matrix = trs * skew;
 
-	let footprint = ctx.try_footprint().copied();
-
-	let mut ctx = OwnedContextImpl::from(ctx);
-	if let Some(mut footprint) = footprint {
-		footprint.apply_transform(&matrix);
-		ctx = ctx.with_footprint(footprint);
-	}
-
-	let mut transform_target = content.eval(ctx.into_context()).await;
+	let transformed = ctx.modify_footprint(|footprint| footprint.apply_transform(&matrix));
+	let mut transform_target = content.eval(&transformed.ctx())?;
 
 	transform_target.left_apply_transform(&matrix);
 
-	transform_target
+	Ok(transform_target)
 }
 
 /// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.
@@ -114,7 +108,7 @@ fn replace_transform<T>(
 // TODO: Figure out how this node should behave once #2982 is implemented.
 /// Obtains the transform of the first item in the input `List`, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-async fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
+fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
 	content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default()
 }
 
