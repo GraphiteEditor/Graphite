@@ -1034,10 +1034,6 @@ impl CtxSnapshot {
 	pub fn generations(&self) -> &[(SourceId, u64)] {
 		&self.generations
 	}
-
-	pub fn scope<'s>(&'s self, arena: &'s Arena) -> EvalScope<'s> {
-		EvalScope::new(self.real_time, self.animation_time, self.pointer_position, &self.generations, arena)
-	}
 }
 
 impl ExtractFootprint for CtxSnapshot {
