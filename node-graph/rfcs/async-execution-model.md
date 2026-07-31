@@ -110,6 +110,8 @@ struct GraphRuntime<S: Spawner> {
 
 `GraphRuntime` wraps each task with the completion epilogue. The `Spawner` is tokio or a thread pool on desktop, `spawn_local` on wasm, or the host polling a task list in the precompiled case. The runtime reaches async nodes as a scope input (construction-time, not part of the context); a graph with zero async sources compiles to no runtime at all.
 
+The execution path itself is synchronous: executor construction, update, and `execute` are plain fns, and hosts compile and evaluate without an async runtime of their own. All asynchrony lives in source kernels behind the spawner; `execute` surfaces the poll state (`GPoll`) and each host maps it at its boundary. The one genuine await is the GPU readback, which wasm cannot block on; sync hosts block on that future, with a dedicated device-poll thread driving completion.
+
 Wakers are deliberately not the graph-level notification mechanism: wakers resume suspended computations and this graph never suspends; a re-evaluation is a fresh call. Wake also does not mean completion, and wakers do not survive composition across host executors. The host avoids busy-waiting with one coarse notification (park/unpark or event-loop message) shared by task wakes and the dirty epilogue.
 
 Scheduling semantics: generations are read once per evaluation (completions landing mid-frame affect the next one); the dirty flag is drained once per frame (N completions, one re-render); on recompile, tasks of removed sources are dropped and the epilogue never runs, so no spurious invalidation.
