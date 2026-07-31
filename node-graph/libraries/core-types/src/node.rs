@@ -94,6 +94,10 @@ where
 		(**self).extent(input)
 	}
 
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(**self).serialize()
+	}
+
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
@@ -116,6 +120,10 @@ where
 		(**self).extent(input)
 	}
 
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(**self).serialize()
+	}
+
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
@@ -136,6 +144,10 @@ where
 
 	fn extent(&self, input: &Input) -> GPoll<Extent> {
 		(**self).extent(input)
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(**self).serialize()
 	}
 
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
@@ -236,28 +248,6 @@ impl<'a, N> LazyInput<'a, N> {
 		N: Node<Input>,
 	{
 		self.cell.eval_input(self.input_index, self.node, ctx)
-	}
-}
-
-impl<'a, Input, N> Node<Input> for LazyInput<'a, N>
-where
-	N: Node<Input>,
-{
-	type Output = N::Output;
-
-	fn eval(&self, input: &Input) -> GPoll<Self::Output> {
-		self.node.eval(input)
-	}
-
-	fn extent(&self, input: &Input) -> GPoll<Extent> {
-		self.node.extent(input)
-	}
-
-	fn eval_batch<'b>(&self, input: &'b Input, range: Range<u64>, scratch: Option<&'b mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'b, Self::Output>
-	where
-		Input: InjectIndex + Copy,
-	{
-		self.node.eval_batch(input, range, scratch)
 	}
 }
 

@@ -1,6 +1,6 @@
 use crate::gpoll::Finality;
 use std::cell::UnsafeCell;
-use std::mem::MaybeUninit;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 const SLOT_EMPTY: u8 = 0;
@@ -81,18 +81,27 @@ impl<T, const CAP: usize> Drop for FrameTable<T, CAP> {
 
 impl<'t, T> VacantSlot<'t, T> {
 	pub fn publish(self, value: T, finality: Finality) -> &'t T {
+		let slot = ManuallyDrop::new(self).slot;
 		// SAFETY: the CAS in `lookup` reserved this slot exclusively for us and
 		// its state is still SLOT_EMPTY, so nobody reads the value yet.
-		let lent = unsafe { &*(*self.slot.value.get()).write(value) };
+		let lent = unsafe { &*(*slot.value.get()).write(value) };
 		let state = match finality {
 			Finality::AllFinal => SLOT_FINAL,
 			Finality::Partial => SLOT_PARTIAL,
 		};
-		self.slot.state.store(state, Ordering::Release);
+		slot.state.store(state, Ordering::Release);
 		lent
 	}
 
 	pub fn release(self) {
+		drop(self);
+	}
+}
+
+/// Frees the reservation, so an early return or panic between `lookup` and
+/// `publish` cannot retire the slot for the rest of the table's life.
+impl<T> Drop for VacantSlot<'_, T> {
+	fn drop(&mut self) {
 		self.slot.key.store(0, Ordering::Release);
 	}
 }
@@ -121,6 +130,14 @@ mod tests {
 		let Lookup::Vacant(slot) = table.lookup(7) else { unreachable!() };
 		slot.release();
 		assert!(matches!(table.lookup(7), Lookup::Vacant(_)));
+	}
+
+	#[test]
+	fn a_dropped_reservation_frees_the_slot() {
+		let table = FrameTable::<u32, 8>::new();
+		let Lookup::Vacant(slot) = table.lookup(7) else { unreachable!() };
+		drop(slot);
+		assert!(matches!(table.lookup(7), Lookup::Vacant(_)), "an abandoned reservation must not retire the slot");
 	}
 
 	#[test]
