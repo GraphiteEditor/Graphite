@@ -33,6 +33,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,
 						inject: ContextFeatures::INDEX,
+						..Default::default()
 					},
 					..Default::default()
 				},
@@ -43,6 +44,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::empty(),
+						..Default::default()
 					},
 					..Default::default()
 				},
@@ -57,6 +59,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::VARARGS,
+						..Default::default()
 					},
 					..Default::default()
 				},
@@ -67,6 +70,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						..Default::default()
 					},
 					..Default::default()
 				},
@@ -80,6 +84,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::empty(),
+						..Default::default()
 					},
 					..Default::default()
 				},
@@ -91,6 +96,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
 						extract: ContextFeatures::INDEX,
 						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						..Default::default()
 					},
 					..Default::default()
 				},

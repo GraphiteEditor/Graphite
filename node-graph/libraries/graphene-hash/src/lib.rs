@@ -68,6 +68,7 @@ impl_via_hash! {
 #[cfg(feature = "std")]
 impl_via_hash! {
 	String,
+	core::time::Duration,
 }
 
 impl<'a> CacheHash for std::borrow::Cow<'a, str> {
@@ -235,3 +236,142 @@ impl_tuple!(A, B, C);
 impl_tuple!(A, B, C, D);
 impl_tuple!(A, B, C, D, E);
 impl_tuple!(A, B, C, D, E, F);
+
+/// rustc-hash's polynomial hash with the state pinned to u64, so keys match across native and wasm targets.
+/// The state starts at a nonzero seed: zero-initialized fx absorbs leading zero words, which produced
+/// a real wrong-value memo hit in the prototype.
+#[derive(Clone)]
+pub struct FxHasher64 {
+	hash: u64,
+}
+
+const K: u64 = 0xf1357aea2e62a9c5;
+const SEED: u64 = 0x517cc1b727220a95;
+const SEED1: u64 = 0x243f6a8885a308d3;
+const SEED2: u64 = 0x13198a2e03707344;
+const PREVENT_TRIVIAL_ZERO_COLLAPSE: u64 = 0xa4093822299f31d0;
+
+impl Default for FxHasher64 {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl FxHasher64 {
+	pub const fn new() -> Self {
+		Self { hash: SEED }
+	}
+
+	#[inline]
+	fn add_to_hash(&mut self, i: u64) {
+		self.hash = self.hash.wrapping_add(i).wrapping_mul(K);
+	}
+}
+
+impl core::hash::Hasher for FxHasher64 {
+	#[inline]
+	fn write(&mut self, bytes: &[u8]) {
+		self.add_to_hash(hash_bytes(bytes));
+	}
+
+	#[inline]
+	fn write_u8(&mut self, i: u8) {
+		self.add_to_hash(i as u64);
+	}
+
+	#[inline]
+	fn write_u16(&mut self, i: u16) {
+		self.add_to_hash(i as u64);
+	}
+
+	#[inline]
+	fn write_u32(&mut self, i: u32) {
+		self.add_to_hash(i as u64);
+	}
+
+	#[inline]
+	fn write_u64(&mut self, i: u64) {
+		self.add_to_hash(i);
+	}
+
+	#[inline]
+	fn write_u128(&mut self, i: u128) {
+		self.add_to_hash(i as u64);
+		self.add_to_hash((i >> 64) as u64);
+	}
+
+	#[inline]
+	fn write_usize(&mut self, i: usize) {
+		self.add_to_hash(i as u64);
+	}
+
+	#[inline]
+	fn finish(&self) -> u64 {
+		self.hash.rotate_left(26)
+	}
+}
+
+#[inline]
+fn multiply_mix(x: u64, y: u64) -> u64 {
+	let full = (x as u128) * (y as u128);
+	(full as u64) ^ ((full >> 64) as u64)
+}
+
+#[inline]
+fn hash_bytes(bytes: &[u8]) -> u64 {
+	let len = bytes.len();
+	let mut s0 = SEED1;
+	let mut s1 = SEED2;
+
+	if len <= 16 {
+		if len >= 8 {
+			s0 ^= u64::from_le_bytes(bytes[0..8].try_into().unwrap());
+			s1 ^= u64::from_le_bytes(bytes[len - 8..].try_into().unwrap());
+		} else if len >= 4 {
+			s0 ^= u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as u64;
+			s1 ^= u32::from_le_bytes(bytes[len - 4..].try_into().unwrap()) as u64;
+		} else if len > 0 {
+			let lo = bytes[0];
+			let mid = bytes[len / 2];
+			let hi = bytes[len - 1];
+			s0 ^= lo as u64;
+			s1 ^= ((hi as u64) << 8) | mid as u64;
+		}
+	} else {
+		let mut off = 0;
+		while off < len - 16 {
+			let x = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+			let y = u64::from_le_bytes(bytes[off + 8..off + 16].try_into().unwrap());
+			let t = multiply_mix(s0 ^ x, PREVENT_TRIVIAL_ZERO_COLLAPSE ^ y);
+			s0 = s1;
+			s1 = t;
+			off += 16;
+		}
+
+		let suffix = &bytes[len - 16..];
+		s0 ^= u64::from_le_bytes(suffix[0..8].try_into().unwrap());
+		s1 ^= u64::from_le_bytes(suffix[8..16].try_into().unwrap());
+	}
+
+	multiply_mix(s0, s1) ^ (len as u64)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::FxHasher64;
+	use core::hash::Hasher;
+
+	#[test]
+	fn leading_zero_words_are_not_absorbed() {
+		let hash_words = |words: &[u64]| {
+			let mut hasher = FxHasher64::new();
+			for &word in words {
+				hasher.write_u64(word);
+			}
+			hasher.finish()
+		};
+		assert_ne!(hash_words(&[]), hash_words(&[0]), "a zero word must change the hash of the empty input");
+		assert_ne!(hash_words(&[0]), hash_words(&[0, 0]), "zero words must accumulate distinct states");
+		assert_ne!(hash_words(&[0, 7]), hash_words(&[7]), "a leading zero word must not be absorbed");
+	}
+}

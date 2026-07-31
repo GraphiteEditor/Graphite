@@ -370,7 +370,7 @@ impl ProtoNetwork {
 		let mut combined_deps = ContextFeatures::default();
 		let node_index = id.0 as usize;
 
-		let context_features = self.nodes[node_index].1.context_features;
+		let context_features = self.nodes[node_index].1.context_features.clone();
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
