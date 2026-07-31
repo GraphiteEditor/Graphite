@@ -238,19 +238,28 @@ impl_tuple!(A, B, C, D, E);
 impl_tuple!(A, B, C, D, E, F);
 
 /// rustc-hash's polynomial hash with the state pinned to u64, so keys match across native and wasm targets.
-#[derive(Clone, Default)]
+/// The state starts at a nonzero seed: zero-initialized fx absorbs leading zero words, which produced
+/// a real wrong-value memo hit in the prototype.
+#[derive(Clone)]
 pub struct FxHasher64 {
 	hash: u64,
 }
 
 const K: u64 = 0xf1357aea2e62a9c5;
+const SEED: u64 = 0x517cc1b727220a95;
 const SEED1: u64 = 0x243f6a8885a308d3;
 const SEED2: u64 = 0x13198a2e03707344;
 const PREVENT_TRIVIAL_ZERO_COLLAPSE: u64 = 0xa4093822299f31d0;
 
+impl Default for FxHasher64 {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl FxHasher64 {
 	pub const fn new() -> Self {
-		Self { hash: 0 }
+		Self { hash: SEED }
 	}
 
 	#[inline]
@@ -345,4 +354,24 @@ fn hash_bytes(bytes: &[u8]) -> u64 {
 	}
 
 	multiply_mix(s0, s1) ^ (len as u64)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::FxHasher64;
+	use core::hash::Hasher;
+
+	#[test]
+	fn leading_zero_words_are_not_absorbed() {
+		let hash_words = |words: &[u64]| {
+			let mut hasher = FxHasher64::new();
+			for &word in words {
+				hasher.write_u64(word);
+			}
+			hasher.finish()
+		};
+		assert_ne!(hash_words(&[]), hash_words(&[0]), "a zero word must change the hash of the empty input");
+		assert_ne!(hash_words(&[0]), hash_words(&[0, 0]), "zero words must accumulate distinct states");
+		assert_ne!(hash_words(&[0, 7]), hash_words(&[7]), "a leading zero word must not be absorbed");
+	}
 }
