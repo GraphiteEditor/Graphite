@@ -30,21 +30,32 @@ struct DropEntry {
 
 // SAFETY: disjoint regions are handed out by an atomic bump; a region is written
 // only by its allocating caller before publication, and cross-thread hand-off is
-// ordered by the Release/Acquire pair on the published handle word. The stored
-// payloads are `Send + Sync` by the bound on every allocating method, so drop
-// glue running on the resetting thread and lent `&T` crossing threads are sound.
+// ordered by the Release/Acquire pair on the published handle word. Payloads are
+// `Send + Sync` by the bound on every allocating method.
 unsafe impl Sync for Arena {}
 unsafe impl Send for Arena {}
 
 impl std::panic::UnwindSafe for Arena {}
 impl std::panic::RefUnwindSafe for Arena {}
 
+/// Shared by all arenas, so a foreign handle misses like a stale one.
+static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+/// Skips generations whose encoded bits are zero, which would let `NULL` upgrade.
+fn next_generation() -> u64 {
+	loop {
+		let generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
+		if generation & GENERATION_MASK != 0 {
+			return generation;
+		}
+	}
+}
+
 impl Arena {
 	pub fn new(capacity: usize) -> Self {
 		let buf = (0..capacity).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect();
 		Self {
-			// Starts at 1 so the null handle word (0) can never upgrade.
-			generation: AtomicU64::new(1),
+			generation: AtomicU64::new(next_generation()),
 			offset: AtomicUsize::new(0),
 			buf,
 			drops: Mutex::new(Vec::new()),
@@ -123,7 +134,7 @@ impl Arena {
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
 		}
 		*self.offset.get_mut() = 0;
-		self.generation.fetch_add(1, Ordering::Release);
+		self.generation.store(next_generation(), Ordering::Release);
 	}
 }
 
@@ -273,6 +284,16 @@ mod tests {
 		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "reset reclaims pre-panic allocations");
 		assert!(cell.load(&arena).is_none(), "the bump kills stale handles");
 		assert!(arena.alloc(0u32).is_some(), "the arena stays usable");
+	}
+
+	#[test]
+	fn handles_do_not_upgrade_against_a_foreign_arena() {
+		let first = Arena::new(1024);
+		let second = Arena::new(1024);
+		let (_, weak) = first.alloc(41u32).unwrap();
+		assert_eq!(weak.upgrade(&first), Some(&41));
+		assert_eq!(weak.upgrade(&second), None, "a handle must not resolve against another arena");
+		assert_eq!(ArenaWeak::<u32>::NULL.upgrade(&second), None, "the null handle never upgrades");
 	}
 
 	#[test]
