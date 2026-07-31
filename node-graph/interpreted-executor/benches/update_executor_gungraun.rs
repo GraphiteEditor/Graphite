@@ -9,7 +9,7 @@ use std::hint::black_box;
 fn setup_update_executor(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let (_, proto_network) = setup_network(name);
 	let empty = ProtoNetwork::default();
-	let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
+	let executor = DynamicExecutor::new(empty).unwrap();
 	(executor, proto_network)
 }
 
@@ -17,7 +17,7 @@ fn setup_update_executor(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 #[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_update_executor)]
 pub fn update_executor(setup: (DynamicExecutor, ProtoNetwork)) -> DynamicExecutor {
 	let (mut executor, network) = setup;
-	let _ = black_box(futures::executor::block_on(executor.update(black_box(network))));
+	let _ = black_box(executor.update(black_box(network)));
 
 	// Return the executor so its teardown happens outside the measured section
 	executor

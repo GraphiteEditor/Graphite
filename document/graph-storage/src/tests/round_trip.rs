@@ -246,10 +246,10 @@ fn test_nested_network_flattening() {
 #[test]
 fn test_metadata_preservation() {
 	// Create a network with nodes that have non-default metadata
-	let context_features = ContextDependencies {
-		extract: core_types::context::ContextFeatures::FOOTPRINT | core_types::context::ContextFeatures::REAL_TIME,
-		..Default::default()
-	};
+	let context_features = ContextDependencies::new(
+		core_types::context::ContextFeatures::FOOTPRINT | core_types::context::ContextFeatures::REAL_TIME,
+		core_types::context::ContextFeatures::empty(),
+	);
 
 	let network = NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],

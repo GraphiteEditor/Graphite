@@ -221,7 +221,7 @@ mod tests {
 
 	#[test]
 	fn create_context_builds_the_render_context_from_the_root_vararg() {
-		let arena = Arena::new(256);
+		let arena = Arena::new(256).unwrap();
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let root = ContextImpl::root(&scope);

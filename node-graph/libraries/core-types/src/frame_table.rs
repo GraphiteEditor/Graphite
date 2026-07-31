@@ -17,6 +17,13 @@ struct FrameSlot<T> {
 	value: UnsafeCell<MaybeUninit<T>>,
 }
 
+// SAFETY: the key CAS reserves a slot for one writer, and the Release store of its
+// state publishes the value to every Acquire load in `lookup`, so concurrent access
+// is ordered. Sharing the table hands out `&T` and drops `T` on whichever thread
+// drops the table, which is what the `Send + Sync` bounds cover.
+unsafe impl<T: Send + Sync, const CAP: usize> Sync for FrameTable<T, CAP> {}
+unsafe impl<T: Send, const CAP: usize> Send for FrameTable<T, CAP> {}
+
 pub enum Lookup<'t, T> {
 	Hit(Finality, &'t T),
 	Vacant(VacantSlot<'t, T>),

@@ -84,6 +84,18 @@ impl Arena {
 		})
 	}
 
+	/// An arena that refuses every allocation and resolves no handle, so a caller that
+	/// cannot fail can degrade instead of propagating exhaustion.
+	pub fn parked() -> Self {
+		LIVE_ARENAS.fetch_add(1, Ordering::Release);
+		Self {
+			generation: AtomicU64::new(PARKED_GENERATION),
+			offset: AtomicUsize::new(0),
+			buf: Box::new([]),
+			drops: Mutex::new(Vec::new()),
+		}
+	}
+
 	pub fn generation(&self) -> u64 {
 		self.generation.load(Ordering::Acquire)
 	}
