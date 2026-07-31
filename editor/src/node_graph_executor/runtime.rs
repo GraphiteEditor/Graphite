@@ -609,14 +609,6 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 	[center - half, center + half]
 }
 
-pub fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-	let runtime = NODE_RUNTIME.lock();
-	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path);
-	}
-	Err(IntrospectError::RuntimeNotReady)
-}
-
 pub async fn run_node_graph() -> (bool, Option<Texture>) {
 	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
 	if let Some(ref mut runtime) = runtime.as_mut() {
