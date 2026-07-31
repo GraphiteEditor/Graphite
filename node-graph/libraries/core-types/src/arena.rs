@@ -30,7 +30,9 @@ struct DropEntry {
 
 // SAFETY: disjoint regions are handed out by an atomic bump; a region is written
 // only by its allocating caller before publication, and cross-thread hand-off is
-// ordered by the Release/Acquire pair on the published handle word.
+// ordered by the Release/Acquire pair on the published handle word. The stored
+// payloads are `Send + Sync` by the bound on every allocating method, so drop
+// glue running on the resetting thread and lent `&T` crossing threads are sound.
 unsafe impl Sync for Arena {}
 unsafe impl Send for Arena {}
 
@@ -74,7 +76,7 @@ impl Arena {
 		Some(start)
 	}
 
-	pub fn alloc<T>(&self, value: T) -> Option<(&T, ArenaWeak<T>)> {
+	pub fn alloc<T: Send + Sync>(&self, value: T) -> Option<(&T, ArenaWeak<T>)> {
 		let offset = self.reserve(size_of::<T>(), align_of::<T>())?;
 		// Built before the write so an unencodable offset drops `value` here
 		// rather than stranding it in the arena without drop glue.
@@ -92,7 +94,7 @@ impl Arena {
 		Some((unsafe { &*ptr }, weak))
 	}
 
-	pub fn alloc_slice_copy<T: Copy>(&self, src: &[T]) -> Option<&[T]> {
+	pub fn alloc_slice_copy<T: Copy + Send + Sync>(&self, src: &[T]) -> Option<&[T]> {
 		let buf = self.alloc_scratch::<T>(src.len())?;
 		for (slot, &value) in buf.iter_mut().zip(src) {
 			slot.write(value);
@@ -104,7 +106,7 @@ impl Arena {
 	// Not drop-tracked: callers must either consume every written lane or
 	// restrict themselves to `Copy` payloads (leak, not UB, otherwise).
 	#[allow(clippy::mut_from_ref)]
-	pub fn alloc_scratch<T>(&self, len: usize) -> Option<&mut [MaybeUninit<T>]> {
+	pub fn alloc_scratch<T: Send + Sync>(&self, len: usize) -> Option<&mut [MaybeUninit<T>]> {
 		let size = size_of::<T>().checked_mul(len)?;
 		let offset = self.reserve(size, align_of::<T>())?;
 		let ptr = unsafe { self.base().add(offset) }.cast::<MaybeUninit<T>>();
@@ -115,7 +117,7 @@ impl Arena {
 
 	pub fn reset(&mut self) {
 		let base = self.base();
-		for entry in self.drops.get_mut().unwrap().drain(..) {
+		for entry in self.drops.get_mut().unwrap().drain(..).rev() {
 			// SAFETY: registered at alloc time; insert-only means the region was
 			// never overwritten within this generation.
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
@@ -271,6 +273,23 @@ mod tests {
 		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "reset reclaims pre-panic allocations");
 		assert!(cell.load(&arena).is_none(), "the bump kills stale handles");
 		assert!(arena.alloc(0u32).is_some(), "the arena stays usable");
+	}
+
+	#[test]
+	fn reset_drops_dependents_before_their_dependencies() {
+		static ORDER: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+		struct Probe(u32);
+		impl Drop for Probe {
+			fn drop(&mut self) {
+				ORDER.lock().unwrap().push(self.0);
+			}
+		}
+		let mut arena = Arena::new(1024);
+		for id in 0..3 {
+			arena.alloc(Probe(id)).unwrap();
+		}
+		arena.reset();
+		assert_eq!(*ORDER.lock().unwrap(), vec![2, 1, 0], "later allocations may borrow earlier ones, so they drop first");
 	}
 
 	#[test]
