@@ -97,6 +97,11 @@ impl App {
 		});
 		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), dirs::app_autosave_documents_dir(), wgpu_context.clone(), wake);
 
+		let completion_render_sender = start_render_sender.clone();
+		DesktopWrapper::set_completion_notifier(move || {
+			let _ = completion_render_sender.try_send(());
+		});
+
 		Self {
 			render_state: None,
 			wgpu_context,

@@ -17,7 +17,7 @@ use graphene_std::ops::ConvertAsync;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner, RuntimeHandle};
+use graphene_std::runtime::{DynGraphRuntime, DynNotifier, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -43,6 +43,8 @@ pub struct NodeRuntime {
 	update_thumbnails: bool,
 	#[expect(dead_code, reason = "read once the host wires a notifier onto the runtime")]
 	graph_runtime: Arc<DynGraphRuntime>,
+	/// The last plain render request, replayed when an async source completion marks the graph dirty.
+	last_render: Option<ExecutionRequest>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -122,9 +124,57 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
+#[cfg(not(target_family = "wasm"))]
+pub struct TokioSpawner(Option<tokio::runtime::Runtime>);
+
+#[cfg(not(target_family = "wasm"))]
+impl TokioSpawner {
+	pub fn new() -> Self {
+		Self(Some(tokio::runtime::Runtime::new().expect("Failed to start the async source runtime")))
+	}
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Default for TokioSpawner {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Spawner for TokioSpawner {
+	fn spawn(&self, task: SourceFuture) {
+		self.0.as_ref().expect("runtime lives until drop").spawn(task);
+	}
+}
+
+/// Dropping a tokio runtime blocks on its tasks, which panics inside an async context; the tests drop
+/// [`NodeRuntime`] from one, so shut down in the background instead.
+#[cfg(not(target_family = "wasm"))]
+impl Drop for TokioSpawner {
+	fn drop(&mut self) {
+		if let Some(runtime) = self.0.take() {
+			runtime.shutdown_background();
+		}
+	}
+}
+
+#[cfg(target_family = "wasm")]
+pub struct WasmSpawner;
+
+#[cfg(target_family = "wasm")]
+impl Spawner for WasmSpawner {
+	fn spawn(&self, task: SourceFuture) {
+		wasm_bindgen_futures::spawn_local(task);
+	}
+}
+
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
-		let spawner: Box<DynSpawner> = Box::new(NoopSpawner);
+		#[cfg(not(target_family = "wasm"))]
+		let spawner: Box<DynSpawner> = Box::new(TokioSpawner::new());
+		#[cfg(target_family = "wasm")]
+		let spawner: Box<DynSpawner> = Box::new(WasmSpawner);
 		let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(spawner));
 		let mut executor = DynamicExecutor::default();
 		executor.set_runtime(Arc::clone(&graph_runtime));
@@ -138,6 +188,7 @@ impl NodeRuntime {
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
 			graph_runtime: Arc::clone(&graph_runtime),
+			last_render: None,
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
@@ -188,6 +239,10 @@ impl NodeRuntime {
 					}
 
 					let for_export = execution_request.render_config.for_export;
+					if !for_export {
+						self.last_render = Some(execution_request.clone());
+					}
+
 					execution = Some(request);
 
 					// If we get an export request we always execute it immedeatly otherwise it could get deduplicated
@@ -205,6 +260,10 @@ impl NodeRuntime {
 		{
 			eyedropper.render_config.time = execution.render_config.time;
 			eyedropper.render_config.pointer = execution.render_config.pointer;
+		}
+
+		if self.executor.take_dirty() && execution.is_none() {
+			execution = self.last_render.clone().map(GraphRuntimeRequest::ExecutionRequest);
 		}
 
 		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
@@ -579,6 +638,13 @@ pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
 		node_runtime.replace_application_io(application_io);
+	}
+}
+
+pub fn set_completion_notifier(notifier: Arc<DynNotifier>) {
+	let node_runtime = NODE_RUNTIME.lock();
+	if let Some(node_runtime) = &*node_runtime {
+		node_runtime.graph_runtime.set_notifier(notifier);
 	}
 }
 

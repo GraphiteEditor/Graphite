@@ -10,18 +10,28 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-fn execute_to_final(executor: &DynamicExecutor, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
-	match executor.execute(render_config)? {
-		GPoll::Final(value) => Ok(value),
-		GPoll::Fallback(boxed) => {
-			let (value, error) = *boxed;
-			log::warn!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
-			Ok(value)
+const SOURCE_COMPLETION_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn execute_until_final(executor: &DynamicExecutor, render_config: RenderConfig, completion: &Receiver<()>) -> Result<TaggedValue, Box<dyn Error>> {
+	loop {
+		while completion.try_recv().is_ok() {}
+		match executor.execute(render_config)? {
+			GPoll::Final(value) => return Ok(value),
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				log::warn!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+				return Ok(value);
+			}
+			GPoll::Partial(_) | GPoll::Pending => {
+				completion
+					.recv_timeout(SOURCE_COMPLETION_TIMEOUT)
+					.map_err(|_| format!("Timed out after {}s waiting for async sources to complete", SOURCE_COMPLETION_TIMEOUT.as_secs()))?;
+			}
+			GPoll::Error(error) => return Err(format!("Node graph evaluation failed: {error:?}").into()),
 		}
-		GPoll::Partial(_) | GPoll::Pending => Err("Node graph evaluation did not complete".into()),
-		GPoll::Error(error) => Err(format!("Node graph evaluation failed: {error:?}").into()),
 	}
 }
 
@@ -52,6 +62,7 @@ pub fn export_document(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	transparent: bool,
+	completion: &Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
@@ -73,7 +84,7 @@ pub fn export_document(
 	}
 
 	// Execute the graph
-	let result = execute_to_final(executor, render_config)?;
+	let result = execute_until_final(executor, render_config, completion)?;
 
 	// Handle the result based on output type
 	match result {
@@ -172,6 +183,7 @@ pub fn export_gif(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	animation: AnimationParams,
+	completion: &Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
 	use image::codecs::gif::{GifEncoder, Repeat};
 	use image::{Frame, RgbaImage};
@@ -211,7 +223,7 @@ pub fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = execute_to_final(executor, render_config)?;
+		let result = execute_until_final(executor, render_config, completion)?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
