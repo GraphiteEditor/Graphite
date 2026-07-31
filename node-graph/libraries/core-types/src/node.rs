@@ -7,11 +7,46 @@ use std::ops::Range;
 #[derive(Debug)]
 pub enum BatchStatus<'a, T> {
 	Lent(&'a [T], Finality),
-	Filled(&'a mut [T], Finality),
+	Filled(FilledBatch<'a, T>, Finality),
 	Pending,
 	Error(GraphError),
 	NeedBuffer,
 	InvalidRange,
+}
+
+/// Owns the initialized prefix of a caller-supplied scratch buffer, dropping every
+/// lane unless [`FilledBatch::into_values`] hands the obligation back to the caller.
+#[derive(Debug)]
+pub struct FilledBatch<'a, T> {
+	values: &'a mut [T],
+}
+
+impl<'a, T> FilledBatch<'a, T> {
+	/// # Safety
+	///
+	/// The first `len` elements of `scratch` must be initialized, and `len` must not exceed `scratch.len()`.
+	pub unsafe fn new(scratch: &'a mut [MaybeUninit<T>], len: usize) -> Self {
+		Self {
+			values: unsafe { assume_init_prefix_mut(scratch, len) },
+		}
+	}
+
+	pub fn values(&self) -> &[T] {
+		self.values
+	}
+
+	pub fn into_values(self) -> &'a mut [T] {
+		let mut guard = std::mem::ManuallyDrop::new(self);
+		std::mem::take(&mut guard.values)
+	}
+}
+
+impl<T> Drop for FilledBatch<'_, T> {
+	fn drop(&mut self) {
+		// SAFETY: every lane was initialized when the guard was built and none has
+		// been moved out, since `into_values` consumes the guard instead.
+		unsafe { std::ptr::drop_in_place(self.values as *mut [T]) }
+	}
 }
 
 /// # Safety
@@ -76,7 +111,7 @@ pub trait Node<Input> {
 			}
 		}
 		// SAFETY: all `len` lanes were written by the loop above.
-		BatchStatus::Filled(unsafe { assume_init_prefix_mut(scratch, len) }, finality)
+		BatchStatus::Filled(unsafe { FilledBatch::new(scratch, len) }, finality)
 	}
 }
 
@@ -285,8 +320,35 @@ mod tests {
 		let BatchStatus::Filled(lanes, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
-		assert_eq!(lanes, &[4, 6, 8, 10]);
+		assert_eq!(lanes.values(), &[4, 6, 8, 10]);
 		assert_eq!(finality, Finality::AllFinal);
+	}
+
+	#[test]
+	fn a_dropped_filled_batch_reclaims_every_lane() {
+		static DROPS: AtomicU32 = AtomicU32::new(0);
+		#[derive(Clone)]
+		struct Probe;
+		impl Drop for Probe {
+			fn drop(&mut self) {
+				DROPS.fetch_add(1, Ordering::Relaxed);
+			}
+		}
+		struct Probes;
+		impl Node<TestInput> for Probes {
+			type Output = Probe;
+
+			fn eval(&self, _input: &TestInput) -> GPoll<Probe> {
+				GPoll::Final(Probe)
+			}
+		}
+
+		let input = TestInput { index: 0 };
+		let mut scratch = [const { MaybeUninit::uninit() }; 3];
+		let status = Probes.eval_batch(&input, 0..3, Some(&mut scratch));
+		assert!(matches!(status, BatchStatus::Filled(..)));
+		drop(status);
+		assert_eq!(DROPS.load(Ordering::Relaxed), 3, "an unconsumed batch must not leak its lanes");
 	}
 
 	#[test]
@@ -320,7 +382,7 @@ mod tests {
 		let BatchStatus::Filled(lanes, finality) = status else {
 			panic!("expected filled, got {status:?}");
 		};
-		assert_eq!(lanes, &[0, 1, 2, 3]);
+		assert_eq!(lanes.values(), &[0, 1, 2, 3]);
 		assert_eq!(finality, Finality::Partial);
 	}
 

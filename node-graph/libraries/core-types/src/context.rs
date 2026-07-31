@@ -200,7 +200,7 @@ pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
 	/// Must stay sorted.
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "deserialize_sorted_sources"))]
 	pub sources: Vec<SourceId>,
 }
 
@@ -209,7 +209,19 @@ pub struct ContextDependencies {
 pub struct ContextModification {
 	pub features: ContextFeatures,
 	/// Must stay sorted.
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_sorted_sources"))]
 	pub sources: Vec<SourceId>,
+}
+
+/// Restores the sorted-and-deduplicated invariant that `contains` and `difference`
+/// rely on for binary search, which arbitrary serialized input can violate.
+#[cfg(feature = "serde")]
+fn deserialize_sorted_sources<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<SourceId>, D::Error> {
+	use serde::Deserialize;
+	let mut sources = Vec::deserialize(deserializer)?;
+	sources.sort_unstable();
+	sources.dedup();
+	Ok(sources)
 }
 
 impl core::ops::BitOrAssign<&ContextModification> for ContextModification {
@@ -958,8 +970,8 @@ pub struct CtxSnapshot {
 	real_time: Option<f64>,
 	animation_time: Option<f64>,
 	pointer_position: Option<DVec2>,
-	index: Vec<usize>,
-	positions: Vec<DVec2>,
+	index: Option<Vec<usize>>,
+	positions: Option<Vec<DVec2>>,
 	varargs: Vec<Vec<OwnedSlot>>,
 	generations: Vec<(SourceId, u64)>,
 }
@@ -974,8 +986,8 @@ impl CtxSnapshot {
 			real_time: ctx.try_real_time(),
 			animation_time: ctx.try_animation_time(),
 			pointer_position: ctx.try_pointer_position(),
-			index: ctx.try_index().map(|levels| levels.collect()).unwrap_or_default(),
-			positions: ctx.try_position().map(|positions| positions.collect()).unwrap_or_default(),
+			index: ctx.try_index().map(|levels| levels.collect()),
+			positions: ctx.try_position().map(|positions| positions.collect()),
 			varargs: std::iter::successors(ctx.varargs_head(), |link| link.outer)
 				.map(|link| link.args.iter().map(|slot| slot.clone_slot()).collect())
 				.collect(),
@@ -1018,13 +1030,13 @@ impl ExtractPointerPosition for CtxSnapshot {
 
 impl ExtractIndex for CtxSnapshot {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
-		Some(self.index.iter().copied())
+		self.index.as_ref().map(|levels| levels.iter().copied())
 	}
 }
 
 impl ExtractPosition for CtxSnapshot {
 	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
-		Some(self.positions.iter().copied())
+		self.positions.as_ref().map(|positions| positions.iter().copied())
 	}
 }
 
@@ -1547,6 +1559,21 @@ mod context_impl_tests {
 		let empty = CtxSnapshot::capture(&root);
 		assert_eq!(empty.varargs_len(), Err(VarArgsResult::NoVarArgs));
 		assert!(matches!(empty.vararg(0), Err(VarArgsResult::NoVarArgs)));
+	}
+
+	#[test]
+	fn a_snapshot_preserves_an_absent_position_axis() {
+		let arena = Arena::new(64).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let root = ContextImpl::root(&scope);
+
+		let absent = CtxSnapshot::capture(&root);
+		assert!(absent.try_position().is_none(), "capturing an unpositioned context must not invent a position stack");
+
+		let position = DVec2::new(1., 2.);
+		let positioned = CtxSnapshot::capture(&root.with_position(&PositionLink { position, outer: None }));
+		assert_eq!(positioned.try_position().map(|p| p.collect::<Vec<_>>()), Some(vec![position]));
 	}
 
 	#[test]

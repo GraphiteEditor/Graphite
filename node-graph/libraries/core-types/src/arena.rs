@@ -152,16 +152,15 @@ impl Arena {
 	/// where every handle misses and further allocation is refused.
 	pub fn reset(&mut self) -> bool {
 		let base = self.base();
-		for entry in self.drops.get_mut().unwrap().drain(..).rev() {
+		let entries = std::mem::take(self.drops.get_mut().unwrap());
+		self.generation.store(PARKED_GENERATION, Ordering::Release);
+		for entry in entries.into_iter().rev() {
 			// SAFETY: registered at alloc time; insert-only means the region was
 			// never overwritten within this generation.
 			unsafe { (entry.drop_fn)(base.add(entry.offset)) }
 		}
 		*self.offset.get_mut() = 0;
-		let Some(generation) = next_generation() else {
-			self.generation.store(PARKED_GENERATION, Ordering::Release);
-			return false;
-		};
+		let Some(generation) = next_generation() else { return false };
 		self.generation.store(generation, Ordering::Release);
 		true
 	}
@@ -318,6 +317,25 @@ mod tests {
 		assert_eq!(DROPS.load(Ordering::Relaxed), 1, "reset reclaims pre-panic allocations");
 		assert!(cell.load(&arena).is_none(), "the bump kills stale handles");
 		assert!(arena.alloc(0u32).is_some(), "the arena stays usable");
+	}
+
+	#[test]
+	fn a_panicking_destructor_leaves_no_resolvable_handle() {
+		let _guard = COUNTER_GUARD.lock().unwrap_or_else(PoisonError::into_inner);
+		struct Bomb;
+		impl Drop for Bomb {
+			fn drop(&mut self) {
+				panic!("payload destructor");
+			}
+		}
+		let mut arena = Arena::new(1024).unwrap();
+		let cell = ArenaCell::new();
+		let (_, weak) = arena.alloc(Bomb).unwrap();
+		cell.store(weak);
+
+		let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| arena.reset()));
+		assert!(unwound.is_err(), "the panic must propagate out of reset");
+		assert!(cell.load(&arena).is_none(), "a half-dropped generation must resolve no handle");
 	}
 
 	/// Held by every test that perturbs [`NEXT_GENERATION`], so a swapped-out counter
