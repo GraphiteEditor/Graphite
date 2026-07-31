@@ -41,6 +41,7 @@ pub struct NodeRuntime {
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
+	#[expect(dead_code, reason = "read once the host wires a notifier onto the runtime")]
 	graph_runtime: Arc<DynGraphRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
