@@ -4612,6 +4612,7 @@ name = "raster-nodes"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "color",
  "core-types",
  "dyn-any",
  "fastnoise-lite",
