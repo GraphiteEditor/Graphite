@@ -998,7 +998,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 	let crate_ident = CrateIdent::default();
 	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	if parsed_node.is_async || crate::codegen::is_source_kernel(&parsed_node.output_type) {
+	if parsed_node.injects_async_source_fields() {
 		let core_types = crate_ident.gcore()?.clone();
 		parsed_node.inject_async_source_fields(&core_types);
 	}
@@ -1028,6 +1028,10 @@ impl ParsedNodeFn {
 		if self.input.pat_ident.ident == "_" {
 			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
+	}
+
+	pub fn injects_async_source_fields(&self) -> bool {
+		self.is_async || crate::codegen::is_source_kernel(&self.output_type)
 	}
 
 	pub fn inject_async_source_fields(&mut self, core_types: &TokenStream2) {

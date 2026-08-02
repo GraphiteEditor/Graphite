@@ -18,7 +18,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		fn_generics,
 		input,
 		output_type,
-		is_async,
 		fields,
 		description,
 		..
@@ -113,7 +112,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! { pub(super) #name: #r#gen }
 	});
 
-	let async_source = *is_async || is_source_kernel(output_type);
+	let async_source = parsed.injects_async_source_fields();
 	let slot_value_type = slot_value_type(output_type);
 	let slot_field = async_source
 		.then(|| quote! { pub(super) slot: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, Option<gcore::gpoll::GPoll<#slot_value_type>>>>> })
@@ -356,6 +355,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
 					inject_scope: #inject_scope_flag,
+					async_source_fields: #async_source,
 					fields: vec![
 						#(
 							FieldMetadata {

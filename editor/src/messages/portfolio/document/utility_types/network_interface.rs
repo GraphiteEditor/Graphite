@@ -96,33 +96,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Append the hidden runtime and source-id inputs to async-source protonodes saved before their injection.
-	/// Runs after the identifier replacement pass, so it matches only current identifier spellings.
-	pub fn migrate_async_source_inputs(&mut self) {
-		const PRE_INJECTION_ARITIES: [(&str, usize); 5] = [
-			("graphene_std::platform_application_io::GetRequestNode", 4),
-			("graphene_std::platform_application_io::PostRequestNode", 5),
-			("graphene_std::platform_application_io::LoadResourceNode", 2),
-			("graphene_std::platform_application_io::RasterizeNode", 3),
-			("graphene_std::platform_application_io::ResourceNode", 2),
-		];
-		fix_network(self.document_network_mut());
-		fn fix_network(network: &mut NodeNetwork) {
-			for node in network.nodes.values_mut() {
-				if let Some(network) = node.implementation.get_network_mut() {
-					fix_network(network);
-				}
-				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation
-					&& let Some(base) = protonode.as_str().split('<').next()
-					&& let Some((_, arity)) = PRE_INJECTION_ARITIES.iter().find(|(identifier, _)| *identifier == base)
-					&& node.inputs.len() == *arity
-				{
-					node.inputs.push(NodeInput::scope("graphene_std::runtime::RuntimeNode"));
-					node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::SourceId));
-				}
-			}
-		}
-	}
 }
 
 // Public immutable getters for the network interface
