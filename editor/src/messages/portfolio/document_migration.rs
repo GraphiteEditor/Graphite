@@ -17,8 +17,7 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::misc::BoxCorners;
-use graphene_std::vector::style::{DashPattern, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -1387,24 +1386,24 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
 fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
-	let pattern = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(lengths) => DashPattern::from(lengths.clone()),
-		TaggedValue::F64(length) => DashPattern::from(*length),
-		TaggedValue::String(text) => DashPattern::from(text.as_str()),
+	let lengths = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(lengths) => lengths.clone(),
+		TaggedValue::F64(length) => vec![*length],
+		TaggedValue::String(text) => graphene_std::core_types::misc::parse_f64_list(text),
 		_ => return None,
 	};
-	Some(NodeInput::value(TaggedValue::DashPattern(pattern), *exposed))
+	Some(NodeInput::value(TaggedValue::DashPattern(lengths), *exposed))
 }
 
 /// Converts a legacy rectangle corner radius input (a single `f64` or a `List<f64>` of up to four values) to the `BoxCorners` value type.
 fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
-	let corners = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(values) => BoxCorners::from(values.clone()),
-		TaggedValue::F64(value) => BoxCorners::from(*value),
+	let values = match &*tagged_value.clone().into_inner() {
+		TaggedValue::F64Array(values) => values.clone(),
+		TaggedValue::F64(value) => vec![*value],
 		_ => return None,
 	};
-	Some(NodeInput::value(TaggedValue::BoxCorners(corners), *exposed))
+	Some(NodeInput::value(TaggedValue::BoxCorners(values), *exposed))
 }
 
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
@@ -1809,6 +1808,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, graphene_std::vector::stroke::DashPatternInput), migrated, network_path);
+	}
+
+	// The corner radius became the `BoxCorners` value type; convert any already-shaped rectangle that still stores a legacy corner input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+		&& let Some(corner_input) = node.input(graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput)
+		&& let Some(migrated) = migrate_corner_radius_input(corner_input)
+	{
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput),
+			migrated,
+			network_path,
+		);
 	}
 
 	// The rectangle's corner radius became the `BoxCorners` value type and its hidden individual-radii toggle moved after the
