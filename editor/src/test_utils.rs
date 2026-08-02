@@ -53,6 +53,22 @@ impl EditorTestUtils {
 			}
 			runtime.run().await;
 
+			// An async source reports `Pending` on the evaluation that starts it and marks the runtime dirty
+			// once it completes, so the value only reaches the render on a follow-up evaluation. That first
+			// response is superseded, so it is drained rather than asserted on.
+			while runtime.take_dirty() {
+				let _ = editor.poll_node_graph_evaluation(&mut VecDeque::new());
+
+				let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
+				let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+				let document = documents.get_mut(&document_id).unwrap();
+
+				if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+					return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+				}
+				runtime.run().await;
+			}
+
 			let mut messages = VecDeque::new();
 			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
 				return Err(format!("Graph should render\n\n{e}"));

@@ -59,12 +59,15 @@ impl<S: Spawner + ?Sized> Spawner for Box<S> {
 	}
 }
 
-/// Dropped tasks never complete.
+/// Polls each task once inline. Tasks that are not immediately ready never complete.
 pub struct NoopSpawner;
 
 impl Spawner for NoopSpawner {
-	fn spawn(&self, _task: SourceFuture) {
-		log::warn!("async source spawned before a host spawner is wired; the task is dropped");
+	fn spawn(&self, mut task: SourceFuture) {
+		let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+		if task.as_mut().poll(&mut context).is_pending() {
+			log::warn!("async source is not immediately ready and no host spawner is wired; the task is dropped");
+		}
 	}
 }
 

@@ -131,16 +131,38 @@ impl Preprocessor {
 				input_type = &const { generic!(D) };
 			}
 
-			let inputs: Vec<_> = node_inputs(fields, first_node_io);
+			let mut inputs: Vec<_> = node_inputs(fields, first_node_io);
 			let input_count = inputs.len();
-			let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
+
+			// The node macro appends a `RuntimeHandle` scope field and a `SourceId` reflection field to every
+			// async or source kernel. They are resolved inside the substitution network, so the wrapper neither
+			// exposes them nor carries their context modification.
+			let injected_field_count = match &fields[..] {
+				[.., runtime, source] if matches!(runtime.value_source, RegistryValueSource::Scope(_)) && matches!(source.value_source, RegistryValueSource::SourceId) => 2,
+				_ => 0,
+			};
+			let wrapper_input_count = input_count - injected_field_count;
+
+			inputs.truncate(wrapper_input_count);
+
+			// The injected fields go straight onto the inner node, so the source it reflects is recorded on the
+			// node that consumes it rather than on a forwarding node that later gets dissolved.
+			let network_inputs = (0..input_count)
+				.map(|i| {
+					if i < wrapper_input_count {
+						NodeInput::node(NodeId(i as u64), 0)
+					} else {
+						injected_field_input(&fields[i])
+					}
+				})
+				.collect();
 
 			let passthrough_node = ops::passthrough::IDENTIFIER;
 
 			let mut generated_nodes = 0;
 			let mut nodes: HashMap<_, _, _> = node_io_types
 				.iter()
-				.take(input_count)
+				.take(wrapper_input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
 					(
@@ -185,7 +207,7 @@ impl Preprocessor {
 				})
 				.collect();
 
-			if generated_nodes == 0 && !memoize && !inject_scope {
+			if generated_nodes == 0 && !memoize && !inject_scope && injected_field_count == 0 {
 				continue;
 			}
 
@@ -199,13 +221,14 @@ impl Preprocessor {
 				..Default::default()
 			};
 
-			nodes.insert(NodeId(input_count as u64), document_node);
+			let main_node_id = NodeId(wrapper_input_count as u64);
+			nodes.insert(main_node_id, document_node);
 
 			// If memoize is requested, append a Memoize node after the main node and redirect the export through it
 			let export_node_id = if *memoize {
-				let memoize_node_id = NodeId(input_count as u64 + 1);
+				let memoize_node_id = NodeId(wrapper_input_count as u64 + 1);
 				let memoize_node = DocumentNode {
-					inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
+					inputs: vec![NodeInput::node(main_node_id, 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
 					visible: true,
 					..Default::default()
@@ -213,7 +236,7 @@ impl Preprocessor {
 				nodes.insert(memoize_node_id, memoize_node);
 				memoize_node_id
 			} else {
-				NodeId(input_count as u64)
+				main_node_id
 			};
 
 			let node = DocumentNode {
@@ -253,6 +276,14 @@ impl Preprocessor {
 		}
 
 		Self { substitutions, inject_scopes }
+	}
+}
+
+fn injected_field_input(field: &registry::FieldMetadata) -> NodeInput {
+	match field.value_source {
+		RegistryValueSource::Scope(data) => NodeInput::scope(data),
+		RegistryValueSource::SourceId => NodeInput::Reflection(DocumentNodeMetadata::SourceId),
+		_ => NodeInput::value(TaggedValue::None, false),
 	}
 }
 
