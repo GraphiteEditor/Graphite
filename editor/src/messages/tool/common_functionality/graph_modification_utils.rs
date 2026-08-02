@@ -557,7 +557,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		_ => PaintOrder::default(),
 	};
 	let dash_lengths = match parameters.value(stroke::DashPatternInput) {
-		Some(TaggedValue::DashPattern(value)) => value.0.iter_element_values().copied().collect(),
+		Some(TaggedValue::DashPattern(lengths)) => lengths.clone(),
 		_ => Vec::new(),
 	};
 	let dash_offset = match parameters.value(stroke::DashOffsetInput) {

@@ -124,6 +124,11 @@ pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -
 	})
 }
 
+/// Parses a comma or space separated list of numbers, skipping any pieces that fail to parse.
+pub fn parse_f64_list(text: &str) -> Vec<f64> {
+	text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(|piece| piece.parse::<f64>().ok()).collect()
+}
+
 /// Parse a CSS color string (named color, hex, `rgb(...)`, `hsl(...)`, etc.) into a linear-light [`Color`] using the `color` crate's CSS Color 4 parser.
 /// Tries the input as-is first (catches CSS named colors like `red`, `rgb(...)`, and well-formed hex like `#abcdef`), then falls back to treating the input as bare hex with length-based expansion to a CSS-parseable form:
 /// - 1 char `f` → `#fff` (CSS 3-char shorthand)

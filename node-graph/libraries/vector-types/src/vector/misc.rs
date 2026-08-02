@@ -77,21 +77,6 @@ impl BoxCorners {
 	}
 }
 
-// `List<f64>` is a runtime-only wire type, so serialize the corners as their bare values to keep documents stable
-#[cfg(feature = "serde")]
-impl serde::Serialize for BoxCorners {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		serializer.collect_seq(self.0.iter_element_values())
-	}
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for BoxCorners {
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		Ok(Self::from(<Vec<f64> as serde::Deserialize>::deserialize(deserializer)?))
-	}
-}
-
 impl From<f64> for BoxCorners {
 	fn from(value: f64) -> Self {
 		Self(List::new_from_element(value))
@@ -106,12 +91,7 @@ impl From<Vec<f64>> for BoxCorners {
 
 impl From<&str> for BoxCorners {
 	fn from(text: &str) -> Self {
-		Self::from(
-			text.split([',', ' '])
-				.filter(|piece| !piece.is_empty())
-				.filter_map(|piece| piece.parse::<f64>().ok())
-				.collect::<Vec<f64>>(),
-		)
+		Self::from(core_types::misc::parse_f64_list(text))
 	}
 }
 

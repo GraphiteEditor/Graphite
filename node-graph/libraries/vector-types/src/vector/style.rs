@@ -118,18 +118,18 @@ pub enum StrokeCap {
 	#[default]
 	#[icon("StrokeCapButt")]
 	Butt,
-	#[icon("StrokeCapRound")]
-	Round,
 	#[icon("StrokeCapSquare")]
 	Square,
+	#[icon("StrokeCapRound")]
+	Round,
 }
 
 impl StrokeCap {
 	pub fn svg_name(&self) -> &'static str {
 		match self {
 			StrokeCap::Butt => "butt",
-			StrokeCap::Round => "round",
 			StrokeCap::Square => "square",
+			StrokeCap::Round => "round",
 		}
 	}
 }
@@ -218,21 +218,6 @@ impl DashPattern {
 	}
 }
 
-// `List<f64>` is a runtime-only wire type, so serialize the pattern as its bare lengths to keep documents stable
-#[cfg(feature = "serde")]
-impl serde::Serialize for DashPattern {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		serializer.collect_seq(self.0.iter_element_values())
-	}
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for DashPattern {
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		Ok(Self::from(<Vec<f64> as serde::Deserialize>::deserialize(deserializer)?))
-	}
-}
-
 impl From<f64> for DashPattern {
 	fn from(length: f64) -> Self {
 		Self(List::new_from_element(length))
@@ -247,12 +232,7 @@ impl From<Vec<f64>> for DashPattern {
 
 impl From<&str> for DashPattern {
 	fn from(text: &str) -> Self {
-		Self::from(
-			text.split([',', ' '])
-				.filter(|piece| !piece.is_empty())
-				.filter_map(|piece| piece.parse::<f64>().ok())
-				.collect::<Vec<f64>>(),
-		)
+		Self::from(core_types::misc::parse_f64_list(text))
 	}
 }
 

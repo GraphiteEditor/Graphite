@@ -213,7 +213,7 @@ pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, docu
 
 pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.dash_lengths = Some(lengths.clone());
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashPatternInput, TaggedValue::DashPattern(lengths.into()), responses);
+	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashPatternInput, TaggedValue::DashPattern(lengths), responses);
 }
 
 pub fn apply_dash_offset(drawing: &mut DrawingToolState, offset: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
