@@ -116,7 +116,13 @@ impl Preprocessor {
 		for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 			let id = id.clone();
 
-			let NodeMetadata { fields, memoize, inject_scope, .. } = metadata;
+			let NodeMetadata {
+				fields,
+				memoize,
+				inject_scope,
+				async_source_fields,
+				..
+			} = metadata;
 			let Some(implementations) = node_registry.get(&id) else { continue };
 			let valid_call_args: HashSet<_> = implementations.iter().map(|entry| entry.io.call_argument.clone()).collect();
 			let first_node_io = implementations.first().map(|entry| &entry.io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -132,30 +138,12 @@ impl Preprocessor {
 			}
 
 			let mut inputs: Vec<_> = node_inputs(fields, first_node_io);
-			let input_count = inputs.len();
+			let wrapper_input_count = inputs.len() - if *async_source_fields { 2 } else { 0 };
 
-			// The node macro appends a `RuntimeHandle` scope field and a `SourceId` reflection field to every
-			// async or source kernel. They are resolved inside the substitution network, so the wrapper neither
-			// exposes them nor carries their context modification.
-			let injected_field_count = match &fields[..] {
-				[.., runtime, source] if matches!(runtime.value_source, RegistryValueSource::Scope(_)) && matches!(source.value_source, RegistryValueSource::SourceId) => 2,
-				_ => 0,
-			};
-			let wrapper_input_count = input_count - injected_field_count;
-
-			inputs.truncate(wrapper_input_count);
-
-			// The injected fields go straight onto the inner node, so the source it reflects is recorded on the
-			// node that consumes it rather than on a forwarding node that later gets dissolved.
-			let network_inputs = (0..input_count)
-				.map(|i| {
-					if i < wrapper_input_count {
-						NodeInput::node(NodeId(i as u64), 0)
-					} else {
-						injected_field_input(&fields[i])
-					}
-				})
-				.collect();
+			// The injected fields must not surface as wrapper inputs, and the `_source` reflection must sit on
+			// the kernel itself so the source id lands on a node that survives flattening.
+			let injected_inputs = inputs.split_off(wrapper_input_count);
+			let network_inputs = (0..wrapper_input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).chain(injected_inputs).collect();
 
 			let passthrough_node = ops::passthrough::IDENTIFIER;
 
@@ -207,7 +195,7 @@ impl Preprocessor {
 				})
 				.collect();
 
-			if generated_nodes == 0 && !memoize && !inject_scope && injected_field_count == 0 {
+			if generated_nodes == 0 && !memoize && !inject_scope && !async_source_fields {
 				continue;
 			}
 
@@ -276,14 +264,6 @@ impl Preprocessor {
 		}
 
 		Self { substitutions, inject_scopes }
-	}
-}
-
-fn injected_field_input(field: &registry::FieldMetadata) -> NodeInput {
-	match field.value_source {
-		RegistryValueSource::Scope(data) => NodeInput::scope(data),
-		RegistryValueSource::SourceId => NodeInput::Reflection(DocumentNodeMetadata::SourceId),
-		_ => NodeInput::value(TaggedValue::None, false),
 	}
 }
 

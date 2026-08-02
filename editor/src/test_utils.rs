@@ -53,11 +53,16 @@ impl EditorTestUtils {
 			}
 			runtime.run().await;
 
-			// An async source reports `Pending` on the evaluation that starts it and marks the runtime dirty
-			// once it completes, so the value only reaches the render on a follow-up evaluation. That first
-			// response is superseded, so it is drained rather than asserted on.
+			// An async source reports `Pending` on the evaluation that starts it and marks the runtime dirty once
+			// it completes, so the value only reaches the render on a follow-up evaluation. The superseded response's
+			// `Pending` error is ignored, but its messages carry the incremental resolved-types delta and must be
+			// dispatched, or the editor's type map desyncs permanently.
 			while runtime.take_dirty() {
-				let _ = editor.poll_node_graph_evaluation(&mut VecDeque::new());
+				let mut superseded_messages = VecDeque::new();
+				let _ = editor.poll_node_graph_evaluation(&mut superseded_messages);
+				for message in superseded_messages {
+					editor.handle_message(message);
+				}
 
 				let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 				let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);

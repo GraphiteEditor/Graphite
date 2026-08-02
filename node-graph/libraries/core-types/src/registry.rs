@@ -20,6 +20,8 @@ pub struct NodeMetadata {
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
 	pub inject_scope: bool,
+	/// The macro appended its hidden `_runtime` and `_source` fields as the last two entries of `fields`.
+	pub async_source_fields: bool,
 }
 
 // Translation struct between macro and definition

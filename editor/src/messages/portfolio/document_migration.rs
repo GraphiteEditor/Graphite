@@ -1148,8 +1148,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	document.network_interface.migrate_async_source_inputs();
-
 	// The "Brush" wrapper network was replaced with the `brush` proto node directly. Convert old `Network("Brush")` instances to the proto node, forwarding all 3 inputs (Background, Trace, Cache) one-to-one.
 	// This must run as a pre-pass before the recursive iteration below: replacing the outer Brush's network impl orphans its child paths, and the recursive iteration would log errors for those stale paths.
 	let brush_layers: Vec<(NodeId, Vec<NodeId>)> = document
