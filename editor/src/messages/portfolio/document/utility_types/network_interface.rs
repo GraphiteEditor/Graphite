@@ -95,7 +95,6 @@ impl NodeNetworkInterface {
 			}
 		}
 	}
-
 }
 
 // Public immutable getters for the network interface
