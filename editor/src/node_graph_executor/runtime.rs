@@ -167,6 +167,11 @@ impl NodeRuntime {
 		}
 	}
 
+	#[cfg(test)]
+	pub fn take_dirty(&self) -> bool {
+		self.executor.take_dirty()
+	}
+
 	pub async fn run(&mut self) -> Option<Texture> {
 		let mut preferences = None;
 		let mut graph = None;
