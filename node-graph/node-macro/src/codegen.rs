@@ -994,21 +994,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
 	let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
-	let entries_reexport = match entries.is_empty() {
-		true => quote!(),
-		false => {
-			let entries_name = format_ident!("{}_entries", fn_name);
-			quote! {
-				#cfg
-				#[doc(hidden)]
-				pub use #mod_name::#entries_name;
-			}
-		}
-	};
 
 	let top_level = quote! {
-		#entries_reexport
-
 		#cfg
 		#[automatically_derived]
 		impl<#(#generics,)* #(#node_generics,)*> #core_types::node::Node<#ctx_ident> for #mod_name::#struct_name<#(#struct_type_params,)*>
