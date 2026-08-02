@@ -367,7 +367,7 @@ pub fn simplify_identifier_name(ty: &str) -> String {
 /// Converts a Rust-internal type name to its user-facing form.
 pub fn make_type_user_readable(ty: &str) -> String {
 	let ty = ty
-		.replace("Option<Arc<OwnedContextImpl>>", "Context")
+		.replace("ContextImpl", "Context")
 		.replace("Raster<CPU>", "Raster")
 		.replace("Raster<GPU>", "Raster")
 		.replace("DAffine2", "Transform")

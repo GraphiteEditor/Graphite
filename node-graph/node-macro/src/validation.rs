@@ -24,6 +24,15 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 fn validate_async_source(parsed: &ParsedNodeFn) {
 	let snapshot_ctx = matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 	let future_kernel = crate::codegen::is_source_kernel(&parsed.output_type);
+	if let Some(placeholder) = &parsed.attributes.placeholder
+		&& !parsed.is_async
+		&& !future_kernel
+	{
+		emit_error!(
+			placeholder.span(),
+			"`placeholder` applies only to async and source kernels; a synchronous node never reports `Partial`, so the stand-in is unused"
+		);
+	}
 	if parsed.is_async && future_kernel {
 		emit_error!(
 			parsed.output_type.span(),
