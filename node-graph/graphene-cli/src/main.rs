@@ -31,8 +31,8 @@ impl NodeGraphUpdateSender for UpdateLogger {
 struct TokioSpawner(Option<tokio::runtime::Runtime>);
 
 impl TokioSpawner {
-	fn new() -> Self {
-		Self(Some(tokio::runtime::Runtime::new().expect("Failed to start the async source runtime")))
+	fn new() -> Result<Self, std::io::Error> {
+		Ok(Self(Some(tokio::runtime::Runtime::new()?)))
 	}
 }
 
@@ -202,7 +202,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let preferences = EditorPreferences {
 		max_render_region_size: EditorPreferences::default().max_render_region_size,
 	};
-	let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(TokioSpawner::new()) as Box<DynSpawner>));
+	let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(TokioSpawner::new()?) as Box<DynSpawner>));
 	let (completion_sender, completion_receiver) = std::sync::mpsc::channel();
 	graph_runtime.set_notifier(Arc::new(move || {
 		let _ = completion_sender.send(());
