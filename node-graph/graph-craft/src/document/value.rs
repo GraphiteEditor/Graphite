@@ -2,7 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::Any as DAny;
-use brush_nodes::brush_stroke::BrushStroke;
+use brush_nodes::brush_stroke::{BrushStroke, BrushTrace};
 use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
@@ -66,6 +66,10 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
+			/// Stored compactly as a `Vec<f64>` of dash lengths, materializes as an `Item<DashPattern>` at runtime via `to_dynany`/`to_any`.
+			DashPattern(Vec<f64>),
+			/// Stored compactly as a `Vec<f64>` of corner values, materializes as an `Item<BoxCorners>` at runtime via `to_dynany`/`to_any`.
+			BoxCorners(Vec<f64>),
 			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
 			/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
@@ -119,6 +123,8 @@ macro_rules! tagged_value {
 					// =======================
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
 					Self::F64Array(values) => values.cache_hash(state),
+					Self::DashPattern(lengths) => lengths.cache_hash(state),
+					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
@@ -160,6 +166,8 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
+					Self::DashPattern(lengths) => Box::new(DashPattern::from(lengths)),
+					Self::BoxCorners(values) => Box::new(BoxCorners::from(values)),
 					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
 					Self::Gradient(stops) => Box::new(List::<Gradient>::new_from_element(stops)),
 					Self::BrushStrokes(strokes) => {
@@ -204,6 +212,8 @@ macro_rules! tagged_value {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
+					Self::DashPattern(lengths) => Arc::new(DashPattern::from(lengths)),
+					Self::BoxCorners(values) => Arc::new(BoxCorners::from(values)),
 					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
 					Self::Gradient(stops) => Arc::new(List::<Gradient>::new_from_element(stops)),
 					Self::BrushStrokes(strokes) => {
@@ -245,6 +255,8 @@ macro_rules! tagged_value {
 						Type::Concrete(td.clone())
 					}
 					Self::F64Array(_) => concrete!(f64),
+					Self::DashPattern(_) => concrete!(DashPattern),
+					Self::BoxCorners(_) => concrete!(BoxCorners),
 					Self::Color(_) => concrete!(Color),
 					Self::Gradient(_) => concrete!(Gradient),
 					Self::BrushStrokes(_) => concrete!(BrushStroke),
@@ -294,6 +306,8 @@ macro_rules! tagged_value {
 						None
 					}
 					Self::F64Array(_) => leveled::<f64>(),
+					Self::DashPattern(_) => scalar::<DashPattern>(),
+					Self::BoxCorners(_) => scalar::<BoxCorners>(),
 					Self::Color(_) => leveled::<Color>(),
 					Self::Gradient(_) => leveled::<Gradient>(),
 					Self::BrushStrokes(_) => leveled::<BrushStroke>(),
@@ -337,6 +351,8 @@ macro_rules! tagged_value {
 						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
 					}
 					Self::F64Array(values) => Ok(leveled_record_value_source(values)),
+					Self::DashPattern(lengths) => Ok(record_value_source(DashPattern::from(lengths))),
+					Self::BoxCorners(values) => Ok(record_value_source(BoxCorners::from(values))),
 					Self::Color(color) => Ok(leveled_record_value_source(vec![color])),
 					Self::Gradient(stops) => Ok(leveled_record_value_source(vec![stops])),
 					Self::BrushStrokes(strokes) => Ok(leveled_record_value_source(strokes)),
@@ -392,7 +408,20 @@ macro_rules! tagged_value {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
+					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(*downcast(input).unwrap())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(downcast::<Item<Color>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(downcast::<Item<Gradient>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
+					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -415,7 +444,20 @@ macro_rules! tagged_value {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
+					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<Vec<f64>>().unwrap().clone())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<List<f64>>().unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<Item<DashPattern>>().unwrap().element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*input.downcast_ref::<Color>().unwrap())),
+					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(*input.downcast_ref::<Item<Color>>().unwrap().element())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Gradient>().unwrap().clone())),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Item<Gradient>>().unwrap().element().clone())),
+					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
+					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -446,6 +488,8 @@ macro_rules! tagged_value {
 						if name == core_types::normalize_type_name(std::any::type_name::<List<Gradient>>()) { return Some(TaggedValue::Gradient(Gradient::default())) }
 						$( if name == core_types::normalize_type_name(std::any::type_name::<$ty>()) { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == core_types::normalize_type_name(std::any::type_name::<List<f64>>()) { return Some(TaggedValue::F64Array(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<DashPattern>()) { return Some(TaggedValue::DashPattern(Vec::new())) }
+						if name == core_types::normalize_type_name(std::any::type_name::<BoxCorners>()) { return Some(TaggedValue::BoxCorners(Vec::new())) }
 						if name == core_types::normalize_type_name(std::any::type_name::<List<BrushStroke>>()) { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Leveled inputs type by their element; each element name maps to the
 						// same tagged default as its legacy list form.
@@ -482,6 +526,8 @@ macro_rules! tagged_value {
 					Self::None => "()".to_string(),
 					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
 					Self::F64Array(values) => format!("F64Array({values:?})"),
+					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
+					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
@@ -580,8 +626,6 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	DashPattern(vector::style::DashPattern),
-	BoxCorners(vector::misc::BoxCorners),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
@@ -736,8 +780,8 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
-					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(DashPattern::from(string)),
-					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(BoxCorners::from(string)),
+					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
+					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
 					_ => return None,
 				};
 				Some(ty)
