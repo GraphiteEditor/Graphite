@@ -17,7 +17,7 @@ fn execute_to_final(executor: &DynamicExecutor, render_config: RenderConfig) -> 
 		GPoll::Final(value) => Ok(value),
 		GPoll::Fallback(boxed) => {
 			let (value, error) = *boxed;
-			log::error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+			log::warn!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
 			Ok(value)
 		}
 		GPoll::Partial(_) | GPoll::Pending => Err("Node graph evaluation did not complete".into()),
