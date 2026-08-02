@@ -17,7 +17,7 @@ use core_types::{
 	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, Vec4};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::graphic::{graphic_list_at, has_paint_at, is_paint_present, set_paint_attribute};
@@ -37,10 +37,9 @@ use skrifa::{GlyphId, MetadataProvider};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
-use std::ops::Deref;
+use std::ops::{Add, Deref, Mul, Sub};
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::{GradientSpreadMethod, MeshGradient, MeshSubpatch};
-use vello::peniko::color::AlphaColor;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2349,6 +2348,25 @@ impl Render for List<MeshGradient> {
 					let displacement_map_to_patch = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
 					let patch_to_displacement_map = displacement_map_to_patch.inverse();
 
+					// Padding for the source rectangle to allow displacement map's error caused by float calculation
+					const SOURCE_PADDING_IN_VIEWPORT_PX: f64 = 5.;
+					// Padding for the rendered patch to hide anti-aliasing gaps between patches
+					const PATCH_PADDING_IN_VIEWPORT_PX: f64 = 1.;
+					let map_to_viewport = render.transform * mesh_transform * displacement_map_to_patch;
+					let viewport_u_length = map_to_viewport.transform_vector2(DVec2::X).length();
+					let viewport_v_length = map_to_viewport.transform_vector2(DVec2::Y).length();
+					let padding_values = |target_padding_px: f64| {
+						let padding_u = target_padding_px / viewport_u_length;
+						let padding_v = target_padding_px / viewport_v_length;
+						let padded_x = -padding_u;
+						let padded_y = -padding_v;
+						let padded_width = 1. + 2. * padding_u;
+						let padded_height = 1. + 2. * padding_v;
+						[padded_x, padded_y, padded_width, padded_height]
+					};
+					let [source_padded_x, source_padded_y, source_padded_width, source_padded_height] = padding_values(SOURCE_PADDING_IN_VIEWPORT_PX);
+					let [patch_padded_x, patch_padded_y, patch_padded_width, patch_padded_height] = padding_values(PATCH_PADDING_IN_VIEWPORT_PX);
+
 					// Collect pairs from a position in a source unit rectangle and a position in the target coons patch.
 					let mut displacements: Vec<(DVec2, DVec2)> = vec![];
 					const MAP_SIZE: u32 = 128;
@@ -2361,7 +2379,7 @@ impl Render for List<MeshGradient> {
 							let t = (y as f64 + 0.5) / MAP_SIZE as f64;
 
 							// Position in the displaced result. This can be larger than [0, 1].
-							let target_pos = DVec2::new(s, t);
+							let target_pos = DVec2::new(source_padded_x + s * source_padded_width, source_padded_y + t * source_padded_height);
 							let target_mesh_pos = displacement_map_to_patch.transform_point2(target_pos);
 							// Calculate the original position where the target position is projected from. This should be [0, 1].
 							let initial_uv = inverse_seeds
@@ -2415,54 +2433,133 @@ impl Render for List<MeshGradient> {
 					data_url.push_str(preamble);
 					base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut data_url);
 
-					// Padding for the source rectangle to allow displacement map's error caused by float calculation
-					const SOURCE_PADDING_IN_VIEWPORT_PX: f64 = 5.;
-					// Padding for the rendered patch to hide anti-aliasing gaps between patches
-					const PATCH_PADDING_IN_VIEWPORT_PX: f64 = 1.;
-					let map_to_viewport = render.transform * mesh_transform * displacement_map_to_patch;
-					let viewport_u_length = map_to_viewport.transform_vector2(DVec2::X).length();
-					let viewport_v_length = map_to_viewport.transform_vector2(DVec2::Y).length();
-					let padding_values = |target_padding_px: f64| {
-						let padding_u = target_padding_px / viewport_u_length;
-						let padding_v = target_padding_px / viewport_v_length;
-						let padded_x = -padding_u;
-						let padded_y = -padding_v;
-						let padded_width = 1. + 2. * padding_u;
-						let padded_height = 1. + 2. * padding_v;
-						[padded_x, padded_y, padded_width, padded_height]
-					};
-					let [source_padded_x, source_padded_y, source_padded_width, source_padded_height] = padding_values(SOURCE_PADDING_IN_VIEWPORT_PX);
-					let [patch_padded_x, patch_padded_y, patch_padded_width, patch_padded_height] = padding_values(PATCH_PADDING_IN_VIEWPORT_PX);
+					// Create a unit rectangle with bicubic interpolated color.
+					// 4 u-direction gradients using 3 v-direction masks to approximate a bicubic Bezier surface.
+					// The key concept is that both source-over compositing with opaque color layers and Bezier curve forms a convex combination,
+					// which allows us to simulate the bicubic interpolation by stacking gradients and masks.
 
-					// linear gradient for the bottom line
-					write!(
+					// Define three alpha functions from the v-direction Bernstein basis weights.
+					// They compensate for attenuation accumulated through source-over compositing,
+					// making the final weights of the four color layers equal the Bernstein weights.
+					let alpha0 = |t: f32| (1. - t).powi(3);
+					let alpha1 = |t: f32| (3. * (1. - t).powi(2)) / (t.powi(2) - 3. * t + 3.);
+					let alpha2 = |t: f32| (3. * (1. - t)) / (3. - 2. * t);
+					let alpha_functions = [alpha0, alpha1, alpha2];
+
+					// Approximate these functions over [0, 1] using linear gradients with multiple stops.
+					// TODO: The functions contain no patch-specific color data, so their stop data can be reused for every patch.
+					fn linear_approximated_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, current_depth: usize) -> Vec<(f32, T)>
+					where
+						T: Copy + Add<Output = T> + Sub<Output = T> + Mul<f32, Output = T>,
+					{
+						const GRADIENT_ERROR_TOLERANCE: f32 = 1. / 255.;
+						const LINEAR_APPROXIMATION_SAMPLES: [f32; 3] = [0.25, 0.5, 0.75];
+						const MAX_RECURSION_DEPTH: usize = 8;
+
+						let start_result = func(start);
+						let end_result = func(end);
+
+						if start == end {
+							return vec![(start, start_result)];
+						}
+
+						let need_split = LINEAR_APPROXIMATION_SAMPLES.iter().any(|sample_pos| {
+							let sample = start + (end - start) * sample_pos;
+							let approximated = start_result + (end_result - start_result) * (*sample_pos);
+							let actual = func(sample);
+							error(approximated, actual) > GRADIENT_ERROR_TOLERANCE
+						});
+
+						if need_split && current_depth < MAX_RECURSION_DEPTH {
+							let mid = start + (end - start) * 0.5;
+							let mid_first_half = linear_approximated_points(func, error, start, mid, current_depth + 1);
+							let mid_second_half = linear_approximated_points(func, error, mid, end, current_depth + 1);
+							let mut points = mid_first_half;
+							// Both vectors contain mid, so skip the first point of the second half
+							points.extend(mid_second_half.into_iter().skip(1));
+							return points;
+						}
+
+						vec![(start, start_result), (end, end_result)]
+					}
+
+					fn gradient_stop_element(offset: f32, opacity: f32, gamma_color: [f32; 4]) -> String {
+						let offset = (offset.clamp(0., 1.) * 1_000_000.).round() / 1_000_000.;
+						let opacity = (opacity.clamp(0., 1.) * 1000.).round() / 1000.;
+						format!(
+							r##"<stop offset="{offset}" stop-color="#{}" stop-opacity="{opacity}"/>"##,
+							mesh_gamma_color_to_srgba8(gamma_color).to_rgb_hex(),
+						)
+					}
+
+					fn alpha_func_to_gradient_stops_string(func: &impl Fn(f32) -> f32) -> String {
+						let error_func = |a: f32, b: f32| (a - b).abs();
+						linear_approximated_points(func, &error_func, 0., 1., 0)
+							.into_iter()
+							.map(|(arg, result)| gradient_stop_element(arg, result, Color::WHITE.to_gamma_srgb_channels()))
+							.collect::<String>()
+					}
+
+					let alpha_mask_ids: [String; 3] = std::array::from_fn(|i| {
+						let alpha_func = alpha_functions[i];
+						let stops = alpha_func_to_gradient_stops_string(&alpha_func);
+						let id = format!("mg-am{i}-{unique_id}");
+
+						write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="mg-ag{i}-{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+						)
+						.unwrap();
+						write!(
 						&mut render.svg_defs,
-						r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-						mesh_gamma_color_to_srgba8(bottom_left_color.to_gamma_srgb_channels()).to_rgba_hex(),
-						mesh_gamma_color_to_srgba8(bottom_right_color.to_gamma_srgb_channels()).to_rgba_hex(),
+						r##"<mask id="{id}" x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha"><rect x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" fill="url(#mg-ag{i}-{unique_id})"/></mask>"##,
 					)
 					.unwrap();
 
-					// linear gradient for the top line
-					write!(
-						&mut render.svg_defs,
-						r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-						mesh_gamma_color_to_srgba8(top_left_color.to_gamma_srgb_channels()).to_rgba_hex(),
-						mesh_gamma_color_to_srgba8(top_right_color.to_gamma_srgb_channels()).to_rgba_hex(),
-					)
-					.unwrap();
+						id
+					});
 
-					// Vertical gradient mask to blend top/bottom gradients
-					write!(
-						&mut render.svg_defs,
-						r##"<linearGradient id="gm{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>"##,
-					)
-					.unwrap();
-					write!(
-						&mut render.svg_defs,
-						r##"<mask id="mm{unique_id}" x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha"><rect x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" fill="url(#gm{unique_id})"/></mask>"##,
-					)
-					.unwrap();
+					// Convert the corner color values and their u/v derivatives from Hermite form
+					// into a 4x4 bicubic Bezier control points.
+					let control_points = patch_evaluator.bicubic_bezier_control_points();
+
+					// Create four u-parametric Bezier color functions, one for each row in the v direction of the 4x4 control net.
+					let u_color_curves: [_; 4] = std::array::from_fn(|v| {
+						move |t: f32| {
+							let one_minus_t = 1. - t;
+
+							let b0 = one_minus_t.powi(3);
+							let b1 = 3. * t * one_minus_t.powi(2);
+							let b2 = 3. * t.powi(2) * one_minus_t;
+							let b3 = t.powi(3);
+
+							control_points[v][0] * b0 + control_points[v][1] * b1 + control_points[v][2] * b2 + control_points[v][3] * b3
+						}
+					});
+
+					fn u_color_curves_to_gradient_stops_string(func: &impl Fn(f32) -> Vec4) -> String {
+						let error_func = |a: Vec4, b: Vec4| (a - b).abs().max_element();
+						linear_approximated_points(func, &error_func, 0., 1., 0)
+							.into_iter()
+							.map(|(arg, result)| gradient_stop_element(arg, 1., result.to_array()))
+							.collect::<String>()
+					}
+
+					// Approximate these functions over [0, 1] using linear gradients with multiple stops,
+					// in the same manner as the alpha functions.
+					let u_color_curves_gradient_ids: [String; 4] = std::array::from_fn(|i| {
+						let curve = &u_color_curves[i];
+						let stops = u_color_curves_to_gradient_stops_string(curve);
+						let id = format!("mg-cg{i}-{unique_id}");
+
+						write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+						)
+						.unwrap();
+
+						id
+					});
 
 					write!(
 						&mut render.svg_defs,
@@ -2477,10 +2574,10 @@ impl Render for List<MeshGradient> {
 							color-interpolation-filters="sRGB">
 							<feImage
 								href="{data_url}"
-								x="0"
-								y="0"
-								width="1"
-								height="1"
+								x="{source_padded_x}"
+								y="{source_padded_y}"
+								width="{source_padded_width}"
+								height="{source_padded_height}"
 								preserveAspectRatio="none"
 								result="gmmap{unique_id}"/>
 							<feDisplacementMap
@@ -2507,10 +2604,10 @@ impl Render for List<MeshGradient> {
 						&mut render.svg_defs,
 						r##"<mask
 						id="mc{unique_id}"
-						x="0"
-						y="0"
-						width="1"
-						height="1"
+						x="{source_padded_x}"
+						y="{source_padded_y}"
+						width="{source_padded_width}"
+						height="{source_padded_height}"
 						maskUnits="userSpaceOnUse"
 						maskContentUnits="userSpaceOnUse"
 						mask-type="alpha">
@@ -2538,21 +2635,18 @@ impl Render for List<MeshGradient> {
 											attributes.push("filter", format!("url(#fd{unique_id})"));
 										},
 										|render| {
-											render.leaf_tag("rect", |attributes| {
-												attributes.push("x", source_padded_x.to_string());
-												attributes.push("y", source_padded_y.to_string());
-												attributes.push("width", source_padded_width.to_string());
-												attributes.push("height", source_padded_height.to_string());
-												attributes.push("fill", format!("url(#gb{unique_id})"));
-											});
-
-											render.leaf_tag("rect", |attributes| {
-												attributes.push("x", source_padded_x.to_string());
-												attributes.push("y", source_padded_y.to_string());
-												attributes.push("width", source_padded_width.to_string());
-												attributes.push("height", source_padded_height.to_string());
-												attributes.push("fill", format!("url(#gt{unique_id})"));
-												attributes.push("mask", format!("url(#mm{unique_id})"));
+											u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
+												render.leaf_tag("rect", |attributes| {
+													attributes.push("x", source_padded_x.to_string());
+													attributes.push("y", source_padded_y.to_string());
+													attributes.push("width", source_padded_width.to_string());
+													attributes.push("height", source_padded_height.to_string());
+													attributes.push("fill", format!("url(#{gradient_id})"));
+													if i != 3 {
+														let mask_id = alpha_mask_ids[i].clone();
+														attributes.push("mask", format!("url(#{mask_id})"));
+													}
+												});
 											});
 										},
 									);

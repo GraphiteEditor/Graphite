@@ -1,6 +1,6 @@
 use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
-use glam::{DAffine2, DMat2, DVec2, Vec4};
+use glam::{DAffine2, DMat2, DVec2, Mat4, Vec4};
 use kurbo::{ParamCurve, PathSeg};
 
 use crate::{
@@ -763,6 +763,39 @@ impl MeshPatchEvaluator {
 		}
 
 		uv.clamp(DVec2::ZERO, DVec2::ONE)
+	}
+
+	/// Returns the 4x4 control points of the patch in bicubic Bezier surface representation.
+	pub fn bicubic_bezier_control_points(&self) -> [[Vec4; 4]; 4] {
+		let [top_length, bottom_length, left_length, right_length] = self.lengths;
+		let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = self.gamma_colors;
+		let [top_left_color_slope, top_right_color_slope, bottom_left_color_slope, bottom_right_color_slope] = self.color_slopes;
+
+		let hermite_channels: [Mat4; 4] = std::array::from_fn(|channel| {
+			Mat4::from_cols(
+				Vec4::new(
+					top_left_color[channel],
+					top_left_color_slope.v[channel] * left_length,
+					bottom_left_color[channel],
+					bottom_left_color_slope.v[channel] * left_length,
+				),
+				Vec4::new(top_left_color_slope.u[channel] * top_length, 0., bottom_left_color_slope.u[channel] * bottom_length, 0.),
+				Vec4::new(
+					top_right_color[channel],
+					top_right_color_slope.v[channel] * right_length,
+					bottom_right_color[channel],
+					bottom_right_color_slope.v[channel] * right_length,
+				),
+				Vec4::new(top_right_color_slope.u[channel] * top_length, 0., bottom_right_color_slope.u[channel] * bottom_length, 0.),
+			)
+		});
+
+		let hermite_to_bezier_axis = Mat4::from_cols(Vec4::new(1., 1., 0., 0.), Vec4::new(0., 1. / 3., 0., 0.), Vec4::new(0., 0., 1., 1.), Vec4::new(0., 0., -1. / 3., 0.));
+		let hermite_to_bezier_axis_transpose = hermite_to_bezier_axis.transpose();
+
+		let points_mat = hermite_channels.map(|hermite| hermite_to_bezier_axis * hermite * hermite_to_bezier_axis_transpose);
+
+		std::array::from_fn(|v| std::array::from_fn(|u| Vec4::new(points_mat[0].col(u)[v], points_mat[1].col(u)[v], points_mat[2].col(u)[v], points_mat[3].col(u)[v])))
 	}
 }
 
