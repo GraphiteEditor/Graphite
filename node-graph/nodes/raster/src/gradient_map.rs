@@ -17,18 +17,19 @@ fn gradient_map<T: Adjust<Color> + Clone + Send + Sync + core_types::CacheHash +
 		Gradient,
 	)]
 	mut image: T,
-	gradient: IList<Gradient>,
+	#[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>,
 	reverse: bool,
 ) -> T {
 	if gradient.is_empty() {
 		return image;
 	}
+	let spread_method = gradient.lane(0).attr::<vector_types::markers::SpreadMethod>();
 	let gradient = gradient.element_ref(0);
 
 	image.adjust(|color| {
 		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64)
+		gradient.evaluate(intensity as f64, spread_method)
 	});
 
 	image

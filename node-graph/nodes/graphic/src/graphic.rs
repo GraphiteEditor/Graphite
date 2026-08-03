@@ -16,7 +16,7 @@ use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
 
 use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
-use vector_types::{Gradient, GradientStop, ReferencePoint};
+use vector_types::{Gradient, ReferencePoint};
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
 /// out of range resolves to nothing.
@@ -950,16 +950,7 @@ pub fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"), name("Colors to Gradient"))]
 fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Gradient {
-	let colors = colors.into_flattened_list::<Color>();
-	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
-	match colors.len() {
-		0 => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		1 => Gradient::new(vec![
-			stop(0., colors.element(0).copied().unwrap_or(Color::BLACK)),
-			stop(1., colors.element(0).copied().unwrap_or(Color::BLACK)),
-		]),
-		total => Gradient::new(colors.into_iter().enumerate().map(|(index, row)| stop(index as f64 / (total - 1) as f64, row.into_element()))),
-	}
+	Gradient::from(colors.into_flattened_list::<Color>())
 }
 
 #[cfg(test)]

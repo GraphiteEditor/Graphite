@@ -61,7 +61,7 @@ fn assign_color_at(gradient: &Gradient, position: usize, length: usize, randomiz
 			_ => position as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 		},
 	};
-	gradient.evaluate(factor)
+	gradient.evaluate(factor, Default::default())
 }
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
@@ -77,6 +77,7 @@ fn assign_colors<'e>(
 	/// Whether to style the stroke.
 	stroke: bool,
 	/// The range of colors to select from.
+	#[default(Color::BLACK, Color::WHITE)]
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	gradient: IList<Gradient>,
 	/// Whether to reverse the gradient.
@@ -323,7 +324,7 @@ fn fill<'e>(
 	#[default(Color::BLACK)]
 	fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	_backup_gradient: IList<Gradient>,
+	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_has_transform: bool,
@@ -344,7 +345,7 @@ fn fill_graphic_leveled<'e>(
 	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
 	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	_backup_gradient: IList<Gradient>,
+	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
 	_spread_method: GradientSpreadMethod,
 	_has_transform: bool,
@@ -2950,14 +2951,12 @@ fn morph_core(flattened: List<Vector>, snapshot: List<Graphic<'static>>, progres
 		match (a.element(0), b.element(0)) {
 			(Some(Graphic::Color(color_a)), Some(Graphic::Color(color_b))) => Some(List::new_from_element(Graphic::from(color_a.lerp(color_b, time as f32)))),
 			(Some(Graphic::Color(color_a)), Some(Graphic::Gradient(stops_b))) => {
-				let mut solid_to_gradient = stops_b.clone();
-				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
+				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				Some(gradient_paint(b, stops, None))
 			}
 			(Some(Graphic::Gradient(stops_a)), Some(Graphic::Color(color_b))) => {
-				let mut gradient_to_solid = stops_a.clone();
-				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
+				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				Some(gradient_paint(a, stops, None))
 			}

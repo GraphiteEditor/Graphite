@@ -1199,7 +1199,7 @@ fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: Str
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: Gradient) -> Gradient {
+fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Gradient) -> Gradient {
 	gradient
 }
 
@@ -1215,16 +1215,43 @@ fn spread_method(_: impl Ctx, gradient: Gradient, spread_method: vector_types::G
 	(gradient, Attr(spread_method))
 }
 
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+/// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), gradient: IList<Gradient>, position: Fraction) -> Result<IList<Color>, Interrupt> {
+fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: IList<f64>) -> Gradient {
+	let positions: Vec<f64> = positions.iter().collect();
+	gradient.set_positions(&positions);
+	gradient
+}
+
+/// Sets the interpolation midpoint for each interval between gradient stops, a factor from 0 to 1 where the 0.5 default means linear interpolation and another value skews the transition speed toward one stop or the other.
+///
+/// The final stop belongs to no interval so its midpoint is ignored.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
+#[node_macro::node(category("Color"))]
+fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: IList<f64>) -> Gradient {
+	let midpoints: Vec<f64> = midpoints.iter().collect();
+	gradient.set_midpoints(&midpoints);
+	gradient
+}
+
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `spread_method` attribute: Pad (default), Reflect, or Repeat.
+#[node_macro::node(category("Color"))]
+fn sample_gradient(
+	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
+	_primary: (),
+	#[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>,
+	position: Fraction,
+) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
 	if gradient.is_empty() || ctx.index() != 0 {
 		return Err(GraphError::past_end().into());
 	}
 
-	let position = position.clamp(0., 1.);
-	Ok(gradient.element_ref(0).evaluate(position))
+	let spread_method = gradient.lane(0).attr::<SpreadMethodAttr>();
+	Ok(gradient.element_ref(0).evaluate(position, spread_method))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.

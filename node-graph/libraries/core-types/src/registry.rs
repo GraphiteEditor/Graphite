@@ -1,7 +1,7 @@
 use crate::concrete;
 use crate::context::{Context, ContextImpl};
 use crate::node::Node;
-use crate::{ContextFeature, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
+use crate::{Color, ContextFeature, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
 use dyn_any::DynAny;
 use graphene_hash::CacheHash;
 pub use no_std_types::registry::types;
@@ -35,6 +35,8 @@ pub struct FieldMetadata {
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,
+	/// The default expression's colors, resolved by the macro when the expression consists solely of `Color::*` constants.
+	pub default_colors: Option<&'static [Color]>,
 	pub default_type: Option<Type>,
 	/// The slider's suggested extent, from `#[soft(a..b)]`. Typed values may exceed it.
 	pub number_soft_min: Option<f64>,
