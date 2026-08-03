@@ -35,6 +35,14 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		stops: Gradient,
 	},
+	GradientPositionsSet {
+		layer: LayerNodeIdentifier,
+		positions: Vec<f64>,
+	},
+	GradientMidpointsSet {
+		layer: LayerNodeIdentifier,
+		midpoints: Vec<f64>,
+	},
 	GradientTransformSet {
 		layer: LayerNodeIdentifier,
 		transform: DAffine2,

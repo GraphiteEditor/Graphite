@@ -1,0 +1,174 @@
+/// Constructs a `KeyStates` bit vector and sets the bit flags for all the given modifier `Key`s.
+macro_rules! modifiers {
+	($($m:ident),*) => {{
+		#[allow(unused_mut)]
+		let mut state = KeyStates::new();
+		$(
+		state.set(Key::$m as usize);
+		)*
+		state
+	}};
+}
+
+/// Builds a slice of `MappingEntry` struct(s) that are used to:
+/// - ...dispatch the given `action_dispatch` as an output `Message` if its discriminant is a currently available action
+/// - ...when the `InputMapperMessage` enum variant, as specified at the start and followed by a semicolon, is received
+/// - ...while the optional `modifiers` being pressed.
+///
+/// Syntax:
+/// ```rs
+/// entry_for_layout!(Key; modifiers?: Key[], refresh_keys?: Key[], action_dispatch: Message)
+/// ```
+///
+/// The actions system controls which actions are currently available. Those are provided by the different message handlers based on the current application state and context.
+/// Each handler adds or removes actions in the form of message discriminants. Here, we tie an input condition (such as a hotkey) to an action's full message.
+/// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
+macro_rules! entry {
+	// Pattern with canonical parameter
+	(
+		$input:expr_2021;
+		$(modifiers=[$($modifier:ident),*],)?
+		$(refresh_keys=[$($refresh:ident),* $(,)?],)?
+		canonical,
+		$(disabled=$disabled:expr,)?
+		action_dispatch=$action_dispatch:expr_2021$(,)?
+	) => {
+		entry!(
+			$input;
+			$($($modifier),*)?;
+			$($($refresh),*)?;
+			$action_dispatch;
+			true;
+			false $( || $disabled )?
+		)
+	};
+
+	// Pattern without canonical parameter
+	(
+		$input:expr_2021;
+		$(modifiers=[$($modifier:ident),*],)?
+		$(refresh_keys=[$($refresh:ident),* $(,)?],)?
+		$(disabled=$disabled:expr,)?
+		action_dispatch=$action_dispatch:expr_2021$(,)?
+	) => {
+		entry!(
+			$input;
+			$($($modifier),*)?;
+			$($($refresh),*)?;
+			$action_dispatch;
+			false;
+			false $( || $disabled )?
+		)
+	};
+
+	// Implementation macro to avoid code duplication
+	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr; $disabled:expr) => {
+		&[&[
+			// Cause the `action_dispatch` message to be sent when the specified input occurs.
+			MappingEntry {
+				action: $action_dispatch.into(),
+				input: $input,
+				modifiers: modifiers!($($modifier),*),
+				canonical: $canonical,
+				disabled: $disabled,
+			},
+
+			$(
+			MappingEntry {
+				action: $action_dispatch.into(),
+				input: InputMapperMessage::KeyDown(Key::$refresh),
+				modifiers: modifiers!(),
+				canonical: $canonical,
+				disabled: $disabled,
+			},
+			MappingEntry {
+				action: $action_dispatch.into(),
+				input: InputMapperMessage::KeyUp(Key::$refresh),
+				modifiers: modifiers!(),
+				canonical: $canonical,
+				disabled: $disabled,
+			},
+			MappingEntry {
+				action: $action_dispatch.into(),
+				input: InputMapperMessage::KeyDownNoRepeat(Key::$refresh),
+				modifiers: modifiers!(),
+				canonical: $canonical,
+				disabled: $disabled,
+			},
+			MappingEntry {
+				action: $action_dispatch.into(),
+				input: InputMapperMessage::KeyUpNoRepeat(Key::$refresh),
+				modifiers: modifiers!(),
+				canonical: $canonical,
+				disabled: $disabled,
+			},
+			)*
+		]]
+	};
+}
+
+/// Constructs a `KeyMappingEntries` list for each input type and inserts every given entry into the list corresponding to its input type.
+/// Returns a tuple of `KeyMappingEntries` in the order:
+/// ```rs
+/// (key_up, key_down, double_click, wheel_scroll, pointer_move)
+/// ```
+macro_rules! mapping {
+	[$($entry:expr_2021),* $(,)?] => {{
+		let mut key_up = KeyMappingEntries::key_array();
+		let mut key_down = KeyMappingEntries::key_array();
+		let mut key_up_no_repeat = KeyMappingEntries::key_array();
+		let mut key_down_no_repeat = KeyMappingEntries::key_array();
+		let mut double_click = KeyMappingEntries::mouse_buttons_arrays();
+		let mut wheel_scroll = KeyMappingEntries::new();
+		let mut pointer_move = KeyMappingEntries::new();
+		let mut pointer_shake = KeyMappingEntries::new();
+
+		$(
+		// Each of the many entry slices, one specified per action
+		for entry_slice in $entry {
+			// Each entry in the slice (usually just one, except when `refresh_keys` adds additional key entries)
+			for entry in entry_slice.into_iter() {
+				if entry.disabled {
+					continue;
+				}
+
+				let corresponding_list = match entry.input {
+					InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
+					InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
+					InputMapperMessage::KeyDownNoRepeat(key) => &mut key_down_no_repeat[key as usize],
+					InputMapperMessage::KeyUpNoRepeat(key) => &mut key_up_no_repeat[key as usize],
+					InputMapperMessage::DoubleClick(key) => &mut double_click[key as usize],
+					InputMapperMessage::WheelScroll => &mut wheel_scroll,
+					InputMapperMessage::PointerMove => &mut pointer_move,
+					InputMapperMessage::PointerShake => &mut pointer_shake,
+				};
+				// Push each entry to the corresponding `KeyMappingEntries` list for its input type
+				corresponding_list.push(entry.clone());
+			}
+		}
+		)*
+
+		(key_up, key_down, key_up_no_repeat, key_down_no_repeat, double_click, wheel_scroll, pointer_move, pointer_shake)
+	}};
+}
+
+/// Constructs an `ActionShortcut` macro with a certain `Action` variant, conveniently wrapped in `Some()`.
+macro_rules! action_shortcut {
+	($action:expr_2021) => {
+		Some(crate::messages::input_mapper::utility_types::misc::ActionShortcut::Action($action.into()))
+	};
+}
+
+macro_rules! action_shortcut_manual {
+	($($keys:expr),*) => {
+		Some(crate::messages::input_mapper::utility_types::misc::ActionShortcut::Shortcut(
+			crate::messages::input_mapper::utility_types::input_keyboard::LabeledShortcut(vec![$($keys.into()),*]).into(),
+		))
+	};
+}
+
+pub(crate) use action_shortcut;
+pub(crate) use action_shortcut_manual;
+pub(crate) use entry;
+pub(crate) use mapping;
+pub(crate) use modifiers;
