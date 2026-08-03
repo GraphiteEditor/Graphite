@@ -699,6 +699,12 @@ attribute! {
 	/// glyph origin so it survives 'Index Elements' filtering. The Text tool reads this to
 	/// position its drag cage.
 	pub EditorTextFrame("editor:text_frame"): DAffine2;
+	/// Gradient stop's position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
+	/// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
+	pub Position("position"): f64;
+	/// Gradient stop's midpoint, a factor from 0 to 1 across the distance to the next stop,
+	/// on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored.
+	pub Midpoint("midpoint"): f64 = 0.5;
 	/// Byte offset where a regex match begins ('Regex Find All' and 'Regex Capture' text nodes).
 	pub Start("start"): u64;
 	/// Byte offset where a regex match ends ('Regex Find All' and 'Regex Capture' text nodes).
