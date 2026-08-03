@@ -15,7 +15,7 @@ use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::DashPattern;
-use graphic_types::vector_types::vector::style::Gradient;
+use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -94,10 +94,10 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
-			/// Stored as the `{ color, position?, midpoint? }` stops struct, materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
-			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
+			/// Stored as the `GradientRamp` exchange struct (nested `{ stops: { color, position?, midpoint? } }`), materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
+			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under this same `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
-			Gradient(Gradient),
+			Gradient(GradientRamp),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as the single-value `Item<BrushTrace>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
@@ -144,7 +144,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => lengths.cache_hash(state),
 					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
-					Self::Gradient(stops) => stops.cache_hash(state),
+					Self::Gradient(ramp) => ramp.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
@@ -208,7 +208,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Box::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::Color(color) => Box::new(Item::new_from_element(color)),
-					Self::Gradient(stops) => Box::new(Item::new_from_element(stops)),
+					Self::Gradient(ramp) => Box::new(Item::new_from_element(Gradient::from(ramp))),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -272,7 +272,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::Color(color) => Arc::new(Item::new_from_element(color)),
-					Self::Gradient(stops) => Arc::new(Item::new_from_element(stops)),
+					Self::Gradient(ramp) => Arc::new(Item::new_from_element(Gradient::from(ramp))),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -342,8 +342,8 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*downcast(input).unwrap())),
 					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(downcast::<Item<Color>>(input).unwrap().into_element())),
-					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(*downcast(input).unwrap())),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(downcast::<Item<Gradient>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(GradientRamp::from(downcast::<Item<Gradient>>(input).unwrap().into_element()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					// =======================
@@ -378,8 +378,8 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*input.downcast_ref::<Color>().unwrap())),
 					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(*input.downcast_ref::<Item<Color>>().unwrap().element())),
-					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Gradient>().unwrap().clone())),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Item<Gradient>>().unwrap().element().clone())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap().element()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					// =======================
@@ -407,7 +407,7 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
-						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::Gradient(Gradient::default())) }
+						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::Gradient(GradientRamp::default())) }
 						if name == std::any::type_name::<DashPattern>() { return Some(TaggedValue::DashPattern(Vec::new())) }
 						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
@@ -464,7 +464,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
-					Self::Gradient(stops) => format!("Gradient({stops:?})"),
+					Self::Gradient(ramp) => format!("Gradient({ramp:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
@@ -690,7 +690,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
 					// The Fill/Stroke paint wires carry `Graphic` or `Gradient` elements, so a paint default parses through the element recursion as a color or gradient literal
 					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
-					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(TaggedValue::Gradient)?,
+					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(|gradient| TaggedValue::Gradient(gradient.into()))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
@@ -737,7 +737,7 @@ impl TaggedValue {
 ///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
 ///     - empty → `TaggedValue::TypeDefault(list!(Vector))`
 /// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::Gradient` (gradient), or `TaggedValue::no_paint()` (none)
-/// - `Gradient` (or alias `GradientTable`/`GradientPositions`/`GradientStops`) → `TaggedValue::LegacyGradient` (ancient full struct) or `TaggedValue::Gradient` (stops shapes, unwrapped from the legacy table form)
+/// - `Gradient` (or alias `GradientTable`/`GradientPositions`/`GradientStops`) → `TaggedValue::LegacyGradient` (ancient full struct) or `TaggedValue::Gradient` (ramp and legacy stops shapes, unwrapped from the legacy table form)
 /// - `TypeDefault` with the old bare-`TypeDescriptor` payload → the same variant wrapping a `Type` (name-encoded `List` normalized to structural)
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
@@ -799,14 +799,14 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 						return Ok(MemoHash::new(TaggedValue::Color(color)));
 					}
 					if let Some(gradient) = payload.get("Gradient") {
-						let gradient: Gradient = serde_json::from_value(gradient.clone()).map_err(serde::de::Error::custom)?;
-						return Ok(MemoHash::new(TaggedValue::Gradient(gradient)));
+						let ramp = graphic_types::migrations::migrate_to_gradient_ramp(gradient.clone()).map_err(serde::de::Error::custom)?;
+						return Ok(MemoHash::new(TaggedValue::Gradient(ramp)));
 					}
 				}
 				return Ok(MemoHash::new(TaggedValue::no_paint()));
 			}
 			// The gradient tags carried several shapes over time, disambiguated here: the ancient full struct (`start`/`end` keys) becomes `LegacyGradient`,
-			// while the current stops struct, the old tuple list, and the legacy one-element table wrapper all parse as the stops value directly
+			// while the current ramp, the flat stops struct, the old tuple list, and the legacy one-element table wrapper all parse as the ramp value directly
 			"Gradient" | "GradientTable" | "GradientPositions" | "GradientStops" => {
 				let table_element = content
 					.as_object()
@@ -817,7 +817,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 				if let Some(array) = table_element
 					&& array.is_empty()
 				{
-					return Ok(MemoHash::new(TaggedValue::Gradient(Gradient::default())));
+					return Ok(MemoHash::new(TaggedValue::Gradient(GradientRamp::default())));
 				}
 
 				let payload = table_element.and_then(|array| array.first()).unwrap_or(content);
@@ -827,8 +827,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					return Ok(MemoHash::new(TaggedValue::LegacyGradient(gradient)));
 				}
 
-				let gradient: Gradient = serde_json::from_value(payload.clone()).map_err(serde::de::Error::custom)?;
-				return Ok(MemoHash::new(TaggedValue::Gradient(gradient)));
+				let ramp = graphic_types::migrations::migrate_to_gradient_ramp(payload.clone()).map_err(serde::de::Error::custom)?;
+				return Ok(MemoHash::new(TaggedValue::Gradient(ramp)));
 			}
 			_ => {}
 		}
@@ -1026,5 +1026,76 @@ mod paint_default_parsing {
 			let value = deserialize_tagged_value_with_legacy_migration(&mut deserializer).expect("The legacy payload should deserialize");
 			assert!(value.is_no_paint(), "The legacy payload `{payload}` should migrate to the no-paint choice");
 		}
+	}
+}
+
+#[cfg(test)]
+mod gradient_shape_migration {
+	use super::*;
+
+	fn load(payload: serde_json::Value) -> TaggedValue {
+		deserialize_tagged_value_with_legacy_migration(payload)
+			.expect("The gradient payload should deserialize")
+			.into_inner()
+			.as_ref()
+			.clone()
+	}
+
+	fn white() -> serde_json::Value {
+		serde_json::to_value(Color::WHITE).unwrap()
+	}
+
+	#[test]
+	fn modern_ramp_payload_round_trips() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		gradient.set_positions(&[0.2, 0.9]);
+		let value = TaggedValue::Gradient(GradientRamp::from(gradient));
+
+		let json = serde_json::to_value(&value).unwrap();
+		assert!(json.get("Gradient").and_then(|payload| payload.get("stops")).is_some(), "the payload should nest its stops: {json}");
+		assert_eq!(load(json), value);
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	#[test]
+	fn legacy_flat_stops_parse_faithfully() {
+		let json = serde_json::json!({ "Gradient": { "color": [white(), white()], "position": [0., 0.25], "midpoint": [0.5, 0.5] } });
+		let TaggedValue::Gradient(ramp) = load(json) else {
+			panic!("the flat stops should become a gradient ramp value")
+		};
+
+		let gradient = Gradient::from(ramp);
+		assert_eq!(gradient.positions(), vec![0., 0.25]);
+		assert!(gradient.has_midpoint_attribute(), "the flat form must parse faithfully");
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	#[test]
+	fn legacy_tuple_stops_parse_with_defaults_elided() {
+		let json = serde_json::json!({ "Gradient": [[0., white()], [1., white()]] });
+		let TaggedValue::Gradient(ramp) = load(json) else {
+			panic!("the tuple stops should become a gradient ramp value")
+		};
+
+		let gradient = Gradient::from(ramp);
+		assert_eq!(gradient.positions(), vec![0., 1.]);
+		assert!(!gradient.has_position_attribute(), "even legacy tuple positions should elide");
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	#[test]
+	fn empty_legacy_gradient_table_degrades_to_the_default() {
+		let json = serde_json::json!({ "GradientTable": { "element": [] } });
+		assert_eq!(load(json), TaggedValue::Gradient(GradientRamp::default()));
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	#[test]
+	fn ancient_full_struct_routes_to_legacy_gradient() {
+		let json = serde_json::json!({ "Gradient": { "stops": [[0., white()], [1., white()]], "gradient_type": "Linear", "start": [0., 0.], "end": [1., 0.] } });
+		let TaggedValue::LegacyGradient(legacy) = load(json) else {
+			panic!("the ancient full struct should become a legacy gradient value")
+		};
+		assert_eq!(Gradient::from(legacy.stops).positions(), vec![0., 1.], "the nested tuple stops should parse through the field adapter");
 	}
 }

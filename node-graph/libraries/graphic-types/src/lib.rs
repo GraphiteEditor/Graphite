@@ -12,6 +12,9 @@ pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {
 	use crate::Vector;
+	use core_types::Color;
+	use vector_types::gradient::GradientStops;
+	use vector_types::{Gradient, GradientRamp};
 
 	// Storing legacy structs that are only used in document migration.
 	// TODO: Eventually remove this document upgrade code
@@ -20,11 +23,12 @@ pub mod migrations {
 		use dyn_any::DynAny;
 		use glam::{DAffine2, DVec2};
 		use vector_types::vector::{PointDomain, RegionDomain, SegmentDomain, misc::HandleId, style::Stroke};
-		use vector_types::{Gradient, Vector, vector};
+		use vector_types::{GradientRamp, Vector, vector};
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 		pub struct LegacyGradient {
-			pub stops: Gradient,
+			#[serde(deserialize_with = "crate::migrations::migrate_to_gradient_ramp")]
+			pub stops: GradientRamp,
 			pub gradient_type: vector::style::GradientType,
 			pub start: DVec2,
 			pub end: DVec2,
@@ -139,6 +143,33 @@ pub mod migrations {
 			}),
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::List(list) => list.element.into_iter().next(),
+		})
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Recovers a [`GradientRamp`] from any of its on-disk shapes: the current nested form, the flat stops struct
+	/// that preceded it, or the ancient position-color tuple list (whose even positions elide back to absence).
+	pub fn migrate_to_gradient_ramp<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientRamp, D::Error> {
+		use serde::Deserialize;
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum GradientRampFormat {
+			Ramp(GradientRamp),
+			FlatStops(GradientStops<Color>),
+			Tuples(Vec<(f64, Color)>),
+		}
+
+		Ok(match GradientRampFormat::deserialize(deserializer)? {
+			GradientRampFormat::Ramp(ramp) => ramp,
+			GradientRampFormat::FlatStops(stops) => GradientRamp::from(stops),
+			GradientRampFormat::Tuples(stops) => {
+				let position: Vec<f64> = stops.iter().map(|(position, _)| *position).collect();
+				let mut gradient = Gradient::from(stops.into_iter().map(|(_, color)| color).collect::<Vec<_>>());
+				gradient.set_positions(&position);
+				gradient.elide_default_attributes();
+				GradientRamp::from(gradient)
+			}
 		})
 	}
 

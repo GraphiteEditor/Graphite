@@ -316,14 +316,14 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			.get(&fill_node_id)
 			.and_then(|node| node.input(graphene_std::vector::fill::FillInput))
 			.and_then(|input| input.as_value())
-			.and_then(|value| if let TaggedValue::Gradient(gradient) = value { Some(gradient.clone()) } else { None });
+			.and_then(|value| if let TaggedValue::Gradient(ramp) = value { Some(Gradient::from(ramp)) } else { None });
 	}
 
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
-	let TaggedValue::Gradient(stops) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
+	let TaggedValue::Gradient(ramp) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
 		return None;
 	};
-	let mut stops = stops.clone();
+	let mut stops = Gradient::from(ramp);
 
 	// The chain's stop placement comes from the closest-to-layer 'Gradient Positions'/'Gradient Midpoints' nodes,
 	// matching the runtime where each later node overwrites the whole attribute
@@ -662,10 +662,10 @@ pub struct FillNodeGradient {
 pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<FillNodeGradient> {
 	use graphene_std::vector::fill;
 
-	let TaggedValue::Gradient(stops) = fill_node.input(fill::FillInput)?.as_value()? else {
+	let TaggedValue::Gradient(ramp) = fill_node.input(fill::FillInput)?.as_value()? else {
 		return None;
 	};
-	let stops = stops.clone();
+	let stops = Gradient::from(ramp);
 	let gradient_type = match fill_node.input(fill::GradientTypeInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientType(value)) => value,
 		_ => GradientType::default(),
@@ -731,7 +731,7 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 
 			match fill_node.input(graphene_std::vector::fill::FillInput)?.as_value()? {
 				TaggedValue::Color(color) => Some(FillChoice::Solid(*color)),
-				TaggedValue::Gradient(stops) => Some(FillChoice::Gradient(stops.clone())),
+				TaggedValue::Gradient(ramp) => Some(FillChoice::Gradient(ramp.clone())),
 				value if value.is_no_paint() => Some(FillChoice::None),
 				_ => None,
 			}
@@ -815,7 +815,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 		match &fill_choice {
 			FillChoice::None => responses.add(GraphOperationMessage::FillColorSet { layer, color: None }),
 			FillChoice::Solid(color) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
-			FillChoice::Gradient(stops) => {
+			FillChoice::Gradient(ramp) => {
 				use graphene_std::vector::fill;
 				let fill_parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(fill::IDENTIFIER);
 
@@ -836,7 +836,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
-					gradient: stops.clone(),
+					gradient: Gradient::from(ramp),
 					gradient_type,
 					spread_method,
 					transform,

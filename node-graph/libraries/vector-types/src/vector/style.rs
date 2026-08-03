@@ -9,10 +9,10 @@ use dyn_any::DynAny;
 use glam::DAffine2;
 use std::f64::consts::{PI, TAU};
 
-/// The editor's in-memory paint picker state, storing color or gradient stops without gradient placement metadata.
+/// The editor's in-memory paint picker state, storing a color or gradient ramp without gradient placement metadata.
 /// Not stored in documents: paint inputs hold the picked value as a plain color, gradient, or no-paint type default.
 ///
-/// Can be None, a solid [Color], or a linear/radial [Gradient].
+/// Can be None, a solid [Color], or the [`GradientRamp`] of a linear/radial gradient.
 ///
 /// In the future we'll probably also add a pattern fill.
 ///
@@ -24,7 +24,7 @@ pub enum FillChoice {
 	#[default]
 	None,
 	Solid(Color),
-	Gradient(Gradient),
+	Gradient(GradientRamp),
 }
 
 // TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
@@ -44,7 +44,7 @@ impl From<&FillChoice> for FillChoiceUI {
 		match value {
 			FillChoice::None => Self::None,
 			FillChoice::Solid(color) => Self::Solid(SRGBA8::from(*color)),
-			FillChoice::Gradient(stops) => Self::Gradient(stops.into()),
+			FillChoice::Gradient(ramp) => Self::Gradient(ramp.into()),
 		}
 	}
 }
@@ -54,7 +54,7 @@ impl From<&FillChoiceUI> for FillChoice {
 		match value {
 			FillChoiceUI::None => Self::None,
 			FillChoiceUI::Solid(srgba) => Self::Solid(Color::from(*srgba)),
-			FillChoiceUI::Gradient(stops) => Self::Gradient(Gradient::from(stops)),
+			FillChoiceUI::Gradient(stops) => Self::Gradient(GradientRamp::from(stops)),
 		}
 	}
 }
@@ -90,9 +90,9 @@ impl FillChoice {
 		Some(*color)
 	}
 
-	pub fn as_gradient(&self) -> Option<&Gradient> {
-		let Self::Gradient(gradient) = self else { return None };
-		Some(gradient)
+	pub fn as_gradient(&self) -> Option<&GradientRamp> {
+		let Self::Gradient(ramp) = self else { return None };
+		Some(ramp)
 	}
 
 	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`]. Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
@@ -103,7 +103,7 @@ impl FillChoice {
 				let hex = SRGBA8::from(*color).to_rgba_hex();
 				Some(format!("linear-gradient(#{hex}, #{hex})"))
 			}
-			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
+			Self::Gradient(ramp) => Some(Gradient::from(ramp).to_css_linear_gradient()),
 		}
 	}
 }

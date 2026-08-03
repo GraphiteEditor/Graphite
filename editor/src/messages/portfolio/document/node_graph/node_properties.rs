@@ -32,7 +32,9 @@ use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{FillChoiceUI, Gradient, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation};
+use graphene_std::vector::style::{
+	FillChoiceUI, Gradient, GradientRamp, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
 
@@ -1170,10 +1172,10 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 		|input| match &input.value {
 			FillChoiceUI::None => TaggedValue::no_paint(),
 			FillChoiceUI::Solid(srgba) => TaggedValue::Color(Color::from(*srgba)),
-			FillChoiceUI::Gradient(gradient_ui) => TaggedValue::Gradient(Gradient::from(gradient_ui)),
+			FillChoiceUI::Gradient(gradient_ui) => TaggedValue::Gradient(GradientRamp::from(gradient_ui)),
 		}
 	} else if matches!(&**tagged_value, TaggedValue::Gradient(_)) {
-		|input| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_else(Gradient::black_to_white))
+		|input| TaggedValue::Gradient(input.value.as_gradient().map(GradientRamp::from).unwrap_or_else(GradientRamp::black_to_white))
 	} else {
 		|input| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT))
 	};
@@ -2448,12 +2450,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				_ => None,
 			};
 			let backup_stops = match document_node.input_value(BackupGradientInput) {
-				Some(TaggedValue::Gradient(stops)) => stops.clone(),
-				_ => Gradient::black_to_white(),
+				Some(TaggedValue::Gradient(ramp)) => ramp.clone(),
+				_ => GradientRamp::black_to_white(),
 			};
 			(backup_color, backup_stops)
 		}
-		Err(_) => (None, Gradient::black_to_white()),
+		Err(_) => (None, GradientRamp::black_to_white()),
 	};
 
 	match &fill {
@@ -2463,7 +2465,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::Gradient(GradientRamp::from(stops.reversed())), node_id, FillInput))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2505,18 +2507,18 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Message::Batched { messages: messages.into() }
 	};
 
-	let gradient_set_messages = move |gradient: Gradient| Message::Batched {
+	let gradient_set_messages = move |ramp: GradientRamp| Message::Batched {
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::INDEX,
-				value: TaggedValue::Gradient(gradient.clone()).into(),
+				value: TaggedValue::Gradient(ramp.clone()).into(),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: BackupGradientInput::INDEX,
-				value: TaggedValue::Gradient(gradient).into(),
+				value: TaggedValue::Gradient(ramp).into(),
 			}
 			.into(),
 		]),
@@ -2533,8 +2535,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					solid_set_messages(color)
 				}
 				FillChoiceUI::Gradient(gradient_stops_ui) => {
-					let gradient = Gradient::from(gradient_stops_ui);
-					gradient_set_messages(gradient)
+					let ramp = GradientRamp::from(gradient_stops_ui);
+					gradient_set_messages(ramp)
 				}
 			})
 			.on_commit(commit_value)

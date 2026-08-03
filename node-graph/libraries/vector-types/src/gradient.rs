@@ -21,10 +21,10 @@ pub enum GradientType {
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 pub struct Gradient(List<Color>);
 
-/// A gradient's per-stop parallel arrays, generic over color format: `GradientStops<Color>` is the document serialization
-/// of `TaggedValue::Gradient`, while `GradientStops<SRGBA8>` is the JS-boundary shape used by the color picker UI.
+/// A gradient's per-stop parallel arrays, generic over color format: `GradientStops<Color>` nests inside the
+/// [`GradientRamp`] exchange struct, while `GradientStops<SRGBA8>` is the JS-boundary shape used by the color picker UI.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GradientStops<C> {
 	pub color: Vec<C>,
@@ -96,34 +96,68 @@ impl GradientStops<SRGBA8> {
 	}
 }
 
-#[cfg(feature = "serde")]
-impl serde::Serialize for Gradient {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		GradientStops::<Color>::from(self).serialize(serializer)
+/// The serialized exchange form of a gradient: its stops, nested so that whole-ramp settings
+/// like spread method can join as sibling fields opted in from their defaults.
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GradientRamp<C = Color> {
+	pub stops: GradientStops<C>,
+}
+
+unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C> {
+	type Static = GradientRamp<C::Static>;
+}
+
+impl<C> From<GradientStops<C>> for GradientRamp<C> {
+	fn from(stops: GradientStops<C>) -> Self {
+		Self { stops }
 	}
 }
 
-// TODO: Eventually remove this document upgrade code
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Gradient {
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		#[derive(serde::Deserialize)]
-		#[serde(untagged)]
-		enum GradientStopsFormat {
-			Struct(GradientStops<Color>),
-			Tuples(Vec<(f64, Color)>),
-		}
+impl From<&Gradient> for GradientRamp {
+	fn from(gradient: &Gradient) -> Self {
+		Self { stops: gradient.into() }
+	}
+}
 
-		Ok(match GradientStopsFormat::deserialize(deserializer)? {
-			GradientStopsFormat::Struct(stops) => Gradient::from(stops),
-			GradientStopsFormat::Tuples(stops) => {
-				let position: Vec<f64> = stops.iter().map(|(p, _)| *p).collect();
-				let mut gradient = Gradient::from(stops.into_iter().map(|(_, c)| c).collect::<Vec<_>>());
-				gradient.set_positions(&position);
-				gradient.elide_default_attributes();
-				gradient
-			}
-		})
+impl From<Gradient> for GradientRamp {
+	fn from(gradient: Gradient) -> Self {
+		Self::from(&gradient)
+	}
+}
+
+impl From<GradientRamp> for Gradient {
+	fn from(ramp: GradientRamp) -> Self {
+		Gradient::from(ramp.stops)
+	}
+}
+
+impl From<&GradientRamp> for Gradient {
+	fn from(ramp: &GradientRamp) -> Self {
+		Gradient::from(ramp.stops.clone())
+	}
+}
+
+impl From<&GradientRamp> for GradientStops<SRGBA8> {
+	fn from(ramp: &GradientRamp) -> Self {
+		Self {
+			position: ramp.stops.position.clone(),
+			midpoint: ramp.stops.midpoint.clone(),
+			color: ramp.stops.color.iter().map(|&color| SRGBA8::from(color)).collect(),
+		}
+	}
+}
+
+// Color picker round-trip: routes through the runtime type so default-restating attributes elide
+impl From<&GradientStops<SRGBA8>> for GradientRamp {
+	fn from(stops: &GradientStops<SRGBA8>) -> Self {
+		Self::from(Gradient::from(stops))
+	}
+}
+
+impl GradientRamp {
+	pub fn black_to_white() -> Self {
+		Self::from(Gradient::black_to_white())
 	}
 }
 
@@ -793,31 +827,17 @@ mod tests {
 
 	#[test]
 	fn serde_round_trip_preserves_attribute_absence() {
-		let implicit = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		let implicit = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
 		let json = serde_json::to_string(&implicit).unwrap();
 		assert!(!json.contains("position") && !json.contains("midpoint"), "absent attributes must not serialize: {json}");
-		assert_eq!(serde_json::from_str::<Gradient>(&json).unwrap(), implicit);
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), implicit);
 
-		let mut explicit = implicit.clone();
+		let mut explicit = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		explicit.set_positions(&[0.2, 0.9]);
 		explicit.set_midpoints(&[0.3, 0.5]);
+		let explicit = GradientRamp::from(explicit);
 		let json = serde_json::to_string(&explicit).unwrap();
-		assert_eq!(serde_json::from_str::<Gradient>(&json).unwrap(), explicit);
-	}
-
-	#[test]
-	fn legacy_tuple_format_deserializes_with_defaults_elided() {
-		let color = serde_json::to_value(Color::WHITE).unwrap();
-
-		let struct_format = serde_json::json!({ "position": [0., 0.25], "midpoint": [0.5, 0.5], "color": [color, color] });
-		let gradient: Gradient = serde_json::from_value(struct_format).unwrap();
-		assert_eq!(gradient.positions(), vec![0., 0.25]);
-		assert!(gradient.has_midpoint_attribute(), "the struct form must parse faithfully");
-
-		let tuple_format = serde_json::json!([[0., color], [1., color]]);
-		let gradient: Gradient = serde_json::from_value(tuple_format).unwrap();
-		assert_eq!(gradient.positions(), vec![0., 1.]);
-		assert!(!gradient.has_position_attribute(), "even legacy tuple positions should elide");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), explicit);
 	}
 
 	#[test]
