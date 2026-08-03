@@ -1,5 +1,5 @@
 use core_types::arena::{Arena, ArenaCell};
-use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll};
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractArena};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Extent, Finality, GPoll, Interrupt};
 use core_types::graphene_hash::CacheHash;
@@ -99,6 +99,78 @@ pub fn park<T: Send + Sync>(arena: &Arena, result: GPoll<T>) -> GPoll<&T> {
 		}
 		GPoll::Pending => GPoll::Pending,
 		GPoll::Error(error) => GPoll::Error(error),
+	}
+}
+
+/// Adapts an owned edge to a lending one by parking each result in the eval arena.
+pub struct LendNode<T, NodeContent> {
+	content: NodeContent,
+	_value: std::marker::PhantomData<fn() -> T>,
+}
+
+impl<T, NodeContent> LendNode<T, NodeContent> {
+	pub fn new(content: NodeContent) -> Self {
+		Self {
+			content,
+			_value: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'e, Input, T, NodeContent> Node<Input> for LendNode<T, NodeContent>
+where
+	Input: Ctx + ExtractArena<ArenaRef = &'e Arena>,
+	T: Send + Sync + 'e,
+	NodeContent: Node<Input, Output = T>,
+{
+	type Output = &'e T;
+
+	fn eval(&self, input: &Input) -> GPoll<&'e T> {
+		park(input.arena(), self.content.eval(input))
+	}
+
+	fn extent(&self, input: &Input) -> GPoll<Extent> {
+		self.content.extent(input)
+	}
+
+	fn serialize(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+		self.content.serialize()
+	}
+}
+
+/// Adapts a lending edge to an owned one by cloning the borrowed value out.
+pub struct CloneOutNode<T, NodeContent> {
+	content: NodeContent,
+	_value: std::marker::PhantomData<fn() -> T>,
+}
+
+impl<T, NodeContent> CloneOutNode<T, NodeContent> {
+	pub fn new(content: NodeContent) -> Self {
+		Self {
+			content,
+			_value: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'e, Input, T, NodeContent> Node<Input> for CloneOutNode<T, NodeContent>
+where
+	Input: Ctx + ExtractArena<ArenaRef = &'e Arena>,
+	T: Clone + 'e,
+	NodeContent: Node<Input, Output = &'e T>,
+{
+	type Output = T;
+
+	fn eval(&self, input: &Input) -> GPoll<T> {
+		self.content.eval(input).map(Clone::clone)
+	}
+
+	fn extent(&self, input: &Input) -> GPoll<Extent> {
+		self.content.extent(input)
+	}
+
+	fn serialize(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+		self.content.serialize()
 	}
 }
 

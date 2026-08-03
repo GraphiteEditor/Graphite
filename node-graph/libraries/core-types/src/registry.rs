@@ -88,8 +88,12 @@ pub fn edge_type<T: 'static>() -> Type {
 	Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(T)))
 }
 
+pub fn ref_type<T: 'static>() -> Type {
+	Type::Ref(Box::new(concrete!(T)))
+}
+
 pub fn lend_edge_type<T: 'static>() -> Type {
-	Type::Fn(Box::new(concrete!(Context)), Box::new(Type::Ref(Box::new(concrete!(T)))))
+	Type::Fn(Box::new(concrete!(Context)), Box::new(ref_type::<T>()))
 }
 
 pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {

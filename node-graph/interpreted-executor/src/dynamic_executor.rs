@@ -71,9 +71,9 @@ pub struct ResolvedDocumentNodeTypesDelta {
 }
 
 impl DynamicExecutor {
-	pub fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
+	pub fn new(mut proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
-		typing_context.update(&proto_network)?;
+		typing_context.update(&mut proto_network)?;
 		let output = proto_network.output;
 		let sources = proto_network.source_ids();
 		let tree = BorrowTree::new(proto_network, &typing_context)?;
@@ -102,9 +102,9 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+	pub fn update(&mut self, mut proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.output = proto_network.output;
-		self.typing_context.update(&proto_network).map_err(|e| {
+		self.typing_context.update(&mut proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
 			let add = proto_network
 				.nodes
@@ -545,5 +545,54 @@ mod test {
 		let ctx = ContextImpl::root(&scope);
 		let result: Option<GPoll<u32>> = tree.eval(NodeId(0), &ctx);
 		assert_eq!(result, Some(GPoll::Final(2)));
+	}
+
+	fn proto_node(identifier: &'static str, args: Vec<NodeId>) -> ProtoNode {
+		let mut node = ProtoNode::default();
+		node.identifier = graph_craft::ProtoNodeIdentifier::new(identifier);
+		node.call_argument = core_types::concrete!(core_types::context::Context);
+		node.construction_args = ConstructionArgs::Nodes(args);
+		node
+	}
+
+	fn string_value(value: &str) -> ProtoNode {
+		ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(value.to_string()).into()), vec![])
+	}
+
+	#[test]
+	fn a_lend_adapter_is_spliced_between_a_value_and_a_ref_consumer() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![
+				(NodeId(0), string_value("lent")),
+				(NodeId(1), proto_node("graphene_core::memo::CloneOutNode", vec![NodeId(0)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String("lent".to_string())));
+	}
+
+	#[test]
+	fn a_clone_out_adapter_is_spliced_between_a_lending_producer_and_an_owned_consumer() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), string_value("memoized")),
+				(NodeId(1), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(0)])),
+				(NodeId(2), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(1)])),
+				(NodeId(3), proto_node("graphene_core::memo::CloneOutNode", vec![NodeId(2)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String("memoized".to_string())));
+		assert_eq!(
+			(&executor).execute(()).unwrap(),
+			GPoll::Final(TaggedValue::String("memoized".to_string())),
+			"the frame memo lend path must replay across evaluations"
+		);
 	}
 }

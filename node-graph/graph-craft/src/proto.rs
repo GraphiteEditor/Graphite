@@ -369,6 +369,40 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
+	/// Splices the selected `Ref` adapters between the consumer at `consumer_index` and its
+	/// producers, keeping the node vec topologically sorted and ids stable. `materialized` carries
+	/// the adapter ids already spliced during this update so shared producers get one adapter.
+	fn insert_ref_adapters(&mut self, consumer_index: usize, adapters: &[RefAdapter], materialized: &mut HashSet<NodeId>) {
+		let mut consumer_index = consumer_index;
+		for adapter in adapters {
+			let (_, consumer) = &self.nodes[consumer_index];
+			let producer = consumer.unwrap_construction_nodes()[adapter.input_index];
+			let mut path = consumer.original_location.path.clone();
+
+			// A path extension with a placeholder value which should not conflict with existing paths
+			if let Some(path) = path.as_mut() {
+				path.push(NodeId(11));
+			}
+
+			let node = ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![producer]),
+				call_argument: concrete!(Context),
+				identifier: adapter.identifier.clone(),
+				original_location: OriginalLocation { path, ..Default::default() },
+				..Default::default()
+			};
+			let id = node.stable_node_id().expect("adapter nodes always produce a stable id");
+			if materialized.insert(id) {
+				self.nodes.insert(consumer_index, (id, node));
+				consumer_index += 1;
+			}
+			let (_, consumer) = &mut self.nodes[consumer_index];
+			if let ConstructionArgs::Nodes(args) = &mut consumer.construction_args {
+				args[adapter.input_index] = id;
+			}
+		}
+	}
+
 	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextModification::default();
@@ -657,13 +691,37 @@ impl TypingContext {
 
 	/// Updates the `TypingContext` with a given proto network. This will infer the types of the nodes
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
-	/// and contain fully resolved stable node ids.
-	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), GraphErrors> {
-		for (id, node) in network.nodes.iter() {
-			self.infer(*id, node)?;
+	/// and contain fully resolved stable node ids. When a node's inputs disagree with every
+	/// implementation only on `Ref`-ness, the matching lend/clone_out adapter is spliced into the
+	/// network and inference resumes with the adapter in place.
+	pub fn update(&mut self, network: &mut ProtoNetwork) -> Result<(), GraphErrors> {
+		let mut materialized_adapters = HashSet::new();
+		let mut index = 0;
+		while index < network.nodes.len() {
+			let (id, node) = &network.nodes[index];
+			match self.infer(*id, node) {
+				Ok(_) => index += 1,
+				Err(errors) => match self.select_ref_adapters(node) {
+					Some(adapters) => network.insert_ref_adapters(index, &adapters, &mut materialized_adapters),
+					None => return Err(errors),
+				},
+			}
 		}
 
 		Ok(())
+	}
+
+	fn select_ref_adapters(&self, node: &ProtoNode) -> Option<Vec<RefAdapter>> {
+		let ConstructionArgs::Nodes(args) = &node.construction_args else { return None };
+		let inputs = args.iter().map(|id| self.inferred.get(id).map(NodeIOTypes::ty)).collect::<Option<Vec<_>>>()?;
+		let candidates: Vec<&NodeIOTypes> = self.lookup.get(&node.identifier)?.iter().map(|entry| &entry.io).collect();
+		let adapters = select_ref_adapters_over(&node.call_argument, &inputs, &candidates)?;
+		let constructible = adapters.iter().all(|adapter| {
+			self.lookup
+				.get(&adapter.identifier)
+				.is_some_and(|entries| entries.iter().any(|entry| entry.io.inputs.len() == 1 && valid_type(&inputs[adapter.input_index], &entry.io.inputs[0])))
+		});
+		constructible.then_some(adapters)
 	}
 
 	pub fn remove_inference(&mut self, node_id: NodeId) -> Option<NodeIOTypes> {
@@ -719,33 +777,6 @@ impl TypingContext {
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
 			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
-		}
-
-		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
-		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_type(from: &Type, to: &Type) -> bool {
-			match (from, to) {
-				// Direct comparison of two concrete types.
-				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Direct comparison of two function types.
-				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
-				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
-				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
-				// This allows us to supply anything to a function that is satisfied with `()`.
-				// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
-				// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
-				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
-				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
-				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
-				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
-				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
-				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
-				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
-				// Reject unknown type relationships.
-				_ => false,
-			}
 		}
 
 		// List of all implementations that match the input types
@@ -848,6 +879,87 @@ impl TypingContext {
 			}
 		}
 	}
+}
+
+/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
+/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
+fn valid_type(from: &Type, to: &Type) -> bool {
+	match (from, to) {
+		// Direct comparison of two concrete types.
+		(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+		// Direct comparison of two function types.
+		// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
+		// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
+		// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
+		// This allows us to supply anything to a function that is satisfied with `()`.
+		// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
+		// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
+		// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
+		// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
+		// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+		// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
+		// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
+		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
+		// A lend edge is substitutable exactly when the lent values are.
+		(Type::Ref(in1), Type::Ref(in2)) => valid_type(in1, in2),
+		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
+		// TODO: Add proper generic counting which is not based on the name
+		(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
+		// Reject unknown type relationships.
+		_ => false,
+	}
+}
+
+#[derive(Clone, Debug)]
+struct RefAdapter {
+	input_index: usize,
+	identifier: ProtoNodeIdentifier,
+}
+
+/// Picks the lend or clone_out adapter that reconciles a proposed edge with a wanted edge when they
+/// differ only by one `Ref` layer around a concrete output.
+fn ref_adapter(proposed: &Type, wanted: &Type) -> Option<ProtoNodeIdentifier> {
+	let (Type::Fn(_, proposed_output), Type::Fn(_, wanted_output)) = (proposed, wanted) else {
+		return None;
+	};
+	match (proposed_output.as_ref(), wanted_output.as_ref()) {
+		(Type::Ref(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("graphene_core::memo::CloneOutNode")),
+		(proposed_output @ Type::Concrete(_), Type::Ref(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("graphene_core::memo::LendNode")),
+		_ => None,
+	}
+}
+
+/// Selects adapters for the single implementation the inputs match modulo `Ref`-ness, or `None`
+/// when no or several implementations do.
+fn select_ref_adapters_over(call_argument: &Type, inputs: &[Type], candidates: &[&NodeIOTypes]) -> Option<Vec<RefAdapter>> {
+	let mut selected = None;
+	for candidate in candidates {
+		if !valid_type(&candidate.call_argument, call_argument) || candidate.inputs.len() != inputs.len() {
+			continue;
+		}
+		let mut adapters = Vec::new();
+		let mut fits = true;
+		for (input_index, (proposed, wanted)) in inputs.iter().zip(&candidate.inputs).enumerate() {
+			if valid_type(proposed, wanted) {
+				continue;
+			}
+			match ref_adapter(proposed, wanted) {
+				Some(identifier) => adapters.push(RefAdapter { input_index, identifier }),
+				None => {
+					fits = false;
+					break;
+				}
+			}
+		}
+		if !fits || adapters.is_empty() {
+			continue;
+		}
+		if selected.is_some() {
+			return None;
+		}
+		selected = Some(adapters);
+	}
+	selected
 }
 
 /// Returns a list of all generic types used in the node
@@ -1159,5 +1271,128 @@ mod test {
 			.into_iter()
 			.collect(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod ref_adapter_test {
+	use super::*;
+
+	fn adapter_lookup() -> &'static HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
+		static LOOKUP: std::sync::LazyLock<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>> = std::sync::LazyLock::new(|| {
+			let unused: NodeConstructor = |_| Err(ConstructionError::Arity { expected: 0, got: 0 });
+			[
+				(
+					ProtoNodeIdentifier::new("wants_ref"),
+					vec![RegistryEntry {
+						io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![lend_edge_type::<String>()]),
+						constructor: unused,
+					}],
+				),
+				(
+					ProtoNodeIdentifier::new("wants_ref_ambiguously"),
+					vec![
+						RegistryEntry {
+							io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![lend_edge_type::<String>()]),
+							constructor: unused,
+						},
+						RegistryEntry {
+							io: NodeIOTypes::new(concrete!(Context), concrete!(f64), vec![lend_edge_type::<String>()]),
+							constructor: unused,
+						},
+					],
+				),
+				(
+					ProtoNodeIdentifier::new("graphene_core::memo::LendNode"),
+					vec![RegistryEntry {
+						io: NodeIOTypes::new(concrete!(Context), ref_type::<String>(), vec![edge_type::<String>()]),
+						constructor: unused,
+					}],
+				),
+			]
+			.into_iter()
+			.collect()
+		});
+		&LOOKUP
+	}
+
+	fn string_value() -> ProtoNode {
+		ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("lent".to_string()).into()), vec![])
+	}
+
+	fn consumer(identifier: &str, producer: NodeId) -> ProtoNode {
+		ProtoNode {
+			identifier: ProtoNodeIdentifier::with_owned_string(identifier.to_string()),
+			call_argument: concrete!(Context),
+			construction_args: ConstructionArgs::Nodes(vec![producer]),
+			..Default::default()
+		}
+	}
+
+	#[test]
+	fn a_ref_only_mismatch_splices_the_lend_adapter() {
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_ref", NodeId(0)))],
+		};
+
+		let mut typing = TypingContext::new(adapter_lookup());
+		typing.update(&mut network).unwrap();
+
+		assert_eq!(network.nodes.len(), 3);
+		let (adapter_id, adapter) = &network.nodes[1];
+		assert_eq!(adapter.identifier.as_str(), "graphene_core::memo::LendNode");
+		assert_eq!(adapter.unwrap_construction_nodes(), vec![NodeId(0)]);
+		assert_eq!(network.nodes[2].1.unwrap_construction_nodes(), vec![*adapter_id]);
+		assert_eq!(typing.type_of(*adapter_id).unwrap().return_value, ref_type::<String>());
+		assert_eq!(typing.type_of(NodeId(1)).unwrap().return_value, concrete!(String));
+	}
+
+	#[test]
+	fn consumers_sharing_a_producer_share_one_adapter() {
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(2),
+			nodes: vec![
+				(NodeId(0), string_value()),
+				(NodeId(1), consumer("wants_ref", NodeId(0))),
+				(NodeId(2), consumer("wants_ref", NodeId(0))),
+			],
+		};
+
+		let mut typing = TypingContext::new(adapter_lookup());
+		typing.update(&mut network).unwrap();
+
+		assert_eq!(network.nodes.len(), 4);
+		let adapters: Vec<NodeId> = network
+			.nodes
+			.iter()
+			.filter(|(_, node)| node.identifier.as_str() == "graphene_core::memo::LendNode")
+			.map(|(id, _)| *id)
+			.collect();
+		let [adapter_id] = adapters.as_slice() else {
+			panic!("expected exactly one shared adapter, got {adapters:?}");
+		};
+		let consumers: Vec<Vec<NodeId>> = network
+			.nodes
+			.iter()
+			.filter(|(_, node)| node.identifier.as_str() == "wants_ref")
+			.map(|(_, node)| node.unwrap_construction_nodes())
+			.collect();
+		assert_eq!(consumers, vec![vec![*adapter_id], vec![*adapter_id]]);
+	}
+
+	#[test]
+	fn an_ambiguous_ref_mismatch_stays_an_error() {
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_ref_ambiguously", NodeId(0)))],
+		};
+
+		let mut typing = TypingContext::new(adapter_lookup());
+		assert!(typing.update(&mut network).is_err());
+		assert_eq!(network.nodes.len(), 2, "an ambiguous mismatch must not materialize adapters");
 	}
 }
