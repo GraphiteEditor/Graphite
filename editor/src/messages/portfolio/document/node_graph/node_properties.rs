@@ -32,7 +32,7 @@ use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{FillChoiceUI, Gradient, GradientSpreadMethod, GradientType, GradientUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoiceUI, Gradient, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
 
@@ -1156,7 +1156,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	// Add the color input
 	let widget_value = match &**tagged_value {
 		TaggedValue::Color(color) => FillChoiceUI::Solid(SRGBA8::from(*color)),
-		TaggedValue::Gradient(stops) => FillChoiceUI::Gradient(GradientUI::from(stops)),
+		TaggedValue::Gradient(stops) => FillChoiceUI::Gradient(GradientStops::from(stops)),
 		value if value.is_no_paint() => FillChoiceUI::None,
 		x => {
 			warn!("Color {x:?}");
@@ -1173,7 +1173,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 			FillChoiceUI::Gradient(gradient_ui) => TaggedValue::Gradient(Gradient::from(gradient_ui)),
 		}
 	} else if matches!(&**tagged_value, TaggedValue::Gradient(_)) {
-		|input| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_default())
+		|input| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_else(Gradient::black_to_white))
 	} else {
 		|input| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT))
 	};
@@ -1254,20 +1254,12 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 
 /// 2-stop black-to-white gradient track for spectrum sliders that map a value to a grayscale axis.
 fn bw_track() -> Gradient {
-	Gradient {
-		position: vec![0., 1.],
-		midpoint: vec![0.5, 0.5],
-		color: vec![Color::BLACK, Color::WHITE],
-	}
+	Gradient::from(vec![Color::BLACK, Color::WHITE])
 }
 
 /// 3-stop black-to-color-to-white gradient track for spectrum sliders that map a value to a hue's full luminance range.
 fn color_track(color: Color) -> Gradient {
-	Gradient {
-		position: vec![0., 0.5, 1.],
-		midpoint: vec![0.5; 3],
-		color: vec![Color::BLACK, color, Color::WHITE],
-	}
+	Gradient::from(vec![Color::BLACK, color, Color::WHITE])
 }
 
 pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1298,11 +1290,8 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 
 	let contrast_min = if use_classic_value { -100. } else { -50. };
 	let zero_position = -contrast_min / (100. - contrast_min);
-	let contrast_track = Gradient {
-		position: vec![0., zero_position, 1.],
-		midpoint: vec![0.5; 3],
-		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::BLACK, Color::from_rgbf32_unchecked(0.5, 0.5, 0.5)],
-	};
+	let mut contrast_track = Gradient::from(vec![Color::MIDDLE_GRAY, Color::BLACK, Color::MIDDLE_GRAY]);
+	contrast_track.set_positions(&[0., zero_position, 1.]);
 	let contrast = spectrum_slider_row(
 		node_id,
 		context,
@@ -1331,7 +1320,7 @@ pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	// (parameter, marker handle color, default percentage for double-click reset)
 	let input_range_params = [
 		(ShadowsInput.into(), Color::BLACK, 0.),
-		(MidtonesInput.into(), Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), 50.),
+		(MidtonesInput.into(), Color::MIDDLE_GRAY, 50.),
 		(HighlightsInput.into(), Color::WHITE, 100.),
 	];
 	let output_range_params = [(OutputMinimumsInput.into(), Color::BLACK, 0.), (OutputMaximumsInput.into(), Color::WHITE, 100.)];
@@ -1395,7 +1384,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(GradientUI::from(&bw_track()))
+		SpectrumInput::new(GradientStops::from(&bw_track()))
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1493,17 +1482,9 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	let saturated_current_hue = Color::from_hsva(marker_hue, 1., 1., 1.);
 
 	// Hue: cyclic rainbow
-	let hue_track = Gradient {
-		position: vec![0., 1. / 6., 2. / 6., 3. / 6., 4. / 6., 5. / 6., 1.],
-		midpoint: vec![0.5; 7],
-		color: vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED],
-	};
+	let hue_track = Gradient::from(vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED]);
 	// Saturation: gray to the fully saturated current hue
-	let saturation_track = Gradient {
-		position: vec![0., 1.],
-		midpoint: vec![0.5, 0.5],
-		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), saturated_current_hue],
-	};
+	let saturation_track = Gradient::from(vec![Color::MIDDLE_GRAY, saturated_current_hue]);
 	// Lightness: black to white
 	let lightness_track = bw_track();
 
@@ -1575,7 +1556,7 @@ fn spectrum_slider_row(
 
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
-			SpectrumInput::new(GradientUI::from(&track))
+			SpectrumInput::new(GradientStops::from(&track))
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)
@@ -1639,11 +1620,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::vibrance::*;
 
-	let track = Gradient {
-		position: vec![0., 1.],
-		midpoint: vec![0.5, 0.5],
-		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::RED],
-	};
+	let track = Gradient::from(vec![Color::MIDDLE_GRAY, Color::RED]);
 	vec![spectrum_slider_row(
 		node_id,
 		context,
@@ -2472,11 +2449,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			};
 			let backup_stops = match document_node.input_value(BackupGradientInput) {
 				Some(TaggedValue::Gradient(stops)) => stops.clone(),
-				_ => Gradient::default(),
+				_ => Gradient::black_to_white(),
 			};
 			(backup_color, backup_stops)
 		}
-		Err(_) => (None, Gradient::default()),
+		Err(_) => (None, Gradient::black_to_white()),
 	};
 
 	match &fill {
@@ -2502,7 +2479,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoiceUI::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, .. } => FillChoiceUI::Gradient(GradientUI::from(stops)),
+		ResolvedFill::Gradient { gradient: stops, .. } => FillChoiceUI::Gradient(GradientStops::from(stops)),
 		ResolvedFill::Other => FillChoiceUI::None,
 	};
 

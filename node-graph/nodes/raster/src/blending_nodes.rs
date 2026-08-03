@@ -42,16 +42,19 @@ mod blend_std {
 	}
 	impl Blend<Color> for Gradient {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut combined_stops = self.position.iter().chain(under.position.iter()).copied().collect::<Vec<_>>();
-			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+			let mut combined_stops = self.positions().into_iter().chain(under.positions()).collect::<Vec<_>>();
 			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 			let stops = combined_stops.into_iter().map(|position| {
-				let over_color = self.evaluate(position);
-				let under_color = under.evaluate(position);
+				let over_color = self.evaluate(position, Default::default());
+				let under_color = under.evaluate(position, Default::default());
 				let color = blend_fn(over_color, under_color);
 				GradientStop { position, midpoint: 0.5, color }
 			});
-			Gradient::new(stops)
+
+			let mut gradient = Gradient::new(stops);
+			gradient.elide_default_attributes();
+			gradient
 		}
 	}
 }

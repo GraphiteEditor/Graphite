@@ -551,6 +551,57 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
 	}
 
+	/// Update the last 'Gradient Positions' node in the chain when one exists, so on-canvas stop drags stay live even
+	/// though that node would otherwise override the stops value's own placement. Never inserts one: the stops value
+	/// carries placement itself, and these setter nodes are user-authored procedural overrides. A wired input is
+	/// procedural authorship too, so it is likewise left untouched.
+	pub fn gradient_positions_set(&mut self, positions: Vec<f64>) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let identifier = graphene_std::math_nodes::gradient_positions::IDENTIFIER;
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, false) else {
+			return;
+		};
+
+		let current_input = self
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput));
+		if !current_input.is_some_and(|input| input.as_value().is_some()) {
+			return;
+		}
+
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_positions::PositionsInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(positions), false), false);
+	}
+
+	/// The 'Gradient Midpoints' counterpart of [`Self::gradient_positions_set`], likewise update-only.
+	pub fn gradient_midpoints_set(&mut self, midpoints: Vec<f64>) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let identifier = graphene_std::math_nodes::gradient_midpoints::IDENTIFIER;
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, false) else {
+			return;
+		};
+
+		let current_input = self
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_midpoints::MidpointsInput));
+		if !current_input.is_some_and(|input| input.as_value().is_some()) {
+			return;
+		}
+
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_midpoints::MidpointsInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(midpoints), false), false);
+	}
+
 	/// Update the transform to map the unit gradient ((0,0), (1, 0)) to the geometry's local space.
 	/// With multiple `Transform` nodes the last one (closest to the layer) is modified so the chain still composes to the target.
 	/// With none, one is inserted unless the target is the identity.

@@ -60,6 +60,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_stops_set(stops);
 				}
 			}
+			GraphOperationMessage::GradientPositionsSet { layer, positions } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_positions_set(positions);
+				}
+			}
+			GraphOperationMessage::GradientMidpointsSet { layer, midpoints } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_midpoints_set(midpoints);
+				}
+			}
 			GraphOperationMessage::GradientTransformSet { layer, transform } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_transform_set(transform);

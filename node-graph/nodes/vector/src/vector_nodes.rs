@@ -118,6 +118,7 @@ async fn assign_colors<T>(
 	/// Whether to style the stroke.
 	stroke: Item<bool>,
 	/// The range of colors to select from.
+	#[default(Color::BLACK, Color::WHITE)]
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
 	gradient: Item<Gradient>,
 	/// Whether to reverse the gradient.
@@ -157,7 +158,7 @@ where
 				},
 			};
 
-			let color = gradient.evaluate(factor);
+			let color = gradient.evaluate(factor, Default::default());
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {
@@ -189,7 +190,7 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	)]
 	fill: F,
 	_backup_color: Item<Color>,
-	_backup_gradient: Item<Gradient>,
+	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
 	_gradient_type: Item<GradientType>,
 	_spread_method: Item<GradientSpreadMethod>,
 	_has_transform: Item<bool>,
@@ -2454,14 +2455,12 @@ async fn morph<I: IntoGraphicList>(
 				.zip(color_list_b.element(0))
 				.map(|(color_a, color_b)| Graphic::from(color_a.lerp(color_b, time as f32))),
 			(Some(Graphic::Color(color_list_a)), Some(Graphic::Gradient(gradient_list_b))) => color_list_a.element(0).zip(gradient_list_b.element(0)).map(|(color_a, stops_b)| {
-				let mut solid_to_gradient = stops_b.clone();
-				solid_to_gradient.color.iter_mut().for_each(|color| *color = *color_a);
+				let solid_to_gradient = stops_b.map_colors(|_| *color_a);
 				let stops = solid_to_gradient.lerp(stops_b, time);
 				gradient_with_stops(gradient_list_b.clone(), stops)
 			}),
 			(Some(Graphic::Gradient(gradient_list_a)), Some(Graphic::Color(color_list_b))) => gradient_list_a.element(0).zip(color_list_b.element(0)).map(|(stops_a, color_b)| {
-				let mut gradient_to_solid = stops_a.clone();
-				gradient_to_solid.color.iter_mut().for_each(|color| *color = *color_b);
+				let gradient_to_solid = stops_a.map_colors(|_| *color_b);
 				let stops = stops_a.lerp(&gradient_to_solid, time);
 				gradient_with_stops(gradient_list_a.clone(), stops)
 			}),
