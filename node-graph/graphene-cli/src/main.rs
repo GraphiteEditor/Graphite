@@ -13,7 +13,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
-use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner};
+use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner, poll_once};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -37,8 +37,14 @@ impl TokioSpawner {
 }
 
 impl Spawner for TokioSpawner {
-	fn spawn(&self, task: SourceFuture) {
-		self.0.as_ref().expect("runtime lives until drop").spawn(task);
+	fn spawn(&self, mut task: SourceFuture) -> bool {
+		let runtime = self.0.as_ref().expect("runtime lives until drop");
+		let _guard = runtime.enter();
+		if poll_once(&mut task) {
+			return true;
+		}
+		runtime.spawn(task);
+		false
 	}
 }
 

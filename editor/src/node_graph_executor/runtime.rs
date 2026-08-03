@@ -17,7 +17,7 @@ use graphene_std::ops::ConvertAsync;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::runtime::{DynGraphRuntime, DynNotifier, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner};
+use graphene_std::runtime::{DynGraphRuntime, DynNotifier, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner, poll_once};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -142,8 +142,14 @@ impl Default for TokioSpawner {
 
 #[cfg(not(target_family = "wasm"))]
 impl Spawner for TokioSpawner {
-	fn spawn(&self, task: SourceFuture) {
-		self.0.as_ref().expect("runtime lives until drop").spawn(task);
+	fn spawn(&self, mut task: SourceFuture) -> bool {
+		let runtime = self.0.as_ref().expect("runtime lives until drop");
+		let _guard = runtime.enter();
+		if poll_once(&mut task) {
+			return true;
+		}
+		runtime.spawn(task);
+		false
 	}
 }
 
@@ -163,8 +169,12 @@ pub struct WasmSpawner;
 
 #[cfg(target_family = "wasm")]
 impl Spawner for WasmSpawner {
-	fn spawn(&self, task: SourceFuture) {
+	fn spawn(&self, mut task: SourceFuture) -> bool {
+		if poll_once(&mut task) {
+			return true;
+		}
 		wasm_bindgen_futures::spawn_local(task);
+		false
 	}
 }
 

@@ -482,7 +482,9 @@ mod test {
 	struct InertSpawner;
 
 	impl Spawner for InertSpawner {
-		fn spawn(&self, _task: SourceFuture) {}
+		fn spawn(&self, _task: SourceFuture) -> bool {
+			false
+		}
 	}
 
 	#[test]
