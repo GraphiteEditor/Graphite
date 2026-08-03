@@ -102,6 +102,9 @@ pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
 /// The width or height that the transform cage needs before it is considered to have no width or height.
 pub const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4;
 
+// BOUNDING BOX
+pub const INFLATE_FACTOR: f64 = 1.5;
+
 // SKEW TRIANGLES
 pub const SKEW_TRIANGLE_SIZE: f64 = 7.;
 pub const SKEW_TRIANGLE_OFFSET: f64 = 4.;
