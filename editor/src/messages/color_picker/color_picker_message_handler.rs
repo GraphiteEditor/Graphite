@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientRamp, GradientStops};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientStops};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -155,7 +155,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				match preset {
 					FillChoice::None => {
 						self.set_new_hsva(0., 0., 0., 1., true);
-						responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoiceUI::None });
+						responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::<SRGBA8>::None });
 					}
 					FillChoice::Solid(color) => {
 						self.adopt_color(color);
@@ -180,7 +180,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.set_old_hsva(temp.0, temp.1, temp.2, temp.3, temp.4);
 
 				if self.is_none {
-					responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoiceUI::None });
+					responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::<SRGBA8>::None });
 				} else {
 					self.emit_color(responses);
 				}
@@ -270,14 +270,12 @@ impl ColorPickerMessageHandler {
 			&& (active_index as usize) < gradient.len()
 		{
 			gradient.set_color(active_index as usize, color);
-			let fill_choice = FillChoice::Gradient(GradientRamp::from(&*gradient));
 			responses.add(FrontendMessage::ColorPickerColorChanged {
-				value: FillChoiceUI::from(&fill_choice),
+				value: FillChoice::Gradient(GradientRamp::from(&*gradient)),
 			});
 		} else {
-			let fill_choice = FillChoice::Solid(color);
 			responses.add(FrontendMessage::ColorPickerColorChanged {
-				value: FillChoiceUI::from(&fill_choice),
+				value: FillChoice::Solid(SRGBA8::from(color)),
 			});
 		}
 	}
@@ -399,9 +397,8 @@ impl ColorPickerMessageHandler {
 			SpectrumInputUpdate::ActiveMarker { .. } => unreachable!("handled above"),
 		}
 
-		let fill_choice = FillChoice::Gradient(GradientRamp::from(&gradient));
 		responses.add(FrontendMessage::ColorPickerColorChanged {
-			value: FillChoiceUI::from(&fill_choice),
+			value: FillChoice::Gradient(GradientRamp::from(&gradient)),
 		});
 		self.gradient = Some(gradient);
 		self.send_layouts(responses);

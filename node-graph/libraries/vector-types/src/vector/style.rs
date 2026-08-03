@@ -9,37 +9,30 @@ use dyn_any::DynAny;
 use glam::DAffine2;
 use std::f64::consts::{PI, TAU};
 
-/// The editor's in-memory paint picker state, storing a color or gradient ramp without gradient placement metadata.
-/// Not stored in documents: paint inputs hold the picked value as a plain color, gradient, or no-paint type default.
+/// The paint picker's choice of fill, generic over color format: `FillChoice<Color>` is the editor's in-memory
+/// form, while `FillChoice<SRGBA8>` is the JS-boundary shape used by the color picker UI. Stores a color or
+/// gradient ramp without gradient placement metadata, and is not stored in documents: paint inputs hold the
+/// picked value as a plain color, gradient, or no-paint type default.
 ///
-/// Can be None, a solid [Color], or the [`GradientRamp`] of a linear/radial gradient.
+/// Can be None, a solid color, or the [`GradientRamp`] of a linear/radial gradient.
 ///
 /// In the future we'll probably also add a pattern fill.
-///
-/// Use [`FillChoiceUI`] at the JS boundary.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum FillChoice {
-	#[default]
-	None,
-	Solid(Color),
-	Gradient(GradientRamp),
-}
-
-// TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
-/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is its [`GradientStops`] exchange form.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
-#[derive(Default, Debug, Clone, PartialEq, DynAny)]
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum FillChoiceUI {
+pub enum FillChoice<C = Color> {
 	#[default]
 	None,
-	Solid(SRGBA8),
-	Gradient(GradientStops<SRGBA8>),
+	Solid(C),
+	Gradient(GradientRamp<C>),
 }
 
-impl From<&FillChoice> for FillChoiceUI {
+unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for FillChoice<C> {
+	type Static = FillChoice<C::Static>;
+}
+
+impl From<&FillChoice> for FillChoice<SRGBA8> {
 	fn from(value: &FillChoice) -> Self {
 		match value {
 			FillChoice::None => Self::None,
@@ -49,28 +42,32 @@ impl From<&FillChoice> for FillChoiceUI {
 	}
 }
 
-impl From<&FillChoiceUI> for FillChoice {
-	fn from(value: &FillChoiceUI) -> Self {
+impl From<&FillChoice<SRGBA8>> for FillChoice {
+	fn from(value: &FillChoice<SRGBA8>) -> Self {
 		match value {
-			FillChoiceUI::None => Self::None,
-			FillChoiceUI::Solid(srgba) => Self::Solid(Color::from(*srgba)),
-			FillChoiceUI::Gradient(stops) => Self::Gradient(GradientRamp::from(stops)),
+			FillChoice::None => Self::None,
+			FillChoice::Solid(srgba) => Self::Solid(Color::from(*srgba)),
+			FillChoice::Gradient(ramp) => Self::Gradient(ramp.into()),
 		}
 	}
 }
 
-impl FillChoiceUI {
-	pub fn as_solid(&self) -> Option<SRGBA8> {
-		let Self::Solid(c) = self else { return None };
-		Some(*c)
+impl<C: Copy> FillChoice<C> {
+	pub fn as_solid(&self) -> Option<C> {
+		let Self::Solid(color) = self else { return None };
+		Some(*color)
 	}
+}
 
-	pub fn as_gradient(&self) -> Option<&GradientStops<SRGBA8>> {
-		let Self::Gradient(g) = self else { return None };
-		Some(g)
+impl<C> FillChoice<C> {
+	pub fn as_gradient(&self) -> Option<&GradientRamp<C>> {
+		let Self::Gradient(ramp) = self else { return None };
+		Some(ramp)
 	}
+}
 
-	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoiceUI::None`].
+impl FillChoice<SRGBA8> {
+	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`].
 	/// Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
 	pub fn to_css_background_image(&self) -> Option<String> {
 		match self {
@@ -79,31 +76,7 @@ impl FillChoiceUI {
 				let hex = srgba.to_rgba_hex();
 				Some(format!("linear-gradient(#{hex}, #{hex})"))
 			}
-			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
-		}
-	}
-}
-
-impl FillChoice {
-	pub fn as_solid(&self) -> Option<Color> {
-		let Self::Solid(color) = self else { return None };
-		Some(*color)
-	}
-
-	pub fn as_gradient(&self) -> Option<&GradientRamp> {
-		let Self::Gradient(ramp) = self else { return None };
-		Some(ramp)
-	}
-
-	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`]. Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
-	pub fn to_css_background_image(&self) -> Option<String> {
-		match self {
-			Self::None => None,
-			Self::Solid(color) => {
-				let hex = SRGBA8::from(*color).to_rgba_hex();
-				Some(format!("linear-gradient(#{hex}, #{hex})"))
-			}
-			Self::Gradient(ramp) => Some(Gradient::from(ramp).to_css_linear_gradient()),
+			Self::Gradient(ramp) => Some(ramp.stops.to_css_linear_gradient()),
 		}
 	}
 }

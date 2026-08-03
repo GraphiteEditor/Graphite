@@ -16,7 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStop, GradientStops, GradientType, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -271,13 +271,13 @@ impl LayoutHolder for GradientTool {
 				},
 			])
 		});
-		let stops_widget = ColorInput::new(FillChoiceUI::Gradient(GradientStops::from(&stops_value)))
+		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value)))
 			.allow_none(false)
 			.narrow(true)
 			.tooltip_label("Gradient Stops")
 			.tooltip_description("Edit the gradient's color stops.")
 			.on_update(|input: &ColorInput| {
-				let stops = input.value.as_gradient().cloned().unwrap_or_default();
+				let stops = input.value.as_gradient().map(|ramp| ramp.stops.clone()).unwrap_or_default();
 				GradientToolMessage::UpdateStops { stops }.into()
 			})
 			.on_commit(|_| DocumentMessage::AddTransaction.into())

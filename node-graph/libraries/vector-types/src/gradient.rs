@@ -98,6 +98,7 @@ impl GradientStops<SRGBA8> {
 
 /// The serialized exchange form of a gradient: its stops, nested so that whole-ramp settings
 /// like spread method can join as sibling fields opted in from their defaults.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GradientRamp<C = Color> {
@@ -152,6 +153,24 @@ impl From<&GradientRamp> for GradientStops<SRGBA8> {
 impl From<&GradientStops<SRGBA8>> for GradientRamp {
 	fn from(stops: &GradientStops<SRGBA8>) -> Self {
 		Self::from(Gradient::from(stops))
+	}
+}
+
+impl From<&GradientRamp> for GradientRamp<SRGBA8> {
+	fn from(ramp: &GradientRamp) -> Self {
+		Self { stops: ramp.into() }
+	}
+}
+
+impl From<&Gradient> for GradientRamp<SRGBA8> {
+	fn from(gradient: &Gradient) -> Self {
+		Self { stops: gradient.into() }
+	}
+}
+
+impl From<&GradientRamp<SRGBA8>> for GradientRamp {
+	fn from(ramp: &GradientRamp<SRGBA8>) -> Self {
+		Self::from(&ramp.stops)
 	}
 }
 
