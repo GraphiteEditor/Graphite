@@ -408,6 +408,14 @@ fn peniko_color_stops(gradient: &Gradient) -> peniko::ColorStops {
 		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
 	}
 
+	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
+	if peniko_stops.is_empty() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: 0.,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
+		});
+	}
+
 	peniko_stops
 }
 
@@ -418,15 +426,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
-	let mut peniko_stops = peniko_color_stops(stops);
-
-	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
-	if peniko_stops.is_empty() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: 0.,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
-		});
-	}
+	let peniko_stops = peniko_color_stops(stops);
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
 	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));

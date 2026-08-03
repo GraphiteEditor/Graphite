@@ -2020,6 +2020,7 @@ mod test_gradient {
 	use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_gradient_value_node_id;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
+	use graph_craft::document::NodeInput;
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
@@ -2985,5 +2986,24 @@ mod test_gradient {
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the chain should resolve stops");
 		assert_stops_at_positions(&stops.positions(), &[0., 1.], 1e-10);
 		assert!(!stops.has_position_attribute(), "the empty setter value should clear the attribute");
+
+		// A wired setter input is procedural authorship, which the update must leave untouched rather than bake over
+		let number_node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::number_value::IDENTIFIER)).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::primary_output(number_node_id),
+				input_connector: InputConnector::node(positions_node_id, graphene_std::math_nodes::gradient_positions::PositionsInput),
+			})
+			.await;
+		editor.handle_message(GraphOperationMessage::GradientPositionsSet { layer, positions: vec![0., 0.5] }).await;
+		let document = editor.active_document();
+		let positions_input = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&positions_node_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput))
+			.expect("the positions input should exist");
+		assert!(matches!(positions_input, NodeInput::Node { .. }), "the wired positions input must survive the baked write");
 	}
 }

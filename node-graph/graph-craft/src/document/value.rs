@@ -808,12 +808,19 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			// The gradient tags carried several shapes over time, disambiguated here: the ancient full struct (`start`/`end` keys) becomes `LegacyGradient`,
 			// while the current stops struct, the old tuple list, and the legacy one-element table wrapper all parse as the stops value directly
 			"Gradient" | "GradientTable" | "GradientPositions" | "GradientStops" => {
-				let payload = content
+				let table_element = content
 					.as_object()
 					.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
-					.and_then(|element| element.as_array())
-					.and_then(|array| array.first())
-					.unwrap_or(content);
+					.and_then(|element| element.as_array());
+
+				// An empty legacy table wrapper carries no gradient, degrading to the default rather than failing the document load
+				if let Some(array) = table_element
+					&& array.is_empty()
+				{
+					return Ok(MemoHash::new(TaggedValue::Gradient(Gradient::default())));
+				}
+
+				let payload = table_element.and_then(|array| array.first()).unwrap_or(content);
 
 				if payload.as_object().is_some_and(|c| c.contains_key("start") && c.contains_key("end")) {
 					let gradient: graphic_types::migrations::legacy::LegacyGradient = serde_json::from_value(payload.clone()).map_err(serde::de::Error::custom)?;

@@ -311,7 +311,7 @@ impl Gradient {
 		positions
 			.iter()
 			.enumerate()
-			.any(|(index, &position)| (position - even_position(index, count)).abs() > 1e-6)
+			.any(|(index, &position)| !position.is_finite() || (position - even_position(index, count)).abs() > 1e-6)
 			.then_some(positions)
 	}
 
@@ -883,6 +883,9 @@ mod tests {
 		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
 		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::WHITE.lerp(&Color::RED, 0.5));
+
+		// A non-finite position is preserved as nondefault so write-back elision cannot resurrect the dropped stop
+		assert!(gradient.nondefault_positions().is_some());
 
 		// With every position NaN the gradient samples as stopless, painting solid black to signal the upstream bug
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::RED]);
