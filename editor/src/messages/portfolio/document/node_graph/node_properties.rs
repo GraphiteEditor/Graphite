@@ -1158,7 +1158,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	// Add the color input
 	let widget_value = match &**tagged_value {
 		TaggedValue::Color(color) => FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color)),
-		TaggedValue::Gradient(ramp) => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(ramp)),
+		TaggedValue::GradientRamp(ramp) => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(ramp)),
 		value if value.is_no_paint() => FillChoice::<SRGBA8>::None,
 		x => {
 			warn!("Color {x:?}");
@@ -1172,10 +1172,10 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 		|input| match &input.value {
 			FillChoice::<SRGBA8>::None => TaggedValue::no_paint(),
 			FillChoice::<SRGBA8>::Solid(srgba) => TaggedValue::Color(Color::from(*srgba)),
-			FillChoice::<SRGBA8>::Gradient(ramp) => TaggedValue::Gradient(GradientRamp::from(ramp)),
+			FillChoice::<SRGBA8>::Gradient(ramp) => TaggedValue::GradientRamp(GradientRamp::from(ramp)),
 		}
-	} else if matches!(&**tagged_value, TaggedValue::Gradient(_)) {
-		|input| TaggedValue::Gradient(input.value.as_gradient().map(GradientRamp::from).unwrap_or_else(GradientRamp::black_to_white))
+	} else if matches!(&**tagged_value, TaggedValue::GradientRamp(_)) {
+		|input| TaggedValue::GradientRamp(input.value.as_gradient().map(GradientRamp::from).unwrap_or_else(GradientRamp::black_to_white))
 	} else {
 		|input| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT))
 	};
@@ -2424,7 +2424,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Ok(document_node) => match document_node.input_value(FillInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
-			Some(TaggedValue::Gradient(_)) => {
+			Some(TaggedValue::GradientRamp(_)) => {
 				match graph_modification_utils::read_fill_node_gradient(document_node, || {
 					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
 				}) {
@@ -2450,7 +2450,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				_ => None,
 			};
 			let backup_stops = match document_node.input_value(BackupGradientInput) {
-				Some(TaggedValue::Gradient(ramp)) => ramp.clone(),
+				Some(TaggedValue::GradientRamp(ramp)) => ramp.clone(),
 				_ => GradientRamp::black_to_white(),
 			};
 			(backup_color, backup_stops)
@@ -2465,7 +2465,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(GradientRamp::from(stops.reversed())), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::GradientRamp(GradientRamp::from(stops.reversed())), node_id, FillInput))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2512,13 +2512,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::INDEX,
-				value: TaggedValue::Gradient(ramp.clone()).into(),
+				value: TaggedValue::GradientRamp(ramp.clone()).into(),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: BackupGradientInput::INDEX,
-				value: TaggedValue::Gradient(ramp).into(),
+				value: TaggedValue::GradientRamp(ramp).into(),
 			}
 			.into(),
 		]),
@@ -2553,7 +2553,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, FillInput))
 				.on_commit(commit_value),
 		];
 

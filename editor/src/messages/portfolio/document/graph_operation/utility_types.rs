@@ -410,12 +410,12 @@ impl<'a> ModifyInputsContext<'a> {
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
 		let ramp = GradientRamp::from(gradient);
-		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Gradient(ramp.clone()), false), true);
+		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput),
-			NodeInput::value(TaggedValue::Gradient(ramp), false),
+			NodeInput::value(TaggedValue::GradientRamp(ramp), false),
 			true,
 		);
 
@@ -549,7 +549,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(GradientRamp::from(stops)), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(GradientRamp::from(stops)), false), false);
 	}
 
 	/// Update the last 'Gradient Positions' node in the chain when one exists, so on-canvas stop drags stay live even

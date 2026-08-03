@@ -2061,7 +2061,7 @@ mod test_gradient {
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
 				let stops = match fill_node.input(fill::FillInput)?.as_value()? {
-					TaggedValue::Gradient(ramp) => Gradient::from(ramp),
+					TaggedValue::GradientRamp(ramp) => Gradient::from(ramp),
 					_ => return None,
 				};
 
@@ -2150,7 +2150,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientRamp::from(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2185,7 +2185,7 @@ mod test_gradient {
 			.and_then(|node| node.input(graphene_std::math_nodes::gradient_value::GradientInput))
 			.and_then(|input| input.as_value())
 			.cloned();
-		let Some(TaggedValue::Gradient(ramp)) = stops else {
+		let Some(TaggedValue::GradientRamp(ramp)) = stops else {
 			panic!("expected a gradient default, got {stops:?}")
 		};
 		assert_eq!(Gradient::from(ramp).positions(), vec![0., 1.], "the parameter default should be the black-to-white starting gradient");
@@ -2210,7 +2210,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientRamp::from(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2854,7 +2854,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_value_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(GradientRamp::from(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
