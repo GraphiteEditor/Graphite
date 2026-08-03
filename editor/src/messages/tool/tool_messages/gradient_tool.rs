@@ -9,7 +9,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, reverse_direction_tooltip_description,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, is_blank_paintable_layer,
+	reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
@@ -1437,14 +1438,14 @@ impl Fsm for GradientToolFsmState {
 					GradientToolFsmState::Drawing { drag_hint: hint }
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-					// List-based gradients render no geometry, so a click on empty canvas yields no layer.
-					// Fall back to a selected gradient list layer so the user can drag a fresh gradient line anywhere.
+					// List-based gradients and blank layers render no geometry, so a click on empty canvas yields no layer.
+					// Fall back to a selected gradient list layer, or a blank layer ready to receive its first whole-expanse gradient.
 					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some())
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || is_blank_paintable_layer(layer, &document.network_interface))
 					});
 
 					// Apply the gradient to the selected layer
@@ -1485,7 +1486,12 @@ impl Fsm for GradientToolFsmState {
 									gradient_form: tool_options.gradient_form,
 									gradient_spread: tool_options.gradient_spread,
 								},
-								GradientSource::Direct,
+								// A blank layer starts a whole-expanse gradient chain; a layer with content gets its Fill painted
+								if is_blank_paintable_layer(layer, &document.network_interface) {
+									GradientSource::Chain
+								} else {
+									GradientSource::Direct
+								},
 							),
 						};
 						let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
@@ -2975,5 +2981,34 @@ mod test_gradient {
 			.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput))
 			.expect("the positions input should exist");
 		assert!(matches!(positions_input, NodeInput::Node { .. }), "the wired positions input must survive the baked write");
+	}
+
+	#[tokio::test]
+	async fn drag_on_blank_layer_starts_gradient_chain() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		assert!(
+			get_upstream_gradient_value_node_id(layer, &document.network_interface).is_some(),
+			"the drag should start a gradient chain"
+		);
+		let stops = get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops");
+		assert_eq!(stops.len(), 2);
 	}
 }

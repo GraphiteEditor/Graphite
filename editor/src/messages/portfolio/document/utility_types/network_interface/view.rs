@@ -123,6 +123,11 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
 	}
 
+	/// Whether the node is a Merge node by identity, regardless of whether it currently participates in the scene.
+	pub fn is_merge(&self, node_id: &NodeId) -> bool {
+		self.reference(node_id).ok().flatten().is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()))
+	}
+
 	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId) -> String {
 		self.reference(node_id)

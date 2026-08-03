@@ -296,6 +296,23 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
 }
 
+/// Whether the layer is an empty 'Merge' layer: nothing feeds its secondary input, so a fresh whole-expanse paint chain may start there.
+/// Specialized layers like artboards, or nodes displayed as layers, have their own meaning for that input, so they are excluded.
+pub fn is_blank_paintable_layer(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	network_interface.is_merge(&layer.to_node(), &[]) && network_interface.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[]).is_none()
+}
+
+/// Try to find a 'Color Value' node that is connected to a 'Fill' node, or to a layer directly.
+pub fn get_upstream_color_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
+
+	network_interface
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::color_value::IDENTIFIER)))
+}
+
 /// Get the node connected to Fill's fill input, if any.
 pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;

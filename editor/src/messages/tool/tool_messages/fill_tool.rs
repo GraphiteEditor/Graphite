@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, is_blank_paintable_layer};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::style::FillChoice;
@@ -154,9 +154,20 @@ impl Fsm for FillToolFsmState {
 				self
 			}
 			(FillToolFsmState::Ready, color_event) => {
-				let Some(layer_identifier) = document.click(input, viewport) else {
-					return self;
-				};
+				// Blank layers and whole-expanse color chains render no clickable geometry, so fall back to a selected layer of either kind
+				let clicked_layer = document.click(input, viewport).or_else(|| {
+					document
+						.network_interface
+						.selected_nodes()
+						.selected_visible_layers(&document.network_interface)
+						.find(|&layer| get_upstream_color_value_node_id(layer, &document.network_interface).is_some() || is_blank_paintable_layer(layer, &document.network_interface))
+				});
+				let Some(layer_identifier) = clicked_layer else { return self };
+
+				// A whole-expanse color chain (existing, or newly started on a blank layer) routes to its 'Color Value' node; geometry gets its Fill set
+				let route_to_color_chain =
+					get_upstream_color_value_node_id(layer_identifier, &document.network_interface).is_some() || is_blank_paintable_layer(layer_identifier, &document.network_interface);
+
 				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
 				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
 					return self;
@@ -168,10 +179,14 @@ impl Fsm for FillToolFsmState {
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(GraphOperationMessage::FillColorSet {
-					layer: layer_identifier,
-					color: Some(color),
-				});
+				if route_to_color_chain {
+					responses.add(GraphOperationMessage::ColorValueSet { layer: layer_identifier, color });
+				} else {
+					responses.add(GraphOperationMessage::FillColorSet {
+						layer: layer_identifier,
+						color: Some(color),
+					});
+				}
 
 				FillToolFsmState::Filling
 			}
@@ -261,5 +276,68 @@ mod test_fill {
 		assert_eq!(fills.len(), 1);
 		let color = fills.first().unwrap().element();
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
+	}
+
+	#[tokio::test]
+	async fn blank_layer_gets_whole_expanse_color() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
+		use graph_craft::document::NodeId;
+		use graph_craft::document::value::TaggedValue;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let color_value_id = get_upstream_color_value_node_id(layer, &document.network_interface).expect("the fill should start a Color Value chain");
+		let color_input = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&color_value_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::color_value::ColorInput))
+			.and_then(|input| input.as_value());
+		assert!(matches!(color_input, Some(TaggedValue::Color(color)) if *color == Color::GREEN));
+	}
+
+	#[tokio::test]
+	async fn node_displayed_as_layer_gets_no_color_chain() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// A generator node displayed as a layer looks empty from the outside, but its secondary input is a parameter of its own
+		let rectangle = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER))
+			.await;
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.set_to_node_or_layer(&rectangle, &[], true);
+		let layer = LayerNodeIdentifier::new(rectangle, network_interface);
+		network_interface.move_layer_to_stack(layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
+		assert!(editor.active_document().metadata().all_layers().any(|other| other == layer), "the node should sit in the layer stack");
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		assert!(
+			get_upstream_color_value_node_id(layer, &document.network_interface).is_none(),
+			"only a 'Merge' layer may have a whole-expanse color chain started on it"
+		);
 	}
 }

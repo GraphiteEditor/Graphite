@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, is_blank_paintable_layer};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
@@ -232,7 +232,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 	}
 
-	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) {
+	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) -> NodeId {
 		let color_value = resolve_proto_node_type(graphene_std::math_nodes::color_value::IDENTIFIER)
 			.expect("Color Value node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Color(color), false))]);
@@ -240,6 +240,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let color_value_id = NodeId::new();
 		self.network_interface.insert_node(color_value_id, color_value, &[]);
 		self.network_interface.move_node_to_chain_start(&color_value_id, layer, &[], self.import);
+
+		color_value_id
 	}
 
 	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) {
@@ -502,6 +504,27 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
+	/// Update the chain's 'Color Value' node, or start a chain with one on an empty layer, painting the layer's whole expanse.
+	pub fn color_value_set(&mut self, color: Color) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		if let Some(node_id) = self.existing_proto_node_id_at(&target_input, graphene_std::math_nodes::color_value::IDENTIFIER, false) {
+			let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::color_value::ColorInput);
+			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
+			return;
+		}
+
+		// The 'Color Value' node discards its primary input, so only a blank 'Merge' layer may start a chain with one
+		if target_input != InputConnector::layer_secondary_input(output_layer.to_node()) || !is_blank_paintable_layer(output_layer, self.network_interface) {
+			return;
+		}
+
+		let color_value_id = self.insert_color_value(color, output_layer);
+		let input_connector = InputConnector::node(color_value_id, graphene_std::math_nodes::color_value::ColorInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
+	}
+
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
 	pub fn gradient_stops_set(&mut self, stops: Gradient) {
 		let Some(output_layer) = self.get_output_layer() else { return };
@@ -512,9 +535,9 @@ impl<'a> ModifyInputsContext<'a> {
 				let target = gradient_chain_target_input(output_layer, self.network_interface);
 				let starts_layer_chain = target == InputConnector::layer_secondary_input(output_layer.to_node());
 
-				// The Gradient Value node discards its primary input, so starting a chain ahead of existing layer content would drop that content; refuse instead
-				if starts_layer_chain && self.network_interface.upstream_output_connector(&target, &[]).is_some() {
-					log::error!("Refusing to start a gradient chain ahead of existing layer content");
+				// The 'Gradient Value' node discards its primary input, so only a blank 'Merge' layer may start a chain with one
+				if starts_layer_chain && !is_blank_paintable_layer(output_layer, self.network_interface) {
+					log::error!("Refusing to start a gradient chain on anything but a blank 'Merge' layer");
 					return;
 				}
 

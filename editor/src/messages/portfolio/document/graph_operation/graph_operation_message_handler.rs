@@ -39,6 +39,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.fill_color_set(color);
 				}
 			}
+			GraphOperationMessage::ColorValueSet { layer, color } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.color_value_set(color);
+				}
+			}
 			GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient,
