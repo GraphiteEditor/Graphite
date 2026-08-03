@@ -273,7 +273,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.next()
 			}
 			Some(LayoutGroup::Table(WidgetTable { rows, .. })) => {
-				self.table.extend(rows.iter().flatten().rev());
+				self.table.extend(rows.iter().flatten().flatten().rev());
 				self.next()
 			}
 			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
@@ -325,7 +325,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 				self.next()
 			}
 			Some(LayoutGroup::Table(WidgetTable { rows, .. })) => {
-				self.table.extend(rows.iter_mut().flatten().rev());
+				self.table.extend(rows.iter_mut().flatten().flatten().rev());
 				self.next()
 			}
 			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
@@ -365,8 +365,9 @@ pub struct WidgetRow {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetTable {
+	/// Rows of cells, each cell holding one or more widgets laid out inline.
 	#[serde(rename = "tableWidgets")]
-	pub rows: Vec<Vec<WidgetInstance>>,
+	pub rows: Vec<Vec<Vec<WidgetInstance>>>,
 	pub unstyled: bool,
 }
 
@@ -412,7 +413,14 @@ impl LayoutGroup {
 		Self::Column(WidgetColumn { widgets })
 	}
 
+	/// A table with one widget per cell.
 	pub fn table(rows: Vec<Vec<WidgetInstance>>, unstyled: bool) -> Self {
+		let rows = rows.into_iter().map(|row| row.into_iter().map(|widget| vec![widget]).collect()).collect();
+		Self::Table(WidgetTable { rows, unstyled })
+	}
+
+	/// A table whose cells may each hold multiple widgets laid out inline.
+	pub fn table_of_cells(rows: Vec<Vec<Vec<WidgetInstance>>>, unstyled: bool) -> Self {
 		Self::Table(WidgetTable { rows, unstyled })
 	}
 
@@ -600,13 +608,17 @@ impl Diffable for LayoutGroup {
 				}
 			}
 			Self::Table(WidgetTable { rows, .. }) => {
-				for (row_idx, row) in rows.iter().enumerate() {
-					for (col_idx, widget) in row.iter().enumerate() {
-						widget_path.push(row_idx);
-						widget_path.push(col_idx);
-						widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
-						widget_path.pop();
-						widget_path.pop();
+				for (row_index, row) in rows.iter().enumerate() {
+					for (column_index, cell) in row.iter().enumerate() {
+						for (widget_index, widget) in cell.iter().enumerate() {
+							widget_path.push(row_index);
+							widget_path.push(column_index);
+							widget_path.push(widget_index);
+							widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+							widget_path.pop();
+							widget_path.pop();
+							widget_path.pop();
+						}
 					}
 				}
 			}
@@ -626,13 +638,17 @@ impl Diffable for LayoutGroup {
 				}
 			}
 			Self::Table(WidgetTable { rows, .. }) => {
-				for (row_idx, row) in rows.iter_mut().enumerate() {
-					for (col_idx, widget) in row.iter_mut().enumerate() {
-						widget_path.push(row_idx);
-						widget_path.push(col_idx);
-						widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
-						widget_path.pop();
-						widget_path.pop();
+				for (row_index, row) in rows.iter_mut().enumerate() {
+					for (column_index, cell) in row.iter_mut().enumerate() {
+						for (widget_index, widget) in cell.iter_mut().enumerate() {
+							widget_path.push(row_index);
+							widget_path.push(column_index);
+							widget_path.push(widget_index);
+							widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
+							widget_path.pop();
+							widget_path.pop();
+							widget_path.pop();
+						}
 					}
 				}
 			}

@@ -1,6 +1,6 @@
 import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
+type UIItem = Layout | LayoutGroup | WidgetInstance[][] | WidgetInstance[] | WidgetInstance;
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
 export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 	diffs.forEach((update) => {
