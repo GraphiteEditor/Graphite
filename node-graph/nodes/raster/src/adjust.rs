@@ -24,9 +24,7 @@ mod adjust_std {
 	}
 	impl Adjust<Color> for Gradient {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for color in self.color.iter_mut() {
-				*color = map_fn(color);
-			}
+			*self = self.map_colors(map_fn);
 		}
 	}
 }

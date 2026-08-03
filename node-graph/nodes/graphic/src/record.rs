@@ -796,11 +796,12 @@ mod tests {
 		assert_eq!(three.iter().map(|stop| stop.position).collect::<Vec<_>>(), vec![0., 0.5, 1.]);
 		assert_eq!(three.iter().map(|stop| stop.color).collect::<Vec<_>>(), vec![Color::BLACK, Color::WHITE, Color::BLACK]);
 
+		// A lone color is a one-stop gradient and no colors a stopless one; neither is padded
 		let single = stops_of(vec![Color::WHITE]);
-		assert_eq!(single.iter().map(|stop| (stop.position, stop.color)).collect::<Vec<_>>(), vec![(0., Color::WHITE), (1., Color::WHITE)]);
+		assert_eq!(single.iter().map(|stop| (stop.position, stop.color)).collect::<Vec<_>>(), vec![(0., Color::WHITE)]);
 
 		let empty = stops_of(Vec::new());
-		assert_eq!(empty.iter().map(|stop| (stop.position, stop.color)).collect::<Vec<_>>(), vec![(0., Color::BLACK), (1., Color::BLACK)]);
+		assert!(empty.iter().next().is_none());
 	}
 
 	#[test]

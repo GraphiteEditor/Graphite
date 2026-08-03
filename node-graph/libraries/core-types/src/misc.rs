@@ -89,7 +89,7 @@ struct LegacyTable<T> {
 	element: Vec<T>,
 }
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<no_std_types::color::Color, D::Error> {
 	use no_std_types::color::Color;
 	use serde::Deserialize;
@@ -107,7 +107,7 @@ pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 	})
 }
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
 	use serde::Deserialize;
 

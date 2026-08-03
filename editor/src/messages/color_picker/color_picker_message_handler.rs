@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientUI};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientStops};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -82,7 +82,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 					FillChoice::Gradient(stops) => {
 						self.active_marker_index = Some(0);
 						self.active_marker_is_midpoint = false;
-						let first_color = stops.color.first().copied().unwrap_or(Color::BLACK);
+						let first_color = stops.color(0).unwrap_or(Color::BLACK);
 						self.gradient = Some(stops);
 						self.adopt_color(first_color);
 					}
@@ -266,9 +266,9 @@ impl ColorPickerMessageHandler {
 
 		if let Some(gradient) = &mut self.gradient
 			&& let Some(active_index) = self.active_marker_index
-			&& let Some(stop_color) = gradient.color.get_mut(active_index as usize)
+			&& (active_index as usize) < gradient.len()
 		{
-			*stop_color = color;
+			gradient.set_color(active_index as usize, color);
 			let stops = gradient.clone();
 			let fill_choice = FillChoice::Gradient(stops);
 			responses.add(FrontendMessage::ColorPickerColorChanged {
@@ -305,7 +305,7 @@ impl ColorPickerMessageHandler {
 			self.active_marker_is_midpoint = active_marker_is_midpoint;
 			if let Some(index) = active_marker_index
 				&& let Some(gradient) = &self.gradient
-				&& let Some(color) = gradient.color.get(index as usize).copied()
+				&& let Some(color) = gradient.color(index as usize)
 			{
 				self.adopt_color(color);
 				self.snapshot_old();
@@ -324,17 +324,16 @@ impl ColorPickerMessageHandler {
 				}
 			}
 			SpectrumInputUpdate::MoveMidpoint { index, position } => {
-				if let Some(midpoint) = gradient.midpoint.get_mut(index as usize) {
-					*midpoint = position.clamp(MIN_MIDPOINT, MAX_MIDPOINT);
-				} else {
+				if (index as usize) >= gradient.len() {
 					return;
 				}
+				gradient.set_midpoint(index as usize, position.clamp(MIN_MIDPOINT, MAX_MIDPOINT));
 			}
 			SpectrumInputUpdate::InsertMarker { position } => {
 				let new_index = gradient.insert_stop(position);
 				self.active_marker_index = Some(new_index as u32);
 				self.active_marker_is_midpoint = false;
-				if let Some(color) = gradient.color.get(new_index).copied() {
+				if let Some(color) = gradient.color(new_index) {
 					self.adopt_color(color);
 					self.snapshot_old();
 				}
@@ -349,7 +348,7 @@ impl ColorPickerMessageHandler {
 			}
 			SpectrumInputUpdate::RemoveDuplicate { index } => {
 				let anchor = index as usize;
-				if anchor >= gradient.position.len() || gradient.position.len() <= 2 {
+				if anchor >= gradient.len() || gradient.len() <= 2 {
 					return;
 				}
 				// Never remove the active (dragged) stop itself, this should only ever target the frozen copy.
@@ -366,14 +365,14 @@ impl ColorPickerMessageHandler {
 			}
 			SpectrumInputUpdate::DeleteMarker { index } => {
 				// Enforce minimum stop count. The gradient editor needs at least 2 stops to remain meaningful.
-				if gradient.position.len() <= 2 || (index as usize) >= gradient.position.len() {
+				if gradient.len() <= 2 || (index as usize) >= gradient.len() {
 					return;
 				}
 				gradient.remove(index as usize);
-				let new_active = (index as usize).min(gradient.position.len() - 1);
+				let new_active = (index as usize).min(gradient.len() - 1);
 				self.active_marker_index = Some(new_active as u32);
 				self.active_marker_is_midpoint = false;
-				if let Some(color) = gradient.color.get(new_active).copied() {
+				if let Some(color) = gradient.color(new_active) {
 					self.adopt_color(color);
 					self.snapshot_old();
 				}
@@ -383,13 +382,13 @@ impl ColorPickerMessageHandler {
 			}
 			SpectrumInputUpdate::ResetMarker { index } => {
 				let i = index as usize;
-				let count = gradient.position.len();
+				let count = gradient.len();
 				if i >= count {
 					return;
 				}
 				// Each stop's "natural" position is its evenly-spaced fraction along 0..1, e.g., for 5 stops: 0, 0.25, 0.5, 0.75, 1. Falls back to the midpoint between neighbors when the natural position would push the stop past another.
-				let left = if i == 0 { 0. } else { gradient.position[i - 1] };
-				let right = gradient.position.get(i + 1).copied().unwrap_or(1.);
+				let left = if i == 0 { 0. } else { gradient.position(i - 1) };
+				let right = if i + 1 < count { gradient.position(i + 1) } else { 1. };
 				let natural = if count <= 1 { 0. } else { i as f64 / (count - 1) as f64 };
 				let new_position = if (left..=right).contains(&natural) { natural } else { (left + right) / 2. };
 				let new_index = gradient.move_stop(i, new_position);
@@ -430,7 +429,7 @@ impl ColorPickerMessageHandler {
 			// For gradient editing, the markers' handle colors mirror their gradient stop colors
 			let markers = gradient.iter().map(|stop| SpectrumMarker::new(stop.position, stop.midpoint, stop.color)).collect();
 			let mut row_widgets = vec![
-				SpectrumInput::new(GradientUI::from(gradient))
+				SpectrumInput::new(GradientStops::from(gradient))
 					.markers(markers)
 					.active_marker_index(self.active_marker_index)
 					.active_marker_is_midpoint(self.active_marker_is_midpoint)
@@ -445,10 +444,10 @@ impl ColorPickerMessageHandler {
 
 			if let Some(active) = self.active_marker_index {
 				let active_index = active as usize;
-				let position_value = if self.active_marker_is_midpoint {
-					gradient.midpoint.get(active_index).copied().unwrap_or(0.)
-				} else {
-					gradient.position.get(active_index).copied().unwrap_or(0.)
+				let position_value = match (self.active_marker_is_midpoint, active_index < gradient.len()) {
+					(_, false) => 0.,
+					(true, true) => gradient.midpoint(active_index),
+					(false, true) => gradient.position(active_index),
 				};
 				let is_midpoint = self.active_marker_is_midpoint;
 				let captured_index = active;

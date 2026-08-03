@@ -15,7 +15,7 @@ use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
-use vector_types::{Gradient, GradientStop, ReferencePoint};
+use vector_types::{Gradient, ReferencePoint};
 
 fn arena_exhausted() -> Interrupt {
 	GraphError {
@@ -555,21 +555,10 @@ pub fn flatten_gradient<'e>(
 	flatten_leaf_lane(content, ctx.index() as usize)
 }
 
-/// A gradient with `colors` as evenly spaced stops from 0 to 1; none makes a
-/// black gradient and one repeats at both ends.
-fn evenly_spaced_gradient(colors: &[Color]) -> Gradient {
-	let stop = |position: f64, color: Color| GradientStop { position, midpoint: 0.5, color };
-	match colors {
-		[] => Gradient::new(vec![stop(0., Color::BLACK), stop(1., Color::BLACK)]),
-		[color] => Gradient::new(vec![stop(0., *color), stop(1., *color)]),
-		colors => Gradient::new(colors.iter().enumerate().map(|(index, color)| stop(index as f64 / (colors.len() - 1) as f64, *color))),
-	}
-}
-
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"), name("Colors to Gradient"))]
 pub fn colors_to_gradient(_: impl Ctx, colors: IList<Color>) -> Gradient {
-	evenly_spaced_gradient(&colors.iter().collect::<Vec<_>>())
+	Gradient::from(colors.iter().collect::<Vec<_>>())
 }
 
 /// The gradient over a graphic level's color leaves, as [`colors_to_gradient`].
@@ -583,7 +572,7 @@ pub fn colors_to_gradient_graphic(_: impl Ctx, colors: IList<Graphic<'static>>) 
 			RowStep::Continue
 		});
 	}
-	evenly_spaced_gradient(&leaves)
+	Gradient::from(leaves)
 }
 
 pub use _colors_to_gradient_graphic_mod::colors_to_gradient_graphic_entries;

@@ -273,7 +273,7 @@ pub struct Color {
 // `f32` channels mean `Color` doesn't qualify for a derived `Eq`, but in practice we never store NaN here, and the renderer's `HashMap<CacheHashWrapper<Image<Color>>, _>` deduplication needs `Color: Eq` to propagate up through the wrapper.
 impl Eq for Color {}
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "std")]
 impl serde::Serialize for Color {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -290,7 +290,7 @@ impl serde::Serialize for Color {
 	}
 }
 
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "std")]
 impl<'de> serde::Deserialize<'de> for Color {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -413,6 +413,7 @@ impl Color {
 	pub const YELLOW: Color = Color::from_rgbf32_unchecked(1., 1., 0.);
 	pub const CYAN: Color = Color::from_rgbf32_unchecked(0., 1., 1.);
 	pub const MAGENTA: Color = Color::from_rgbf32_unchecked(1., 0., 1.);
+	pub const MIDDLE_GRAY: Color = Color::from_rgbf32_unchecked(0.5, 0.5, 0.5);
 	pub const TRANSPARENT: Color = Self {
 		red: 0.,
 		green: 0.,

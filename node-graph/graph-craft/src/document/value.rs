@@ -2,7 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::Any as DAny;
-use brush_nodes::brush_stroke::{BrushStroke, BrushTrace};
+use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
 use core_types::context::Context;
 use core_types::gpoll::GPoll;
@@ -29,7 +29,6 @@ use std::hash::Hash;
 use std::str::FromStr;
 pub use std::sync::Arc;
 use text_nodes::Font;
-use text_nodes::vector_types::GradientStop;
 use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
@@ -63,25 +62,24 @@ macro_rules! tagged_value {
 			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
 			TypeDefault(TypeDescriptor),
 			/// Stored compactly as a `Vec<f64>`, materializes as `List<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
-			/// Stored compactly as a `Vec<f64>` of dash lengths, materializes as an `Item<DashPattern>` at runtime via `to_dynany`/`to_any`.
+			/// Stored compactly as a `Vec<f64>` of dash lengths, materializes as a `DashPattern` at runtime via `to_dynany`/`to_any`.
 			DashPattern(Vec<f64>),
-			/// Stored compactly as a `Vec<f64>` of corner values, materializes as an `Item<BoxCorners>` at runtime via `to_dynany`/`to_any`.
+			/// Stored compactly as a `Vec<f64>` of corner values, materializes as a `BoxCorners` at runtime via `to_dynany`/`to_any`.
 			BoxCorners(Vec<f64>),
 			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
 			/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
-			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Color),
-			/// Stored compactly as a `Gradient`, materializes as a single-row `List<Gradient>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored as the `{ color, position?, midpoint? }` stops struct, materializes as a single-row `List<Gradient>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `LegacyGradient` by `deserialize_tagged_value_with_legacy_migration`.)
-			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(Gradient),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this document upgrade code
 			#[serde(alias = "BrushStrokeTable")]
 			BrushStrokes(Vec<BrushStroke>),
 			// =======================
@@ -413,15 +411,10 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(*downcast(input).unwrap())),
 					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
 					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*downcast(input).unwrap())),
-					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(downcast::<Item<Color>>(input).unwrap().into_element())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(*downcast(input).unwrap())),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(downcast::<Item<Gradient>>(input).unwrap().into_element())),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
-					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -448,15 +441,10 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<Vec<f64>>().unwrap().clone())),
 					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<List<f64>>().unwrap().iter_element_values().copied().collect())),
 					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<Item<DashPattern>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*input.downcast_ref::<Color>().unwrap())),
-					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(*input.downcast_ref::<Item<Color>>().unwrap().element())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Gradient>().unwrap().clone())),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::Gradient(input.downcast_ref::<Item<Gradient>>().unwrap().element().clone())),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
-					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -698,29 +686,13 @@ impl TaggedValue {
 		fn to_gradient(input: &str) -> Option<Gradient> {
 			// String syntax: (e.g. "000000ff, ff0000ff")
 			let stops = input.split(',').filter_map(|s| to_color(s.trim())).collect::<Vec<_>>();
-			if stops.len() == 1 {
-				Some(Gradient::new(vec![
-					GradientStop {
-						position: 0.,
-						midpoint: 0.5,
-						color: stops[0],
-					},
-					GradientStop {
-						position: 1.,
-						midpoint: 0.5,
-						color: stops[0],
-					},
-				]))
-			} else if stops.len() >= 2 {
-				let step = 1. / (stops.len() - 1) as f64;
-				Some(Gradient::new(stops.into_iter().enumerate().map(|(i, color)| GradientStop {
-					position: i as f64 * step,
-					midpoint: 0.5,
-					color,
-				})))
-			} else {
-				log::error!("Invalid default value gradient string: {input}");
-				None
+			match stops.len() {
+				0 => {
+					log::error!("Invalid default value gradient string: {input}");
+					None
+				}
+				1 => Some(Gradient::from(vec![stops[0], stops[0]])),
+				_ => Some(Gradient::from(stops)),
 			}
 		}
 
@@ -823,7 +795,7 @@ impl TaggedValue {
 /// - `FillChoice` → `TaggedValue::Color` (solid), `TaggedValue::Gradient` (gradient), or `TaggedValue::no_paint()` (none)
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
-// TODO: Eventually remove this migration document upgrade code
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "loading")]
 pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<MemoHash<TaggedValue>, D::Error> {
 	use serde::Deserialize;
@@ -882,11 +854,30 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 				}
 				return Ok(MemoHash::new(TaggedValue::no_paint()));
 			}
-			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `LegacyGradient`), and now carries an `Option<Gradient>`.
-			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `Gradient` has none of those (it has `position`/`midpoint`/`color`).
-			"Gradient" if content.as_object().is_some_and(|c| c.contains_key("start") && c.contains_key("end")) => {
-				let gradient: graphic_types::migrations::legacy::LegacyGradient = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
-				return Ok(MemoHash::new(TaggedValue::LegacyGradient(gradient)));
+			// The gradient tags carried several shapes over time, disambiguated here: the ancient full struct (`start`/`end` keys) becomes `LegacyGradient`,
+			// while the current stops struct, the old tuple list, and the legacy one-element table wrapper all parse as the stops value directly
+			"Gradient" | "GradientTable" | "GradientPositions" | "GradientStops" => {
+				let table_element = content
+					.as_object()
+					.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
+					.and_then(|element| element.as_array());
+
+				// An empty legacy table wrapper carries no gradient, degrading to the default rather than failing the document load
+				if let Some(array) = table_element
+					&& array.is_empty()
+				{
+					return Ok(MemoHash::new(TaggedValue::Gradient(Gradient::default())));
+				}
+
+				let payload = table_element.and_then(|array| array.first()).unwrap_or(content);
+
+				if payload.as_object().is_some_and(|c| c.contains_key("start") && c.contains_key("end")) {
+					let gradient: graphic_types::migrations::legacy::LegacyGradient = serde_json::from_value(payload.clone()).map_err(serde::de::Error::custom)?;
+					return Ok(MemoHash::new(TaggedValue::LegacyGradient(gradient)));
+				}
+
+				let gradient: Gradient = serde_json::from_value(payload.clone()).map_err(serde::de::Error::custom)?;
+				return Ok(MemoHash::new(TaggedValue::Gradient(gradient)));
 			}
 			_ => {}
 		}

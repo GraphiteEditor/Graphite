@@ -5,7 +5,7 @@ pub mod brush_stroke;
 pub mod migrations {
 	use crate::brush_stroke::BrushStroke;
 
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	pub fn migrate_to_brush_strokes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<BrushStroke>, D::Error> {
 		use serde::Deserialize;
 

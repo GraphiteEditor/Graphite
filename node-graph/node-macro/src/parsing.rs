@@ -267,6 +267,16 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
+impl ParsedFieldType {
+	/// The shared value-field data, present for every value field but not a lazy `Node`.
+	pub fn regular(&self) -> Option<&RegularParsedField> {
+		match self {
+			ParsedFieldType::Regular(field) => Some(field),
+			ParsedFieldType::Node(_) => None,
+		}
+	}
+}
+
 /// A single numeric endpoint within a `#[soft(..)]` or `#[hard(..)]` bounds range.
 /// Accepts both integer literals (e.g. `1`, `-1`) and float literals (e.g. `1.`, `-500.`).
 #[derive(Clone, Debug)]
