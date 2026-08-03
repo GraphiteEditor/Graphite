@@ -29,8 +29,8 @@ fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<
 	input.unwrap_or_default()
 }
 
-/// Meant for debugging purposes, not general use. Clones the input value.
+/// Clones the value borrowed from a lending edge. Doubles as the checker-inserted clone-out adapter.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&List<Raster<CPU>>)] value: &'i T) -> T {
+fn clone<T: Clone>(_: impl Ctx, #[implementations(List<Raster<CPU>>)] value: &T) -> T {
 	value.clone()
 }

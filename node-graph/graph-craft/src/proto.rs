@@ -923,7 +923,7 @@ fn ref_adapter(proposed: &Type, wanted: &Type) -> Option<ProtoNodeIdentifier> {
 		return None;
 	};
 	match (proposed_output.as_ref(), wanted_output.as_ref()) {
-		(Type::Ref(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("graphene_core::memo::CloneOutNode")),
+		(Type::Ref(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("graphene_core::debug::CloneNode")),
 		(proposed_output @ Type::Concrete(_), Type::Ref(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("graphene_core::memo::LendNode")),
 		_ => None,
 	}

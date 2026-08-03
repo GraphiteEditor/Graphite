@@ -633,6 +633,27 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		]);
 	}
 
+	let has_lend = parsed.fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })));
+	let declared_arena_lifetime = ctx_param.and_then(|ctx_param| {
+		ctx_param.bounds.iter().find_map(|bound| {
+			let TypeParamBound::Trait(trait_bound) = bound else { return None };
+			let segment = trait_bound.path.segments.last()?;
+			if segment.ident != "ExtractArena" {
+				return None;
+			}
+			let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+			match args.args.first() {
+				Some(GenericArgument::Lifetime(lifetime)) => Some(lifetime.clone()),
+				_ => None,
+			}
+		})
+	});
+	let introduced_lend_lifetime = (has_lend && declared_arena_lifetime.is_none()).then(|| Lifetime::new("'__lend", proc_macro2::Span::call_site()));
+	let lend_lifetime = declared_arena_lifetime.or_else(|| introduced_lend_lifetime.clone());
+	if let Some(lifetime) = &introduced_lend_lifetime {
+		ctx_bounds.push(quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>));
+	}
+
 	let derives = ctx_param.is_some_and(|ctx_param| {
 		ctx_param.bounds.iter().any(|bound| match bound {
 			TypeParamBound::Trait(trait_bound) => trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx"),
@@ -654,6 +675,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 	if ctx_param.is_none() {
 		generics.push(ctx_generic);
+	}
+	if let Some(lifetime) = &introduced_lend_lifetime {
+		generics.insert(0, quote!(#lifetime));
 	}
 
 	let fn_name = &parsed.fn_name;
@@ -702,6 +726,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let kernel_params = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).map(|field| {
 		let pat = &field.pat_ident;
 		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
 				let bound = lazy_bound(output_type);
@@ -715,12 +740,33 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 
 	let node_bounds = regular_fields.iter().zip(&node_generics).map(|(field, node_generic)| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
+			let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
+			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = &#lifetime #ty>)
+		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 			let bound = lazy_bound(output_type);
 			quote!(#node_generic: #bound)
 		}
 	});
+
+	let mut lend_outlives: Vec<TokenStream2> = regular_fields
+		.iter()
+		.filter_map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
+				let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
+				Some(quote!(#ty: #lifetime))
+			}
+			_ => None,
+		})
+		.collect();
+	if let Type::Reference(reference) = &trait_output
+		&& let Some(lifetime) = &reference.lifetime
+	{
+		let inner = &reference.elem;
+		lend_outlives.push(quote!(#inner: #lifetime));
+	}
 
 	let mut async_bounds = match (async_fn, future_kernel) {
 		(false, false) => Vec::new(),
@@ -1007,6 +1053,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		impl<#(#generics,)* #(#node_generics,)*> #core_types::node::Node<#ctx_ident> for #mod_name::#struct_name<#(#struct_type_params,)*>
 		where
 			#(#node_bounds,)*
+			#(#lend_outlives,)*
 			#(#clampable_bounds,)*
 			#(#async_bounds,)*
 			#(#where_predicates,)*
@@ -1181,22 +1228,60 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 		return quote!();
 	}
 
+	let ref_output_inner = match slot_value_type(&parsed.output_type) {
+		Type::Reference(reference) => Some((*reference.elem).clone()),
+		_ => None,
+	};
+	if let Some(inner) = &ref_output_inner {
+		let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
+		let open_generics = parsed.fn_generics.iter().filter_map(|param| match param {
+			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(&type_param.ident),
+			_ => None,
+		});
+		if open_generics.into_iter().any(|generic| type_contains_ident(inner, generic)) {
+			return quote!();
+		}
+	}
+
 	let fn_name = &parsed.fn_name;
 	let entries_name = format_ident!("{}_entries", fn_name);
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+	let lend_flags: Vec<bool> = regular_fields
+		.iter()
+		.map(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })))
+		.collect();
 
 	let entries = rows.iter().map(|row| {
-		let types = row.iter();
-		let edge_types = row.iter().map(|ty| quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>));
+		let input_types = row.iter().zip(&lend_flags).map(|(ty, lend)| match lend {
+			true => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			false => quote!(gcore::registry::edge_type::<#ty>()),
+		});
+		let edge_types = row.iter().zip(&lend_flags).map(|(ty, lend)| match lend {
+			true => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedLendNode<#ty>>),
+			false => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>),
+		});
 		let output = quote!(<#struct_name<#(#edge_types),*> as gcore::node::Node<gcore::context::ContextImpl<'static>>>::Output);
-		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;));
+		let (io_output, construct) = match &ref_output_inner {
+			Some(inner) => (
+				quote!(gcore::registry::ref_type::<#inner>()),
+				quote!(Ok(gcore::registry::EdgeHandle::new_ref(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedLendNode<#inner>>))),
+			),
+			None => (
+				quote!(gcore::concrete!(#output)),
+				quote!(Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedNode<#output>>))),
+			),
+		};
+		let downcasts = names.iter().zip(row.iter()).zip(&lend_flags).map(|((name, ty), lend)| match lend {
+			true => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			false => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
+		});
 		quote! {
 			gcore::registry::RegistryEntry {
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
-					gcore::concrete!(#output),
-					vec![#(gcore::registry::edge_type::<#types>()),*],
+					#io_output,
+					vec![#(#input_types),*],
 				),
 				constructor: |inputs| {
 					if inputs.len() != #arity {
@@ -1204,7 +1289,7 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedNode<#output>>))
+					#construct
 				},
 			}
 		}

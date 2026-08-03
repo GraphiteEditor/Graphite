@@ -232,6 +232,7 @@ impl PerPixelAdjustCodegen<'_> {
 			widget_override: Default::default(),
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(#wgpu_executor::WgpuExecutorHandle),
+				lend: None,
 				exposed: true,
 				value_source: ParsedValueSource::Scope(Box::new(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode"))),
 				number_soft_min: None,

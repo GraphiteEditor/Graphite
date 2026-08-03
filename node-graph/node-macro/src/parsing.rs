@@ -240,6 +240,8 @@ impl Parse for NumberRange {
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
+	/// The original reference tokens when the parameter was written `&T`; `ty` holds the peeled inner type.
+	pub lend: Option<syn::TypeReference>,
 	pub exposed: bool,
 	pub value_source: ParsedValueSource,
 	pub number_soft_min: Option<NumberBound>,
@@ -904,6 +906,11 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
+		let (ty, lend) = match ty {
+			Type::Reference(reference) => ((*reference.elem).clone(), Some(reference)),
+			ty => (ty, None),
+		};
+
 		// Error if a float literal is given for a bound on an integer-typed field
 		if is_integer_type(&ty) {
 			let bound_attrs = [
@@ -936,6 +943,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				number_hard_max,
 				number_mode_range,
 				ty,
+				lend,
 				value_source,
 				implementations,
 				gpu_image,
@@ -1048,6 +1056,7 @@ impl ParsedNodeFn {
 			widget_override: ParsedWidgetOverride::Hidden,
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty,
+				lend: None,
 				exposed: false,
 				value_source,
 				number_soft_min: None,
@@ -1218,6 +1227,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					lend: None,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1308,6 +1318,7 @@ mod tests {
 					description: String::new(),
 					widget_override: ParsedWidgetOverride::None,
 					ty: ParsedFieldType::Regular(RegularParsedField {
+					lend: None,
 						ty: parse_quote!(DVec2),
 						exposed: false,
 						value_source: ParsedValueSource::None,
@@ -1380,6 +1391,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					lend: None,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::Default(quote!(50.)),
@@ -1450,6 +1462,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					lend: None,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1532,6 +1545,7 @@ mod tests {
 				description: String::from("b"),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					lend: None,
 					ty: parse_quote!(f64),
 					exposed: false,
 					value_source: ParsedValueSource::None,
@@ -1617,6 +1631,7 @@ mod tests {
 				description: String::new(),
 				widget_override: ParsedWidgetOverride::None,
 				ty: ParsedFieldType::Regular(RegularParsedField {
+					lend: None,
 					ty: parse_quote!(String),
 					exposed: true,
 					value_source: ParsedValueSource::None,

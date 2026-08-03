@@ -566,12 +566,34 @@ mod test {
 			output: NodeId(1),
 			nodes: vec![
 				(NodeId(0), string_value("lent")),
-				(NodeId(1), proto_node("graphene_core::memo::CloneOutNode", vec![NodeId(0)])),
+				(NodeId(1), proto_node("graphene_core::debug::CloneNode", vec![NodeId(0)])),
 			],
 		};
 
 		let executor = DynamicExecutor::new(network).unwrap();
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String("lent".to_string())));
+	}
+
+	#[test]
+	fn a_flipped_ref_parameter_gets_its_producer_lend_spliced() {
+		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(2),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
+				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
+				(NodeId(2), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(0), NodeId(1)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		let arena = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster::color::Color>>> = executor.tree().eval(NodeId(2), &ctx);
+		assert!(matches!(result, Some(GPoll::Final(_))), "the palette must evaluate through the spliced lend, got {result:?}");
 	}
 
 	#[test]
@@ -583,7 +605,7 @@ mod test {
 				(NodeId(0), string_value("memoized")),
 				(NodeId(1), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(0)])),
 				(NodeId(2), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(1)])),
-				(NodeId(3), proto_node("graphene_core::memo::CloneOutNode", vec![NodeId(2)])),
+				(NodeId(3), proto_node("graphene_core::debug::CloneNode", vec![NodeId(2)])),
 			],
 		};
 

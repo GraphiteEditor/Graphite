@@ -12,6 +12,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_min_max,
 		validate_range_slider_bounds,
 		validate_async_source,
+		validate_lend_fields,
 	];
 
 	for validator in validators {
@@ -59,6 +60,30 @@ fn validate_async_source(parsed: &ParsedNodeFn) {
 					"`async fn` source nodes cannot take `impl Node` inputs: the spawned future outlives any borrow of the graph, so it cannot evaluate other nodes; use the sync-prologue form (return `SourceFuture`) to evaluate lazy inputs before spawning"
 				);
 			}
+		}
+	}
+}
+
+fn validate_lend_fields(parsed: &ParsedNodeFn) {
+	let future_kernel = crate::codegen::is_source_kernel(&parsed.output_type);
+	for field in &parsed.fields {
+		let ParsedFieldType::Regular(RegularParsedField { lend: Some(reference), .. }) = &field.ty else {
+			continue;
+		};
+		if let Some(mutability) = &reference.mutability {
+			emit_error!(mutability.span(), "reference parameters are read-only lends; `&mut` is not supported");
+		}
+		if let Some(lifetime) = &reference.lifetime {
+			emit_error!(lifetime.span(), "reference parameters use the eval lifetime implicitly; write a bare `&T`");
+		}
+		if field.is_data_field {
+			emit_error!(field.pat_ident.span(), "`#[data]` fields are node-resident state and cannot be references");
+		}
+		if parsed.is_async || future_kernel {
+			emit_error!(
+				field.pat_ident.span(),
+				"source kernels move their inputs into the spawned task, so they cannot take reference parameters"
+			);
 		}
 	}
 }

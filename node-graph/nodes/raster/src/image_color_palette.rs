@@ -6,7 +6,7 @@ use raster_types::{CPU, Raster};
 #[node_macro::node(category("Color"))]
 fn image_color_palette(
 	_: impl Ctx,
-	image: List<Raster<CPU>>,
+	image: &List<Raster<CPU>>,
 	#[default(4)]
 	#[hard(1..)]
 	count: u32,
