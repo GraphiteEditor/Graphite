@@ -10,7 +10,7 @@ use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
-use vector_types::{Gradient, GradientStop, ReferencePoint};
+use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
@@ -1009,45 +1009,7 @@ pub async fn flatten_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations
 /// Constructs a gradient from a `Color[]`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"), name("Colors to Gradient"))]
 fn colors_to_gradient<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> Item<Gradient> {
-	let colors = colors.into_flattened_list::<Color>();
-	let total_colors = colors.len();
-
-	if total_colors == 0 {
-		return Item::new_from_element(Gradient::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: Color::BLACK,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: Color::BLACK,
-			},
-		]));
-	}
-
-	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
-		return Item::new_from_element(Gradient::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: single_color,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: single_color,
-			},
-		]));
-	}
-
-	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
-		position: index as f64 / (total_colors - 1) as f64,
-		midpoint: 0.5,
-		color: row.into_element(),
-	});
-	Item::new_from_element(Gradient::new(colors))
+	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
 }
 
 #[cfg(test)]

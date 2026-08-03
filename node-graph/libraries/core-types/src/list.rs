@@ -55,10 +55,17 @@ pub const ATTR_DIMENSIONS: &str = "dimensions";
 pub const ATTR_BACKGROUND: &str = "background";
 /// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
+// TODO: Consider adding "spread_method_left" and "spread_method_right" override attributes to allow setting different spread methods on each side of a gradient
 /// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+/// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
+/// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
+pub const ATTR_POSITION: &str = "position";
+/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance
+/// to the next stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored.
+pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
@@ -73,7 +80,8 @@ pub const ATTR_LINE_HEIGHT: &str = "line_height";
 pub const ATTR_LETTER_SPACING: &str = "letter_spacing";
 /// Text item's maximum line-wrap width in document-space units (`Option<f64>`, implicit default `None`).
 pub const ATTR_MAX_WIDTH: &str = "max_width";
-/// Text item's maximum block height in document-space units, past which lines are not drawn (`Option<f64>`, implicit default `None`).
+/// Text item's maximum block height in document-space units, past which lines are not drawn
+/// (`Option<f64>`, implicit default `None`).
 pub const ATTR_MAX_HEIGHT: &str = "max_height";
 /// Text item's faux-italic letter tilt angle in degrees (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";
@@ -136,6 +144,7 @@ unsafe impl<T: StaticTypeSized> StaticType for Bundle<T> {
 fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
 	match key {
 		ATTR_OPACITY | ATTR_OPACITY_FILL => Some(Box::new(1_f64)),
+		ATTR_MIDPOINT => Some(Box::new(0.5_f64)),
 		_ => None,
 	}
 }

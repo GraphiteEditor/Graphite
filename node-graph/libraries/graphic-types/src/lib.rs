@@ -14,7 +14,7 @@ pub mod migrations {
 	use crate::Vector;
 
 	// Storing legacy structs that are only used in document migration.
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	pub mod legacy {
 		use core_types::Color;
 		use dyn_any::DynAny;
@@ -113,7 +113,7 @@ pub mod migrations {
 		}
 	}
 
-	// TODO: Eventually remove this migration document upgrade code
+	// TODO: Eventually remove this document upgrade code
 	/// Returns the first `Vector` recovered from any of the legacy on-disk shapes (the legacy `VectorData` flat struct, a single `Vector`, or any of the historical `List<Vector>` variants).
 	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vector>, D::Error> {
 		use serde::Deserialize;

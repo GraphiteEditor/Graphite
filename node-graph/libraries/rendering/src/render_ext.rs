@@ -112,6 +112,11 @@ impl RenderExt for List<Gradient> {
 			stop.push_str(" />")
 		}
 
+		// A gradient with no stops paints as solid black, matching `Gradient::evaluate` (a stopless def would otherwise render as no paint per the SVG spec)
+		if stop.is_empty() {
+			stop.push_str(r##"<stop stop-color="#000000" />"##);
+		}
+
 		// Need to cancel out the element's transform as it is already applied to the path itself.
 		let element_transform_inverse = if transform_is_invertible(element_transform) {
 			element_transform.inverse()

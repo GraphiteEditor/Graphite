@@ -1,5 +1,6 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
+use core_types::list::{ATTR_MIDPOINT, ATTR_POSITION, Item, List};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -14,116 +15,127 @@ pub enum GradientType {
 	Radial,
 }
 
-// TODO: Someday we could switch this to a Box[T] to avoid over-allocation
-/// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
-///
-/// Not exposed via Tsify; use [`GradientUI`] at the JS boundary.
-#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub struct Gradient {
-	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
-	pub position: Vec<f64>,
-	/// The midpoint to the right of this stop, a factor from 0-1 along the distance to the next stop. The final stop's midpoint is ignored.
-	pub midpoint: Vec<f64>,
-	/// The color at this stop.
-	pub color: Vec<Color>,
-}
+/// A gradient's stops: a list of colors (linear, unassociated alpha) whose optional `position` and `midpoint`
+/// attributes place each stop along the 0 to 1 range. Stops lacking the `position` attribute distribute evenly,
+/// and stops lacking the `midpoint` attribute interpolate linearly (`0.5`).
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+pub struct Gradient(List<Color>);
 
-/// JS-boundary version of [`Gradient`] where stop colors are [`SRGBA8`] byte triples instead of linear-light [`Color`].
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
-#[derive(Debug, Clone, PartialEq, Default, DynAny)]
+/// A gradient's per-stop parallel arrays, generic over color format: `GradientStops<Color>` is the document serialization
+/// of `TaggedValue::Gradient`, while `GradientStops<SRGBA8>` is the JS-boundary shape used by the color picker UI.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GradientUI {
-	pub position: Vec<f64>,
-	pub midpoint: Vec<f64>,
-	pub color: Vec<SRGBA8>,
+pub struct GradientStops<C> {
+	pub color: Vec<C>,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub position: Option<Vec<f64>>,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub midpoint: Option<Vec<f64>>,
 }
 
-impl From<&Gradient> for GradientUI {
-	fn from(s: &Gradient) -> Self {
+unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientStops<C> {
+	type Static = GradientStops<C::Static>;
+}
+
+impl From<&Gradient> for GradientStops<Color> {
+	fn from(gradient: &Gradient) -> Self {
 		Self {
-			position: s.position.clone(),
-			midpoint: s.midpoint.clone(),
-			color: s.color.iter().map(|c| SRGBA8::from(*c)).collect(),
+			position: gradient.position_attribute(),
+			midpoint: gradient.midpoint_attribute(),
+			color: gradient.0.iter_element_values().copied().collect(),
 		}
 	}
 }
 
-impl From<&GradientUI> for Gradient {
-	fn from(s: &GradientUI) -> Self {
+impl From<&Gradient> for GradientStops<SRGBA8> {
+	fn from(gradient: &Gradient) -> Self {
 		Self {
-			position: s.position.clone(),
-			midpoint: s.midpoint.clone(),
-			color: s.color.iter().map(|c| Color::from(*c)).collect(),
+			position: gradient.position_attribute(),
+			midpoint: gradient.midpoint_attribute(),
+			color: gradient.0.iter_element_values().map(|&color| SRGBA8::from(color)).collect(),
 		}
 	}
 }
 
-impl GradientUI {
+// The document path: faithful (no elision) so serialization stays a bijection under round-trip checks
+impl From<GradientStops<Color>> for Gradient {
+	fn from(stops: GradientStops<Color>) -> Self {
+		let mut gradient = Gradient::from(stops.color);
+		if let Some(position) = &stops.position {
+			gradient.set_positions(position);
+		}
+		if let Some(midpoint) = &stops.midpoint {
+			gradient.set_midpoints(midpoint);
+		}
+		gradient
+	}
+}
+
+// Color picker round-trip: attributes that merely restate the defaults are elided to keep the canonical absence-as-default form
+impl From<&GradientStops<SRGBA8>> for Gradient {
+	fn from(stops: &GradientStops<SRGBA8>) -> Self {
+		let mut gradient = Gradient::from(stops.color.iter().map(|&color| Color::from(color)).collect::<Vec<_>>());
+		if let Some(position) = &stops.position {
+			gradient.set_positions(position);
+		}
+		if let Some(midpoint) = &stops.midpoint {
+			gradient.set_midpoints(midpoint);
+		}
+		gradient.elide_default_attributes();
+		gradient
+	}
+}
+
+impl GradientStops<SRGBA8> {
 	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
 	pub fn to_css_linear_gradient(&self) -> String {
-		if self.position.len() <= 1 {
-			let hex = self.color.first().map(|c| c.to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
-			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
-		}
-		// Sample via the midpoint-aware subdivision used for SVG/Vello stops so browser interpolation matches
-		let stops: Gradient = self.into();
-		let pieces = stops
-			.interpolated_samples()
-			.into_iter()
-			.map(|(position, color, _)| {
-				let percent = ((position * 100.) * 1e2).round() / 1e2;
-				let hex = SRGBA8::from(color).to_rgba_hex();
-				format!("#{hex} {percent}%")
-			})
-			.collect::<Vec<_>>()
-			.join(", ");
-		format!("linear-gradient(to right, {pieces})")
+		Gradient::from(self).to_css_linear_gradient()
 	}
 }
 
-// TODO: Eventually remove this migration document upgrade code
+#[cfg(feature = "serde")]
+impl serde::Serialize for Gradient {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		GradientStops::<Color>::from(self).serialize(serializer)
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Gradient {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		#[derive(serde::Deserialize)]
-		struct NewFormat {
-			position: Vec<f64>,
-			midpoint: Vec<f64>,
-			color: Vec<Color>,
-		}
-
-		#[derive(serde::Deserialize)]
-		#[cfg_attr(feature = "serde", serde(untagged))]
+		#[serde(untagged)]
 		enum GradientStopsFormat {
-			New(NewFormat),
-			Old(Vec<(f64, Color)>),
+			Struct(GradientStops<Color>),
+			Tuples(Vec<(f64, Color)>),
 		}
 
 		Ok(match GradientStopsFormat::deserialize(deserializer)? {
-			GradientStopsFormat::New(new) => Self {
-				position: new.position,
-				midpoint: new.midpoint,
-				color: new.color,
-			},
-			GradientStopsFormat::Old(stops) => {
-				let count = stops.len();
-				Self {
-					position: stops.iter().map(|(p, _)| *p).collect(),
-					midpoint: vec![0.5; count],
-					color: stops.into_iter().map(|(_, c)| c).collect(),
-				}
+			GradientStopsFormat::Struct(stops) => Gradient::from(stops),
+			GradientStopsFormat::Tuples(stops) => {
+				let position: Vec<f64> = stops.iter().map(|(p, _)| *p).collect();
+				let mut gradient = Gradient::from(stops.into_iter().map(|(_, c)| c).collect::<Vec<_>>());
+				gradient.set_positions(&position);
+				gradient.elide_default_attributes();
+				gradient
 			}
 		})
 	}
 }
 
-impl Default for Gradient {
-	fn default() -> Self {
-		Self {
-			position: vec![0., 1.],
-			midpoint: vec![0.5, 0.5],
-			color: vec![Color::BLACK, Color::WHITE],
-		}
+impl From<List<Color>> for Gradient {
+	fn from(colors: List<Color>) -> Self {
+		Self(colors)
+	}
+}
+
+impl From<Vec<Color>> for Gradient {
+	fn from(colors: Vec<Color>) -> Self {
+		Self(colors.into_iter().map(Item::new_from_element).collect())
 	}
 }
 
@@ -133,13 +145,17 @@ impl RenderComplexity for Gradient {
 	}
 }
 
+/// The effective midpoint domain shared by sampling and rendering: NaN reads as the linear default, and extremes are bounded to `0.01..=0.99` so curves stay finite and cheap to subdivide.
+fn sanitized_midpoint(midpoint: f64) -> f64 {
+	if midpoint.is_nan() { 0.5 } else { midpoint.clamp(0.01, 0.99) }
+}
+
 /// Apply the midpoint curve to a normalized parameter `t` (0 to 1) given a `midpoint` (0 to 1, where 0.5 is linear).
 fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
+	let midpoint = sanitized_midpoint(midpoint);
 	if (midpoint - 0.5).abs() < 1e-6 {
 		return t;
 	}
-
-	let midpoint = midpoint.clamp(f64::EPSILON, 1. - f64::EPSILON);
 
 	if midpoint < 0.5 {
 		let q = -1. / (1. - midpoint).log2();
@@ -162,25 +178,21 @@ pub struct GradientStopsIter<'a> {
 	index: usize,
 }
 
-impl<'a> Iterator for GradientStopsIter<'a> {
+impl Iterator for GradientStopsIter<'_> {
 	type Item = GradientStop;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.index >= self.stops.position.len() {
-			return None;
-		}
-
 		let stop = GradientStop {
-			position: self.stops.position[self.index],
-			midpoint: self.stops.midpoint[self.index],
-			color: self.stops.color[self.index],
+			position: self.stops.position(self.index),
+			midpoint: self.stops.midpoint(self.index),
+			color: self.stops.color(self.index)?,
 		};
 		self.index += 1;
 		Some(stop)
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let remaining = self.stops.position.len() - self.index;
+		let remaining = self.stops.len().saturating_sub(self.index);
 		(remaining, Some(remaining))
 	}
 }
@@ -201,63 +213,215 @@ impl IntoIterator for Gradient {
 	type IntoIter = std::vec::IntoIter<GradientStop>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.position
-			.into_iter()
-			.zip(self.midpoint)
-			.zip(self.color)
-			.map(|((position, midpoint), color)| GradientStop { position, midpoint, color })
-			.collect::<Vec<_>>()
-			.into_iter()
+		self.iter().collect::<Vec<_>>().into_iter()
 	}
+}
+
+/// The fallback position of the gradient stop at `index` when no `position` attribute exists, where all `count` stops are spaced evenly from 0 to 1.
+fn even_position(index: usize, count: usize) -> f64 {
+	if count <= 1 { 0. } else { index as f64 / (count - 1) as f64 }
 }
 
 impl Gradient {
 	pub fn new(stops: impl IntoIterator<Item = GradientStop>) -> Self {
-		let mut position = Vec::new();
-		let mut midpoint = Vec::new();
-		let mut color = Vec::new();
+		let stops: Vec<GradientStop> = stops.into_iter().collect();
+		let mut list: List<Color> = stops.iter().map(|stop| Item::new_from_element(stop.color)).collect();
 
-		for stop in stops {
-			position.push(stop.position);
-			midpoint.push(stop.midpoint);
-			color.push(stop.color);
+		for (index, stop) in stops.iter().enumerate() {
+			list.set_attribute(ATTR_POSITION, index, stop.position);
+			list.set_attribute(ATTR_MIDPOINT, index, stop.midpoint);
 		}
 
-		Self { position, midpoint, color }
+		Self(list)
+	}
+
+	pub fn black_to_white() -> Self {
+		Self::from(vec![Color::BLACK, Color::WHITE])
+	}
+
+	pub fn as_color_list(&self) -> &List<Color> {
+		&self.0
+	}
+
+	pub fn into_color_list(self) -> List<Color> {
+		self.0
 	}
 
 	pub fn len(&self) -> usize {
-		self.position.len()
+		self.0.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.position.is_empty()
+		self.0.is_empty()
 	}
 
 	pub fn iter(&self) -> GradientStopsIter<'_> {
 		self.into_iter()
 	}
 
+	/// The color of the stop at the given index, if in bounds.
+	pub fn color(&self, index: usize) -> Option<Color> {
+		self.0.element(index).copied()
+	}
+
+	/// The effective position of the stop at the given index: its `position` attribute value, or its share of an even distribution when the attribute is absent.
+	pub fn position(&self, index: usize) -> f64 {
+		self.0.attribute::<f64>(ATTR_POSITION, index).copied().unwrap_or_else(|| even_position(index, self.len()))
+	}
+
+	/// The effective midpoint of the stop at the given index: its `midpoint` attribute value, or the linear interpolation default of `0.5` when the attribute is absent.
+	pub fn midpoint(&self, index: usize) -> f64 {
+		self.0.attribute::<f64>(ATTR_MIDPOINT, index).copied().unwrap_or(0.5)
+	}
+
+	/// The effective positions of all stops.
+	pub fn positions(&self) -> Vec<f64> {
+		(0..self.len()).map(|index| self.position(index)).collect()
+	}
+
+	/// The effective midpoints of all stops.
+	pub fn midpoints(&self) -> Vec<f64> {
+		(0..self.len()).map(|index| self.midpoint(index)).collect()
+	}
+
+	/// Whether the `position` attribute is explicitly present rather than falling back to the even distribution.
+	pub fn has_position_attribute(&self) -> bool {
+		self.0.iter_attribute_values::<f64>(ATTR_POSITION).is_some()
+	}
+
+	/// Whether the `midpoint` attribute is explicitly present rather than falling back to the linear interpolation default.
+	pub fn has_midpoint_attribute(&self) -> bool {
+		self.0.iter_attribute_values::<f64>(ATTR_MIDPOINT).is_some()
+	}
+
+	/// The `position` attribute's values when present, or `None` when the stops fall back to the even distribution.
+	fn position_attribute(&self) -> Option<Vec<f64>> {
+		self.0.iter_attribute_values::<f64>(ATTR_POSITION).map(|values| values.copied().collect())
+	}
+
+	/// The `midpoint` attribute's values when present, or `None` when the stops fall back to the linear interpolation default.
+	fn midpoint_attribute(&self) -> Option<Vec<f64>> {
+		self.0.iter_attribute_values::<f64>(ATTR_MIDPOINT).map(|values| values.copied().collect())
+	}
+
+	/// The `position` attribute when present and meaningfully different from the even distribution, which is the form worth persisting in the graph.
+	pub fn nondefault_positions(&self) -> Option<Vec<f64>> {
+		let positions = self.position_attribute()?;
+		let count = self.len();
+		positions
+			.iter()
+			.enumerate()
+			.any(|(index, &position)| (position - even_position(index, count)).abs() > 1e-6)
+			.then_some(positions)
+	}
+
+	/// The `midpoint` attribute when present and meaningfully different from the linear interpolation default of `0.5`.
+	pub fn nondefault_midpoints(&self) -> Option<Vec<f64>> {
+		let midpoints = self.midpoint_attribute()?;
+		midpoints.iter().any(|&midpoint| (midpoint - 0.5).abs() > 1e-6).then_some(midpoints)
+	}
+
+	/// Removes the `position`/`midpoint` attributes when they merely restate the defaults, restoring the canonical absence-as-default form.
+	pub fn elide_default_attributes(&mut self) {
+		if self.has_position_attribute() && self.nondefault_positions().is_none() {
+			self.0.remove_attribute(ATTR_POSITION);
+		}
+		if self.has_midpoint_attribute() && self.nondefault_midpoints().is_none() {
+			self.0.remove_attribute(ATTR_MIDPOINT);
+		}
+	}
+
+	/// Writes the whole `position` attribute from the effective values, since the even-distribution default is index-dependent and can't be produced by cell-wise padding.
+	fn materialize_default_positions(&mut self) {
+		if self.has_position_attribute() {
+			return;
+		}
+
+		let count = self.len();
+		for index in 0..count {
+			self.0.set_attribute(ATTR_POSITION, index, even_position(index, count));
+		}
+	}
+
+	/// Replaces the color of the stop at `index`, if it exists.
+	pub fn set_color(&mut self, index: usize, color: Color) {
+		if let Some(element) = self.0.element_mut(index) {
+			*element = color;
+		}
+	}
+
+	/// Sets the position of the stop at `index`, if it exists, materializing the whole `position` attribute so the other stops keep their effective placements.
+	pub fn set_position(&mut self, index: usize, position: f64) {
+		if index >= self.len() {
+			return;
+		}
+		self.materialize_default_positions();
+		self.0.set_attribute(ATTR_POSITION, index, position);
+	}
+
+	/// Sets the midpoint of the stop at `index`, if it exists.
+	pub fn set_midpoint(&mut self, index: usize, midpoint: f64) {
+		if index >= self.len() {
+			return;
+		}
+		self.0.set_attribute(ATTR_MIDPOINT, index, midpoint);
+	}
+
+	/// Replaces the `position` attribute with the given values, padding with the final value if fewer than the stop count and ignoring any extras.
+	/// An empty list removes the attribute, restoring even distribution.
+	pub fn set_positions(&mut self, positions: &[f64]) {
+		let Some(&last) = positions.last() else {
+			self.0.remove_attribute(ATTR_POSITION);
+			return;
+		};
+
+		for index in 0..self.len() {
+			self.0.set_attribute(ATTR_POSITION, index, positions.get(index).copied().unwrap_or(last));
+		}
+	}
+
+	/// Replaces the `midpoint` attribute with the given values, padding with the final value if fewer than the stop count and ignoring any extras.
+	/// An empty list removes the attribute, restoring the linear interpolation default of `0.5` for every stop.
+	pub fn set_midpoints(&mut self, midpoints: &[f64]) {
+		let Some(&last) = midpoints.last() else {
+			self.0.remove_attribute(ATTR_MIDPOINT);
+			return;
+		};
+
+		for index in 0..self.len() {
+			self.0.set_attribute(ATTR_MIDPOINT, index, midpoints.get(index).copied().unwrap_or(last));
+		}
+	}
+
+	/// Rebuilds the stop list from the given stop indices, preserving every attribute.
+	fn reordered(&self, indices: impl IntoIterator<Item = usize>) -> List<Color> {
+		let mut list = List::new();
+		for index in indices {
+			if let Some(item) = self.0.clone_item(index) {
+				list.push(item);
+			}
+		}
+		list
+	}
+
 	/// Remove a stop at the given index.
 	pub fn remove(&mut self, index: usize) {
-		self.position.remove(index);
-		self.midpoint.remove(index);
-		self.color.remove(index);
+		self.0 = self.reordered((0..self.len()).filter(|&i| i != index));
 	}
 
 	/// Remove and return the last stop's color, or `None` if empty.
 	pub fn pop(&mut self) -> Option<Color> {
-		self.position.pop();
-		self.midpoint.pop();
-		self.color.pop()
+		let color = self.color(self.len().checked_sub(1)?);
+		self.0 = self.reordered(0..self.len() - 1);
+		color
 	}
 
 	/// Move the stop at `index` to a new position, re-sorting the stops by position. Returns the new index of the moved stop.
 	pub fn move_stop(&mut self, index: usize, position: f64) -> usize {
-		if index >= self.position.len() {
+		if index >= self.len() {
 			return index;
 		}
-		self.position[index] = position;
+		self.set_position(index, position);
 		self.sort_returning_new_index(index)
 	}
 
@@ -265,66 +429,112 @@ impl Gradient {
 	/// The new stop's midpoint is inherited from the interval it splits (or `0.5` if inserting at the very start).
 	/// Returns the index where the new stop was inserted.
 	pub fn insert_stop(&mut self, position: f64) -> usize {
-		let color = self.evaluate(position);
-		let index = self.position.iter().position(|p| *p > position).unwrap_or(self.position.len());
-		let midpoint = index.checked_sub(1).and_then(|i| self.midpoint.get(i).copied()).unwrap_or(0.5);
-		self.position.insert(index, position);
-		self.midpoint.insert(index, midpoint);
-		self.color.insert(index, color);
-		index
+		let color = self.evaluate(position, Default::default());
+		let index = (0..self.len()).position(|i| self.position(i) > position).unwrap_or(self.len());
+		let midpoint = if index > 0 { self.midpoint(index - 1) } else { 0.5 };
+		self.insert_stop_values(position, midpoint, color)
 	}
 
 	/// Insert a copy of the stop at `source_index` (same color and midpoint) at `position`, keeping the stops sorted by position.
 	/// Returns the index where the copy was inserted, or `None` if `source_index` is out of range.
 	pub fn duplicate_stop(&mut self, source_index: usize, position: f64) -> Option<usize> {
-		let color = *self.color.get(source_index)?;
-		let midpoint = *self.midpoint.get(source_index)?;
-		let index = self.position.iter().position(|p| *p > position).unwrap_or(self.position.len());
-		self.position.insert(index, position);
-		self.midpoint.insert(index, midpoint);
-		self.color.insert(index, color);
-		Some(index)
+		let color = self.color(source_index)?;
+		let midpoint = self.midpoint(source_index);
+		Some(self.insert_stop_values(position, midpoint, color))
+	}
+
+	/// Splices a new stop into the sorted position, materializing explicit positions (an arbitrary insertion breaks even distribution)
+	/// while giving the new stop a midpoint cell only if the attribute already exists.
+	fn insert_stop_values(&mut self, position: f64, midpoint: f64, color: Color) -> usize {
+		self.materialize_default_positions();
+		let index = (0..self.len()).position(|i| self.position(i) > position).unwrap_or(self.len());
+
+		let mut item = Item::new_from_element(color).with_attribute(ATTR_POSITION, position);
+		if self.has_midpoint_attribute() {
+			item = item.with_attribute(ATTR_MIDPOINT, midpoint);
+		}
+
+		let mut list = self.reordered(0..index);
+		list.push(item);
+		for i in index..self.len() {
+			if let Some(existing) = self.0.clone_item(i) {
+				list.push(existing);
+			}
+		}
+
+		self.0 = list;
+		index
 	}
 
 	/// Reset the midpoint for the interval starting at `index` to its default `0.5`.
 	pub fn reset_midpoint(&mut self, index: usize) {
-		if let Some(midpoint) = self.midpoint.get_mut(index) {
-			*midpoint = 0.5;
+		if self.has_midpoint_attribute() && index < self.len() {
+			self.0.set_attribute(ATTR_MIDPOINT, index, 0.5);
 		}
 	}
 
 	/// Sort the stops in place by position; returns the new index of the stop that was at `previous_index` before sorting.
 	fn sort_returning_new_index(&mut self, previous_index: usize) -> usize {
-		let len = self.position.len();
-		let mut indices: Vec<usize> = (0..len).collect();
-		indices.sort_by(|&a, &b| self.position[a].total_cmp(&self.position[b]));
+		// An absent position attribute is an even distribution, which is already sorted
+		if !self.has_position_attribute() {
+			return previous_index;
+		}
+
+		let mut indices: Vec<usize> = (0..self.len()).collect();
+		indices.sort_by(|&a, &b| self.position(a).total_cmp(&self.position(b)));
 		let new_index = indices.iter().position(|&i| i == previous_index).unwrap_or(previous_index);
-		self.position = indices.iter().map(|&i| self.position[i]).collect();
-		self.midpoint = indices.iter().map(|&i| self.midpoint[i]).collect();
-		self.color = indices.iter().map(|&i| self.color[i]).collect();
+		self.0 = self.reordered(indices);
 		new_index
 	}
 
-	pub fn evaluate(&self, t: f64) -> Color {
-		if self.position.is_empty() {
-			return Color::BLACK;
+	/// Gradient stops as evaluation and rendering should see them: positions clamped to the 0 to 1 range
+	/// (infinities landing at the ends, a NaN dropping its stop from sampling since it has no defined placement)
+	/// and sorted ascending, so the sampler and every renderer agree on how non-compliant authored data behaves.
+	fn normalized_stops(&self) -> Vec<GradientStop> {
+		let mut stops: Vec<GradientStop> = (0..self.len())
+			.filter_map(|index| {
+				let position = self.position(index).clamp(0., 1.);
+				if position.is_nan() {
+					return None;
+				}
+
+				let midpoint = self.midpoint(index);
+				let color = self.color(index)?;
+
+				Some(GradientStop { position, midpoint, color })
+			})
+			.collect();
+
+		stops.sort_by(|a, b| a.position.total_cmp(&b.position));
+		stops
+	}
+
+	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the `spread_method` determines how the gradient extends.
+	pub fn evaluate(&self, t: f64, spread_method: GradientSpreadMethod) -> Color {
+		let t = match spread_method {
+			GradientSpreadMethod::Pad => t.clamp(0., 1.),
+			GradientSpreadMethod::Repeat => t.rem_euclid(1.),
+			GradientSpreadMethod::Reflect => {
+				let cycle = t.rem_euclid(2.);
+				if cycle > 1. { 2. - cycle } else { cycle }
+			}
+		};
+
+		let stops = self.normalized_stops();
+		let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return Color::BLACK };
+		if t <= first.position {
+			return first.color;
+		}
+		if t >= last.position {
+			return last.color;
 		}
 
-		if t <= self.position[0] {
-			return self.color[0];
-		}
-		let last = self.position.len() - 1;
-		if t >= self.position[last] {
-			return self.color[last];
-		}
-
-		for i in 0..self.position.len() - 1 {
-			let (t1, c1) = (self.position[i], self.color[i]);
-			let (t2, c2) = (self.position[i + 1], self.color[i + 1]);
-			if t >= t1 && t <= t2 {
-				let normalized_t = (t - t1) / (t2 - t1);
-				let adjusted_t = apply_midpoint(normalized_t, self.midpoint[i]);
-				return c1.lerp(&c2, adjusted_t as f32);
+		for pair in stops.windows(2) {
+			let (a, b) = (&pair[0], &pair[1]);
+			if t >= a.position && t <= b.position {
+				let normalized_t = (t - a.position) / (b.position - a.position);
+				let adjusted_t = apply_midpoint(normalized_t, a.midpoint);
+				return a.color.lerp(&b.color, adjusted_t as f32);
 			}
 		}
 
@@ -332,36 +542,43 @@ impl Gradient {
 	}
 
 	pub fn sort(&mut self) {
-		let mut indices: Vec<usize> = (0..self.position.len()).collect();
-		indices.sort_unstable_by(|&a, &b| self.position[a].total_cmp(&self.position[b]));
-		self.position = indices.iter().map(|&i| self.position[i]).collect();
-		self.midpoint = indices.iter().map(|&i| self.midpoint[i]).collect();
-		self.color = indices.iter().map(|&i| self.color[i]).collect();
+		self.sort_returning_new_index(0);
 	}
 
 	pub fn reversed(&self) -> Self {
-		let position: Vec<f64> = self.position.iter().rev().map(|&p| 1. - p).collect();
+		let count = self.len();
+		let mut list = self.reordered((0..count).rev());
 
-		let count = self.midpoint.len();
-		let midpoint = (0..count).map(|i| if i < count - 1 { 1. - self.midpoint[count - 2 - i] } else { 0.5 }).collect::<Vec<_>>();
+		// Row reversal already reversed the position cells' order, each also flips across the range
+		if self.has_position_attribute()
+			&& let Some(positions) = list.iter_attribute_values_mut::<f64>(ATTR_POSITION)
+		{
+			for position in positions {
+				*position = 1. - *position;
+			}
+		}
 
-		let color: Vec<Color> = self.color.iter().rev().cloned().collect();
+		// Midpoints belong to the interval to a stop's right, so they shift by one stop as well as flipping
+		if self.has_midpoint_attribute() {
+			let midpoints: Vec<f64> = (0..count).map(|i| if i + 1 < count { 1. - self.midpoint(count - 2 - i) } else { 0.5 }).collect();
+			for (index, midpoint) in midpoints.into_iter().enumerate() {
+				list.set_attribute(ATTR_MIDPOINT, index, midpoint);
+			}
+		}
 
-		Self { position, midpoint, color }
+		Self(list)
 	}
 
 	pub fn map_colors<F: Fn(&Color) -> Color>(&self, f: F) -> Self {
-		Self {
-			position: self.position.clone(),
-			midpoint: self.midpoint.clone(),
-			color: self.color.iter().map(f).collect(),
-		}
+		let mut mapped = self.clone();
+		mapped.0.iter_element_values_mut().for_each(|color| *color = f(color));
+		mapped
 	}
 
 	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves so the rendered gradient matches Graphite's interpolation rather than browser defaults.
 	pub fn to_css_linear_gradient(&self) -> String {
-		if self.position.len() <= 1 {
-			let hex = self.color.first().map(|c| SRGBA8::from(*c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
+		if self.len() <= 1 {
+			let hex = self.color(0).map(|c| SRGBA8::from(c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
 			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
 		}
 		let pieces = self
@@ -379,7 +596,7 @@ impl Gradient {
 	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves.
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
-	/// midpoint for actual gradient stops, and `None` for interpolated samples added to approximate midpoint curves.
+	/// midpoint for actual gradient stops, and `None` for synthesized midpoint-curve approximation samples.
 	///
 	/// Interpolation is performed in sRGB gamma space (then lifted back to linear-light for output) because the downstream SVG/CSS
 	/// renderer interpolates between adjacent `<stop>` colors in gamma space; doing the subdivision math in the same space ensures
@@ -419,23 +636,25 @@ impl Gradient {
 			}
 		}
 
-		if self.position.is_empty() {
+		let stops = self.normalized_stops();
+		let count = stops.len();
+		if count == 0 {
 			return vec![];
 		}
 
-		if self.position.len() == 1 {
-			return vec![(self.position[0], self.color[0], Some(self.midpoint[0]))];
+		if count == 1 {
+			return vec![(stops[0].position, stops[0].color, Some(sanitized_midpoint(stops[0].midpoint)))];
 		}
 
 		let mut result = Vec::new();
 
-		for i in 0..self.position.len() - 1 {
-			let pos_a = self.position[i];
-			let pos_b = self.position[i + 1];
-			let color_a = self.color[i];
-			let color_b = self.color[i + 1];
-			let midpoint = self.midpoint[i].clamp(0.01, 0.99);
-			let next_midpoint = self.midpoint[i + 1].clamp(0.01, 0.99);
+		for i in 0..count - 1 {
+			let pos_a = stops[i].position;
+			let pos_b = stops[i + 1].position;
+			let color_a = stops[i].color;
+			let color_b = stops[i + 1].color;
+			let midpoint = sanitized_midpoint(stops[i].midpoint);
+			let next_midpoint = sanitized_midpoint(stops[i + 1].midpoint);
 
 			// Add the start stop (subsequent segments share the previous end stop)
 			if i == 0 {
@@ -479,6 +698,7 @@ pub enum GradientSpreadMethod {
 	Pad,
 	Reflect,
 	Repeat,
+	// TODO: Add a "Clear" variant that returns transparent black outside the gradient's range
 }
 
 impl GradientSpreadMethod {
@@ -539,29 +759,6 @@ pub fn initial_gradient_transform_for_bounding_box(bounds: [DVec2; 2]) -> DAffin
 	}
 }
 
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_to_gradient<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Gradient, D::Error> {
-	use serde::Deserialize;
-
-	#[derive(serde::Deserialize)]
-	struct LegacyTable {
-		#[serde(alias = "instances", alias = "instance")]
-		element: Vec<Gradient>,
-	}
-
-	#[derive(serde::Deserialize)]
-	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum GradientStopsFormat {
-		Stops(Gradient),
-		List(LegacyTable),
-	}
-
-	Ok(match GradientStopsFormat::deserialize(deserializer)? {
-		GradientStopsFormat::Stops(stops) => stops,
-		GradientStopsFormat::List(list) => list.element.into_iter().next().unwrap_or_default(),
-	})
-}
-
 impl core_types::bounds::BoundingBox for Gradient {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		core_types::bounds::RenderBoundingBox::Infinite
@@ -573,5 +770,147 @@ impl core_types::bounds::BoundingBox for Gradient {
 		let start = transform.transform_point2(DVec2::ZERO);
 		let end = transform.transform_point2(DVec2::X);
 		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn default_is_empty_and_black_to_white_is_the_artist_starting_gradient() {
+		assert!(Gradient::default().is_empty());
+		assert_eq!(Gradient::black_to_white().positions(), vec![0., 1.]);
+		assert_eq!(Gradient::default().evaluate(0.5, Default::default()), Color::BLACK);
+	}
+
+	#[test]
+	fn absent_attributes_default_to_even_positions_and_linear_midpoints() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		assert_eq!(gradient.positions(), vec![0., 0.5, 1.]);
+		assert_eq!(gradient.midpoints(), vec![0.5, 0.5, 0.5]);
+	}
+
+	#[test]
+	fn serde_round_trip_preserves_attribute_absence() {
+		let implicit = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		let json = serde_json::to_string(&implicit).unwrap();
+		assert!(!json.contains("position") && !json.contains("midpoint"), "absent attributes must not serialize: {json}");
+		assert_eq!(serde_json::from_str::<Gradient>(&json).unwrap(), implicit);
+
+		let mut explicit = implicit.clone();
+		explicit.set_positions(&[0.2, 0.9]);
+		explicit.set_midpoints(&[0.3, 0.5]);
+		let json = serde_json::to_string(&explicit).unwrap();
+		assert_eq!(serde_json::from_str::<Gradient>(&json).unwrap(), explicit);
+	}
+
+	#[test]
+	fn legacy_tuple_format_deserializes_with_defaults_elided() {
+		let color = serde_json::to_value(Color::WHITE).unwrap();
+
+		let struct_format = serde_json::json!({ "position": [0., 0.25], "midpoint": [0.5, 0.5], "color": [color, color] });
+		let gradient: Gradient = serde_json::from_value(struct_format).unwrap();
+		assert_eq!(gradient.positions(), vec![0., 0.25]);
+		assert!(gradient.has_midpoint_attribute(), "the struct form must parse faithfully");
+
+		let tuple_format = serde_json::json!([[0., color], [1., color]]);
+		let gradient: Gradient = serde_json::from_value(tuple_format).unwrap();
+		assert_eq!(gradient.positions(), vec![0., 1.]);
+		assert!(!gradient.has_position_attribute(), "even legacy tuple positions should elide");
+	}
+
+	#[test]
+	fn gradient_ui_write_back_elides_default_attributes() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		gradient.set_midpoints(&[0.7, 0.5, 0.5]);
+
+		let round_tripped = Gradient::from(&GradientStops::<SRGBA8>::from(&gradient));
+		assert!(!round_tripped.has_position_attribute(), "materialized even positions should elide on write-back");
+		assert_eq!(round_tripped.midpoints(), vec![0.7, 0.5, 0.5]);
+	}
+
+	#[test]
+	fn nondefault_attributes_elide_default_values() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		assert_eq!(gradient.nondefault_positions(), None);
+		assert_eq!(gradient.nondefault_midpoints(), None);
+
+		// Explicit attributes that merely restate the defaults still elide
+		gradient.set_positions(&[0., 0.5, 1.]);
+		gradient.set_midpoints(&[0.5, 0.5, 0.5]);
+		assert_eq!(gradient.nondefault_positions(), None);
+		assert_eq!(gradient.nondefault_midpoints(), None);
+
+		gradient.set_positions(&[0., 0.25, 1.]);
+		gradient.set_midpoints(&[0.5, 0.7, 0.5]);
+		assert_eq!(gradient.nondefault_positions(), Some(vec![0., 0.25, 1.]));
+		assert_eq!(gradient.nondefault_midpoints(), Some(vec![0.5, 0.7, 0.5]));
+	}
+
+	#[test]
+	fn non_compliant_positions_normalize_for_sampling_and_rendering() {
+		// Stored positions stay as authored, but consumers see them clamped to the 0 to 1 range and sorted
+		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK, Color::RED]);
+		gradient.set_positions(&[1.5, 0.4, -0.5]);
+		assert_eq!(gradient.positions(), vec![1.5, 0.4, -0.5]);
+
+		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
+		assert!(sample_positions.windows(2).all(|pair| pair[0] <= pair[1]), "samples must ascend: {sample_positions:?}");
+		assert_eq!(sample_positions.first(), Some(&0.));
+		assert_eq!(sample_positions.last(), Some(&1.));
+
+		assert_eq!(gradient.evaluate(0., Default::default()), Color::RED);
+		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
+	}
+
+	#[test]
+	fn infinite_positions_clamp_to_the_range_ends() {
+		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK]);
+		gradient.set_positions(&[f64::INFINITY, f64::NEG_INFINITY]);
+
+		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
+		assert_eq!(sample_positions, vec![0., 1.]);
+		assert_eq!(gradient.evaluate(0., Default::default()), Color::BLACK);
+		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
+	}
+
+	#[test]
+	fn nan_positions_drop_their_stops_from_sampling() {
+		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK, Color::RED]);
+		gradient.set_positions(&[0., f64::NAN, 1.]);
+
+		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
+		assert_eq!(sample_positions, vec![0., 1.]);
+		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::WHITE.lerp(&Color::RED, 0.5));
+
+		// With every position NaN the gradient samples as stopless, painting solid black to signal the upstream bug
+		let mut gradient = Gradient::from(vec![Color::WHITE, Color::RED]);
+		gradient.set_positions(&[f64::NAN, f64::NAN]);
+		assert!(gradient.interpolated_samples().is_empty());
+		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::BLACK);
+	}
+
+	#[test]
+	fn samples_start_at_the_first_stop_without_synthetic_lead_in() {
+		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK]);
+		gradient.set_positions(&[0.3, 1.]);
+
+		let samples = gradient.interpolated_samples();
+		assert_eq!(samples[0], (0.3, Color::WHITE, None), "renderers that need a flat lead-in before the first stop add it themselves");
+	}
+
+	#[test]
+	fn nan_midpoints_read_as_linear() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		let linear_result = gradient.evaluate(0.25, Default::default());
+
+		gradient.set_midpoints(&[f64::NAN, f64::NAN]);
+		assert_eq!(gradient.evaluate(0.25, Default::default()), linear_result);
+		let no_nan_annotations = gradient
+			.interpolated_samples()
+			.iter()
+			.all(|(position, _, midpoint)| position.is_finite() && !midpoint.is_some_and(|midpoint| midpoint.is_nan()));
+		assert!(no_nan_annotations, "NaN must not escape into rendered sample annotations");
 	}
 }

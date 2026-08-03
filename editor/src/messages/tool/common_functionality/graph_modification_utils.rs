@@ -323,7 +323,43 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	let TaggedValue::Gradient(stops) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
 		return None;
 	};
-	Some(stops.clone())
+	let mut stops = stops.clone();
+
+	// The chain's stop placement comes from the closest-to-layer 'Gradient Positions'/'Gradient Midpoints' nodes,
+	// matching the runtime where each later node overwrites the whole attribute
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
+	let positions_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_positions::IDENTIFIER);
+	let midpoints_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_midpoints::IDENTIFIER);
+
+	let (mut positions_pending, mut midpoints_pending) = (true, true);
+	for node_id in network_interface
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+	{
+		let Some(reference) = network_interface.reference(&node_id, &[]) else { continue };
+		let node = network_interface.document_network().nodes.get(&node_id);
+
+		if positions_pending && reference == positions_reference {
+			positions_pending = false;
+			if let Some(TaggedValue::F64Array(positions)) = node
+				.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput))
+				.and_then(|input| input.as_value())
+			{
+				stops.set_positions(positions);
+			}
+		} else if midpoints_pending && reference == midpoints_reference {
+			midpoints_pending = false;
+			if let Some(TaggedValue::F64Array(midpoints)) = node
+				.and_then(|node| node.input(graphene_std::math_nodes::gradient_midpoints::MidpointsInput))
+				.and_then(|input| input.as_value())
+			{
+				stops.set_midpoints(midpoints);
+			}
+		}
+	}
+
+	Some(stops)
 }
 
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<Gradient>`
@@ -629,6 +665,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	let TaggedValue::Gradient(stops) = fill_node.input(fill::FillInput)?.as_value()? else {
 		return None;
 	};
+	let stops = stops.clone();
 	let gradient_type = match fill_node.input(fill::GradientTypeInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientType(value)) => value,
 		_ => GradientType::default(),
@@ -646,7 +683,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	};
 
 	Some(FillNodeGradient {
-		stops: stops.clone(),
+		stops,
 		gradient_type,
 		spread_method,
 		transform,

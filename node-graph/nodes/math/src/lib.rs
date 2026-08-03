@@ -1373,7 +1373,7 @@ fn hex_to_color(_: impl Ctx, hex_code: Item<String>) -> Item<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: Item<Gradient>) -> Item<Gradient> {
+fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>) -> Item<Gradient> {
 	gradient
 }
 
@@ -1393,11 +1393,35 @@ fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vect
 	gradient
 }
 
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+/// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
-	let position = position.element().clamp(0., 1.);
-	let color = gradient.element().evaluate(position);
+fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
+	gradient.element_mut().set_positions(&positions);
+	gradient
+}
+
+/// Sets the interpolation midpoint for each interval between gradient stops, a factor from 0 to 1 where the 0.5 default means linear interpolation and another value skews the transition speed toward one stop or the other.
+///
+/// The final stop belongs to no interval so its midpoint is ignored.
+///
+/// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
+#[node_macro::node(category("Color"))]
+fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
+	gradient.element_mut().set_midpoints(&midpoints);
+	gradient
+}
+
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `spread_method` attribute: Pad (default), Reflect, or Repeat.
+#[node_macro::node(category("Color"))]
+fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
+	let spread_method = gradient.attribute_cloned_or_default::<vector_types::GradientSpreadMethod>(core_types::ATTR_SPREAD_METHOD);
+	let color = gradient.element().evaluate(*position.element(), spread_method);
 	Item::new_from_element(color)
 }
 

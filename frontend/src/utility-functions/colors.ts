@@ -1,4 +1,4 @@
-import type { FillChoiceUI, GradientUI, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FillChoiceUI, GradientStops, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };
@@ -182,8 +182,8 @@ export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: st
 
 // GRADIENT UTILITY FUNCTIONS
 
-export function isGradientUI(value: unknown): value is GradientUI {
-	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
+export function isGradientStops(value: unknown): value is GradientStops<SRGBA8> {
+	return typeof value === "object" && value !== null && "color" in value && Array.isArray(value.color);
 }
 
 // FILL CHOICE UTILITY FUNCTIONS
@@ -193,7 +193,7 @@ export function fillChoiceUIColor(value: FillChoiceUI): SRGBA8 | undefined {
 	return undefined;
 }
 
-export function fillChoiceUIGradient(value: FillChoiceUI): GradientUI | undefined {
+export function fillChoiceUIGradient(value: FillChoiceUI): GradientStops<SRGBA8> | undefined {
 	if (typeof value === "object" && "Gradient" in value) return value.Gradient;
 	return undefined;
 }
@@ -201,6 +201,6 @@ export function fillChoiceUIGradient(value: FillChoiceUI): GradientUI | undefine
 export function parseFillChoiceUI(value: unknown): FillChoiceUI {
 	if (value === "None" || value === undefined || value === null) return "None";
 	if (typeof value === "object" && value !== null && "Solid" in value && isSRgba8(value.Solid)) return { Solid: value.Solid };
-	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientUI(value.Gradient)) return { Gradient: value.Gradient };
+	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientStops(value.Gradient)) return { Gradient: value.Gradient };
 	return "None";
 }
