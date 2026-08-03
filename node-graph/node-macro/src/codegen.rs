@@ -932,6 +932,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		},
 		_ => quote!(#core_types::gpoll::GPoll::Final(__future.await)),
 	};
+	let spawn_tail = |completion: TokenStream2, fallback: TokenStream2| {
+		quote! {
+			self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, None);
+			let __slot = std::sync::Arc::clone(&self.slot);
+			if _runtime.0.spawn(_source, Box::pin(async move {
+				let __value = #completion;
+				__slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, Some(__value));
+			})) {
+				let __entries = self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+				if let Some(Some(__value)) = __entries.get(&__key) {
+					return __cell.merge(__value.clone());
+				}
+			}
+			#fallback
+		}
+	};
 	let eval_tail = match (async_fn, future_kernel) {
 		(false, false) => lift,
 		(true, _) => {
@@ -942,17 +958,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.chain(data_names.iter().map(|name| quote!(self.#name.clone())))
 				.chain(kernel_value_names.iter().map(|name| quote!(#name.clone())));
 			let completion = future_completion(&parsed.output_type);
+			let tail = spawn_tail(completion, inflight.clone());
 			quote! {
 				#slot_check
-				self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, None);
-				let __slot = std::sync::Arc::clone(&self.slot);
 				#(#snapshot_binding)*
 				let __future = self::#fn_name(#(#future_args),*);
-				_runtime.0.spawn(_source, Box::pin(async move {
-					let __value = #completion;
-					__slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, Some(__value));
-				}));
-				#inflight
+				#tail
 			}
 		}
 		(false, true) => {
@@ -977,17 +988,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				_ => unreachable!("guarded by future_kernel"),
 			};
 			let completion = future_completion(&payload);
+			let tail = spawn_tail(completion, spawn_return);
 			quote! {
 				#slot_check
 				#placeholder_binding
 				#acquire
-				self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, None);
-				let __slot = std::sync::Arc::clone(&self.slot);
-				_runtime.0.spawn(_source, Box::pin(async move {
-					let __value = #completion;
-					__slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, Some(__value));
-				}));
-				#spawn_return
+				#tail
 			}
 		}
 	};

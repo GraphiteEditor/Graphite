@@ -13,7 +13,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
-use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner, RuntimeHandle};
+use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, RuntimeHandle, SourceFuture, Spawner, poll_once};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -25,6 +25,35 @@ struct UpdateLogger {}
 impl NodeGraphUpdateSender for UpdateLogger {
 	fn send(&self, message: NodeGraphUpdateMessage) {
 		println!("{message:?}");
+	}
+}
+
+struct TokioSpawner(Option<tokio::runtime::Runtime>);
+
+impl TokioSpawner {
+	fn new() -> Result<Self, std::io::Error> {
+		Ok(Self(Some(tokio::runtime::Runtime::new()?)))
+	}
+}
+
+impl Spawner for TokioSpawner {
+	fn spawn(&self, mut task: SourceFuture) -> bool {
+		let runtime = self.0.as_ref().expect("runtime lives until drop");
+		let _guard = runtime.enter();
+		if poll_once(&mut task) {
+			return true;
+		}
+		runtime.spawn(task);
+		false
+	}
+}
+
+/// Dropping a tokio runtime blocks on its tasks, which panics inside the async main; shut down in the background instead.
+impl Drop for TokioSpawner {
+	fn drop(&mut self) {
+		if let Some(runtime) = self.0.take() {
+			runtime.shutdown_background();
+		}
 	}
 }
 
@@ -179,7 +208,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let preferences = EditorPreferences {
 		max_render_region_size: EditorPreferences::default().max_render_region_size,
 	};
-	let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(NoopSpawner) as Box<DynSpawner>));
+	let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(Box::new(TokioSpawner::new()?) as Box<DynSpawner>));
+	let (completion_sender, completion_receiver) = std::sync::mpsc::channel();
+	graph_runtime.set_notifier(Arc::new(move || {
+		let _ = completion_sender.send(());
+	}));
 	let editor_api = Arc::new(PlatformEditorApi {
 		application_io: Some(application_io_for_api),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
@@ -226,9 +259,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 			// Perform export based on file type
 			if file_type == export::FileType::Gif {
 				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref.clone(), output, scale, (width, height), animation)?;
+				export::export_gif(&executor, wgpu_executor_ref.clone(), output, scale, (width, height), animation, &completion_receiver)?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref.clone(), output, file_type, scale, (width, height), transparent)?;
+				export::export_document(&executor, wgpu_executor_ref.clone(), output, file_type, scale, (width, height), transparent, &completion_receiver)?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),

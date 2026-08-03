@@ -59,6 +59,9 @@ pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
 	current_execution_id: u64,
 	futures: VecDeque<(u64, ExecutionContext)>,
+	/// The most recently consumed plain render execution, kept so a runtime-replayed response with the same id
+	/// (sent after an async source completion) finds its context again.
+	last_execution_context: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
@@ -108,6 +111,7 @@ impl NodeGraphExecutor {
 		let node_executor = Self {
 			futures: Default::default(),
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
+			last_execution_context: None,
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
@@ -377,9 +381,19 @@ impl NodeGraphExecutor {
 
 					let execution_context = if self.futures.front().is_some_and(|&(queued_execution_id, _)| queued_execution_id == execution_id) {
 						let (_, execution_context) = self.futures.pop_front().expect("front was just matched");
+						self.last_execution_context = Some((execution_id, execution_context.clone()));
 						execution_context
 					} else {
-						panic!("InvalidGenerationId")
+						// A runtime-replayed response re-uses an already consumed id; only plain renders may re-apply.
+						match &self.last_execution_context {
+							Some((last_execution_id, execution_context)) if *last_execution_id == execution_id => {
+								if execution_context.export_config.is_some() || execution_context.measure_fill.is_some() {
+									continue;
+								}
+								execution_context.clone()
+							}
+							_ => panic!("InvalidGenerationId"),
+						}
 					};
 
 					// TODO: Eventually remove this document upgrade code

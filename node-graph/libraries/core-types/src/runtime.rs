@@ -16,7 +16,8 @@ pub type DynRuntime = dyn Runtime + Send + Sync;
 pub type DynRuntime = dyn Runtime;
 
 pub trait Runtime {
-	fn spawn(&self, source: SourceId, future: SourceFuture);
+	/// Returns true when the future completed during the call, so its result is already observable.
+	fn spawn(&self, source: SourceId, future: SourceFuture) -> bool;
 }
 
 #[derive(Clone)]
@@ -40,7 +41,14 @@ impl graphene_hash::CacheHash for RuntimeHandle {
 }
 
 pub trait Spawner {
-	fn spawn(&self, task: SourceFuture);
+	/// Returns true when the task completed during the call, so its result is already observable.
+	fn spawn(&self, task: SourceFuture) -> bool;
+}
+
+/// Polls `task` once with a no-op waker, returning true if it completed.
+pub fn poll_once(task: &mut SourceFuture) -> bool {
+	let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+	task.as_mut().poll(&mut context).is_ready()
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -54,7 +62,7 @@ pub type DynNotifier = dyn Fn() + Send + Sync;
 pub type DynNotifier = dyn Fn();
 
 impl<S: Spawner + ?Sized> Spawner for Box<S> {
-	fn spawn(&self, task: SourceFuture) {
+	fn spawn(&self, task: SourceFuture) -> bool {
 		(**self).spawn(task)
 	}
 }
@@ -63,11 +71,12 @@ impl<S: Spawner + ?Sized> Spawner for Box<S> {
 pub struct NoopSpawner;
 
 impl Spawner for NoopSpawner {
-	fn spawn(&self, mut task: SourceFuture) {
-		let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-		if task.as_mut().poll(&mut context).is_pending() {
-			log::warn!("async source is not immediately ready and no host spawner is wired; the task is dropped");
+	fn spawn(&self, mut task: SourceFuture) -> bool {
+		if poll_once(&mut task) {
+			return true;
 		}
+		log::warn!("async source is not immediately ready and no host spawner is wired; the task is dropped");
+		false
 	}
 }
 
@@ -132,21 +141,26 @@ impl<S> GraphRuntime<S> {
 }
 
 impl<S: Spawner> Runtime for GraphRuntime<S> {
-	fn spawn(&self, source: SourceId, future: SourceFuture) {
+	fn spawn(&self, source: SourceId, mut future: SourceFuture) -> bool {
 		let generations = Arc::clone(&self.generations);
 		let dirty = Arc::clone(&self.dirty);
 		let notifier = Arc::clone(&self.notifier);
-		self.spawner.spawn(Box::pin(async move {
-			future.await;
-			let mut generations = generations.lock().unwrap_or_else(PoisonError::into_inner);
-			if let Some(generation) = generations.get_mut(&source) {
-				*generation += 1;
-				dirty.store(true, Ordering::Release);
-				drop(generations);
-				let notifier = Arc::clone(&notifier.lock().unwrap_or_else(PoisonError::into_inner));
-				notifier();
+		let mut first = true;
+		self.spawner.spawn(Box::pin(std::future::poll_fn(move |task_context| {
+			let poll = future.as_mut().poll(task_context);
+			if poll.is_ready() && !first {
+				let mut generations = generations.lock().unwrap_or_else(PoisonError::into_inner);
+				if let Some(generation) = generations.get_mut(&source) {
+					*generation += 1;
+					dirty.store(true, Ordering::Release);
+					drop(generations);
+					let notifier = Arc::clone(&notifier.lock().unwrap_or_else(PoisonError::into_inner));
+					notifier();
+				}
 			}
-		}));
+			first = false;
+			poll
+		})))
 	}
 }
 
@@ -167,8 +181,9 @@ mod tests {
 	}
 
 	impl Runtime for MockRuntime {
-		fn spawn(&self, source: SourceId, future: SourceFuture) {
+		fn spawn(&self, source: SourceId, future: SourceFuture) -> bool {
 			self.futures.lock().unwrap().push((source, future));
+			false
 		}
 	}
 
@@ -192,9 +207,32 @@ mod tests {
 	}
 
 	impl Spawner for CollectSpawner {
-		fn spawn(&self, task: SourceFuture) {
+		fn spawn(&self, mut task: SourceFuture) -> bool {
+			if poll_once(&mut task) {
+				return true;
+			}
 			self.tasks.lock().unwrap().push(task);
+			false
 		}
+	}
+
+	struct YieldOnce(bool);
+
+	impl Future for YieldOnce {
+		type Output = ();
+
+		fn poll(mut self: Pin<&mut Self>, task_context: &mut std::task::Context<'_>) -> std::task::Poll<()> {
+			if self.0 {
+				return std::task::Poll::Ready(());
+			}
+			self.0 = true;
+			task_context.waker().wake_by_ref();
+			std::task::Poll::Pending
+		}
+	}
+
+	fn yield_once() -> YieldOnce {
+		YieldOnce(false)
 	}
 
 	impl CollectSpawner {
@@ -413,7 +451,7 @@ mod tests {
 		let runtime = GraphRuntime::new(CollectSpawner::default());
 		runtime.retain_sources(&[7]);
 
-		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		Runtime::spawn(&runtime, 7, Box::pin(yield_once()));
 		assert_eq!(runtime.snapshot(), vec![(7, 0)], "no bump before the future completes");
 		assert!(!runtime.take_dirty());
 
@@ -434,7 +472,7 @@ mod tests {
 			observed.store(dirty_at_notify.load(Ordering::Acquire), Ordering::Relaxed);
 		}));
 
-		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		Runtime::spawn(&runtime, 7, Box::pin(yield_once()));
 		assert_eq!(runtime.spawner().drain(), 1);
 		assert!(observed_dirty.load(Ordering::Relaxed), "the notifier must observe the dirty flag already set");
 	}
@@ -447,7 +485,7 @@ mod tests {
 		let flag = Arc::clone(&notified);
 		runtime.set_notifier(Arc::new(move || flag.store(true, Ordering::Relaxed)));
 
-		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		Runtime::spawn(&runtime, 7, Box::pin(yield_once()));
 		runtime.retain_sources(&[]);
 		assert_eq!(runtime.spawner().drain(), 1);
 		assert!(!notified.load(Ordering::Relaxed));
@@ -458,7 +496,7 @@ mod tests {
 		let runtime = GraphRuntime::new(CollectSpawner::default());
 		runtime.retain_sources(&[7]);
 
-		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		Runtime::spawn(&runtime, 7, Box::pin(yield_once()));
 		runtime.retain_sources(&[]);
 		assert_eq!(runtime.spawner().drain(), 1);
 
@@ -470,7 +508,7 @@ mod tests {
 	fn retain_sources_preserves_live_generations() {
 		let runtime = GraphRuntime::new(CollectSpawner::default());
 		runtime.retain_sources(&[7]);
-		Runtime::spawn(&runtime, 7, Box::pin(async {}));
+		Runtime::spawn(&runtime, 7, Box::pin(yield_once()));
 		runtime.spawner().drain();
 
 		runtime.retain_sources(&[7, 9]);
@@ -482,7 +520,40 @@ mod tests {
 
 	#[node_macro::node(category(""))]
 	async fn epilogue_double(_: impl Ctx, value: f64) -> f64 {
+		yield_once().await;
 		value * 2.
+	}
+
+	#[node_macro::node(category(""))]
+	async fn inline_double(_: impl Ctx, value: f64) -> f64 {
+		value * 2.
+	}
+
+	#[test]
+	fn an_immediately_ready_task_completes_inline_without_invalidating() {
+		let runtime = GraphRuntime::new(CollectSpawner::default());
+		runtime.retain_sources(&[7]);
+
+		assert!(Runtime::spawn(&runtime, 7, Box::pin(async {})));
+		assert_eq!(runtime.spawner().drain(), 0);
+		assert_eq!(runtime.snapshot(), vec![(7, 0)], "inline completion must not bump the generation");
+		assert!(!runtime.take_dirty());
+	}
+
+	#[test]
+	fn an_immediately_ready_kernel_returns_final_on_the_first_eval() {
+		let arena = Arena::new(64).unwrap();
+		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
+		runtime.retain_sources(&[13]);
+		let graph = InlineDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(13u64));
+
+		let snapshot = runtime.snapshot();
+		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
+		let ctx = ContextImpl::root(&scope);
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(42.0));
+		assert!(!runtime.take_dirty());
+		assert_eq!(runtime.snapshot(), vec![(13, 0)]);
+		assert_eq!(runtime.spawner().drain(), 0);
 	}
 
 	#[test]
