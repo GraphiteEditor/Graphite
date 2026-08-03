@@ -1509,7 +1509,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::ShakeNode => {
-				let Some(drag_start) = &self.drag_start else {
+				let Some((drag_start, _)) = &mut self.drag_start else {
 					log::error!("Drag start should be initialized when shaking a node");
 					return;
 				};
@@ -1527,7 +1527,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.transform_point2(viewport_location);
 
 				// Collect the distance to move the shaken nodes after the undo
-				let graph_delta = IVec2::new(((point.x - drag_start.0.start_x) / 24.).round() as i32, ((point.y - drag_start.0.start_y) / 24.).round() as i32);
+				let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+
+				// Keep the incremental rounding baseline in sync with the total shift reapplied below
+				drag_start.round_x = graph_delta.x;
+				drag_start.round_y = graph_delta.y;
 
 				// Undo to the state of the graph before shaking
 				responses.add(DocumentMessage::AbortTransaction);
