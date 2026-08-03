@@ -89,11 +89,6 @@ macro_rules! tagged_value {
 			DashPattern(Vec<f64>),
 			/// Stored compactly as a `Vec<f64>` of corner values, materializes as an `Item<BoxCorners>` at runtime via `to_dynany`/`to_any`.
 			BoxCorners(Vec<f64>),
-			/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
-			/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
-			#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this document upgrade code
-			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
-			Color(Color),
 			/// Stored as the `GradientRamp` exchange struct (nested `{ stops: { color, position?, midpoint? } }`), materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under the legacy `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
@@ -143,7 +138,6 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::DashPattern(lengths) => lengths.cache_hash(state),
 					Self::BoxCorners(values) => values.cache_hash(state),
-					Self::Color(color) => color.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
 					// =======================
@@ -207,7 +201,6 @@ macro_rules! tagged_value {
 					}
 					Self::DashPattern(lengths) => Box::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
-					Self::Color(color) => Box::new(Item::new_from_element(color)),
 					Self::GradientRamp(ramp) => Box::new(Item::new_from_element(Gradient::from(ramp))),
 					Self::BrushStrokes(strokes) => Box::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
@@ -271,7 +264,6 @@ macro_rules! tagged_value {
 					}
 					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
-					Self::Color(color) => Arc::new(Item::new_from_element(color)),
 					Self::GradientRamp(ramp) => Arc::new(Item::new_from_element(Gradient::from(ramp))),
 					Self::BrushStrokes(strokes) => Arc::new(core_types::list::Item::new_from_element(BrushTrace::from(strokes))),
 					// =======================
@@ -301,7 +293,6 @@ macro_rules! tagged_value {
 					Self::F64Array(_) => list!(f64),
 					Self::DashPattern(_) => item!(DashPattern),
 					Self::BoxCorners(_) => item!(BoxCorners),
-					Self::Color(_) => item!(Color),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::BrushStrokes(_) => item!(BrushTrace),
 					// =======================
@@ -340,8 +331,6 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*downcast(input).unwrap())),
-					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(downcast::<Item<Color>>(input).unwrap().into_element())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(downcast::<Item<Gradient>>(input).unwrap().into_element()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
@@ -376,8 +365,6 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<Item<DashPattern>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Color>() => Ok(TaggedValue::Color(*input.downcast_ref::<Color>().unwrap())),
-					x if x == TypeId::of::<Item<Color>>() => Ok(TaggedValue::Color(*input.downcast_ref::<Item<Color>>().unwrap().element())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap().element()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
@@ -406,7 +393,6 @@ macro_rules! tagged_value {
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
-						if name == std::any::type_name::<Color>() { return Some(TaggedValue::Color(Color::default())) }
 						if name == std::any::type_name::<Gradient>() { return Some(TaggedValue::GradientRamp(GradientRamp::default())) }
 						if name == std::any::type_name::<DashPattern>() { return Some(TaggedValue::DashPattern(Vec::new())) }
 						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
@@ -463,7 +449,6 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
-					Self::Color(color) => format!("Color({color:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
@@ -519,6 +504,11 @@ tagged_value! {
 	DVec2(DVec2),
 	#[serde(alias = "Affine2")]
 	DAffine2(DAffine2),
+	/// A plain, always-present color. Aliases recover legacy on-disk shapes; a legacy `null` payload (the old "no color")
+	/// is routed to [`TaggedValue::no_paint`] by `deserialize_tagged_value_with_legacy_migration`.
+	#[serde(deserialize_with = "core_types::misc::migrate_to_color")] // TODO: Eventually remove this document upgrade code
+	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
+	Color(Color),
 	Font(Font),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
