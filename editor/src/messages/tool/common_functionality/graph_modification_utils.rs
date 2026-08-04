@@ -14,7 +14,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientSpread, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientForm, GradientSpread, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
@@ -381,11 +381,11 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 	metadata.transform_to_viewport(layer)
 }
 
-/// Tooltip description for a "Reverse Direction" gradient button, phrased for the given gradient type.
-pub fn reverse_direction_tooltip_description(gradient_type: GradientType) -> &'static str {
-	match gradient_type {
-		GradientType::Radial => "Reverse which end the gradient radiates from.",
-		GradientType::Linear => "Swap the start and end points of the gradient line.",
+/// Tooltip description for a "Reverse Direction" gradient button, phrased for the given Gradient Form.
+pub fn reverse_direction_tooltip_description(gradient_form: GradientForm) -> &'static str {
+	match gradient_form {
+		GradientForm::Radial => "Reverse which end the gradient radiates from.",
+		GradientForm::Linear => "Swap the start and end points of the gradient line.",
 	}
 }
 
@@ -659,7 +659,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 /// A Fill node's decoded gradient inputs, with the transform kept in its raw form (not yet baked into `start`/`end`).
 pub struct FillNodeGradient {
 	pub stops: Gradient,
-	pub gradient_type: GradientType,
+	pub gradient_form: GradientForm,
 	pub gradient_spread: GradientSpread,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
@@ -675,9 +675,9 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	};
 	let gradient_spread = ramp.gradient_spread;
 	let stops = Gradient::from(ramp);
-	let gradient_type = match fill_node.input(fill::GradientTypeInput).and_then(|input| input.as_value()) {
-		Some(&TaggedValue::GradientType(value)) => value,
-		_ => GradientType::default(),
+	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
+		Some(&TaggedValue::GradientForm(value)) => value,
+		_ => GradientForm::default(),
 	};
 	let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
 	let transform_input = fill_node.input(fill::TransformInput).and_then(|input| input.as_value());
@@ -689,7 +689,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 
 	Some(FillNodeGradient {
 		stops,
-		gradient_type,
+		gradient_form,
 		gradient_spread,
 		transform,
 		transform_is_value: transform_input.is_some(),
@@ -824,9 +824,9 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 				use graphene_std::vector::fill;
 				let fill_parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(fill::IDENTIFIER);
 
-				let gradient_type = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::GradientTypeInput)) {
-					Some(TaggedValue::GradientType(value)) => *value,
-					_ => GradientType::default(),
+				let gradient_form = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::GradientFormInput)) {
+					Some(TaggedValue::GradientForm(value)) => *value,
+					_ => GradientForm::default(),
 				};
 				let has_transform = matches!(fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::HasTransformInput)), Some(TaggedValue::Bool(true)));
 				let transform = match (has_transform, fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::TransformInput))) {
@@ -838,7 +838,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
 					gradient: Gradient::from(ramp),
-					gradient_type,
+					gradient_form,
 					gradient_spread: ramp.gradient_spread,
 					transform,
 				});

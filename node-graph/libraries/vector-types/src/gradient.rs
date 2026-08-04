@@ -9,7 +9,7 @@ use glam::{DAffine2, DVec2};
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
-pub enum GradientType {
+pub enum GradientForm {
 	#[default]
 	Linear,
 	Radial,

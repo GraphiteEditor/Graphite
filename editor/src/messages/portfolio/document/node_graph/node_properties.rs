@@ -33,7 +33,7 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientRamp, GradientSpread, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientRamp, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -301,7 +301,7 @@ pub(crate) fn property_from_type(
 						// =========================
 						// AUTO-GENERATED ENUM TYPES
 						// =========================
-						Some(x) if id_is::<GradientType>(x) => enum_choice::<GradientType>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
@@ -2400,7 +2400,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Solid(Option<Color>),
 		Gradient {
 			gradient: Gradient,
-			gradient_type: GradientType,
+			gradient_form: GradientForm,
 			gradient_spread: GradientSpread,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
@@ -2430,7 +2430,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				}) {
 					Some(gradient) => ResolvedFill::Gradient {
 						gradient: gradient.stops,
-						gradient_type: gradient.gradient_type,
+						gradient_form: gradient.gradient_form,
 						gradient_spread: gradient.gradient_spread,
 						transform: gradient.transform,
 						transform_is_value: gradient.transform_is_value,
@@ -2582,7 +2582,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets.push(fill_type_switch);
 
 	if let ResolvedFill::Gradient {
-		gradient_type,
+		gradient_form,
 		transform,
 		transform_is_value,
 		..
@@ -2601,7 +2601,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 			let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
 				.tooltip_label("Reverse Direction")
-				.tooltip_description(graph_modification_utils::reverse_direction_tooltip_description(gradient_type))
+				.tooltip_description(graph_modification_utils::reverse_direction_tooltip_description(gradient_form))
 				.on_update(move |_| Message::Batched {
 					messages: Box::new([
 						NodeGraphMessage::SetInputValue {
@@ -2625,19 +2625,19 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			add_blank_assist(&mut row);
 		}
 
-		let entries = [GradientType::Linear, GradientType::Radial]
+		let entries = [GradientForm::Linear, GradientForm::Radial]
 			.iter()
-			.map(|&gradient_type| {
-				RadioEntryData::new(format!("{:?}", gradient_type))
-					.label(format!("{:?}", gradient_type))
-					.on_update(update_value(move |_| TaggedValue::GradientType(gradient_type), node_id, GradientTypeInput))
+			.map(|&gradient_form| {
+				RadioEntryData::new(format!("{:?}", gradient_form))
+					.label(format!("{:?}", gradient_form))
+					.on_update(update_value(move |_| TaggedValue::GradientForm(gradient_form), node_id, GradientFormInput))
 					.on_commit(commit_value)
 			})
 			.collect();
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries).selected_index(Some(gradient_type as u32)).widget_instance(),
+			RadioInput::new(entries).selected_index(Some(gradient_form as u32)).widget_instance(),
 		]);
 
 		widgets.push(LayoutGroup::row(row));

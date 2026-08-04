@@ -29,7 +29,7 @@ pub mod migrations {
 		pub struct LegacyGradient {
 			#[serde(deserialize_with = "crate::migrations::migrate_to_gradient_ramp")]
 			pub stops: GradientRamp,
-			pub gradient_type: vector::style::GradientType,
+			pub gradient_type: vector::style::GradientForm,
 			pub start: DVec2,
 			pub end: DVec2,
 			#[serde(default)]
@@ -51,7 +51,7 @@ pub mod migrations {
 
 				// The legacy radial drew as a circle in the layer's own space; bake the adjustment that, composed with the
 				// endpoint frame, makes the new pipeline reproduce that circle through the (possibly non-uniform) layer transform.
-				let radial_invertible = self.gradient_type == vector::style::GradientType::Radial
+				let radial_invertible = self.gradient_type == vector::style::GradientForm::Radial
 					&& layer_transform.is_finite()
 					&& layer_transform.matrix2.determinant().recip().is_finite()
 					&& direction.length_squared() > 1e-20;
