@@ -919,7 +919,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::import(concrete!(String), 1)],
+								inputs: vec![
+									NodeInput::value(TaggedValue::None, false),
+									NodeInput::import(concrete!(String), 1),
+									NodeInput::scope("graphene_std::runtime::RuntimeNode"),
+									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::SourceId),
+								],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
 								..Default::default()
 							},
@@ -994,7 +999,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+								inputs: vec![
+									NodeInput::import(generic!(T), 0),
+									NodeInput::import(concrete!(Footprint), 1),
+									NodeInput::node(NodeId(1), 0),
+									NodeInput::scope("graphene_std::runtime::RuntimeNode"),
+									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::SourceId),
+								],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
 								..Default::default()
 							},

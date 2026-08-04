@@ -3,25 +3,26 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
+use graphene_std::core_types::gpoll::GPoll;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
-use graphene_std::ops::Convert;
+use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
+use graphene_std::runtime::{DynGraphRuntime, DynSpawner, GraphRuntime, NoopSpawner, RuntimeHandle};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use graphene_std::{Artboard, CtxSnapshot, Graphic};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
 use std::sync::Arc;
@@ -40,6 +41,8 @@ pub struct NodeRuntime {
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
+	#[expect(dead_code, reason = "read once the host wires a notifier onto the runtime")]
+	graph_runtime: Arc<DynGraphRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -121,18 +124,25 @@ pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = onc
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
+		let spawner: Box<DynSpawner> = Box::new(NoopSpawner);
+		let graph_runtime: Arc<DynGraphRuntime> = Arc::new(GraphRuntime::new(spawner));
+		let mut executor = DynamicExecutor::default();
+		executor.set_runtime(Arc::clone(&graph_runtime));
+
 		Self {
-			executor: DynamicExecutor::default(),
+			executor,
 			receiver,
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
+			graph_runtime: Arc::clone(&graph_runtime),
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
+				runtime: RuntimeHandle(graph_runtime),
 
 				#[cfg(not(test))]
 				application_io: None,
@@ -157,6 +167,11 @@ impl NodeRuntime {
 		}
 	}
 
+	#[cfg(test)]
+	pub fn take_dirty(&self) -> bool {
+		self.executor.take_dirty()
+	}
+
 	pub async fn run(&mut self) -> Option<Texture> {
 		let mut preferences = None;
 		let mut graph = None;
@@ -173,7 +188,6 @@ impl NodeRuntime {
 					}
 
 					let for_export = execution_request.render_config.for_export;
-
 					execution = Some(request);
 
 					// If we get an export request we always execute it immedeatly otherwise it could get deduplicated
@@ -203,11 +217,12 @@ impl NodeRuntime {
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
+						runtime: self.editor_api.runtime.clone(),
 					}
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
 						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
+						let _ = self.update_network(graph);
 					}
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
@@ -222,7 +237,7 @@ impl NodeRuntime {
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
-					let result = self.update_network(network).await;
+					let result = self.update_network(network);
 					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.update_thumbnails = true;
@@ -237,7 +252,7 @@ impl NodeRuntime {
 						render_config.export_format = ExportFormat::Svg;
 					}
 
-					let result = self.execute_network(render_config).await;
+					let result = self.execute_network(render_config);
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					if !render_config.for_eyedropper {
@@ -258,10 +273,10 @@ impl NodeRuntime {
 								.application_io
 								.as_ref()
 								.unwrap()
-								.gpu_executor()
+								.gpu_executor_arc()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, wgpu_executor::WgpuExecutorHandle(executor)).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -282,10 +297,10 @@ impl NodeRuntime {
 								.application_io
 								.as_ref()
 								.unwrap()
-								.gpu_executor()
+								.gpu_executor_arc()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, wgpu_executor::WgpuExecutorHandle(executor)).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -345,7 +360,7 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
@@ -368,20 +383,24 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|(types, e)| {
+		self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		})
 	}
 
-	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		match self.executor.input_type() {
-			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
+		match (&self.executor).execute(render_config).map_err(|e| e.to_string())? {
+			GPoll::Final(value) | GPoll::Partial(value) => Ok(value),
+			GPoll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				error!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+				Ok(value)
+			}
+			GPoll::Pending => Err("Node graph evaluation is pending".to_string()),
+			GPoll::Error(error) => Err(format!("Node graph evaluation failed: {error:?}")),
 		}
 	}
 
@@ -415,7 +434,7 @@ impl NodeRuntime {
 			};
 
 			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::Text` content)
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<Graphic>>>() {
 				if update_thumbnails {
 					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
@@ -423,19 +442,19 @@ impl NodeRuntime {
 			}
 			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
 			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<Artboard>>>() {
 				if update_thumbnails {
 					let bounds = artboard_clip_bounds(&io.output);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
 			// Vector list: vector modifications
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<Vector>>>() {
 				// Insert the vector modify
 				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
 			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<CtxSnapshot, List<String>>>() {
 				if update_thumbnails {
 					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
@@ -544,14 +563,6 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 	[center - half, center + half]
 }
 
-pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-	let runtime = NODE_RUNTIME.lock();
-	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path);
-	}
-	Err(IntrospectError::RuntimeNotReady)
-}
-
 pub async fn run_node_graph() -> (bool, Option<Texture>) {
 	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
 	if let Some(ref mut runtime) = runtime.as_mut() {
@@ -577,6 +588,7 @@ impl NodeRuntime {
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(self.sender.clone()),
 			editor_preferences: Box::new(self.editor_preferences.clone()),
+			runtime: self.editor_api.runtime.clone(),
 		}
 		.into();
 	}

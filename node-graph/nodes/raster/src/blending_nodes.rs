@@ -201,8 +201,8 @@ mod test {
 	use raster_types::Image;
 	use raster_types::Raster;
 
-	#[tokio::test]
-	async fn color_overlay_multiply() {
+	#[test]
+	fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
 		let image = Image::new(1, 1, image_color);
 
@@ -212,7 +212,7 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100.;
 
-		let result = super::color_overlay((), List::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
+		let result = super::color_overlay(&(), List::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
 		let result = result.element(0).unwrap().clone();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)

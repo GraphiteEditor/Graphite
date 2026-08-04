@@ -1,6 +1,7 @@
+use core_types::gpoll::GPoll;
 use core_types::list::List;
 use core_types::transform::Footprint;
-use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CacheHash, Color, Context, Ctx, DeriveCtx, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -61,8 +62,8 @@ fn animation_time(
 }
 
 #[node_macro::node(category("Debug"))]
-async fn quantize_real_time<T>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs,
+fn quantize_real_time<T>(
+	ctx: impl Ctx + ExtractRealTime + DeriveCtx,
 	#[implementations(
 		Context -> bool,
 		Context -> u32,
@@ -84,11 +85,11 @@ async fn quantize_real_time<T>(
 		Context -> List<f64>,
 		Context -> (),
 	)]
-	value: impl Node<'n, Context<'static>, Output = T>,
+	value: impl Node<Context<'_>, Output = T>,
 	#[default(1)]
 	#[unit("sec")]
 	quantum: f64,
-) -> T {
+) -> GPoll<T> {
 	let time = ctx.try_real_time().unwrap_or_default();
 	let time = time / 1000.;
 	let mut quantized_time = (time * quantum.recip()).round() / quantum.recip();
@@ -96,13 +97,13 @@ async fn quantize_real_time<T>(
 		quantized_time = time;
 	}
 	let quantized_time = quantized_time * 1000.;
-	let new_context = OwnedContextImpl::from(ctx).with_real_time(quantized_time);
-	value.eval(Some(new_context.into())).await
+	let scope = ctx.scope().with_real_time(Some(quantized_time));
+	value.eval(&ctx.with_scope(&scope))
 }
 
 #[node_macro::node(category("Debug"))]
-async fn quantize_animation_time<T>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs,
+fn quantize_animation_time<T>(
+	ctx: impl Ctx + ExtractAnimationTime + DeriveCtx,
 	#[implementations(
 		Context -> bool,
 		Context -> u32,
@@ -124,18 +125,18 @@ async fn quantize_animation_time<T>(
 		Context -> List<f64>,
 		Context -> (),
 	)]
-	value: impl Node<'n, Context<'static>, Output = T>,
+	value: impl Node<Context<'_>, Output = T>,
 	#[default(1)]
 	#[unit("sec")]
 	quantum: f64,
-) -> T {
+) -> GPoll<T> {
 	let time = ctx.try_animation_time().unwrap_or_default();
 	let mut quantized_time = (time * quantum.recip()).round() / quantum.recip();
 	if !quantized_time.is_finite() {
 		quantized_time = time;
 	}
-	let new_context = OwnedContextImpl::from(ctx).with_animation_time(quantized_time);
-	value.eval(Some(new_context.into())).await
+	let scope = ctx.scope().with_animation_time(Some(quantized_time));
+	value.eval(&ctx.with_scope(&scope))
 }
 
 /// Produces the current position of the user's pointer within the document canvas.

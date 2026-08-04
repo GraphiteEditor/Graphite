@@ -1,4 +1,5 @@
 use core_types::Context;
+use core_types::gpoll::GPoll;
 use core_types::list::List;
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
@@ -740,7 +741,7 @@ fn logical_not(
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
-async fn switch<T, C: Send + 'n + Clone>(
+fn switch<T, C>(
 	#[implementations(Context)] ctx: C,
 	condition: bool,
 	#[expose]
@@ -781,8 +782,8 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> List<GradientStops>,
 	)]
 	if_false: impl Node<C, Output = T>,
-) -> T {
-	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+) -> GPoll<T> {
+	if condition { if_true.eval(ctx) } else { if_false.eval(ctx) }
 }
 
 /// Constructs a bool value which may be set to true or false.
@@ -988,74 +989,279 @@ fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Node;
-	use core_types::generic::FnNode;
 
 	#[test]
 	pub fn dot_product_function() {
 		let vector_a = DVec2::new(1., 2.);
 		let vector_b = DVec2::new(3., 4.);
-		assert_eq!(dot_product((), vector_a, vector_b, false), 11.);
+		assert_eq!(dot_product(&(), vector_a, vector_b, false), 11.);
 	}
 
 	#[test]
 	pub fn length_function() {
 		let vector = DVec2::new(3., 4.);
-		assert_eq!(length((), vector), 5.);
+		assert_eq!(length(&(), vector), 5.);
 	}
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math((), 0., "2 + 2".to_string(), 0.);
+		let result = math(&(), 0., "2 + 2".to_string(), 0.);
 		assert_eq!(result, 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math((), 0., "(5 * 3) + (10 / 2)".to_string(), 0.);
+		let result = math(&(), 0., "(5 * 3) + (10 / 2)".to_string(), 0.);
 		assert_eq!(result, 20.);
 	}
 
 	#[test]
 	fn test_default_expression() {
-		let result = math((), 0., "0".to_string(), 0.);
+		let result = math(&(), 0., "0".to_string(), 0.);
 		assert_eq!(result, 0.);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math((), 0., "invalid".to_string(), 0.);
+		let result = math(&(), 0., "invalid".to_string(), 0.);
 		assert_eq!(result, 0.);
 	}
 
 	#[test]
-	pub fn foo() {
-		let fnn = FnNode::new(|(a, b)| (b, a));
-		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
-	}
-
-	#[test]
 	pub fn add_vectors() {
-		assert_eq!(super::add((), DVec2::ONE, DVec2::ONE), DVec2::ONE * 2.);
+		assert_eq!(super::add(&(), DVec2::ONE, DVec2::ONE), DVec2::ONE * 2.);
 	}
 
 	#[test]
 	pub fn subtract_f64() {
-		assert_eq!(super::subtract((), 5_f64, 3_f64), 2.);
+		assert_eq!(super::subtract(&(), 5_f64, 3_f64), 2.);
 	}
 
 	#[test]
 	pub fn divide_vectors() {
-		assert_eq!(super::divide((), DVec2::ONE, 2_f64), DVec2::ONE / 2.);
+		assert_eq!(super::divide(&(), DVec2::ONE, 2_f64), DVec2::ONE / 2.);
 	}
 
 	#[test]
 	pub fn modulo_positive() {
-		assert_eq!(super::modulo((), -5_f64, 2_f64, true), 1_f64);
+		assert_eq!(super::modulo(&(), -5_f64, 2_f64, true), 1_f64);
 	}
 
 	#[test]
 	pub fn modulo_negative() {
-		assert_eq!(super::modulo((), -5_f64, 2_f64, false), -1_f64);
+		assert_eq!(super::modulo(&(), -5_f64, 2_f64, false), -1_f64);
+	}
+}
+
+#[cfg(test)]
+mod graphene_test {
+	use super::*;
+	use core_types::arena::Arena;
+	use core_types::context::{ContextImpl, EvalScope, ExtractIndex};
+	use core_types::gpoll::{Finality, GPoll};
+	use core_types::node::{BatchStatus, Node};
+	use core_types::registry::{EdgeHandle, ErasedNode, construct};
+	use std::mem::MaybeUninit;
+	use std::sync::Arc;
+
+	struct SourceNode<T>(T);
+
+	impl<T: Clone, Input> Node<Input> for SourceNode<T> {
+		type Output = T;
+
+		fn eval(&self, _input: &Input) -> GPoll<T> {
+			GPoll::Final(self.0.clone())
+		}
+	}
+
+	struct IndexNode;
+
+	impl<Input: ExtractIndex> Node<Input> for IndexNode {
+		type Output = f64;
+
+		fn eval(&self, input: &Input) -> GPoll<f64> {
+			GPoll::Final(input.innermost_index() as f64)
+		}
+	}
+
+	fn scope_fixture(arena: &Arena) -> EvalScope<'_> {
+		EvalScope::new(None, None, None, &[], arena)
+	}
+
+	#[test]
+	fn generated_add_evaluates_through_the_node_path() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let graph = AddNode::new(SourceNode(1.0f64), SourceNode(2.0f64));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(3.0));
+	}
+
+	#[test]
+	fn generated_add_batches_through_the_erased_edge() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let erased: Box<ErasedNode<f64>> = Box::new(AddNode::new(IndexNode, SourceNode(10.0f64)));
+		let mut scratch = [const { MaybeUninit::uninit() }; 4];
+		let status = erased.eval_batch(&ctx, 2..6, Some(&mut scratch));
+		let BatchStatus::Filled(lanes, finality) = status else {
+			panic!("expected filled, got {status:?}");
+		};
+		assert_eq!(lanes.values(), &[12.0, 13.0, 14.0, 15.0]);
+		assert_eq!(finality, Finality::AllFinal);
+	}
+
+	#[test]
+	fn generated_wire_constructor_resolves_and_wires() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let entries = logical_or_entries();
+		let value = EdgeHandle::new(Arc::new(SourceNode(true)) as Arc<ErasedNode<bool>>);
+		let other_value = EdgeHandle::new(Arc::new(SourceNode(false)) as Arc<ErasedNode<bool>>);
+		let wired = construct(&entries[0], vec![value, other_value]).unwrap().downcast::<bool>().unwrap();
+
+		assert_eq!(Node::eval(&wired, &ctx), GPoll::Final(true));
+	}
+
+	#[test]
+	fn ctor_registration_populates_the_node_registry() {
+		let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let rows = registry
+			.iter()
+			.find_map(|(id, rows)| id.as_str().ends_with("::AddNode").then_some(rows))
+			.expect("AddNode rows registered at startup");
+		assert_eq!(rows.len(), 6);
+	}
+
+	#[test]
+	fn generic_add_registers_one_entry_per_implementation() {
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let entries = add_entries();
+		assert_eq!(entries.len(), 6);
+		assert_eq!(entries[0].io.inputs, vec![core_types::concrete!(f64), core_types::concrete!(f64)]);
+		assert_eq!(entries[0].io.return_value, core_types::concrete!(f64));
+		assert_eq!(entries[3].io.inputs, vec![core_types::concrete!(DVec2), core_types::concrete!(DVec2)]);
+		assert_eq!(entries[3].io.return_value, core_types::concrete!(DVec2));
+
+		let augend = EdgeHandle::new(Arc::new(SourceNode(1.5f64)) as Arc<ErasedNode<f64>>);
+		let addend = EdgeHandle::new(Arc::new(SourceNode(2.5f64)) as Arc<ErasedNode<f64>>);
+		let wired = construct(&entries[0], vec![augend, addend]).unwrap().downcast::<f64>().unwrap();
+
+		assert_eq!(Node::eval(&wired, &ctx), GPoll::Final(4.0));
+	}
+
+	#[test]
+	fn converted_switch_evaluates_only_the_taken_branch() {
+		use std::sync::Arc;
+		use std::sync::atomic::{AtomicU32, Ordering};
+
+		struct CountingSource(Arc<AtomicU32>, f64);
+
+		impl<Input> Node<Input> for CountingSource {
+			type Output = f64;
+
+			fn eval(&self, _input: &Input) -> GPoll<f64> {
+				self.0.fetch_add(1, Ordering::Relaxed);
+				GPoll::Final(self.1)
+			}
+		}
+
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let taken = Arc::new(AtomicU32::new(0));
+		let untaken = Arc::new(AtomicU32::new(0));
+		let graph = SwitchNode::new(SourceNode(true), CountingSource(taken.clone(), 1.0), CountingSource(untaken.clone(), 2.0));
+
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Final(1.0));
+		assert_eq!(taken.load(Ordering::Relaxed), 1);
+		assert_eq!(untaken.load(Ordering::Relaxed), 0);
+	}
+
+	#[test]
+	fn converted_switch_passes_branch_status_through() {
+		struct PendingSource;
+
+		impl<Input> Node<Input> for PendingSource {
+			type Output = f64;
+
+			fn eval(&self, _input: &Input) -> GPoll<f64> {
+				GPoll::Pending
+			}
+		}
+
+		struct PartialSource;
+
+		impl<Input> Node<Input> for PartialSource {
+			type Output = f64;
+
+			fn eval(&self, _input: &Input) -> GPoll<f64> {
+				GPoll::Partial(7.0)
+			}
+		}
+
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let pending = SwitchNode::new(SourceNode(true), PendingSource, PartialSource);
+		assert_eq!(Node::eval(&pending, &ctx), GPoll::Pending);
+
+		let partial = SwitchNode::new(SourceNode(false), PendingSource, PartialSource);
+		assert_eq!(Node::eval(&partial, &ctx), GPoll::Partial(7.0));
+	}
+
+	#[test]
+	fn converted_switch_merges_condition_status_into_the_branch_result() {
+		struct PartialCondition;
+
+		impl<Input> Node<Input> for PartialCondition {
+			type Output = bool;
+
+			fn eval(&self, _input: &Input) -> GPoll<bool> {
+				GPoll::Partial(true)
+			}
+		}
+
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let graph = SwitchNode::new(PartialCondition, SourceNode(1.0f64), SourceNode(2.0f64));
+		assert_eq!(Node::eval(&graph, &ctx), GPoll::Partial(1.0));
+	}
+
+	#[test]
+	fn generated_eval_computes_on_stand_in_and_traces_fallback() {
+		struct FallbackNode;
+
+		impl<Input> Node<Input> for FallbackNode {
+			type Output = f64;
+
+			fn eval(&self, _input: &Input) -> GPoll<f64> {
+				GPoll::fallback(0.0, "upstream failed")
+			}
+		}
+
+		let arena = Arena::new(64).unwrap();
+		let scope = scope_fixture(&arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let graph = AddNode::new(FallbackNode, SourceNode(5.0f64));
+		let GPoll::Fallback(boxed) = Node::eval(&graph, &ctx) else {
+			panic!("fallback must propagate with the computed stand-in");
+		};
+		assert_eq!(boxed.0, 5.0);
+		assert!(boxed.1.kind == "upstream failed");
+		assert_eq!(boxed.1.trace, vec![0]);
 	}
 }

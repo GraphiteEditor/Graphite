@@ -241,7 +241,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: List<Raster<CPU>>, bounds: DAf
 			let image_data = &row.element().data;
 			let (image_width, image_height) = (row.element().width, row.element().height);
 			if image_width == 0 || image_height == 0 {
-				return empty_image((), bounds, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
+				return empty_image(&(), bounds, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -290,7 +290,7 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List
 }
 
 #[node_macro::node(category(""))]
-pub fn image<'a: 'n>(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
+pub fn image(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
 	let image_data = resource.as_ref();
 
 	let Some(image) = ::image::load_from_memory(image_data).ok() else {

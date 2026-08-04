@@ -2038,6 +2038,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "graphene-resource",
  "log",
  "raster-types",
@@ -4879,15 +4880,11 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
- "graphene-core",
  "graphic-types",
- "kurbo",
  "log",
  "node-macro",
  "raster-types",
  "serde",
- "tokio",
- "vector-nodes",
  "vector-types",
 ]
 

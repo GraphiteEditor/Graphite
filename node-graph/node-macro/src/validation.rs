@@ -11,6 +11,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_primary_input_expose,
 		validate_min_max,
 		validate_range_slider_bounds,
+		validate_async_source,
 	];
 
 	for validator in validators {
@@ -18,6 +19,48 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+fn validate_async_source(parsed: &ParsedNodeFn) {
+	let snapshot_ctx = matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
+	let future_kernel = crate::codegen::is_source_kernel(&parsed.output_type);
+	if let Some(placeholder) = &parsed.attributes.placeholder
+		&& !parsed.is_async
+		&& !future_kernel
+	{
+		emit_error!(
+			placeholder.span(),
+			"`placeholder` applies only to async and source kernels; a synchronous node never reports `Partial`, so the stand-in is unused"
+		);
+	}
+	if parsed.is_async && future_kernel {
+		emit_error!(
+			parsed.output_type.span(),
+			"an `async fn` kernel already is the async part; returning `SourceFuture` is the sync-prologue form, so drop the `async` keyword or return the value directly"
+		);
+		return;
+	}
+	if !parsed.is_async {
+		if snapshot_ctx {
+			emit_error!(
+				parsed.input.pat_ident.span(),
+				"`CtxSnapshot` is the async source context; synchronous nodes take `impl Ctx` and read through extract bounds"
+			);
+		}
+		if !future_kernel {
+			return;
+		}
+	}
+	if parsed.is_async {
+		for field in &parsed.fields {
+			if matches!(field.ty, ParsedFieldType::Node(_)) {
+				emit_error!(
+					field.pat_ident.span(),
+					"`async fn` source nodes cannot take `impl Node` inputs: the spawned future outlives any borrow of the graph, so it cannot evaluate other nodes; use the sync-prologue form (return `SourceFuture`) to evaluate lazy inputs before spawning"
+				);
+			}
+		}
+	}
 }
 
 fn validate_min_max(parsed: &ParsedNodeFn) {

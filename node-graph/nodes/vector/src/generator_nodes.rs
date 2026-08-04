@@ -411,11 +411,11 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), GridType::Isometric, 0., 5, 5, (0., 0.).into());
-		grid((), (), GridType::Isometric, 90., 5, 5, (90., 90.).into());
+		grid(&(), (), GridType::Isometric, 0., 5, 5, (0., 0.).into());
+		grid(&(), (), GridType::Isometric, 90., 5, 5, (90., 90.).into());
 
 		// Works properly
-		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
+		let grid = grid(&(), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
 		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
@@ -430,7 +430,7 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
+		let grid = grid(&(), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
 		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
@@ -443,7 +443,7 @@ mod tests {
 
 	#[test]
 	fn qr_code_test() {
-		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
+		let qr = qr_code(&(), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
 		assert!(qr.element(0).unwrap().point_domain.ids().len() > 0);
 		assert!(qr.element(0).unwrap().segment_domain.ids().len() > 0);
 	}

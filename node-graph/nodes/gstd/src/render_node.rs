@@ -1,7 +1,7 @@
+use core_types::gpoll::Interrupt;
 use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
-use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+use core_types::{Color, Context, Ctx, DeriveCtx, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -9,7 +9,7 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use vector_types::GradientStops;
-use wgpu_executor::{RenderContext, WgpuExecutor};
+use wgpu_executor::RenderContext;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
@@ -23,8 +23,8 @@ pub struct RenderIntermediate {
 }
 
 #[node_macro::node(category(""))]
-async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
+fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
+	ctx: impl Ctx + ExtractVarArgs + DeriveCtx,
 	#[implementations(
 		Context -> List<Artboard>,
 		Context -> List<Graphic>,
@@ -34,21 +34,19 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> List<GradientStops>,
 		Context -> List<String>,
 	)]
-	data: impl Node<Context<'static>, Output = T>,
-) -> RenderIntermediate {
+	data: impl Node<Context<'_>, Output = T>,
+) -> Result<RenderIntermediate, Interrupt> {
+	let data = data.eval(&ctx.derived())?;
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let data = data.eval(ctx).await;
-
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
-	match &render_params.render_output_type {
+	Ok(match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
 
@@ -70,13 +68,13 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 				metadata,
 			}
 		}
-	}
+	})
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(
+fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<&'a WgpuExecutor>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Option<wgpu_executor::WgpuExecutorHandle>,
 	data: RenderIntermediate,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
@@ -133,7 +131,6 @@ async fn render<'a: 'n>(
 			let texture = executor
 				.expect("GPU executor not available")
 				.render_vello_scene(&transformed_scene, footprint.resolution, context, None)
-				.await
 				.expect("Failed to render Vello scene");
 			RenderOutputType::Texture(texture)
 		}
@@ -144,11 +141,13 @@ async fn render<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn create_context<'a: 'n>(
-	// Context injections are defined in the wrap_network_in_scope function
-	render_config: RenderConfig,
-	data: impl Node<Context<'static>, Output = RenderOutput>,
-) -> RenderOutput {
+fn create_context(ctx: impl Ctx + ExtractVarArgs + DeriveCtx, data: impl Node<Context<'_>, Output = RenderOutput>) -> Result<RenderOutput, Interrupt> {
+	let render_config = *ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderConfig>()
+		.expect("Downcasting render config yielded invalid type");
+
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
@@ -169,16 +168,89 @@ async fn create_context<'a: 'n>(
 		..Default::default()
 	};
 
-	let ctx = OwnedContextImpl::default()
-		.with_footprint(footprint)
-		.with_real_time(render_config.time.time)
-		.with_animation_time(render_config.time.animation_time.as_secs_f64())
-		.with_pointer_position(render_config.pointer)
-		.with_vararg(Box::new(render_params))
-		.into_context();
-
-	let mut result = data.eval(ctx).await;
+	let scope = ctx
+		.scope()
+		.with_real_time(Some(render_config.time.time))
+		.with_animation_time(Some(render_config.time.animation_time.as_secs_f64()))
+		.with_pointer_position(Some(render_config.pointer));
+	let varargs = VarArgLink {
+		args: VarArgSlots::Single(&render_params),
+		outer: None,
+	};
+	let scoped = ctx.with_scope(&scope);
+	let with_params = scoped.with_varargs(&varargs);
+	let mut result = data.eval(&with_params.with_footprint(&footprint))?;
 
 	result.metadata.apply_transform(glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_config.scale)));
-	result
+	Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::arena::Arena;
+	use core_types::context::{ContextImpl, EvalScope, VarArgsResult};
+	use core_types::gpoll::GPoll;
+	use core_types::node::Node;
+	use core_types::{ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime};
+	use graphene_application_io::TimingInformation;
+
+	struct ProbeNode;
+
+	impl<'a> Node<ContextImpl<'a>> for ProbeNode {
+		type Output = RenderOutput;
+
+		fn eval(&self, ctx: &ContextImpl<'a>) -> GPoll<RenderOutput> {
+			let render_params = ctx.vararg(0).unwrap().downcast_ref::<RenderParams>().expect("the vararg chain must start with RenderParams");
+			assert_eq!(render_params.scale, 2.0);
+			assert!(matches!(ctx.vararg(1), Err(VarArgsResult::IndexOutOfBounds)), "the RenderConfig must not leak downstream");
+			assert_eq!(ctx.footprint().transform, glam::DAffine2::from_scale(glam::DVec2::splat(2.0)) * Footprint::DEFAULT.transform);
+			assert_eq!(ctx.try_real_time(), Some(1.5));
+			assert_eq!(ctx.try_animation_time(), Some(2.0));
+			assert_eq!(ctx.try_pointer_position(), Some(glam::DVec2::new(3.0, 4.0)));
+			GPoll::Final(RenderOutput {
+				data: RenderOutputType::Buffer {
+					data: Vec::new(),
+					width: 0,
+					height: 0,
+				},
+				metadata: RenderMetadata::default(),
+			})
+		}
+	}
+
+	#[test]
+	fn create_context_builds_the_render_context_from_the_root_vararg() {
+		let arena = Arena::new(256).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let render_config = RenderConfig {
+			scale: 2.0,
+			time: TimingInformation {
+				time: 1.5,
+				animation_time: std::time::Duration::from_secs(2),
+			},
+			pointer: glam::DVec2::new(3.0, 4.0),
+			..Default::default()
+		};
+		let varargs = VarArgLink {
+			args: VarArgSlots::Single(&render_config),
+			outer: None,
+		};
+		let ctx = root.with_varargs(&varargs);
+
+		let graph = CreateContextNode::new(ProbeNode);
+		let GPoll::Final(result) = <CreateContextNode<ProbeNode> as Node<ContextImpl>>::eval(&graph, &ctx) else {
+			panic!("create_context must complete synchronously");
+		};
+		assert_eq!(
+			result.data,
+			RenderOutputType::Buffer {
+				data: Vec::new(),
+				width: 0,
+				height: 0
+			}
+		);
+	}
 }

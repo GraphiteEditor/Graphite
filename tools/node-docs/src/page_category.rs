@@ -76,15 +76,16 @@ fn write_nodes_table_rows(page: &mut std::fs::File, nodes: &[(&core_types::Proto
 			let implementations = node_registry.get(id)?;
 			let valid_primary_inputs_to_outputs = implementations
 				.iter()
-				.map(|(_, node_io)| {
-					let input = node_io
+				.map(|entry| {
+					let input = entry
+						.io
 						.inputs
 						.first()
 						.map(|ty| ty.nested_type())
 						.filter(|&ty| ty != &concrete!(()))
 						.map(ToString::to_string)
 						.unwrap_or_default();
-					let output = node_io.return_value.nested_type().to_string();
+					let output = entry.io.return_value.nested_type().to_string();
 					format!("`{input} → {output}`")
 				})
 				.collect::<Vec<_>>();

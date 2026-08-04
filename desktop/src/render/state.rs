@@ -228,7 +228,7 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = futures::executor::block_on(self.executor.render_vello_scene(&scene, size, &Default::default(), None));
+		let result = self.executor.render_vello_scene(&scene, size, &Default::default(), None);
 		match result {
 			Ok(texture) => {
 				self.overlays_texture = Some(texture.into());

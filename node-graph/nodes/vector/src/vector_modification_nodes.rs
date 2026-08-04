@@ -7,7 +7,7 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
+fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
 	use core_types::list::Item;
 
 	if vector.is_empty() {
@@ -35,7 +35,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box
 
 /// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
-async fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> List<Vector> {
+fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> List<Vector> {
 	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 	for (element, transform) in elements.iter_mut().zip(transforms.iter_mut()) {
 		for (_, point) in element.point_domain.positions_mut() {

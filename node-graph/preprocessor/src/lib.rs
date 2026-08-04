@@ -116,13 +116,19 @@ impl Preprocessor {
 		for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 			let id = id.clone();
 
-			let NodeMetadata { fields, memoize, inject_scope, .. } = metadata;
+			let NodeMetadata {
+				fields,
+				memoize,
+				inject_scope,
+				async_source_fields,
+				..
+			} = metadata;
 			let Some(implementations) = node_registry.get(&id) else { continue };
-			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
-			let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
+			let valid_call_args: HashSet<_> = implementations.iter().map(|entry| entry.io.call_argument.clone()).collect();
+			let first_node_io = implementations.first().map(|entry| &entry.io).unwrap_or(const { &NodeIOTypes::empty() });
 			let mut node_io_types = vec![HashSet::new(); fields.len()];
-			for (_, node_io) in implementations.iter() {
-				for (i, ty) in node_io.inputs.iter().enumerate() {
+			for entry in implementations.iter() {
+				for (i, ty) in entry.io.inputs.iter().enumerate() {
 					node_io_types[i].insert(ty.clone());
 				}
 			}
@@ -131,16 +137,20 @@ impl Preprocessor {
 				input_type = &const { generic!(D) };
 			}
 
-			let inputs: Vec<_> = node_inputs(fields, first_node_io);
-			let input_count = inputs.len();
-			let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
+			let mut inputs: Vec<_> = node_inputs(fields, first_node_io);
+			let wrapper_input_count = inputs.len() - if *async_source_fields { 2 } else { 0 };
+
+			// The injected fields must not surface as wrapper inputs, and the `_source` reflection must sit on
+			// the kernel itself so the source id lands on a node that survives flattening.
+			let injected_inputs = inputs.split_off(wrapper_input_count);
+			let network_inputs = (0..wrapper_input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).chain(injected_inputs).collect();
 
 			let passthrough_node = ops::passthrough::IDENTIFIER;
 
 			let mut generated_nodes = 0;
 			let mut nodes: HashMap<_, _, _> = node_io_types
 				.iter()
-				.take(input_count)
+				.take(wrapper_input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
 					(
@@ -185,7 +195,7 @@ impl Preprocessor {
 				})
 				.collect();
 
-			if generated_nodes == 0 && !memoize && !inject_scope {
+			if generated_nodes == 0 && !memoize && !inject_scope && !async_source_fields {
 				continue;
 			}
 
@@ -199,13 +209,14 @@ impl Preprocessor {
 				..Default::default()
 			};
 
-			nodes.insert(NodeId(input_count as u64), document_node);
+			let main_node_id = NodeId(wrapper_input_count as u64);
+			nodes.insert(main_node_id, document_node);
 
 			// If memoize is requested, append a Memoize node after the main node and redirect the export through it
 			let export_node_id = if *memoize {
-				let memoize_node_id = NodeId(input_count as u64 + 1);
+				let memoize_node_id = NodeId(wrapper_input_count as u64 + 1);
 				let memoize_node = DocumentNode {
-					inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
+					inputs: vec![NodeInput::node(main_node_id, 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
 					visible: true,
 					..Default::default()
@@ -213,7 +224,7 @@ impl Preprocessor {
 				nodes.insert(memoize_node_id, memoize_node);
 				memoize_node_id
 			} else {
-				NodeId(input_count as u64)
+				main_node_id
 			};
 
 			let node = DocumentNode {
@@ -238,7 +249,7 @@ impl Preprocessor {
 			// If `inject_scope` is requested, prepare the proto node template and type info needed
 			if *inject_scope
 				&& let Some(implementations) = node_registry.get(&id)
-				&& let Some((_, node_io)) = implementations.first()
+				&& let Some(node_io) = implementations.first().map(|entry| &entry.io)
 			{
 				let template = DocumentNode {
 					inputs: node_inputs(fields, node_io),
@@ -279,6 +290,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 					}
 				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
+				RegistryValueSource::SourceId => return NodeInput::Reflection(DocumentNodeMetadata::SourceId),
 			};
 
 			if let Some(type_default) = TaggedValue::from_type(ty) {

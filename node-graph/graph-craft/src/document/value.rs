@@ -1,13 +1,18 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
-use crate::proto::{Any as DAny, FutureAny};
+use crate::proto::Any as DAny;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::color::SRGBA8;
+use core_types::context::Context;
+use core_types::gpoll::GPoll;
 use core_types::list::List;
+use core_types::node::Node;
+use core_types::registry::{EdgeHandle, edge_type};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
+use core_types::value::value_edge;
+use core_types::{CacheHash, Color, ContextModification, MemoHash, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -19,7 +24,6 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 use text_nodes::Font;
@@ -90,7 +94,7 @@ macro_rules! tagged_value {
 			DocumentNode(DocumentNode),
 			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
 			#[serde(skip)]
-			ContextFeatures(ContextFeatures),
+			ContextModification(ContextModification),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 			/// Only used by the `resource` node, should never be serialized
@@ -120,7 +124,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::NodeIdPath(path) => path.hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
-					Self::ContextFeatures(features) => features.cache_hash(state),
+					Self::ContextModification(modification) => modification.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 					Self::ResourceHash(x) => x.cache_hash(state),
@@ -175,7 +179,7 @@ macro_rules! tagged_value {
 						Box::new(list)
 					}
 					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(features),
+					Self::ContextModification(modification) => Box::new(modification),
 					Self::EditorApi(x) => Box::new(x),
 					Self::ResourceHash(x) => Box::new(x),
 				}
@@ -225,7 +229,7 @@ macro_rules! tagged_value {
 						Arc::new(list)
 					}
 					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(features),
+					Self::ContextModification(modification) => Arc::new(modification),
 					Self::EditorApi(x) => Arc::new(x),
 					Self::ResourceHash(x) => Arc::new(x),
 				}
@@ -253,10 +257,86 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::NodeIdPath(_) => concrete!(List<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => concrete!(ContextFeatures),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
+					Self::ContextModification(_) => concrete!(ContextModification),
+					Self::EditorApi(_) => concrete!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => concrete!(ResourceHash),
 				}
+			}
+
+			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
+			pub fn to_edge(self) -> Result<EdgeHandle, String> {
+				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
+					Self::None => Ok(value_edge(())),
+					Self::TypeDefault(td) => {
+						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
+						let name = td.name.as_ref();
+						macro_rules! check {
+							($type_default:ty) => {
+								if name == std::any::type_name::<$type_default>() { return Ok(value_edge(<$type_default>::default())); }
+							};
+						}
+						for_each_type_default!(check);
+						Self::from_type_or_none(&Type::Concrete(td)).to_edge()
+					}
+					Self::F64Array(values) => {
+						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					Self::Color(color) => {
+						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					Self::Gradient(stops) => Ok(value_edge(List::<GradientStops>::new_from_element(stops))),
+					Self::BrushStrokes(strokes) => {
+						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
+					$( Self::$identifier(x) => Ok(value_edge(x)), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
+					Self::RenderOutput(x) => Ok(value_edge(x)),
+					Self::NodeIdPath(path) => {
+						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
+						Ok(value_edge(list))
+					}
+					Self::DocumentNode(node) => Ok(value_edge(node)),
+					Self::ContextModification(modification) => Ok(value_edge(modification)),
+					Self::EditorApi(x) => Ok(value_edge(x)),
+					Self::ResourceHash(x) => Ok(value_edge(x)),
+				}
+			}
+
+			/// Evaluates a typed edge and converts the landed value into a tagged value, with the coverage of [`Self::try_from_any`].
+			pub fn from_edge(handle: EdgeHandle, ctx: &Context) -> Result<GPoll<Self>, String> {
+				let ty = handle.ty().clone();
+				// ===============
+				// MANUAL VARIANTS
+				// ===============
+				if ty == edge_type::<()>() {
+					return Ok(handle.downcast::<()>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(|_| TaggedValue::None));
+				}
+				// =======================
+				// AUTO-GENERATED VARIANTS
+				// =======================
+				$(
+					if ty == edge_type::<$ty>() {
+						return Ok(handle.downcast::<$ty>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::$identifier));
+					}
+				)*
+				// =======================
+				// NON-SERIALIZED VARIANTS
+				// =======================
+				if ty == edge_type::<RenderOutput>() {
+					return Ok(handle.downcast::<RenderOutput>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::RenderOutput));
+				}
+				Err(format!("Cannot convert edge of type {ty} to TaggedValue"))
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -360,7 +440,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
-					Self::ContextFeatures(features) => format!("ContextFeatures({features:?})"),
+					Self::ContextModification(modification) => format!("ContextModification({modification:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 					Self::ResourceHash(hash) => format!("ResourceHash({hash:?})"),
 				}
@@ -683,39 +763,6 @@ impl Display for TaggedValue {
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
-	}
-}
-
-pub struct UpcastNode {
-	value: MemoHash<TaggedValue>,
-}
-impl<'input> Node<'input, DAny<'input>> for UpcastNode {
-	type Output = FutureAny<'input>;
-
-	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		let memo_clone = MemoHash::clone(&self.value);
-		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
-	}
-}
-impl UpcastNode {
-	pub fn new(value: MemoHash<TaggedValue>) -> Self {
-		Self { value }
-	}
-}
-#[derive(Default, Debug, Clone, Copy)]
-pub struct UpcastAsRefNode<T: AsRef<U> + Sync + Send, U: Sync + Send>(pub T, PhantomData<U>);
-
-impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
-	type Output = FutureAny<'i>;
-	#[inline(always)]
-	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(self.0.as_ref()) as DAny<'i> })
-	}
-}
-
-impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
-	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
-		UpcastAsRefNode(value, PhantomData)
 	}
 }
 

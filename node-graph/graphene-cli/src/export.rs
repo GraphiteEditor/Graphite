@@ -1,7 +1,9 @@
+use futures::executor::block_on;
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
-use graphene_std::core_types::ops::Convert;
+use graphene_std::core_types::gpoll::GPoll;
+use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -9,6 +11,19 @@ use std::error::Error;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+fn execute_to_final(executor: &DynamicExecutor, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+	match executor.execute(render_config)? {
+		GPoll::Final(value) => Ok(value),
+		GPoll::Fallback(boxed) => {
+			let (value, error) = *boxed;
+			log::warn!("Node graph evaluation reported an error alongside its fallback output: {error:?}");
+			Ok(value)
+		}
+		GPoll::Partial(_) | GPoll::Pending => Err("Node graph evaluation did not complete".into()),
+		GPoll::Error(error) => Err(format!("Node graph evaluation failed: {error:?}").into()),
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
@@ -28,9 +43,10 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 	}
 }
 
-pub async fn export_document(
+#[allow(clippy::too_many_arguments)]
+pub fn export_document(
 	executor: &DynamicExecutor,
-	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	wgpu_executor: wgpu_executor::WgpuExecutorHandle,
 	output_path: PathBuf,
 	file_type: FileType,
 	scale: f64,
@@ -57,7 +73,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor.execute(render_config).await?;
+	let result = execute_to_final(executor, render_config)?;
 
 	// Handle the result based on output type
 	match result {
@@ -70,7 +86,7 @@ pub async fn export_document(
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
-				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+				let cpu_raster: Raster<CPU> = block_on(gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()));
 				let (data, width, height) = cpu_raster.to_flat_u8();
 
 				// Encode and write raster image
@@ -149,9 +165,9 @@ impl AnimationParams {
 }
 
 /// Export an animated GIF by rendering multiple frames at different animation times
-pub async fn export_gif(
+pub fn export_gif(
 	executor: &DynamicExecutor,
-	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	wgpu_executor: wgpu_executor::WgpuExecutorHandle,
 	output_path: PathBuf,
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
@@ -195,14 +211,14 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor.execute(render_config).await?;
+		let result = execute_to_final(executor, render_config)?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
 			TaggedValue::RenderOutput(output) => match output.data {
 				RenderOutputType::Texture(texture) => {
 					let gpu_raster = Raster::<GPU>::new_gpu(texture);
-					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+					let cpu_raster: Raster<CPU> = block_on(gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()));
 					cpu_raster.to_flat_u8()
 				}
 				RenderOutputType::Buffer { data, width, height } => (data, width, height),

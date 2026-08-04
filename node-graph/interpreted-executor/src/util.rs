@@ -69,12 +69,12 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 					..Default::default()
 				},
 				DocumentNode {
-					call_argument: concrete!(graphene_std::application_io::RenderConfig),
+					call_argument: concrete!(Context),
 					inputs: vec![NodeInput::node(NodeId(4), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
 					context_features: graphene_std::ContextDependencies::new(
-						ContextFeatures::INDEX,
+						ContextFeatures::INDEX | ContextFeatures::VARARGS,
 						ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					),
 					..Default::default()
@@ -99,7 +99,7 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 			..Default::default()
 		},
 	];
-	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&PlatformEditorApi)))];
+	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(std::sync::Arc<PlatformEditorApi>)))];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
