@@ -13,7 +13,7 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
-	import { fillChoiceUIColor, createSRgba8 } from "/src/utility-functions/colors";
+	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
@@ -680,7 +680,7 @@
 							}}
 							colorOrGradient={{ Solid: gradientStopPickerColor || createSRgba8(0, 0, 0, 255) }}
 							on:colorOrGradient={({ detail }) => {
-								const color = fillChoiceUIColor(detail);
+								const color = fillChoiceColor(detail);
 								if (color) editor.updateGradientStopColor(color);
 							}}
 							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}

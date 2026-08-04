@@ -391,9 +391,9 @@ mod editor_commands {
 	}
 
 	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
-	fn open_color_picker(initial_value: FillChoiceUI, allow_none: bool, disabled: bool) -> Message {
+	fn open_color_picker(initial_value: FillChoiceSRGBA8, allow_none: bool, disabled: bool) -> Message {
 		ColorPickerMessage::Open {
-			initial_value: FillChoice::from(&initial_value),
+			initial_value: FillChoice::from(&initial_value.0),
 			allow_none,
 			disabled,
 		}
@@ -660,6 +660,17 @@ mod editor_commands {
 	}
 }
 
+#[cfg(feature = "editor")]
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(from_wasm_abi)]
+pub struct FillChoiceSRGBA8(
+	/// Concrete wasm boundary form of the generic [`FillChoice`], since a `#[wasm_bindgen]` argument's TS declaration names its type without the generic's argument.
+	#[tsify(type = "FillChoice<SRGBA8>")]
+	pub graphene_std::vector::style::FillChoice<graphene_std::color::SRGBA8>,
+);
+#[cfg(not(feature = "editor"))]
+pub type FillChoiceSRGBA8 = Any;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct Any(#[tsify(type = "any")] serde_json::Value);
@@ -686,5 +697,4 @@ editor_proxy_types! {
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
 	SRGBA8 = graphene_std::color::SRGBA8;
-	FillChoiceUI = graphene_std::vector::style::FillChoiceUI;
 }

@@ -24,7 +24,7 @@ use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{DashPattern, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, FillChoice, GradientRamp, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
@@ -720,7 +720,7 @@ impl TableItemLayout for Color {
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![
-			ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(*self)))
+			ColorInput::new(FillChoice::<SRGBA8>::from(&FillChoice::Solid(*self)))
 				.disabled(true)
 				.menu_direction(Some(MenuDirection::Top))
 				.narrow(true)
@@ -751,7 +751,7 @@ impl TableItemLayout for Gradient {
 				.narrow(true)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(self.clone())))
+			ColorInput::new(FillChoice::<SRGBA8>::Gradient(GradientRamp::from(self)))
 				.menu_direction(Some(MenuDirection::Top))
 				.disabled(true)
 				.narrow(true)

@@ -32,7 +32,9 @@ use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{FillChoiceUI, Gradient, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation};
+use graphene_std::vector::style::{
+	FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
 
@@ -1155,9 +1157,9 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 
 	// Add the color input
 	let widget_value = match &**tagged_value {
-		TaggedValue::Color(color) => FillChoiceUI::Solid(SRGBA8::from(*color)),
-		TaggedValue::Gradient(stops) => FillChoiceUI::Gradient(GradientStops::from(stops)),
-		value if value.is_no_paint() => FillChoiceUI::None,
+		TaggedValue::Color(color) => FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color)),
+		TaggedValue::GradientRamp(ramp) => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(ramp)),
+		value if value.is_no_paint() => FillChoice::<SRGBA8>::None,
 		x => {
 			warn!("Color {x:?}");
 			return LayoutGroup::row(widgets);
@@ -1168,12 +1170,12 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	// while a plain color or gradient input always keeps its own value type
 	let on_update: fn(&ColorInput) -> TaggedValue = if color_button.allow_none {
 		|input| match &input.value {
-			FillChoiceUI::None => TaggedValue::no_paint(),
-			FillChoiceUI::Solid(srgba) => TaggedValue::Color(Color::from(*srgba)),
-			FillChoiceUI::Gradient(gradient_ui) => TaggedValue::Gradient(Gradient::from(gradient_ui)),
+			FillChoice::<SRGBA8>::None => TaggedValue::no_paint(),
+			FillChoice::<SRGBA8>::Solid(srgba) => TaggedValue::Color(Color::from(*srgba)),
+			FillChoice::<SRGBA8>::Gradient(ramp) => TaggedValue::GradientRamp(GradientRamp::from(ramp)),
 		}
-	} else if matches!(&**tagged_value, TaggedValue::Gradient(_)) {
-		|input| TaggedValue::Gradient(input.value.as_gradient().map(Gradient::from).unwrap_or_else(Gradient::black_to_white))
+	} else if matches!(&**tagged_value, TaggedValue::GradientRamp(_)) {
+		|input| TaggedValue::GradientRamp(input.value.as_gradient().map(GradientRamp::from).unwrap_or_else(GradientRamp::black_to_white))
 	} else {
 		|input| TaggedValue::Color(input.value.as_solid().map(Color::from).unwrap_or(Color::TRANSPARENT))
 	};
@@ -2422,7 +2424,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Ok(document_node) => match document_node.input_value(FillInput) {
 			Some(TaggedValue::Color(color)) => ResolvedFill::Solid(Some(*color)),
 			Some(value) if value.is_no_paint() => ResolvedFill::Solid(None),
-			Some(TaggedValue::Gradient(_)) => {
+			Some(TaggedValue::GradientRamp(_)) => {
 				match graph_modification_utils::read_fill_node_gradient(document_node, || {
 					layer.map_or([DVec2::ZERO, DVec2::ONE], |layer| context.network_interface.document_metadata().nonzero_bounding_box(layer))
 				}) {
@@ -2448,12 +2450,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				_ => None,
 			};
 			let backup_stops = match document_node.input_value(BackupGradientInput) {
-				Some(TaggedValue::Gradient(stops)) => stops.clone(),
-				_ => Gradient::black_to_white(),
+				Some(TaggedValue::GradientRamp(ramp)) => ramp.clone(),
+				_ => GradientRamp::black_to_white(),
 			};
 			(backup_color, backup_stops)
 		}
-		Err(_) => (None, Gradient::black_to_white()),
+		Err(_) => (None, GradientRamp::black_to_white()),
 	};
 
 	match &fill {
@@ -2463,7 +2465,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::Gradient(stops.reversed()), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::GradientRamp(GradientRamp::from(stops.reversed())), node_id, FillInput))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2471,16 +2473,16 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		_ => add_blank_assist(&mut widgets_first_row),
 	}
 
-	let fill_choice_ui = match &fill {
+	let widget_value = match &fill {
 		ResolvedFill::Solid(color) => {
 			if let Some(color) = color {
-				FillChoiceUI::Solid(SRGBA8::from(*color))
+				FillChoice::<SRGBA8>::Solid(SRGBA8::from(*color))
 			} else {
-				FillChoiceUI::None
+				FillChoice::<SRGBA8>::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, .. } => FillChoiceUI::Gradient(GradientStops::from(stops)),
-		ResolvedFill::Other => FillChoiceUI::None,
+		ResolvedFill::Gradient { gradient: stops, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops)),
+		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
 	};
 
 	let solid_set_messages = move |color: Option<Color>| {
@@ -2505,18 +2507,18 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Message::Batched { messages: messages.into() }
 	};
 
-	let gradient_set_messages = move |gradient: Gradient| Message::Batched {
+	let gradient_set_messages = move |ramp: GradientRamp| Message::Batched {
 		messages: Box::new([
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: FillInput::INDEX,
-				value: TaggedValue::Gradient(gradient.clone()).into(),
+				value: TaggedValue::GradientRamp(ramp.clone()).into(),
 			}
 			.into(),
 			NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: BackupGradientInput::INDEX,
-				value: TaggedValue::Gradient(gradient).into(),
+				value: TaggedValue::GradientRamp(ramp).into(),
 			}
 			.into(),
 		]),
@@ -2525,17 +2527,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
 		ColorInput::default()
-			.value(fill_choice_ui)
+			.value(widget_value)
 			.on_update(move |x: &ColorInput| match &x.value {
-				FillChoiceUI::None => solid_set_messages(None),
-				FillChoiceUI::Solid(srgba8) => {
+				FillChoice::<SRGBA8>::None => solid_set_messages(None),
+				FillChoice::<SRGBA8>::Solid(srgba8) => {
 					let color = Some(Color::from(*srgba8));
 					solid_set_messages(color)
 				}
-				FillChoiceUI::Gradient(gradient_stops_ui) => {
-					let gradient = Gradient::from(gradient_stops_ui);
-					gradient_set_messages(gradient)
-				}
+				FillChoice::<SRGBA8>::Gradient(ramp) => gradient_set_messages(GradientRamp::from(ramp)),
 			})
 			.on_commit(commit_value)
 			.widget_instance(),
@@ -2554,7 +2553,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Gradient(backup_gradient.clone()), node_id, FillInput))
+				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, FillInput))
 				.on_commit(commit_value),
 		];
 

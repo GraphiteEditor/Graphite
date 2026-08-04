@@ -1626,7 +1626,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				let fill_value = match old_fill {
 					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
 					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
-					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::Gradient(gradient.stops.clone()),
+					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::GradientRamp(gradient.stops.clone()),
 				};
 				document
 					.network_interface
@@ -1674,7 +1674,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		if let Some(TaggedValue::LegacyGradient(g)) = old_inputs[3].as_value() {
 			document.network_interface.set_input(
 				&InputConnector::node_at_index(*node_id, 3),
-				NodeInput::value(TaggedValue::Gradient(g.stops.clone()), false),
+				NodeInput::value(TaggedValue::GradientRamp(g.stops.clone()), false),
 				network_path,
 			);
 
