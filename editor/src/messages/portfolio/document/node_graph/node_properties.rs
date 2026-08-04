@@ -323,6 +323,7 @@ pub(crate) fn property_from_type(
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Ref(inner) => return property_from_type(node_id, index, inner, number_options, unit, display_decimal_places, step, context),
 	};
 
 	extra_widgets.push(widgets);
