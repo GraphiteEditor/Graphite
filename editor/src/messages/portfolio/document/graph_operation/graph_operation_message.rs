@@ -22,6 +22,7 @@ pub enum GraphOperationMessage {
 	},
 	FillGradientSet {
 		layer: LayerNodeIdentifier,
+		#[serde(skip)]
 		gradient: Gradient,
 		gradient_type: GradientType,
 		spread_method: GradientSpreadMethod,
@@ -33,6 +34,7 @@ pub enum GraphOperationMessage {
 	},
 	GradientStopsSet {
 		layer: LayerNodeIdentifier,
+		#[serde(skip)]
 		stops: Gradient,
 	},
 	GradientPositionsSet {

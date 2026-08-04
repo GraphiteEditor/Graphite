@@ -4,7 +4,7 @@ use crate::messages::tool::common_functionality::color_selector::solid;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::vector::style::FillChoice;
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -44,7 +44,7 @@ impl ToolMetadata for FillTool {
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![
-			ColorInput::new(FillChoiceUI::from(&solid(self.primary_color)))
+			ColorInput::new(FillChoice::<SRGBA8>::from(&solid(self.primary_color)))
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					FillToolMessage::SetColor {

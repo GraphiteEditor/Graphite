@@ -2,10 +2,10 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { FillChoiceUI, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FillChoice, Layout, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type ColorPickerCallbacks = {
-	onColorChanged?: (value: FillChoiceUI) => void;
+	onColorChanged?: (value: FillChoice<SRGBA8>) => void;
 	onStartTransaction?: () => void;
 	onCommitTransaction?: () => void;
 };

@@ -2,13 +2,13 @@
 	import { createEventDispatcher } from "svelte";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
-	import { contrastingOutlineFactor, fillChoiceUIColor, fillChoiceUIGradient } from "/src/utility-functions/colors";
-	import type { FillChoiceUI, MenuDirection, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradient } from "/src/utility-functions/colors";
+	import type { FillChoice, MenuDirection, ActionShortcut, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	const dispatch = createEventDispatcher<{ value: FillChoiceUI; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ value: FillChoice<SRGBA8>; startHistoryTransaction: undefined }>();
 
 	// Content
-	export let value: FillChoiceUI;
+	export let value: FillChoice<SRGBA8>;
 	export let chosenGradient: string | undefined = undefined;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
@@ -29,8 +29,8 @@
 
 	$: outlineFactor = contrastingOutlineFactor(value, "--color-3-darkgray", 0.01);
 	$: outlined = outlineFactor > 0.0001;
-	$: gradient = fillChoiceUIGradient(value);
-	$: solidColor = fillChoiceUIColor(value);
+	$: gradient = fillChoiceGradient(value);
+	$: solidColor = fillChoiceColor(value);
 	$: none = value === "None";
 	$: transparency = gradient ? gradient.color.some((color) => color.alpha < 255) : solidColor ? solidColor.alpha < 255 : false;
 </script>

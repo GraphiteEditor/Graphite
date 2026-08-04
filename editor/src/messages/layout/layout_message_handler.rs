@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use graphene_std::color::SRGBA8;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::vector::style::FillChoice;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -197,11 +197,11 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let Ok(fill_choice_ui) = serde_json::from_value::<FillChoiceUI>(value) else {
-							warn!("ColorInput update was not able to be parsed as FillChoiceUI: {color_button:?}");
+						let Ok(fill_choice) = serde_json::from_value::<FillChoice<SRGBA8>>(value) else {
+							warn!("ColorInput update was not able to be parsed as FillChoice<SRGBA8>: {color_button:?}");
 							return;
 						};
-						color_button.value = fill_choice_ui;
+						color_button.value = fill_choice;
 						(color_button.on_update.callback)(color_button)
 					}
 				};
