@@ -28,7 +28,7 @@ export function createSRgba8FromHsva(h: number, s: number, v: number, a: number)
 // COLOR UTILITY FUNCTIONS
 
 export function isSRgba8(value: unknown): value is SRGBA8 {
-	return typeof value === "object" && value !== null && "red" in value;
+	return !!value && typeof value === "object" && "red" in value;
 }
 
 // Parse a CSS color string into an `SRGBA8`. Uses a canvas to delegate parsing to the browser.
@@ -183,11 +183,11 @@ export function contrastingOutlineFactor(value: FillChoice<SRGBA8>, proximityCol
 // GRADIENT UTILITY FUNCTIONS
 
 export function isGradientStops(value: unknown): value is GradientStops<SRGBA8> {
-	return typeof value === "object" && value !== null && "color" in value && Array.isArray(value.color);
+	return !!value && typeof value === "object" && "color" in value && Array.isArray(value.color);
 }
 
 export function isGradientRamp(value: unknown): value is GradientRamp<SRGBA8> {
-	return typeof value === "object" && value !== null && "stops" in value && isGradientStops(value.stops);
+	return !!value && typeof value === "object" && "stops" in value && isGradientStops(value.stops);
 }
 
 // FILL CHOICE UTILITY FUNCTIONS
@@ -203,8 +203,7 @@ export function fillChoiceGradient(value: FillChoice<SRGBA8>): GradientStops<SRG
 }
 
 export function parseFillChoice(value: unknown): FillChoice<SRGBA8> {
-	if (value === "None" || value === undefined || value === null) return "None";
-	if (typeof value === "object" && value !== null && "Solid" in value && isSRgba8(value.Solid)) return { Solid: value.Solid };
-	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientRamp(value.Gradient)) return { Gradient: value.Gradient };
+	if (value && typeof value === "object" && "Solid" in value && isSRgba8(value.Solid)) return { Solid: value.Solid };
+	if (value && typeof value === "object" && "Gradient" in value && isGradientRamp(value.Gradient)) return { Gradient: value.Gradient };
 	return "None";
 }
