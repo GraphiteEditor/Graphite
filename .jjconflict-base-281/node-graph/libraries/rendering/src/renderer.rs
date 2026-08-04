@@ -26,8 +26,8 @@ use graphene_resource::Resource;
 use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{GradientStops, GradientType};
-use graphic_types::vector_types::markers::{GradientSpread as GradientSpreadAttr, GradientType as GradientTypeAttr};
+use graphic_types::vector_types::gradient::{GradientForm, GradientStops};
+use graphic_types::vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -385,10 +385,10 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 /// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
 /// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
 /// represent since it stores only two endpoints.
-pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
-	match gradient_type {
-		GradientType::Radial => transform,
-		GradientType::Linear => {
+pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientForm) -> DAffine2 {
+	match gradient_form {
+		GradientForm::Radial => transform,
+		GradientForm::Linear => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
 			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
@@ -428,23 +428,23 @@ fn peniko_color_stops(gradient: &GradientStops) -> peniko::ColorStops {
 fn create_peniko_gradient_brush<S: LaneSource<Element = GradientStops>>(gradient_list: &S, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
-	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
+	let gradient_form: GradientForm = gradient_list.attr::<GradientFormAttr>(0);
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
 	let gradient_spread: GradientSpread = gradient_list.attr::<GradientSpreadAttr>(0);
 
 	let peniko_stops = peniko_color_stops(stops);
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
-	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_type));
+	let (start, end, gradient_to_device) = (DVec2::ZERO, DVec2::X, gradient_placement(multiplied_transform * gradient_transform, gradient_form));
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
-		kind: match gradient_type {
-			GradientType::Linear => peniko::LinearGradientPosition {
+		kind: match gradient_form {
+			GradientForm::Linear => peniko::LinearGradientPosition {
 				start: to_point(start),
 				end: to_point(end),
 			}
 			.into(),
-			GradientType::Radial => peniko::RadialGradientPosition {
+			GradientForm::Radial => peniko::RadialGradientPosition {
 				start_center: to_point(start),
 				start_radius: 0.,
 				end_center: to_point(start),
@@ -2323,7 +2323,7 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
-		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
 			if let Some((min, size)) = thumbnail_rect {
@@ -2368,14 +2368,14 @@ fn render_gradient_svg<S: LaneSource<Element = GradientStops>>(source: &S, rende
 			};
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
-			match gradient_type {
-				GradientType::Linear => {
+			match gradient_form {
+				GradientForm::Linear => {
 					let _ = write!(
 						&mut attributes.0.svg_defs,
 						r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 					);
 				}
-				GradientType::Radial => {
+				GradientForm::Radial => {
 					let _ = write!(
 						&mut attributes.0.svg_defs,
 						r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
@@ -2407,7 +2407,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 	for index in 0..source.lane_count() {
 		let Some(gradient) = source.element(index) else { continue };
 		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
-		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
+		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
@@ -2427,13 +2427,13 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 
 		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 		// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
-		let kind = match gradient_type {
-			GradientType::Linear => peniko::LinearGradientPosition {
+		let kind = match gradient_form {
+			GradientForm::Linear => peniko::LinearGradientPosition {
 				start: to_point(DVec2::ZERO),
 				end: to_point(DVec2::X),
 			}
 			.into(),
-			GradientType::Radial => peniko::RadialGradientPosition {
+			GradientForm::Radial => peniko::RadialGradientPosition {
 				start_center: to_point(DVec2::ZERO),
 				start_radius: 0.,
 				end_center: to_point(DVec2::ZERO),
@@ -2449,7 +2449,7 @@ fn render_gradient_vello<S: LaneSource<Element = GradientStops>>(source: &S, sce
 			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 			..Default::default()
 		});
-		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_type).to_cols_array());
+		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
 		let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 		let mut layer = false;

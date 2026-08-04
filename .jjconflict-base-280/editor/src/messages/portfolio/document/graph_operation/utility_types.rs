@@ -16,7 +16,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpread, GradientType, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientSpread, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
@@ -403,7 +403,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_type: GradientType, gradient_spread: GradientSpread, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, gradient_spread: GradientSpread, transform: DAffine2) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
@@ -442,8 +442,8 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput),
-			NodeInput::value(TaggedValue::GradientType(gradient_type), false),
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientFormInput),
+			NodeInput::value(TaggedValue::GradientForm(gradient_form), false),
 			false,
 		);
 	}
@@ -660,20 +660,20 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Write the gradient type to the last 'Gradient Type' node in the chain, inserting one only when the value differs
+	/// Write the Gradient Form to the last 'Gradient Form' node in the chain, inserting one only when the value differs
 	/// from the default (`Linear`).
-	pub fn gradient_type_set(&mut self, gradient_type: GradientType) {
+	pub fn gradient_form_set(&mut self, gradient_form: GradientForm) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
-		let identifier = graphene_std::math_nodes::gradient_type::IDENTIFIER;
-		let create_if_nonexistent = gradient_type != GradientType::default();
+		let identifier = graphene_std::math_nodes::gradient_form::IDENTIFIER;
+		let create_if_nonexistent = gradient_form != GradientForm::default();
 		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
 			return;
 		};
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_type::GradientTypeInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_form::GradientFormInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientForm(gradient_form), false), false);
 	}
 
 	/// Write the gradient spread to the last 'Gradient Spread' node in the chain, inserting one only when the value differs
