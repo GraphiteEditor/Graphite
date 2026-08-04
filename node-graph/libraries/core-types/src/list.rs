@@ -56,7 +56,7 @@ pub const ATTR_BACKGROUND: &str = "background";
 /// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
 // TODO: Consider adding "gradient_spread_left" and "gradient_spread_right" override attributes to allow setting different gradient spreads on each side of a gradient
-/// Gradient's `GradientSpread` (`Pad`, `Reflect`, or `Repeat`).
+/// Gradient's `GradientSpread` (`Pad`, `Reflect`, `Repeat`, or `Clear`).
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
