@@ -4,7 +4,8 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::tool_messages::tool_prelude::WidgetCallback;
 use derivative::*;
-use graphene_std::vector::style::FillChoiceUI;
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::FillChoice;
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -191,9 +192,9 @@ pub struct ImageButton {
 pub struct ColorInput {
 	// Content
 	#[widget_builder(constructor)]
-	pub value: FillChoiceUI,
+	pub value: FillChoice<SRGBA8>,
 	/// CSS `linear-gradient(...)` (or solid-color stand-in) for the swatch's `background-image`. Auto-populated from `value` at layout-send time.
-	/// `None` when `value` is `FillChoiceUI::None`, in which case the frontend uses its "none" fallback styling.
+	/// `None` when `value` is `FillChoice::<SRGBA8>::None`, in which case the frontend uses its "none" fallback styling.
 	#[serde(rename = "chosenGradient")]
 	#[widget_builder(skip)]
 	pub chosen_gradient: Option<String>,

@@ -9,8 +9,9 @@ use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Color;
 use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::BlendMode;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI};
+use graphene_std::vector::style::FillChoice;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
@@ -104,7 +105,7 @@ impl ToolMetadata for BrushTool {
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
-			ColorInput::new(FillChoiceUI::from(self.options.color.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
+			ColorInput::new(FillChoice::<SRGBA8>::from(self.options.color.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.color.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {

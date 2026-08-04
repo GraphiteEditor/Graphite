@@ -6,7 +6,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoiceUI, GradientStops};
+use graphene_std::vector::style::{FillChoice, GradientStops};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -520,7 +520,7 @@ pub struct ColorPresetsInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ColorPresetsInputUpdate {
-	Preset(FillChoiceUI),
+	Preset(FillChoice<SRGBA8>),
 	EyedropperColorCode(String),
 }
 

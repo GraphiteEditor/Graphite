@@ -6,7 +6,8 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::DocumentToolData;
 use graphene_std::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// Color selector widgets seen in [`LayoutTarget::ToolOptions`] bar.
 pub struct ToolColorOptions {
@@ -85,8 +86,8 @@ impl ToolColorOptions {
 		// In the mixed state (`fill_choice` is `None`) the dash overlay covers the swatch, so the underlying widget value just drives the picker's initial position.
 		// `FillChoice::None` gives it a neutral starting point.
 		let mixed_color = self.fill_choice.is_none();
-		// Convert the internal linear-light `FillChoice` to the JS-boundary `FillChoiceUI` (with `SRGBA8` colors) for the widget value.
-		let widget_value = FillChoiceUI::from(self.fill_choice.as_ref().unwrap_or(&FillChoice::None));
+		// Convert the internal linear-light `FillChoice` to the JS-boundary `FillChoice<SRGBA8>` (with `SRGBA8` colors) for the widget value.
+		let widget_value = FillChoice::<SRGBA8>::from(self.fill_choice.as_ref().unwrap_or(&FillChoice::None));
 		let mixed_enabled = self.enabled.is_none();
 		// In the mixed-enabled state the underlying `checked` value is hidden behind the indeterminate dash.
 		// The frontend's click handler sends `true` when the user resolves the mixed state by clicking.

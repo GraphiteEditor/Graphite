@@ -1,4 +1,4 @@
-import type { FillChoiceUI, GradientStops, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FillChoice, GradientRamp, GradientStops, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };
@@ -150,7 +150,7 @@ export function sRgba8ContrastingColor(color: SRGBA8 | undefined): "black" | "wh
 	return luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 }
 
-export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: string | [string, string], proximityRange: number): number {
+export function contrastingOutlineFactor(value: FillChoice<SRGBA8>, proximityColor: string | [string, string], proximityRange: number): number {
 	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
 	const [range1, range2] = pair.map((color) => sRgba8FromCSS(window.getComputedStyle(document.body).getPropertyValue(color)));
 
@@ -167,7 +167,7 @@ export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: st
 		return (1 - Math.min(distance / proximityRange, 1)) * (1 - sRgba8ToHSV(color).s);
 	};
 
-	const gradient = fillChoiceUIGradient(value);
+	const gradient = fillChoiceGradient(value);
 	if (gradient) {
 		if (gradient.color.length === 0) return 0;
 
@@ -177,7 +177,7 @@ export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: st
 		return Math.min(first, last);
 	}
 
-	return contrast(fillChoiceUIColor(value));
+	return contrast(fillChoiceColor(value));
 }
 
 // GRADIENT UTILITY FUNCTIONS
@@ -186,21 +186,25 @@ export function isGradientStops(value: unknown): value is GradientStops<SRGBA8> 
 	return typeof value === "object" && value !== null && "color" in value && Array.isArray(value.color);
 }
 
+export function isGradientRamp(value: unknown): value is GradientRamp<SRGBA8> {
+	return typeof value === "object" && value !== null && "stops" in value && isGradientStops(value.stops);
+}
+
 // FILL CHOICE UTILITY FUNCTIONS
 
-export function fillChoiceUIColor(value: FillChoiceUI): SRGBA8 | undefined {
+export function fillChoiceColor(value: FillChoice<SRGBA8>): SRGBA8 | undefined {
 	if (typeof value === "object" && "Solid" in value) return value.Solid;
 	return undefined;
 }
 
-export function fillChoiceUIGradient(value: FillChoiceUI): GradientStops<SRGBA8> | undefined {
-	if (typeof value === "object" && "Gradient" in value) return value.Gradient;
+export function fillChoiceGradient(value: FillChoice<SRGBA8>): GradientStops<SRGBA8> | undefined {
+	if (typeof value === "object" && "Gradient" in value) return value.Gradient.stops;
 	return undefined;
 }
 
-export function parseFillChoiceUI(value: unknown): FillChoiceUI {
+export function parseFillChoice(value: unknown): FillChoice<SRGBA8> {
 	if (value === "None" || value === undefined || value === null) return "None";
 	if (typeof value === "object" && value !== null && "Solid" in value && isSRgba8(value.Solid)) return { Solid: value.Solid };
-	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientStops(value.Gradient)) return { Gradient: value.Gradient };
+	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientRamp(value.Gradient)) return { Gradient: value.Gradient };
 	return "None";
 }

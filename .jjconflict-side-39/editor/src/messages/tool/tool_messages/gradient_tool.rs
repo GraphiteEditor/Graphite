@@ -16,7 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStop, GradientStops, GradientType, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -257,33 +257,27 @@ impl LayoutHolder for GradientTool {
 		.widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
-		let stops_value = self
-			.data
-			.current_gradient_stops
-			.clone()
-			.or_else(|| self.data.default_gradient_stops.clone())
-			.map(FillChoice::Gradient)
-			.unwrap_or_else(|| {
-				FillChoice::Gradient(Gradient::new([
-					GradientStop {
-						position: 0.,
-						midpoint: 0.5,
-						color: self.data.primary_color,
-					},
-					GradientStop {
-						position: 1.,
-						midpoint: 0.5,
-						color: self.data.secondary_color,
-					},
-				]))
-			});
-		let stops_widget = ColorInput::new(FillChoiceUI::from(&stops_value))
+		let stops_value = self.data.current_gradient_stops.clone().or_else(|| self.data.default_gradient_stops.clone()).unwrap_or_else(|| {
+			Gradient::new([
+				GradientStop {
+					position: 0.,
+					midpoint: 0.5,
+					color: self.data.primary_color,
+				},
+				GradientStop {
+					position: 1.,
+					midpoint: 0.5,
+					color: self.data.secondary_color,
+				},
+			])
+		});
+		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value)))
 			.allow_none(false)
 			.narrow(true)
 			.tooltip_label("Gradient Stops")
 			.tooltip_description("Edit the gradient's color stops.")
 			.on_update(|input: &ColorInput| {
-				let stops = input.value.as_gradient().cloned().unwrap_or_default();
+				let stops = input.value.as_gradient().map(|ramp| ramp.stops.clone()).unwrap_or_default();
 				GradientToolMessage::UpdateStops { stops }.into()
 			})
 			.on_commit(|_| DocumentMessage::AddTransaction.into())
@@ -2025,7 +2019,7 @@ mod test_gradient {
 	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
-	use graphene_std::vector::{Gradient, GradientStop, fill};
+	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
 	use super::gradient_space_transform;
 
@@ -2068,7 +2062,7 @@ mod test_gradient {
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
 				let stops = match fill_node.input(fill::FillInput)?.as_value()? {
-					TaggedValue::Gradient(stops) => stops.clone(),
+					TaggedValue::GradientRamp(ramp) => Gradient::from(ramp),
 					_ => return None,
 				};
 
@@ -2157,7 +2151,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2168,7 +2162,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				]))
+				])))
 				.into(),
 			})
 			.await;
@@ -2192,10 +2186,10 @@ mod test_gradient {
 			.and_then(|node| node.input(graphene_std::math_nodes::gradient_value::GradientInput))
 			.and_then(|input| input.as_value())
 			.cloned();
-		let Some(TaggedValue::Gradient(stops)) = stops else {
+		let Some(TaggedValue::GradientRamp(ramp)) = stops else {
 			panic!("expected a gradient default, got {stops:?}")
 		};
-		assert_eq!(stops.positions(), vec![0., 1.], "the parameter default should be the black-to-white starting gradient");
+		assert_eq!(Gradient::from(ramp).positions(), vec![0., 1.], "the parameter default should be the black-to-white starting gradient");
 	}
 
 	async fn create_fill_gradient_chain_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
@@ -2217,7 +2211,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2228,7 +2222,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				]))
+				])))
 				.into(),
 			})
 			.await;
@@ -2861,7 +2855,7 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_value_id,
 				input_index: 1,
-				value: TaggedValue::Gradient(Gradient::new([
+				value: TaggedValue::GradientRamp(GradientRamp::from(Gradient::new([
 					GradientStop {
 						position: 0.,
 						midpoint: 0.5,
@@ -2872,7 +2866,7 @@ mod test_gradient {
 						midpoint: 0.5,
 						color: Color::BLUE,
 					},
-				]))
+				])))
 				.into(),
 			})
 			.await;

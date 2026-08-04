@@ -24,7 +24,7 @@ use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::{FillChoice, FillChoiceUI};
+use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, NodeParameter};
 
 #[derive(Default, ExtractField)]
@@ -261,7 +261,7 @@ impl TextTool {
 
 	fn layout(&self, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Layout {
 		let mut widgets = vec![
-			ColorInput::new(FillChoiceUI::from(self.options.fill.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
+			ColorInput::new(FillChoice::<SRGBA8>::from(self.options.fill.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.fill.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
