@@ -296,10 +296,24 @@ pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_i
 		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
 }
 
-/// Whether the layer is an empty 'Merge' layer: nothing feeds its secondary input, so a fresh whole-expanse paint chain may start there.
-/// Specialized layers like artboards, or nodes displayed as layers, have their own meaning for that input, so they are excluded.
-pub fn is_blank_paintable_layer(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-	network_interface.is_merge(&layer.to_node(), &[]) && network_interface.upstream_output_connector(&InputConnector::layer_secondary_input(layer.to_node()), &[]).is_none()
+/// Where a fresh whole-expanse paint chain attaches on a blank 'Merge' layer, or `None` if the layer isn't one.
+pub fn blank_paint_chain_attachment_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<InputConnector> {
+	if !network_interface.is_merge(&layer.to_node(), &[]) {
+		return None;
+	}
+
+	let mut attachment_input = InputConnector::layer_secondary_input(layer.to_node());
+
+	while let Some(upstream) = network_interface.upstream_output_connector(&attachment_input, &[]) {
+		let node_id = upstream.node_id()?;
+		if network_interface.reference(&node_id, &[]).as_ref() != Some(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)) {
+			return None;
+		}
+
+		attachment_input = InputConnector::primary_input(node_id);
+	}
+
+	Some(attachment_input)
 }
 
 /// Try to find a 'Color Value' node that is connected to a 'Fill' node, or to a layer directly.

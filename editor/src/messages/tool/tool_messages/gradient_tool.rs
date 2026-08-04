@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, is_blank_paintable_layer,
+	self, NodeGraphLayer, blank_paint_chain_attachment_input, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
 	reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
@@ -1445,7 +1445,7 @@ impl Fsm for GradientToolFsmState {
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || is_blank_paintable_layer(layer, &document.network_interface))
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || blank_paint_chain_attachment_input(layer, &document.network_interface).is_some())
 					});
 
 					// Apply the gradient to the selected layer
@@ -1487,7 +1487,7 @@ impl Fsm for GradientToolFsmState {
 									gradient_spread: tool_options.gradient_spread,
 								},
 								// A blank layer starts a whole-expanse gradient chain; a layer with content gets its Fill painted
-								if is_blank_paintable_layer(layer, &document.network_interface) {
+								if blank_paint_chain_attachment_input(layer, &document.network_interface).is_some() {
 									GradientSource::Chain
 								} else {
 									GradientSource::Direct
@@ -3010,5 +3010,62 @@ mod test_gradient {
 		);
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops");
 		assert_eq!(stops.len(), 2);
+	}
+
+	#[tokio::test]
+	async fn drag_on_nudged_blank_layer_reuses_its_transform() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Nudging an empty layer leaves a 'Transform' node in its chain, which the gradient then adopts as its placement
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: 10.,
+				delta_y: 0.,
+				resize: Key::Shift,
+				resize_opposite: Key::Alt,
+			})
+			.await;
+		let layer_content_input = InputConnector::layer_secondary_input(layer.to_node());
+		let transform_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&layer_content_input, &[])
+			.and_then(|output| output.node_id())
+			.expect("the nudge should leave a Transform node feeding the layer");
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let gradient_value_id = get_upstream_gradient_value_node_id(layer, network_interface).expect("the drag should start a gradient chain");
+		assert_eq!(get_gradient_stops(layer, network_interface).expect("the new chain should resolve stops").len(), 2);
+
+		// The gradient paints through the nudge's Transform node rather than adding a second one
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let chain_transforms = network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], super::FlowType::HorizontalFlow)
+			.filter(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&transform_reference))
+			.count();
+		assert_eq!(chain_transforms, 1, "the gradient should adopt the existing Transform node");
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::primary_input(transform_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(gradient_value_id),
+			"the gradient should be painted through the preserved Transform node"
+		);
 	}
 }

@@ -125,7 +125,10 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 
 	/// Whether the node is a Merge node by identity, regardless of whether it currently participates in the scene.
 	pub fn is_merge(&self, node_id: &NodeId) -> bool {
-		self.reference(node_id).ok().flatten().is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()))
+		self.reference(node_id)
+			.ok()
+			.flatten()
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()))
 	}
 
 	/// The uneditable name in the Properties panel which represents the function name of the node implementation.

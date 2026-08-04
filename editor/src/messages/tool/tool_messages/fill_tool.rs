@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, is_blank_paintable_layer};
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, blank_paint_chain_attachment_input, get_upstream_color_value_node_id};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::style::FillChoice;
@@ -156,17 +156,15 @@ impl Fsm for FillToolFsmState {
 			(FillToolFsmState::Ready, color_event) => {
 				// Blank layers and whole-expanse color chains render no clickable geometry, so fall back to a selected layer of either kind
 				let clicked_layer = document.click(input, viewport).or_else(|| {
-					document
-						.network_interface
-						.selected_nodes()
-						.selected_visible_layers(&document.network_interface)
-						.find(|&layer| get_upstream_color_value_node_id(layer, &document.network_interface).is_some() || is_blank_paintable_layer(layer, &document.network_interface))
+					document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).find(|&layer| {
+						get_upstream_color_value_node_id(layer, &document.network_interface).is_some() || blank_paint_chain_attachment_input(layer, &document.network_interface).is_some()
+					})
 				});
 				let Some(layer_identifier) = clicked_layer else { return self };
 
 				// A whole-expanse color chain (existing, or newly started on a blank layer) routes to its 'Color Value' node; geometry gets its Fill set
-				let route_to_color_chain =
-					get_upstream_color_value_node_id(layer_identifier, &document.network_interface).is_some() || is_blank_paintable_layer(layer_identifier, &document.network_interface);
+				let route_to_color_chain = get_upstream_color_value_node_id(layer_identifier, &document.network_interface).is_some()
+					|| blank_paint_chain_attachment_input(layer_identifier, &document.network_interface).is_some();
 
 				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
 				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
@@ -310,6 +308,61 @@ mod test_fill {
 			.and_then(|node| node.input(graphene_std::math_nodes::color_value::ColorInput))
 			.and_then(|input| input.as_value());
 		assert!(matches!(color_input, Some(TaggedValue::Color(color)) if *color == Color::GREEN));
+	}
+
+	#[tokio::test]
+	async fn nudged_blank_layer_keeps_its_transform() {
+		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Nudging an empty layer leaves a 'Transform' node in its chain, even though the layer still paints nothing
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: 10.,
+				delta_y: 0.,
+				resize: Key::Shift,
+				resize_opposite: Key::Alt,
+			})
+			.await;
+		let layer_content_input = InputConnector::layer_secondary_input(layer.to_node());
+		let transform_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&layer_content_input, &[])
+			.and_then(|output| output.node_id())
+			.expect("the nudge should leave a Transform node feeding the layer");
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let color_value_id = get_upstream_color_value_node_id(layer, network_interface).expect("the fill should start a Color Value chain");
+		assert_eq!(
+			network_interface.upstream_output_connector(&layer_content_input, &[]).and_then(|output| output.node_id()),
+			Some(transform_id),
+			"the Transform node should still feed the layer"
+		);
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::primary_input(transform_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(color_value_id),
+			"the color should be painted through the preserved Transform node"
+		);
 	}
 
 	#[tokio::test]

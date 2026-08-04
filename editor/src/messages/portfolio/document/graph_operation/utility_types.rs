@@ -5,7 +5,9 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, is_blank_paintable_layer};
+use crate::messages::tool::common_functionality::graph_modification_utils::{
+	blank_paint_chain_attachment_input, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
@@ -239,9 +241,24 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let color_value_id = NodeId::new();
 		self.network_interface.insert_node(color_value_id, color_value, &[]);
-		self.network_interface.move_node_to_chain_start(&color_value_id, layer, &[], self.import);
+		self.start_paint_chain(&color_value_id, layer);
 
 		color_value_id
+	}
+
+	/// Wire a node that paints the layer's whole expanse into the start of its chain,
+	/// or past the 'Transform' nodes a blank layer already carries so those go on applying to the paint.
+	fn start_paint_chain(&mut self, node_id: &NodeId, layer: LayerNodeIdentifier) {
+		let layer_content_input = InputConnector::layer_secondary_input(layer.to_node());
+		let attachment_input = blank_paint_chain_attachment_input(layer, self.network_interface).unwrap_or(layer_content_input);
+
+		if attachment_input == layer_content_input {
+			self.network_interface.move_node_to_chain_start(node_id, layer, &[], self.import);
+			return;
+		}
+
+		self.network_interface.set_input(&attachment_input, NodeInput::node(*node_id, 0), &[]);
+		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
 	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) {
@@ -516,7 +533,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		// The 'Color Value' node discards its primary input, so only a blank 'Merge' layer may start a chain with one
-		if target_input != InputConnector::layer_secondary_input(output_layer.to_node()) || !is_blank_paintable_layer(output_layer, self.network_interface) {
+		if blank_paint_chain_attachment_input(output_layer, self.network_interface).is_none() {
 			return;
 		}
 
@@ -536,7 +553,7 @@ impl<'a> ModifyInputsContext<'a> {
 				let starts_layer_chain = target == InputConnector::layer_secondary_input(output_layer.to_node());
 
 				// The 'Gradient Value' node discards its primary input, so only a blank 'Merge' layer may start a chain with one
-				if starts_layer_chain && !is_blank_paintable_layer(output_layer, self.network_interface) {
+				if starts_layer_chain && blank_paint_chain_attachment_input(output_layer, self.network_interface).is_none() {
 					log::error!("Refusing to start a gradient chain on anything but a blank 'Merge' layer");
 					return;
 				}
@@ -549,7 +566,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 				if starts_layer_chain {
 					// No Fill node: the new node starts the layer's chain
-					self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
+					self.start_paint_chain(&node_id, output_layer);
 				} else {
 					// Feeding a Fill node's paint input: wire it up and place it one chain-width left and a step below the Fill
 					self.network_interface.set_input(&target, NodeInput::node(node_id, 0), &[]);
