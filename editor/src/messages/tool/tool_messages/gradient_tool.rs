@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, blank_paint_chain_attachment_input, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain_nodes,
 	reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
@@ -1439,13 +1439,13 @@ impl Fsm for GradientToolFsmState {
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
 					// List-based gradients and blank layers render no geometry, so a click on empty canvas yields no layer.
-					// Fall back to a selected gradient list layer, or a blank layer ready to receive its first whole-expanse gradient.
+					// Fall back to a selected gradient list layer, or one blank enough to take a fresh whole-expanse gradient.
 					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || blank_paint_chain_attachment_input(layer, &document.network_interface).is_some())
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || replaceable_paint_chain_nodes(layer, &document.network_interface).is_some())
 					});
 
 					// Apply the gradient to the selected layer
@@ -1486,8 +1486,8 @@ impl Fsm for GradientToolFsmState {
 									gradient_form: tool_options.gradient_form,
 									gradient_spread: tool_options.gradient_spread,
 								},
-								// A blank layer starts a whole-expanse gradient chain; a layer with content gets its Fill painted
-								if blank_paint_chain_attachment_input(layer, &document.network_interface).is_some() {
+								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
+								if replaceable_paint_chain_nodes(layer, &document.network_interface).is_some() {
 									GradientSource::Chain
 								} else {
 									GradientSource::Direct
@@ -3010,6 +3010,60 @@ mod test_gradient {
 		);
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops");
 		assert_eq!(stops.len(), 2);
+	}
+
+	#[tokio::test]
+	async fn replaces_a_whole_expanse_color_with_a_gradient() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::{get_gradient_stops, get_upstream_color_value_node_id};
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Nudging leaves a 'Transform' node that must survive the swap, and the fill paints the whole expanse
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: 10.,
+				delta_y: 0.,
+				resize: Key::Shift,
+				resize_opposite: Key::Alt,
+			})
+			.await;
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		assert!(get_upstream_color_value_node_id(layer, &editor.active_document().network_interface).is_some());
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		assert!(
+			get_upstream_gradient_value_node_id(layer, &document.network_interface).is_some(),
+			"the drag should start a gradient chain"
+		);
+		assert_eq!(get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops").len(), 2);
+		assert!(
+			get_upstream_color_value_node_id(layer, &document.network_interface).is_none(),
+			"the color it replaced should be gone from the chain"
+		);
+
+		// The layer's own placement is not the paint's, so nudging survives a swap
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let chain_transforms = document
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], super::FlowType::HorizontalFlow)
+			.filter(|node_id| document.network_interface.reference(node_id, &[]).as_ref() == Some(&transform_reference))
+			.count();
+		assert_eq!(chain_transforms, 1, "the layer's Transform node should survive the swap");
 	}
 
 	#[tokio::test]

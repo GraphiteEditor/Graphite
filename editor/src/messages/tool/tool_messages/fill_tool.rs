@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, blank_paint_chain_attachment_input, get_upstream_color_value_node_id, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, replaceable_paint_chain_nodes};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::subpath::Subpath;
@@ -218,9 +218,10 @@ impl Fsm for FillToolFsmState {
 	}
 }
 
-/// Whether the fill lands on the layer's 'Color Value' node rather than on geometry's Fill.
+/// Whether the fill lands on the layer's 'Color Value' node rather than on geometry's Fill, which includes taking over
+/// a layer the Gradient tool painted, since a whole-expanse gradient gives way to a solid color.
 fn routes_to_color_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-	get_upstream_color_value_node_id(layer, network_interface).is_some() || blank_paint_chain_attachment_input(layer, network_interface).is_some()
+	get_upstream_color_value_node_id(layer, network_interface).is_some() || replaceable_paint_chain_nodes(layer, network_interface).is_some()
 }
 
 /// The layer the fill acts on: the one under the cursor, or else a selected layer painted through a color chain,
@@ -347,6 +348,55 @@ mod test_fill {
 			.and_then(|node| node.input(graphene_std::math_nodes::color_value::ColorInput))
 			.and_then(|input| input.as_value());
 		assert!(matches!(color_input, Some(TaggedValue::Color(color)) if *color == Color::GREEN));
+	}
+
+	#[tokio::test]
+	async fn replaces_a_whole_expanse_gradient_with_a_solid_color() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::{get_upstream_color_value_node_id, get_upstream_gradient_value_node_id};
+		use graph_craft::document::NodeId;
+		use graph_craft::document::value::TaggedValue;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Paint the layer's whole expanse with a gradient, which the Fill tool then takes over
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		assert!(get_upstream_gradient_value_node_id(layer, &editor.active_document().network_interface).is_some());
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let color_value_id = get_upstream_color_value_node_id(layer, &document.network_interface).expect("the fill should start a Color Value chain");
+		let color_input = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&color_value_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::color_value::ColorInput))
+			.and_then(|input| input.as_value());
+		assert!(matches!(color_input, Some(TaggedValue::Color(color)) if *color == Color::GREEN));
+
+		// The replaced gradient nodes are gone from the graph rather than left orphaned
+		let gradient_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER);
+		let leftover_gradient_nodes = document
+			.network_interface
+			.document_network()
+			.nodes
+			.keys()
+			.filter(|node_id| document.network_interface.reference(node_id, &[]).as_ref() == Some(&gradient_reference))
+			.count();
+		assert_eq!(leftover_gradient_nodes, 0, "the gradient it replaced should be deleted");
 	}
 
 	#[tokio::test]

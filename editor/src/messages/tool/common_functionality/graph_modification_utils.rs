@@ -316,6 +316,53 @@ pub fn blank_paint_chain_attachment_input(layer: LayerNodeIdentifier, network_in
 	Some(attachment_input)
 }
 
+/// The whole-expanse paint nodes to clear off a 'Merge' layer so a paint tool can start its own chain there, which is
+/// empty when the layer is already blank and `None` when the layer holds anything the tools didn't put there.
+/// 'Transform' nodes are left out since they carry the layer's placement, so a swap keeps it.
+pub fn replaceable_paint_chain_nodes(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Vec<NodeId>> {
+	if !network_interface.is_merge(&layer.to_node(), &[]) {
+		return None;
+	}
+
+	// A generator discards its primary input, so the chain ends at whichever one is reached
+	let generators = [graphene_std::math_nodes::color_value::IDENTIFIER, graphene_std::math_nodes::gradient_value::IDENTIFIER];
+	let setters = [
+		graphene_std::math_nodes::gradient_form::IDENTIFIER,
+		graphene_std::math_nodes::gradient_spread::IDENTIFIER,
+		graphene_std::math_nodes::gradient_positions::IDENTIFIER,
+		graphene_std::math_nodes::gradient_midpoints::IDENTIFIER,
+	];
+
+	let mut replaced_nodes = Vec::new();
+	let mut input = InputConnector::layer_secondary_input(layer.to_node());
+
+	while let Some(upstream) = network_interface.upstream_output_connector(&input, &[]) {
+		let node_id = upstream.node_id()?;
+		let Some(DefinitionIdentifier::ProtoNode(identifier)) = network_interface.reference(&node_id, &[]) else {
+			return None;
+		};
+
+		if identifier == graphene_std::transform_nodes::transform::IDENTIFIER {
+			input = InputConnector::primary_input(node_id);
+			continue;
+		}
+
+		if generators.contains(&identifier) {
+			replaced_nodes.push(node_id);
+			break;
+		}
+
+		if !setters.contains(&identifier) {
+			return None;
+		}
+
+		replaced_nodes.push(node_id);
+		input = InputConnector::primary_input(node_id);
+	}
+
+	Some(replaced_nodes)
+}
+
 /// Try to find a 'Color Value' node that is connected to a 'Fill' node, or to a layer directly.
 pub fn get_upstream_color_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	let target_input = gradient_chain_target_input(layer, network_interface);
