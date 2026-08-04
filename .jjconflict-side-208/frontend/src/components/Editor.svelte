@@ -1,0 +1,400 @@
+<script lang="ts">
+	import { onMount, onDestroy, setContext } from "svelte";
+	import MainWindow from "/src/components/window/MainWindow.svelte";
+	import { createClipboardManager, destroyClipboardManager } from "/src/managers/clipboard";
+	import { createHyperlinkManager, destroyHyperlinkManager } from "/src/managers/hyperlink";
+	import { createInputManager, destroyInputManager } from "/src/managers/input";
+	import { createLocalizationManager, destroyLocalizationManager } from "/src/managers/localization";
+	import { createPanicManager, destroyPanicManager } from "/src/managers/panic";
+	import { createPersistenceManager, destroyPersistenceManager } from "/src/managers/persistence";
+	import { createAppWindowStore, destroyAppWindowStore } from "/src/stores/app-window";
+	import { createColorPickerStore, destroyColorPickerStore } from "/src/stores/color-picker";
+	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
+	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
+	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
+	import { createNodeGraphStore, destroyNodeGraphStore } from "/src/stores/node-graph";
+	import { createPortfolioStore, destroyPortfolioStore } from "/src/stores/portfolio";
+	import { createTooltipStore, destroyTooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	// Graphite Wasm editor and subscriptions router
+	export let subscriptions: SubscriptionsRouter;
+	export let editor: EditorWrapper;
+	setContext("subscriptions", subscriptions);
+	setContext("editor", editor);
+
+	const stores = {
+		dialog: createDialogStore(subscriptions, editor),
+		tooltip: createTooltipStore(subscriptions),
+		document: createDocumentStore(subscriptions),
+		fullscreen: createFullscreenStore(subscriptions),
+		nodeGraph: createNodeGraphStore(subscriptions),
+		portfolio: createPortfolioStore(subscriptions, editor),
+		appWindow: createAppWindowStore(subscriptions),
+		colorPicker: createColorPickerStore(subscriptions),
+	};
+	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
+
+	onMount(() => {
+		createClipboardManager(subscriptions, editor);
+		createHyperlinkManager(subscriptions);
+		createLocalizationManager(subscriptions, editor);
+		createPanicManager(subscriptions);
+		createPersistenceManager(subscriptions, editor, stores.portfolio);
+		createInputManager(subscriptions, editor, stores.dialog, stores.portfolio, stores.document);
+
+		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
+		// The backend handles idempotency, so this is safe to call again during HMR re-mounts.
+		editor.initAfterFrontendReady();
+
+		// Re-send all UI layouts from Rust so the frontend has them after an HMR re-mount
+		editor.resendAllLayouts();
+	});
+
+	onDestroy(() => {
+		// Stores
+		destroyDialogStore();
+		destroyTooltipStore();
+		destroyDocumentStore();
+		destroyFullscreenStore();
+		destroyNodeGraphStore();
+		destroyPortfolioStore();
+		destroyAppWindowStore();
+		destroyColorPickerStore();
+
+		// Managers
+		destroyClipboardManager();
+		destroyHyperlinkManager();
+		destroyLocalizationManager();
+		destroyPanicManager();
+		destroyPersistenceManager();
+		destroyInputManager();
+	});
+</script>
+
+<MainWindow />
+
+<style lang="scss">
+	// Disable the spinning loading indicator
+	body::before,
+	body::after {
+		content: none !important;
+	}
+
+	:root {
+		// Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
+		// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
+		// Specifically, support for the relative syntax is needed: `color(from var(--color-0-black) srgb r g b / 0.5)` to convert black to 50% alpha
+		--color-0-black: #000;
+		--color-0-black-rgb: 0, 0, 0;
+		--color-1-nearblack: #111;
+		--color-1-nearblack-rgb: 17, 17, 17;
+		--color-2-mildblack: #222;
+		--color-2-mildblack-rgb: 34, 34, 34;
+		--color-3-darkgray: #333;
+		--color-3-darkgray-rgb: 51, 51, 51;
+		--color-4-dimgray: #444;
+		--color-4-dimgray-rgb: 68, 68, 68;
+		--color-5-dullgray: #555;
+		--color-5-dullgray-rgb: 85, 85, 85;
+		--color-6-lowergray: #666;
+		--color-6-lowergray-rgb: 102, 102, 102;
+		--color-7-middlegray: #777;
+		--color-7-middlegray-rgb: 109, 109, 109;
+		--color-8-uppergray: #888;
+		--color-8-uppergray-rgb: 136, 136, 136;
+		--color-9-palegray: #999;
+		--color-9-palegray-rgb: 153, 153, 153;
+		--color-a-softgray: #aaa;
+		--color-a-softgray-rgb: 170, 170, 170;
+		--color-b-lightgray: #bbb;
+		--color-b-lightgray-rgb: 187, 187, 187;
+		--color-c-brightgray: #ccc;
+		--color-c-brightgray-rgb: 204, 204, 204;
+		--color-d-mildwhite: #ddd;
+		--color-d-mildwhite-rgb: 221, 221, 221;
+		--color-e-nearwhite: #eee;
+		--color-e-nearwhite-rgb: 238, 238, 238;
+		--color-f-white: #fff;
+		--color-f-white-rgb: 255, 255, 255;
+		--color-error-red: #d6536e;
+		--color-error-red-rgb: 214, 83, 110;
+		--color-warning-yellow: #d5aa43;
+		--color-warning-yellow-rgb: 213, 170, 67;
+
+		--color-data-general: #cfcfcf;
+		--color-data-general-dim: #8a8a8a;
+		--color-data-number: #c9a699;
+		--color-data-number-dim: #886b60;
+		--color-data-artboard: #fbf9eb;
+		--color-data-artboard-dim: #b9b9a9;
+		--color-data-graphic: #68c587;
+		--color-data-graphic-dim: #37754c;
+		--color-data-raster: #e4bb72;
+		--color-data-raster-dim: #9a7b43;
+		--color-data-vector: #65bbe5;
+		--color-data-vector-dim: #417892;
+		--color-data-color: #ce6ea7;
+		--color-data-color-dim: #924071;
+		--color-data-gradient: #af81eb;
+		--color-data-gradient-dim: #6c489b;
+		--color-data-typography: #eea7a7;
+		--color-data-typography-dim: #955252;
+		--color-data-invalid: #d6536e; // Same as --color-error-red
+		--color-data-invalid-dim: #a7324a;
+
+		--color-overlay-blue: #00a8ff;
+
+		--color-none: white;
+		--color-none-repeat: no-repeat;
+		--color-none-position: center center;
+		// 24px tall, 48px wide
+		--color-none-size-24px: 60px 24px;
+		// Red diagonal slash (24px tall)
+		--color-none-image-24px: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 24"><line stroke="red" stroke-width="4px" x1="0" y1="27" x2="60" y2="-3" /></svg>\
+			');
+		// 32px tall, 64px wide
+		--color-none-size-32px: 80px 32px;
+		// Red diagonal slash (32px tall)
+		--color-none-image-32px: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>\
+			');
+
+		--color-transparent-checkered-background:
+			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+			linear-gradient(#ffffff, #ffffff);
+		--color-transparent-checkered-background-size: 16px 16px, 16px 16px, 16px 16px;
+		--color-transparent-checkered-background-position: 0 0, 8px 8px, 8px 8px;
+		--color-transparent-checkered-background-position-plus-one: 1px 1px, 9px 9px, 9px 9px;
+		--color-transparent-checkered-background-size-mini: 8px 8px, 8px 8px, 8px 8px;
+		--color-transparent-checkered-background-position-mini: 0 0, 4px 4px, 4px 4px;
+		--color-transparent-checkered-background-repeat: repeat, repeat, repeat;
+
+		--inheritance-stripes-background: repeating-linear-gradient(
+			-45deg,
+			transparent 0px,
+			transparent calc((3px * sqrt(2) / 2) - 0.5px),
+			var(--color-5-dullgray) calc((3px * sqrt(2) / 2) - 0.5px),
+			var(--color-5-dullgray) calc((3px * sqrt(2) / 2) + 0.5px),
+			transparent calc((3px * sqrt(2) / 2) + 0.5px),
+			transparent calc(6px * sqrt(2) / 2)
+		);
+		--inheritance-dots-background-4-dimgray: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4px" height="4px" fill="%23444"><rect width="1" height="1" /><rect x="2" y="2" width="1" height="1" /></svg>\
+			');
+		--inheritance-dots-background-6-lowergray: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4px" height="4px" fill="%23666"><rect width="1" height="1" /><rect x="2" y="2" width="1" height="1" /></svg>\
+			');
+
+		// Array of 2x3 dots (fill: --color-e-nearwhite)
+		--icon-drag-grip: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 24" fill="%23eee">\
+				<circle cx="0.5" cy="1.5" r="0.5" /><circle cx="3.5" cy="1.5" r="0.5" />\
+				<circle cx="0.5" cy="4.5" r="0.5" /><circle cx="3.5" cy="4.5" r="0.5" />\
+				<circle cx="0.5" cy="7.5" r="0.5" /><circle cx="3.5" cy="7.5" r="0.5" />\
+			</svg>\
+			');
+		// Array of 2x3 dots (fill: --color-f-white)
+		--icon-drag-grip-hover: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 24" fill="%23fff">\
+				<circle cx="0.5" cy="1.5" r="0.5" /><circle cx="3.5" cy="1.5" r="0.5" />\
+				<circle cx="0.5" cy="4.5" r="0.5" /><circle cx="3.5" cy="4.5" r="0.5" />\
+				<circle cx="0.5" cy="7.5" r="0.5" /><circle cx="3.5" cy="7.5" r="0.5" />\
+			</svg>\
+			');
+		// Array of 2x3 dots (fill: --color-8-uppergray)
+		--icon-drag-grip-disabled: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 24" fill="%23888">\
+				<circle cx="0.5" cy="1.5" r="0.5" /><circle cx="3.5" cy="1.5" r="0.5" />\
+				<circle cx="0.5" cy="4.5" r="0.5" /><circle cx="3.5" cy="4.5" r="0.5" />\
+				<circle cx="0.5" cy="7.5" r="0.5" /><circle cx="3.5" cy="7.5" r="0.5" />\
+			</svg>\
+			');
+
+		// Arrow triangle (fill: --color-e-nearwhite)
+		--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
+			');
+		// Arrow triangle (fill: --color-f-white)
+		--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
+			');
+		// Arrow triangle (fill: --color-8-uppergray)
+		--icon-expand-collapse-arrow-disabled: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23888" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
+			');
+	}
+
+	html,
+	body {
+		margin: 0;
+		height: 100%;
+		background: var(--color-2-mildblack);
+		overscroll-behavior: none;
+		user-select: none;
+	}
+
+	body.cursor-hidden * {
+		cursor: none !important;
+	}
+
+	// Needed for the viewport hole punch on desktop
+	html:has(body > .viewport-hole-punch),
+	body:has(> .viewport-hole-punch) {
+		background: none;
+	}
+
+	// The default value of `auto` from the CSS spec is a footgun with flexbox layouts:
+	// https://stackoverflow.com/questions/36247140/why-dont-flex-items-shrink-past-content-size
+	* {
+		min-width: 0;
+		min-height: 0;
+	}
+
+	html,
+	body,
+	input,
+	textarea,
+	button {
+		font-family: "Source Sans Pro", Arial, sans-serif;
+		font-weight: 400;
+		font-size: 14px;
+		line-height: 1;
+		tab-size: 4;
+		color: var(--color-e-nearwhite);
+	}
+
+	body,
+	textarea,
+	input {
+		&::selection {
+			background-color: var(--color-4-dimgray);
+
+			// Target only Safari
+			@supports (background: -webkit-named-image(i)) {
+				& {
+					// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+					// https://stackoverflow.com/a/71753552/775283
+					background-color: rgba(var(--color-4-dimgray-rgb), calc(254 / 255));
+				}
+			}
+		}
+	}
+
+	svg,
+	img {
+		display: block;
+	}
+
+	.layout-row,
+	.layout-col {
+		.scrollable-x,
+		.scrollable-y {
+			overflow: hidden;
+			scrollbar-width: thin;
+			scrollbar-color: var(--color-4-dimgray) transparent;
+		}
+
+		.scrollable-x.scrollable-y {
+			overflow: auto;
+		}
+
+		.scrollable-x:not(.scrollable-y) {
+			scrollbar-width: none;
+			overflow: auto hidden;
+		}
+
+		.scrollable-y:not(.scrollable-x) {
+			overflow: hidden auto;
+		}
+	}
+
+	// List of all elements that should show an outline when focused by tabbing or by clicking the element
+	.dropdown-input .dropdown-box,
+	.font-input .dropdown-box {
+		&:focus {
+			outline: 1px dashed var(--color-e-nearwhite);
+			outline-offset: -1px;
+		}
+	}
+
+	// List of all elements that should show an outline when focused by tabbing, but not by clicking the element
+	.icon-button,
+	.text-button,
+	.popover-button,
+	.color-input > button,
+	.color-picker .preset-color,
+	.working-colors-input .swatch > button,
+	.radio-input button,
+	.menu-list,
+	.menu-list-button .entry,
+	.layer-tree .expand-arrow,
+	.widget-section .header {
+		&:focus-visible {
+			outline: 1px dashed var(--color-e-nearwhite);
+			outline-offset: -1px;
+		}
+
+		// Variant: dark outline over light colors
+		&.preset-color.white,
+		&.text-button.emphasized {
+			&:focus-visible {
+				outline: 1px dashed var(--color-2-mildblack);
+			}
+		}
+	}
+
+	// Checkbox needs to apply the focus outline to its sibling label
+	.optional-input input:focus-visible + label,
+	.checkbox-input input:focus-visible + label {
+		outline: 1px dashed var(--color-e-nearwhite);
+		outline-offset: -1px;
+	}
+
+	// Variant: dark outline over light colors (when the checkbox is checked)
+	:not(.optional-input) > .checkbox-input input:focus-visible + label.checked {
+		outline: 1px dashed var(--color-2-mildblack);
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Code Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("/node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
+	}
+</style>

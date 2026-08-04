@@ -1,0 +1,293 @@
+use crate::image::Image;
+use core::ops::Deref;
+use core_types::Color;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::math::quad::Quad;
+use dyn_any::DynAny;
+use glam::{DAffine2, DVec2};
+use std::fmt::Debug;
+use std::ops::DerefMut;
+
+mod __private {
+	pub trait Sealed {}
+}
+
+pub trait Storage: __private::Sealed + Clone + Debug + 'static {
+	fn is_empty(&self) -> bool;
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Raster<T>
+where
+	Raster<T>: Storage,
+{
+	storage: T,
+}
+
+unsafe impl<T> dyn_any::StaticType for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	type Static = Raster<T>;
+}
+
+impl<T> Raster<T>
+where
+	Raster<T>: Storage,
+{
+	pub fn new(t: T) -> Self {
+		Self { storage: t }
+	}
+}
+
+impl<T> Deref for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.storage
+	}
+}
+
+impl<T> DerefMut for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.storage
+	}
+}
+
+impl<T> core_types::CacheHash for Raster<T>
+where
+	Raster<T>: Storage,
+	T: core_types::CacheHash,
+{
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		core_types::CacheHash::cache_hash(&self.storage, state);
+	}
+}
+
+pub use cpu::CPU;
+
+mod cpu {
+	use super::*;
+	use crate::raster_types::__private::Sealed;
+
+	#[derive(Clone, Debug, Default, PartialEq, core_types::CacheHash, DynAny)]
+	pub struct CPU(Image<Color>);
+
+	impl Sealed for Raster<CPU> {}
+
+	impl Storage for Raster<CPU> {
+		fn is_empty(&self) -> bool {
+			self.0.height == 0 || self.0.width == 0
+		}
+	}
+
+	impl Raster<CPU> {
+		pub fn new_cpu(image: Image<Color>) -> Self {
+			Self::new(CPU(image))
+		}
+
+		pub fn data(&self) -> &Image<Color> {
+			self
+		}
+
+		pub fn data_mut(&mut self) -> &mut Image<Color> {
+			self
+		}
+
+		pub fn into_data(self) -> Image<Color> {
+			self.storage.0
+		}
+	}
+
+	impl Deref for CPU {
+		type Target = Image<Color>;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl DerefMut for CPU {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<'de> serde::Deserialize<'de> for Raster<CPU> {
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: serde::Deserializer<'de>,
+		{
+			Ok(Raster::new_cpu(Image::deserialize(deserializer)?))
+		}
+	}
+
+	impl serde::Serialize for Raster<CPU> {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			self.0.serialize(serializer)
+		}
+	}
+}
+
+pub use gpu::GPU;
+#[cfg(feature = "wgpu")]
+pub use gpu::Texture;
+
+#[cfg(feature = "wgpu")]
+mod gpu {
+	use super::*;
+	use crate::raster_types::__private::Sealed;
+	use std::sync::Arc;
+
+	#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny)]
+	pub struct Texture(Arc<wgpu::Texture>);
+
+	impl Deref for Texture {
+		type Target = wgpu::Texture;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl AsRef<wgpu::Texture> for Texture {
+		fn as_ref(&self) -> &wgpu::Texture {
+			&self.0
+		}
+	}
+
+	impl From<Arc<wgpu::Texture>> for Texture {
+		fn from(texture: Arc<wgpu::Texture>) -> Self {
+			Self(texture)
+		}
+	}
+
+	impl From<wgpu::Texture> for Texture {
+		fn from(texture: wgpu::Texture) -> Self {
+			Self(Arc::new(texture))
+		}
+	}
+
+	impl From<Texture> for Arc<wgpu::Texture> {
+		fn from(texture: Texture) -> Self {
+			texture.0
+		}
+	}
+
+	impl core_types::CacheHash for Texture {
+		fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+			use ::core::hash::Hash;
+			self.hash(state);
+		}
+	}
+
+	#[derive(Clone, Debug, PartialEq, Hash)]
+	pub struct GPU {
+		pub texture: Texture,
+	}
+
+	impl core_types::CacheHash for GPU {
+		fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+			use ::core::hash::Hash;
+			self.texture.hash(state);
+		}
+	}
+
+	impl Sealed for Raster<GPU> {}
+
+	impl Storage for Raster<GPU> {
+		fn is_empty(&self) -> bool {
+			self.texture.width() == 0 || self.texture.height() == 0
+		}
+	}
+
+	impl Raster<GPU> {
+		pub fn new_gpu(texture: impl Into<Texture>) -> Self {
+			Self::new(GPU { texture: texture.into() })
+		}
+
+		pub fn data(&self) -> &wgpu::Texture {
+			&self.texture
+		}
+	}
+}
+
+#[cfg(not(feature = "wgpu"))]
+mod gpu {
+	use super::*;
+	use crate::raster_types::__private::Sealed;
+
+	#[derive(Clone, Debug, PartialEq, Hash, core_types::CacheHash)]
+	pub struct GPU;
+
+	impl Sealed for Raster<GPU> {}
+
+	impl Storage for Raster<GPU> {
+		fn is_empty(&self) -> bool {
+			true
+		}
+	}
+}
+
+mod gpu_common {
+	use super::*;
+
+	impl<'de> serde::Deserialize<'de> for Raster<GPU> {
+		fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+		where
+			D: serde::Deserializer<'de>,
+		{
+			unimplemented!()
+		}
+	}
+
+	impl serde::Serialize for Raster<GPU> {
+		fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			unimplemented!()
+		}
+	}
+}
+
+impl<T> BoundingBox for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		if self.is_empty() || transform.matrix2.determinant() == 0. {
+			return RenderBoundingBox::None;
+		}
+
+		let unit_rectangle = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+		RenderBoundingBox::Rectangle((transform * unit_rectangle).bounding_box())
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		self.bounding_box(transform, include_stroke)
+	}
+}
+
+// RenderComplexity trait implementations
+impl core_types::render_complexity::RenderComplexity for Raster<CPU> {
+	fn render_complexity(&self) -> usize {
+		(self.width * self.height / 500) as usize
+	}
+}
+
+impl core_types::render_complexity::RenderComplexity for Raster<GPU> {
+	fn render_complexity(&self) -> usize {
+		// GPU textures currently can't have a thumbnail
+		usize::MAX
+	}
+}

@@ -1,0 +1,190 @@
+<script lang="ts">
+	import { createEventDispatcher } from "svelte";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradient } from "/src/utility-functions/colors";
+	import type { FillChoice, MenuDirection, ActionShortcut, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	const dispatch = createEventDispatcher<{ value: FillChoice<SRGBA8>; startHistoryTransaction: undefined }>();
+
+	// Content
+	export let value: FillChoice<SRGBA8>;
+	export let chosenGradient: string | undefined = undefined;
+	export let allowNone = false;
+	// export let allowTransparency = false; // TODO: Implement
+	export let menuDirection: MenuDirection = "Bottom";
+	export let disabled = false;
+	export let mixed = false;
+	// Styling
+	export let narrow = false;
+	// Sizing
+	export let minWidth = 0;
+	export let maxWidth = 0;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
+
+	let open = false;
+
+	$: outlineFactor = contrastingOutlineFactor(value, "--color-3-darkgray", 0.01);
+	$: outlined = outlineFactor > 0.0001;
+	$: gradient = fillChoiceGradient(value);
+	$: solidColor = fillChoiceColor(value);
+	$: none = value === "None";
+	$: transparency = gradient ? gradient.color.some((color) => color.alpha < 255) : solidColor ? solidColor.alpha < 255 : false;
+</script>
+
+<LayoutCol
+	class="color-input"
+	classes={{ open, disabled, narrow, none, transparency, outlined, mixed, "direction-top": menuDirection === "Top" }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
+>
+	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
+	<ColorPicker
+		{open}
+		{disabled}
+		colorOrGradient={value}
+		direction={menuDirection || "Bottom"}
+		on:open={({ detail }) => (open = detail)}
+		on:colorOrGradient={({ detail }) => {
+			value = detail;
+			dispatch("value", detail);
+		}}
+		on:startHistoryTransaction={() => {
+			// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
+			// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
+			dispatch("startHistoryTransaction");
+		}}
+		{allowNone}
+	/>
+</LayoutCol>
+
+<style lang="scss">
+	.color-input {
+		position: relative;
+		min-width: 80px;
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
+
+		> button {
+			border: none;
+			border-radius: 2px;
+			padding: 0;
+			margin: 0;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			position: relative;
+
+			&::before {
+				content: "";
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: 0;
+				right: 0;
+				background: var(--chosen-gradient);
+			}
+
+			.text-label {
+				background: var(--color-5-dullgray);
+				font-size: 10px;
+				line-height: 12px;
+				height: 12px;
+				border-radius: 0 0 0 2px;
+				padding-right: 4px;
+				padding-left: 4px;
+				position: absolute;
+				right: 0;
+				top: 0;
+			}
+		}
+
+		&.outlined > button::after {
+			content: "";
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			box-shadow: inset 0 0 0 1px rgba(var(--color-5-dullgray-rgb), var(--outline-amount));
+		}
+
+		&.transparency > button {
+			background-image: var(--color-transparent-checkered-background);
+			background-size: var(--color-transparent-checkered-background-size);
+			background-position: var(--color-transparent-checkered-background-position);
+			background-repeat: var(--color-transparent-checkered-background-repeat);
+		}
+
+		&.none > button {
+			background: var(--color-none);
+			background-repeat: var(--color-none-repeat);
+			background-position: var(--color-none-position);
+			background-size: var(--color-none-size-24px);
+			background-image: var(--color-none-image-24px);
+		}
+
+		&.disabled.none > button::after {
+			content: "";
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			background: var(--color-4-dimgray);
+			opacity: 0.5;
+		}
+
+		&.mixed > button {
+			position: relative;
+			background: var(--color-e-nearwhite);
+			background-image: none;
+
+			&::before {
+				background: var(--color-e-nearwhite);
+			}
+
+			&::after {
+				content: "";
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 8px;
+				height: 2px;
+				border-radius: 1px;
+				transform: translate(-50%, -50%);
+				background: var(--color-8-uppergray);
+			}
+		}
+
+		&:not(.disabled):hover > button .text-label,
+		&:not(.disabled).open > button .text-label {
+			background: var(--color-6-lowergray);
+			color: var(--color-f-white);
+		}
+
+		&.disabled > button .text-label {
+			background: var(--color-4-dimgray);
+			color: var(--color-8-uppergray);
+		}
+
+		> .floating-menu {
+			left: 50%;
+			bottom: 0;
+		}
+
+		&.direction-top > .floating-menu {
+			bottom: 100%;
+		}
+	}
+</style>

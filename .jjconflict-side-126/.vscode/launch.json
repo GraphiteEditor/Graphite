@@ -1,0 +1,48 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Graphite debug executable",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=graphite",
+					"--package=graphite",
+				],
+				"filter": {
+					"name": "graphite",
+					"kind": "bin",
+				},
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}",
+			"env": {
+				"RUST_LOG": "error",
+			},
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug unit tests in executable 'graphite'",
+			"cargo": {
+				"args": [
+					"test",
+					"--no-run",
+					"--bin=graphite",
+					"--package=graphite",
+				],
+				"filter": {
+					"name": "graphite",
+					"kind": "bin",
+				},
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}",
+		},
+	],
+}

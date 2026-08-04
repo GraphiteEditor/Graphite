@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{%- block head -%}{%- set page = page | default(value = section) -%}
+{%- set title = page.title -%}
+{%- set meta_title = "Graphite Blog" -%}
+{%- set css = ["/page/blog.css"] -%}
+{%- endblock head -%}
+
+{%- block content -%}{%- set page = page | default(value = section) -%}
+{{ page.content | safe }}
+
+<section id="articles" class="block">
+	{% for page in page.pages %}
+	<section>
+		<div class="banner">
+			<a href="{{ page.path | safe }}"><img src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" /></a>
+		</div>
+		<div class="details">
+			<div class="headline">
+				<h2><a href="{{ page.path | safe }}">{{ page.title }}</a></h2>
+			</div>
+			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone = "America/Los_Angeles") }}.</span>
+			<div class="summary">
+				<p>{{ page.summary | striptags | safe }}</p>
+			</div>
+			<div class="keep-reading">
+				<a href="{{ page.path | safe }}" class="link arrow">Keep Reading</a>
+			</div>
+		</div>
+	</section>
+	{% endfor %}
+</section>
+{%- endblock content -%}

@@ -1,0 +1,139 @@
+.bisect-tool {
+	margin-top: 20px;
+
+	.phase:not(.active) {
+		display: none;
+	}
+
+	.setup-section {
+		margin-bottom: 20px;
+
+		label {
+			display: block;
+			cursor: pointer;
+		}
+	}
+
+	.commit-inputs {
+		display: flex;
+		gap: 20px;
+		flex-wrap: wrap;
+		align-items: center;
+
+		.start-input {
+			margin: 0;
+
+			input {
+				background: none;
+				height: calc(var(--font-size-link) * 2);
+				font-size: calc(var(--font-size-link) * 0.9);
+				padding: 0 var(--font-size-link);
+				margin: 0;
+				outline: none;
+				color: inherit;
+				border: var(--border-thickness) solid currentColor;
+				border-radius: 0;
+				font-family: inherit;
+				font-weight: inherit;
+				box-sizing: border-box;
+
+				&:focus {
+					border-color: var(--color-ale);
+				}
+			}
+
+			input:not([type="date"]) {
+				font-family: monospace;
+				width: 320px;
+				max-width: 100%;
+			}
+
+			&.hidden {
+				display: none;
+			}
+		}
+	}
+
+	.button,
+	.link {
+		cursor: pointer;
+		user-select: none;
+
+		+ .button {
+			margin-left: 10px;
+		}
+
+		&.disabled {
+			opacity: 0.4;
+			pointer-events: none;
+		}
+	}
+
+	.feature-box-narrow {
+		padding: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+		background: var(--color-fog);
+		border-radius: 2px;
+		box-sizing: border-box;
+
+		.step-label {
+			font-size: 1rem;
+		}
+
+		.go-back {
+			margin-left: 4px;
+
+			&.hidden {
+				display: none;
+			}
+
+			a {
+				text-decoration: underline;
+				cursor: pointer;
+			}
+		}
+
+		.progress-info {
+			color: var(--color-storm);
+		}
+
+		.commit-info {
+			margin-top: 40px;
+
+			a {
+				font-family: monospace;
+				color: var(--color-crimson);
+			}
+		}
+
+		.button.arrow {
+			margin-top: 20px;
+		}
+
+		.findings {
+			margin-top: 40px;
+		}
+
+		.bisect-actions {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			align-items: center;
+			margin-top: 20px;
+
+			.button:empty {
+				visibility: hidden;
+			}
+		}
+	}
+
+	.error-message {
+		display: none;
+		margin-top: 20px;
+		padding: 10px 20px;
+		background: var(--color-lemon);
+
+		&.visible {
+			display: block;
+		}
+	}
+}

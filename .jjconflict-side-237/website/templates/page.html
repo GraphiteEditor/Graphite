@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{%- block head -%}{%- set page = page | default(value = section) -%}
+{%- set title = page.title -%}
+{%- endblock head -%}
+
+{%- block content -%}{%- set page = page | default(value = section) -%}
+{{ page.content | safe }}
+{%- endblock content -%}

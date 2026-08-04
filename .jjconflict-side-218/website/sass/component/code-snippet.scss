@@ -1,0 +1,47 @@
+pre {
+	display: flex;
+	max-width: 100%;
+	color: var(--color-fog);
+	// This zero transform sets this element as the root for `position: fixed`
+	transform: translate(0);
+
+	// Color overrides
+	&,
+	&.z-code {
+		background: var(--color-navy);
+
+		.z-path {
+			color: #679f70;
+
+			span {
+				color: #e6e1dc;
+			}
+		}
+	}
+
+	// Container for the element (span or table) containing the lines of code
+	code {
+		background: inherit;
+		color: inherit;
+		display: block;
+		overflow-x: auto;
+		padding: 10px 20px;
+		flex: 1 1 auto;
+		width: 0;
+
+		.giallo-l {
+			display: inline-block;
+			min-height: 1lh;
+			width: 100%;
+		}
+
+		.giallo-ln {
+			display: inline-block;
+			user-select: none;
+			text-align: right;
+			margin-left: -10px;
+			padding-right: 16px;
+			min-width: 3ch;
+		}
+	}
+}

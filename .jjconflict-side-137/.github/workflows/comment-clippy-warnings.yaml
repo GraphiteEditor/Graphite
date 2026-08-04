@@ -1,0 +1,103 @@
+name: "Clippy Check"
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+jobs:
+  clippy:
+    name: Run Clippy
+    runs-on: ubuntu-latest
+    # TODO(Keavon): Find a workaround (passing the output text to a separate action with permission to read the secrets?) that allows this to work on fork PRs
+    if: false
+    # if: ${{ !github.event.pull_request.draft && !github.event.pull_request.head.repo.fork }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy
+
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
+
+      - name: Run Clippy
+        id: clippy
+        run: |
+          # Run Clippy and filter output for the root workspace
+          CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
+
+          # Run Clippy and filter output for /libraries/rawkit
+          cd libraries/rawkit
+          CLIPPY_OUTPUT+=$'\n\n'
+          CLIPPY_OUTPUT+=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
+          cd ../..
+
+          # Escape special characters for JSON
+          ESCAPED_OUTPUT=$(echo "$CLIPPY_OUTPUT" | jq -sR .)
+          echo "CLIPPY_OUTPUT=$ESCAPED_OUTPUT" >> $GITHUB_OUTPUT
+          if echo "$CLIPPY_OUTPUT" | grep -qE "^(warning|error)"; then
+            echo "CLIPPY_ISSUES_FOUND=true" >> $GITHUB_OUTPUT
+          else
+            echo "CLIPPY_ISSUES_FOUND=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete previous comments
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const botComments = comments.filter((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes('Clippy Warnings/Errors')
+            );
+
+            for (const comment of botComments) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id,
+              });
+            }
+
+      - name: Comment PR
+        if: steps.clippy.outputs.CLIPPY_ISSUES_FOUND == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const clippy_output = ${{ steps.clippy.outputs.CLIPPY_OUTPUT }};
+            const output = `
+            <details open>
+
+            <summary>Found Clippy warnings</summary>
+
+            #### Clippy Warnings/Errors
+
+            \`\`\`
+            ${clippy_output}
+            \`\`\`
+
+            </details>
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })

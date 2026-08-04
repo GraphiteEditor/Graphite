@@ -1,0 +1,146 @@
+<script lang="ts">
+	import { onMount, onDestroy } from "svelte";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	let styleName = "";
+	export { styleName as style };
+	export let styles: Record<string, string | number | undefined> = {};
+
+	// Content
+	// `value` is passed via slot
+	export let disabled = false;
+	export let forCheckbox: bigint | undefined = undefined;
+	// Styling
+	export let narrow = false;
+	export let bold = false;
+	export let italic = false;
+	export let monospace = false;
+	export let multiline = false;
+	export let centerAlign = false;
+	export let tableAlign = false;
+	// Sizing
+	export let minWidth = 0;
+	export let maxWidth = 0;
+	export let minWidthCharacters = 0;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
+
+	let self: HTMLLabelElement | undefined;
+
+	$: extraClasses = Object.entries(classes)
+		.flatMap(([className, stateName]) => (stateName ? [className] : []))
+		.join(" ");
+	$: extraStyles = Object.entries(styles)
+		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
+		.join(" ");
+
+	$: watchForCheckbox(forCheckbox);
+
+	function watchForCheckbox(forCheckbox: bigint | undefined) {
+		if (!self) return;
+
+		self.removeEventListener("pointerenter", handlePointerEnter);
+		self.removeEventListener("pointerleave", handlePointerLeave);
+
+		if (forCheckbox !== undefined) {
+			self.addEventListener("pointerenter", handlePointerEnter);
+			self.addEventListener("pointerleave", handlePointerLeave);
+		}
+	}
+
+	function handlePointerEnter() {
+		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.add("label-is-hovered");
+	}
+
+	function handlePointerLeave() {
+		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.remove("label-is-hovered");
+	}
+
+	onMount(() => watchForCheckbox(forCheckbox));
+	onDestroy(() => {
+		handlePointerLeave();
+		watchForCheckbox(undefined);
+	});
+</script>
+
+<label
+	class={`text-label ${className} ${extraClasses}`.trim()}
+	class:disabled
+	class:narrow
+	class:bold
+	class:italic
+	class:monospace
+	class:multiline
+	class:center-align={centerAlign}
+	class:table-align={tableAlign}
+	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth > 0 ? `${minWidth}px` : undefined}
+	style:max-width={maxWidth > 0 ? `${maxWidth}px` : undefined}
+	style={`${styleName} ${extraStyles}`.trim() || undefined}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
+	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
+	on:dblclick
+	bind:this={self}
+>
+	<slot />
+</label>
+
+<style lang="scss">
+	.text-label {
+		line-height: 18px;
+		white-space: nowrap;
+		// Force Safari to not draw a text cursor, even though this element has `user-select: none`
+		cursor: default;
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
+
+		&.disabled {
+			color: var(--color-8-uppergray);
+		}
+
+		&.bold {
+			font-weight: 700;
+		}
+
+		&.italic {
+			font-style: italic;
+		}
+
+		&.monospace,
+		code {
+			font-family: "Source Code Pro", monospace;
+			font-size: 12px;
+		}
+
+		&.multiline {
+			white-space: pre-wrap;
+			margin: 4px 0;
+		}
+
+		&.center-align {
+			text-align: center;
+		}
+
+		&.table-align {
+			flex: 0 0 30%;
+			text-align: right;
+		}
+
+		a {
+			color: inherit;
+		}
+
+		code {
+			background: var(--color-3-darkgray);
+			padding: 0 2px;
+		}
+	}
+</style>

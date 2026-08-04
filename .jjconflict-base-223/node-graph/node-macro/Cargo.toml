@@ -1,0 +1,30 @@
+[package]
+name = "node-macro"
+publish = false
+version = "0.0.0"
+rust-version = "1.88"
+authors = ["Graphite Authors <contact@graphite.art>"]
+edition = "2024"
+readme = "../../README.md"
+homepage = "https://graphite.art"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# Workspace dependencies
+syn = { workspace = true }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+convert_case = { workspace = true }
+strum = { workspace = true }
+indoc = { workspace = true }
+
+proc-macro-crate = "3.1.0"
+proc-macro-error2 = "2"
+
+[dev-dependencies]
+core-types = { workspace = true }
+no-std-types = { workspace = true }

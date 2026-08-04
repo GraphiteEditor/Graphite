@@ -1,0 +1,109 @@
+.call-to-action.call-to-action.call-to-action {
+	display: flex;
+	flex-wrap: wrap;
+	flex-direction: row;
+	gap: calc(var(--font-size-link) * 0.8);
+	margin: calc(40 * var(--variable-px)) 0;
+
+	span {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+
+		em {
+			text-align: center;
+			margin-top: 0.5em;
+		}
+	}
+
+	.button {
+		margin: 0;
+	}
+}
+
+.statistics:has(span:empty) {
+	visibility: hidden;
+}
+
+#supporter-memberships,
+#corporate-sponsorships {
+	.triptych {
+		gap: 10px;
+		margin-top: 10px;
+
+		a {
+			flex-basis: calc(100% / 3 - 10px - (var(--feature-box-padding) * var(--variable-px)));
+		}
+	}
+
+	.triptych + .block,
+	.feature-box-inner > .block + :is(.block, .triptych) {
+		margin-top: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+	}
+
+	.triptych + .block {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.action-buttons {
+		gap: calc(var(--feature-box-padding) / 4 * var(--variable-px)) calc(var(--feature-box-padding) * var(--variable-px));
+		flex-wrap: wrap;
+
+		p {
+			text-align: left;
+			text-justify: auto;
+			white-space: nowrap;
+		}
+	}
+
+	@media screen and (max-width: 1280px) {
+		.triptych a {
+			// Half width, minus own padding on both sides, minus the gap
+			flex-basis: calc(50% - (var(--feature-box-padding) * var(--variable-px)) - 10px);
+		}
+	}
+
+	@media screen and (max-width: 640px) {
+		.triptych a {
+			flex-basis: 100%;
+		}
+	}
+
+	.feature-box-narrow {
+		min-width: 0;
+		background-color: var(--color-fog);
+		padding: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+		text-decoration: none;
+		color: var(--color-navy);
+
+		&:hover {
+			background-color: var(--color-lemon);
+		}
+
+		h1 {
+			// Compensates for emoji starting with some left spacing
+			text-indent: -0.2em;
+		}
+
+		ul {
+			padding-left: 1em;
+			font-size: calc(7 / 9 * 1em);
+		}
+	}
+
+	.button {
+		background-color: var(--color-fog);
+	}
+}
+
+#supporter-memberships {
+	background-color: var(--color-mustard);
+}
+
+#corporate-sponsorships {
+	background-color: var(--color-ale);
+	margin-top: 0;
+}

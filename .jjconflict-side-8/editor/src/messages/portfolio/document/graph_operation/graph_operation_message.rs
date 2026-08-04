@@ -10,7 +10,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{GradientSpread, GradientType, Stroke};
 use graphene_std::vector::{Gradient, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
@@ -25,7 +25,7 @@ pub enum GraphOperationMessage {
 		#[serde(skip)]
 		gradient: Gradient,
 		gradient_type: GradientType,
-		spread_method: GradientSpreadMethod,
+		gradient_spread: GradientSpread,
 		transform: DAffine2,
 	},
 	BlendingFillSet {
@@ -53,9 +53,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		gradient_type: GradientType,
 	},
-	GradientSpreadMethodSet {
+	GradientSpreadSet {
 		layer: LayerNodeIdentifier,
-		spread_method: GradientSpreadMethod,
+		gradient_spread: GradientSpread,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

@@ -1,0 +1,30 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "Node16",
+		"moduleResolution": "node16",
+		"strict": true,
+		"allowJs": true,
+		"checkJs": true,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"verbatimModuleSyntax": true,
+		"types": ["node"],
+		"lib": ["ESNext", "DOM", "DOM.Iterable"]
+	},
+	"include": [
+		// TypeScript and JSDoc-typed JavaScript files
+		"**/*.ts",
+		"**/*.js",
+		// Also include build scripts, which aren't included above because of the dot-prefixed directory
+		".build-scripts/**/*.ts",
+		".build-scripts/**/*.js"
+	],
+	"exclude": [
+		// Ignore generated directories
+		"node_modules",
+		"public",
+		// Ignore vendored code
+		"static/*.js"
+	]
+}

@@ -1,0 +1,21 @@
+.diptych.diptych {
+	gap: 0 calc(var(--feature-box-padding) * var(--variable-px));
+
+	.feature-box-narrow {
+		margin-top: calc(40 * var(--variable-px));
+	}
+}
+
+.feature-box-narrow {
+	.code-contributions & {
+		background-color: var(--color-seaside);
+	}
+	
+	.creative-contributions & {
+		background-color: var(--color-lemon);
+	}
+	
+	.user-contributions & {
+		background-color: var(--color-lilac);
+	}
+}
