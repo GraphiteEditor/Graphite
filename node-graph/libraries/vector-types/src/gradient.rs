@@ -1,6 +1,6 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_MIDPOINT, ATTR_POSITION, Item, List};
+use core_types::list::{ATTR_MIDPOINT, ATTR_POSITION, ATTR_SPREAD_METHOD, Item, List};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -96,13 +96,15 @@ impl GradientStops<SRGBA8> {
 	}
 }
 
-/// The serialized exchange form of a gradient: its stops, nested so that whole-ramp settings
-/// like spread method can join as sibling fields opted in from their defaults.
+/// The serialized exchange form of a gradient: its stops, with whole-ramp settings as sibling fields serialized only when non-default.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GradientRamp<C = Color> {
 	pub stops: GradientStops<C>,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpreadMethod::is_default"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub spread_method: GradientSpreadMethod,
 }
 
 unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C> {
@@ -111,13 +113,19 @@ unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C>
 
 impl<C> From<GradientStops<C>> for GradientRamp<C> {
 	fn from(stops: GradientStops<C>) -> Self {
-		Self { stops }
+		Self {
+			stops,
+			spread_method: Default::default(),
+		}
 	}
 }
 
 impl From<&Gradient> for GradientRamp {
 	fn from(gradient: &Gradient) -> Self {
-		Self { stops: gradient.into() }
+		Self {
+			stops: gradient.into(),
+			spread_method: Default::default(),
+		}
 	}
 }
 
@@ -136,6 +144,27 @@ impl From<GradientRamp> for Gradient {
 impl From<&GradientRamp> for Gradient {
 	fn from(ramp: &GradientRamp) -> Self {
 		Gradient::from(ramp.stops.clone())
+	}
+}
+
+// The runtime wire form: whole-ramp settings ride as the gradient item's attributes in its containing list,
+// where the Fill kernel, chain setter nodes, and renderers read and write them
+impl From<GradientRamp> for Item<Gradient> {
+	fn from(ramp: GradientRamp) -> Self {
+		let mut item = Item::new_from_element(Gradient::from(ramp.stops));
+		if !ramp.spread_method.is_default() {
+			item.set_attribute(ATTR_SPREAD_METHOD, ramp.spread_method);
+		}
+		item
+	}
+}
+
+impl From<&Item<Gradient>> for GradientRamp {
+	fn from(item: &Item<Gradient>) -> Self {
+		Self {
+			stops: item.element().into(),
+			spread_method: item.attribute_cloned_or_default(ATTR_SPREAD_METHOD),
+		}
 	}
 }
 
@@ -158,19 +187,28 @@ impl From<&GradientStops<SRGBA8>> for GradientRamp {
 
 impl From<&GradientRamp> for GradientRamp<SRGBA8> {
 	fn from(ramp: &GradientRamp) -> Self {
-		Self { stops: ramp.into() }
+		Self {
+			stops: ramp.into(),
+			spread_method: ramp.spread_method,
+		}
 	}
 }
 
 impl From<&Gradient> for GradientRamp<SRGBA8> {
 	fn from(gradient: &Gradient) -> Self {
-		Self { stops: gradient.into() }
+		Self {
+			stops: gradient.into(),
+			spread_method: Default::default(),
+		}
 	}
 }
 
 impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 	fn from(ramp: &GradientRamp<SRGBA8>) -> Self {
-		Self::from(&ramp.stops)
+		Self {
+			spread_method: ramp.spread_method,
+			..Self::from(&ramp.stops)
+		}
 	}
 }
 
@@ -747,9 +785,12 @@ impl Gradient {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum GradientSpreadMethod {
+	/// Extends the end colors outward.
 	#[default]
 	Pad,
+	/// Loops the gradient by mirroring back-and-forth.
 	Reflect,
+	/// Loops the gradient as copies of itself.
 	Repeat,
 	// TODO: Add a "Clear" variant that returns transparent black outside the gradient's range
 }
@@ -761,6 +802,10 @@ impl GradientSpreadMethod {
 			GradientSpreadMethod::Reflect => "reflect",
 			GradientSpreadMethod::Repeat => "repeat",
 		}
+	}
+
+	pub fn is_default(&self) -> bool {
+		*self == Self::default()
 	}
 }
 
@@ -857,6 +902,44 @@ mod tests {
 		let explicit = GradientRamp::from(explicit);
 		let json = serde_json::to_string(&explicit).unwrap();
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), explicit);
+	}
+
+	#[test]
+	fn spread_method_serializes_only_when_not_default() {
+		let default_spread = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		let json = serde_json::to_string(&default_spread).unwrap();
+		assert!(!json.contains("spread_method"), "the default Pad spread method must not serialize: {json}");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_spread);
+
+		let repeating = GradientRamp {
+			spread_method: GradientSpreadMethod::Repeat,
+			..default_spread.clone()
+		};
+		let json = serde_json::to_string(&repeating).unwrap();
+		assert!(json.contains(r#""spread_method":"Repeat""#), "a non-default spread method must serialize: {json}");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), repeating);
+	}
+
+	#[test]
+	fn spread_method_round_trips_through_the_item_attribute() {
+		let ramp = GradientRamp {
+			spread_method: GradientSpreadMethod::Repeat,
+			..GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]))
+		};
+
+		let item = Item::<Gradient>::from(ramp.clone());
+		assert_eq!(
+			item.attribute_cloned_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD),
+			GradientSpreadMethod::Repeat,
+			"the runtime item should carry the spread method as its attribute"
+		);
+		assert_eq!(GradientRamp::from(&item), ramp);
+
+		let padded = Item::<Gradient>::from(GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])));
+		assert!(
+			padded.attribute::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none(),
+			"the default Pad must stay absent rather than materialize"
+		);
 	}
 
 	#[test]

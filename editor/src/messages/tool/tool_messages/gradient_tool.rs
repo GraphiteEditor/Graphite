@@ -9,14 +9,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStop, GradientStops, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStop, GradientType, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -53,7 +53,7 @@ pub enum GradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
-	UpdateStops { stops: GradientStops<SRGBA8> },
+	UpdateRamp { ramp: GradientRamp<SRGBA8> },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
@@ -63,7 +63,6 @@ pub enum GradientOptionsUpdate {
 	Type(GradientType),
 	ReverseStops,
 	ReverseDirection,
-	SetSpreadMethod(GradientSpreadMethod),
 }
 
 impl ToolMetadata for GradientTool {
@@ -111,16 +110,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 						appearance.transform *= reverse;
 					},
 				),
-				GradientOptionsUpdate::SetSpreadMethod(spread_method) => {
-					self.options.spread_method = spread_method;
-					apply_gradient_update(
-						&mut self.data,
-						context,
-						responses,
-						|(_gradient, appearance)| appearance.spread_method != spread_method,
-						|(_gradient, appearance)| appearance.spread_method = spread_method,
-					);
-				}
 			},
 			ToolMessage::Gradient(GradientToolMessage::StartTransactionForColorStop) => {
 				if self.data.color_picker_transaction_open {
@@ -145,8 +134,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					responses.add(PropertiesPanelMessage::Refresh);
 				}
 			}
-			ToolMessage::Gradient(GradientToolMessage::UpdateStops { stops }) => {
-				apply_stops_update(&mut self.data, context, responses, Gradient::from(&stops));
+			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
+				let ramp = GradientRamp::from(&ramp);
+				self.options.spread_method = ramp.spread_method;
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), ramp.spread_method);
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -271,17 +262,20 @@ impl LayoutHolder for GradientTool {
 				},
 			])
 		});
-		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value)))
-			.allow_none(false)
-			.narrow(true)
-			.tooltip_label("Gradient Stops")
-			.tooltip_description("Edit the gradient's color stops.")
-			.on_update(|input: &ColorInput| {
-				let stops = input.value.as_gradient().map(|ramp| ramp.stops.clone()).unwrap_or_default();
-				GradientToolMessage::UpdateStops { stops }.into()
-			})
-			.on_commit(|_| DocumentMessage::AddTransaction.into())
-			.widget_instance();
+		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp {
+			spread_method: self.options.spread_method,
+			..GradientRamp::from(&stops_value)
+		}))
+		.allow_none(false)
+		.narrow(true)
+		.tooltip_label("Gradient Stops")
+		.tooltip_description("Edit the gradient's color stops.")
+		.on_update(|input: &ColorInput| {
+			let ramp = input.value.as_gradient().cloned().unwrap_or_default();
+			GradientToolMessage::UpdateRamp { ramp }.into()
+		})
+		.on_commit(|_| DocumentMessage::AddTransaction.into())
+		.widget_instance();
 
 		let reverse_stops = IconButton::new("Reverse", 24)
 			.tooltip_label("Reverse Stops")
@@ -295,29 +289,6 @@ impl LayoutHolder for GradientTool {
 			})
 			.widget_instance();
 
-		let spread_method = RadioInput::new(vec![
-			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad Spread Method").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect Spread Method").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat Spread Method").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
-				}
-				.into()
-			}),
-		])
-		.selected_index(Some(self.options.spread_method as u32))
-		.widget_instance();
-
 		let reverse_direction_icon = if self.data.gradient_orientation_rightward {
 			"ReverseRadialGradientToRight"
 		} else {
@@ -325,7 +296,7 @@ impl LayoutHolder for GradientTool {
 		};
 		let reverse_direction = IconButton::new(reverse_direction_icon, 24)
 			.tooltip_label("Reverse Direction")
-			.tooltip_description("Reverse which end the gradient radiates from.")
+			.tooltip_description(reverse_direction_tooltip_description(self.options.gradient_type))
 			.disabled(!self.data.has_selected_gradient)
 			.on_update(|_| {
 				GradientToolMessage::UpdateOptions {
@@ -341,8 +312,6 @@ impl LayoutHolder for GradientTool {
 			reverse_stops,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			gradient_type,
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			spread_method,
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			reverse_direction,
 		]);
@@ -1891,7 +1860,7 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient) {
+fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, spread_method: GradientSpreadMethod) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -1907,13 +1876,14 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 
 		if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
+			responses.add(GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method });
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient: new_gradient.clone(),
 				gradient_type: appearance.gradient_type,
-				spread_method: appearance.spread_method,
+				spread_method,
 				transform: appearance.transform,
 			});
 			updated_any_layer = true;
@@ -1922,6 +1892,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 
 	if let Some(selected_gradient) = &mut data.selected_gradient {
 		selected_gradient.gradient = new_gradient.clone();
+		selected_gradient.appearance.spread_method = spread_method;
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
@@ -2011,6 +1982,7 @@ mod test_gradient {
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 	use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_node_id_with_direct_fill_input;
+	use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
 	use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_gradient_value_node_id;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -2060,14 +2032,9 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let stops = match fill_node.input(fill::FillInput)?.as_value()? {
-					TaggedValue::GradientRamp(ramp) => Gradient::from(ramp),
+				let (stops, spread_method) = match fill_node.input(fill::FillInput)?.as_value()? {
+					TaggedValue::GradientRamp(ramp) => (Gradient::from(ramp), ramp.spread_method),
 					_ => return None,
-				};
-
-				let spread_method = match fill_node.input(fill::SpreadMethodInput).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-					_ => GradientSpreadMethod::default(),
 				};
 
 				let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
@@ -2608,6 +2575,14 @@ mod test_gradient {
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted after drawing a gradient");
 	}
 
+	/// Build the JS-boundary ramp the stops swatch's picker would send when choosing a new spread method.
+	fn ramp_with_spread(stops: &Gradient, spread_method: GradientSpreadMethod) -> GradientRamp<SRGBA8> {
+		GradientRamp::<SRGBA8>::from(&GradientRamp {
+			spread_method,
+			..GradientRamp::from(stops)
+		})
+	}
+
 	#[tokio::test]
 	async fn change_spread_method() {
 		let mut editor = EditorTestUtils::create();
@@ -2621,8 +2596,8 @@ mod test_gradient {
 
 		// Update spread method to Repeat
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Repeat),
 			})
 			.await;
 
@@ -2631,8 +2606,8 @@ mod test_gradient {
 
 		// Update spread method to Reflect
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Reflect),
 			})
 			.await;
 
@@ -2654,8 +2629,8 @@ mod test_gradient {
 
 		// Update spread method to Repeat
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Repeat),
 			})
 			.await;
 
@@ -2664,8 +2639,8 @@ mod test_gradient {
 
 		// Update spread method to Reflect
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Reflect),
 			})
 			.await;
 
@@ -2883,9 +2858,10 @@ mod test_gradient {
 		// Set the spread method through the tool, which splices a 'Spread Method' node onto the Fill's fill input wire.
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
+		let stops = get_gradient_stops(layer, &editor.active_document().network_interface).expect("the chain layer should resolve its gradient stops");
 		editor
-			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&stops, GradientSpreadMethod::Reflect),
 			})
 			.await;
 

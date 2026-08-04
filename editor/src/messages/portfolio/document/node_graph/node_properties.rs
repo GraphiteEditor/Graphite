@@ -2459,13 +2459,23 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	match &fill {
-		ResolvedFill::Gradient { gradient: stops, .. } => {
+		ResolvedFill::Gradient { gradient: stops, spread_method, .. } => {
 			let stops = stops.clone();
+			let spread_method = *spread_method;
 
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
-				.on_update(update_value(move |_| TaggedValue::GradientRamp(GradientRamp::from(stops.reversed())), node_id, FillInput))
+				.on_update(update_value(
+					move |_| {
+						TaggedValue::GradientRamp(GradientRamp {
+							spread_method,
+							..GradientRamp::from(stops.reversed())
+						})
+					},
+					node_id,
+					FillInput,
+				))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			widgets_first_row.push(reverse_button);
@@ -2481,7 +2491,10 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoice::<SRGBA8>::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops)),
+		ResolvedFill::Gradient { gradient: stops, spread_method, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp {
+			spread_method: *spread_method,
+			..GradientRamp::from(stops)
+		}),
 		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
 	};
 
@@ -2570,36 +2583,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	if let ResolvedFill::Gradient {
 		gradient_type,
-		spread_method,
 		transform,
 		transform_is_value,
 		..
 	} = fill.clone()
 	{
-		// Linear/Radial radio: blank assist (the "Reverse Direction" button has been moved down to the spread method row)
-		let mut row = vec![TextLabel::new("").widget_instance()];
-		add_blank_assist(&mut row);
-
-		let entries = [GradientType::Linear, GradientType::Radial]
-			.iter()
-			.map(|&grad_type| {
-				RadioEntryData::new(format!("{:?}", grad_type))
-					.label(format!("{:?}", grad_type))
-					.on_update(update_value(move |_| TaggedValue::GradientType(grad_type), node_id, GradientTypeInput))
-					.on_commit(commit_value)
-			})
-			.collect();
-
-		row.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries).selected_index(Some(gradient_type as u32)).widget_instance(),
-		]);
-
-		widgets.push(LayoutGroup::row(row));
-
-		// "Reverse Direction" button (assist) plus the Pad/Reflect/Repeat radio. Icon orientation is resolved in viewport
+		// "Reverse Direction" button (assist) beside the Linear/Radial radio. Icon orientation is resolved in viewport
 		// space so canvas tilt and layer transforms behave the same as in the Gradient tool's control bar.
-		let mut spread_methods_row = vec![TextLabel::new("").widget_instance()];
+		let mut row = vec![TextLabel::new("").widget_instance()];
 
 		// The button writes a value into the transform input, so only offer it when the input isn't wired
 		if transform_is_value {
@@ -2610,11 +2601,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 			let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
 				.tooltip_label("Reverse Direction")
-				.tooltip_description(if gradient_type == GradientType::Radial {
-					"Reverse which end the gradient radiates from."
-				} else {
-					"Swap the start and end points of the gradient line."
-				})
+				.tooltip_description(graph_modification_utils::reverse_direction_tooltip_description(gradient_type))
 				.on_update(move |_| Message::Batched {
 					messages: Box::new([
 						NodeGraphMessage::SetInputValue {
@@ -2632,28 +2619,28 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					]),
 				})
 				.widget_instance();
-			spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-			spread_methods_row.push(reverse_direction_button);
+			row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			row.push(reverse_direction_button);
 		} else {
-			add_blank_assist(&mut spread_methods_row);
+			add_blank_assist(&mut row);
 		}
 
-		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
+		let entries = [GradientType::Linear, GradientType::Radial]
 			.iter()
-			.map(|&spread_method| {
-				RadioEntryData::new(format!("{:?}", spread_method))
-					.label(format!("{:?}", spread_method))
-					.on_update(update_value(move |_| TaggedValue::GradientSpreadMethod(spread_method), node_id, SpreadMethodInput))
+			.map(|&gradient_type| {
+				RadioEntryData::new(format!("{:?}", gradient_type))
+					.label(format!("{:?}", gradient_type))
+					.on_update(update_value(move |_| TaggedValue::GradientType(gradient_type), node_id, GradientTypeInput))
 					.on_commit(commit_value)
 			})
 			.collect();
 
-		spread_methods_row.extend_from_slice(&[
+		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(spread_method_entries).selected_index(Some(spread_method as u32)).widget_instance(),
+			RadioInput::new(entries).selected_index(Some(gradient_type as u32)).widget_instance(),
 		]);
 
-		widgets.push(LayoutGroup::row(spread_methods_row));
+		widgets.push(LayoutGroup::row(row));
 	}
 
 	widgets
