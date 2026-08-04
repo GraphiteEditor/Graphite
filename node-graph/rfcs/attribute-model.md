@@ -330,7 +330,6 @@ that decomposition is hoisted per run.
 | plain parameters | wired value inputs | as today |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
 | `impl Node<Context<'_>, Output = T>` (unbounded) | source of an opaque record family | routing, see below |
-| `impl SampledNode<Context<'_>, Output = T>` (unbounded) | sampled record input | routing at a kernel-chosen index, see below |
 | `-> List<W>` with `level_extent =` | per-lane level production | structural skeleton emitted by the macro |
 | `-> List<W>` without | store form | whole-level body, node owns storage |
 
@@ -344,8 +343,8 @@ the tuple's, so multi-write lanes pay no extra nesting. A literal
 the feature gate while parsing the item, before attribute macros run.
 
 The rule behind all the lazy forms: kernels control whether, when, and
-(for sampled inputs) at which index their inputs are evaluated, but
-never how the records move. Attributes travel inside record values or
+at which index their inputs are evaluated, but never how the records
+move. Attributes travel inside record values or
 through generated machinery, so kernel-controlled evaluation cannot
 misalign them, and domain declarations stay with the extent system.
 
@@ -408,8 +407,7 @@ multiplexers, and per-lane data-driven choice among inputs are all plain
 kernels over the same mechanism, and none of them needs anything from
 the macro beyond the family lowering. Whole-list switching vs. per-item
 zip is just the residency of the condition: an invariant condition
-collapses through nullification, a varying one selects per lane. This
-is why Bundle and Unbundle are no longer needed.
+collapses through nullification, a varying one selects per lane.
 
 The one-source shape also covers the registry's infrastructure rows.
 Monitor, context modification, memoize, and the lend and clone adapters
@@ -428,38 +426,28 @@ The genuine conversion rows (the Into and Convert matrix) remain,
 because those do real per-type work; the type-erased attribute
 conversion rows disappear with the representation they serve.
 
-Sampling extends routing with a chosen index. A sampled input's handle
-takes the index as an evaluation argument, and the value it yields
-carries the record of that lane. The rule that used to forbid
-kernel-chosen indices existed to protect attribute alignment, and record
-values dissolve it: the record moves as one unit, so a sampled row
-cannot come apart. Soundness needs one addition, because a different
-index yields a genuinely different record rather than an identical one:
-each sampled input gets an intermediate slot in the sampling node's
-frame allocation, and a sampled value is stable until the same input is
-sampled again. One live sample per declared input, and a kernel that
-needs two rows of one input side by side declares the input twice.
-
-This makes index-computable reorders plain kernels:
+A kernel that modifies the index on the context evaluates an input at a
+lane other than its own, which makes index-computable reorders plain
+kernels:
 
 ```rs
 /// Reverses the order of the input list.
 #[node_macro::node(category("General"))]
 fn reverse<T>(
-	ctx: impl Ctx + ExtractIndex,
+	ctx: impl Ctx + DeriveCtx + ModifyIndex,
 	_: (),
-	content: impl SampledNode<Context<'_>, Output = T>,
+	content: impl Node<Context<'_>, Output = T>,
 ) -> T {
-	content.eval(ctx, content.extent() - 1 - ctx.index())
+	content.eval(&ctx.with_index(content.extent(&ctx)? - 1 - ctx.innermost_index()))
 }
 ```
 
 Shift, slice, and read-item-at-index are the same shape. Sort and
 shuffle still compute a whole-extent permutation once per sweep, which a
 pure per-lane kernel cannot hold, so they keep the remap-returning
-kernel. Applying a remap now has a spec, though: per lane, sample the
-input at the permuted index. The generated batch kernel is the
-law-bound override of that spec, materializing the input's columns once
+kernel. Applying a remap has a spec: per lane, evaluate the input at the
+permuted index. The generated batch kernel is the law-bound override of
+that spec, materializing the input's columns once
 and gathering each index-varying column through the wiring-resolved
 table with index-invariant columns skipped (about 1.4ns per varying
 column per lane; the comparison work of the sort itself does not depend
@@ -578,9 +566,10 @@ from shading languages for residency.
   contain.
 - The graph UX of the map/enter construct, and whether attribute-typed
   parameters can ever be ordinary exposed inputs.
-- Naming: `Attribute` trait vs. `Attr` wrapper, whether the authoring
-  `List` sharing the wire type's name helps or confuses, and the sampled
-  input trait's name.
+- Naming: `Attribute` trait vs. `Attr` wrapper, and whether the
+  authoring `List` sharing the wire type's name helps or confuses.
+- Whether evaluating at a lane outside the input's extent is clamped,
+  wrapped, or a debug assertion.
 - `List<List<W>>` outputs, i.e. one node pushing two levels.
 - How chatty the editor boundary becomes per frame, given that tools
   consume materialized views today.
