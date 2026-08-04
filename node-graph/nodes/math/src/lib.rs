@@ -1378,7 +1378,7 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vector_types::GradientType>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_TYPE, *gradient_type.element());
@@ -1386,7 +1386,7 @@ fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vect
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
@@ -1396,7 +1396,7 @@ fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vect
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
@@ -1409,7 +1409,7 @@ fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64
 /// The final stop belongs to no interval so its midpoint is ignored.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
