@@ -34,7 +34,7 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientRamp, GradientSpread, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -311,7 +311,7 @@ pub(crate) fn property_from_type(
 						// AUTO-GENERATED ENUM TYPES
 						// =========================
 						Some(x) if id_is::<GradientType>(x) => enum_choice::<GradientType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientSpreadMethod>(x) => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
@@ -2421,7 +2421,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		Gradient {
 			gradient: Gradient,
 			gradient_type: GradientType,
-			spread_method: GradientSpreadMethod,
+			gradient_spread: GradientSpread,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
@@ -2451,7 +2451,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					Some(gradient) => ResolvedFill::Gradient {
 						gradient: gradient.stops,
 						gradient_type: gradient.gradient_type,
-						spread_method: gradient.spread_method,
+						gradient_spread: gradient.gradient_spread,
 						transform: gradient.transform,
 						transform_is_value: gradient.transform_is_value,
 					},
@@ -2479,9 +2479,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	match &fill {
-		ResolvedFill::Gradient { gradient: stops, spread_method, .. } => {
+		ResolvedFill::Gradient { gradient: stops, gradient_spread, .. } => {
 			let stops = stops.clone();
-			let spread_method = *spread_method;
+			let gradient_spread = *gradient_spread;
 
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
@@ -2489,7 +2489,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.on_update(update_value(
 					move |_| {
 						TaggedValue::GradientRamp(GradientRamp {
-							spread_method,
+							gradient_spread,
 							..GradientRamp::from(stops.reversed())
 						})
 					},
@@ -2511,8 +2511,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoice::<SRGBA8>::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, spread_method, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp {
-			spread_method: *spread_method,
+		ResolvedFill::Gradient { gradient: stops, gradient_spread, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp {
+			gradient_spread: *gradient_spread,
 			..GradientRamp::from(stops)
 		}),
 		ResolvedFill::Other => FillChoice::<SRGBA8>::None,

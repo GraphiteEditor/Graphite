@@ -14,7 +14,7 @@ use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
 
-use vector_types::gradient::{GradientSpreadMethod, GradientType as GradientTypeValue};
+use vector_types::gradient::{GradientSpread, GradientType as GradientTypeValue};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Resolves a signed index over `total` lanes: negatives count from the end,
@@ -723,8 +723,8 @@ attribute_reads! {
 	read_blend_mode_attribute: core_types::blending::BlendMode => core_types::blending::BlendMode;
 	/// Reads a named gradient-shape attribute, such as `gradient_type`.
 	read_gradient_type_attribute: GradientTypeValue => GradientTypeValue;
-	/// Reads a named gradient-spread attribute, such as `spread_method`.
-	read_spread_method_attribute: GradientSpreadMethod => GradientSpreadMethod;
+	/// Reads a named gradient-spread attribute, such as `gradient_spread`.
+	read_gradient_spread_attribute: GradientSpread => GradientSpread;
 }
 
 /// Joins two levels of the same type, the base's lanes followed by the new's.
