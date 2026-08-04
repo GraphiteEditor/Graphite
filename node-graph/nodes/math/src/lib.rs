@@ -1377,7 +1377,7 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 	gradient
 }
 
-/// Sets the type (linear or radial) of each gradient in the input list.
+/// Sets the form (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Gradient"))]
 fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
