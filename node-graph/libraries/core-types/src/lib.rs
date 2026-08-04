@@ -1,6 +1,7 @@
 extern crate log;
 
 pub mod arena;
+pub mod attribute;
 pub mod bounds;
 pub mod consts;
 pub mod context;
@@ -12,6 +13,7 @@ pub mod memo;
 pub mod misc;
 pub mod node;
 pub mod ops;
+pub mod record;
 pub mod registry;
 pub mod render_complexity;
 pub mod runtime;

@@ -317,6 +317,7 @@ impl PerPixelAdjustCodegen<'_> {
 			output_type: raster_gpu,
 			is_async: false,
 			fields,
+			attribute_reads: Vec::new(),
 			body,
 			description: self.parsed.description.clone(),
 		};

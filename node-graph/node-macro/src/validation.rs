@@ -1,6 +1,6 @@
-use crate::parsing::{Implementation, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
+use crate::parsing::{Implementation, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, attr_marker, record_writes};
 use proc_macro_error2::emit_error;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::spanned::Spanned;
 use syn::{GenericParam, Type};
 
@@ -13,6 +13,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_range_slider_bounds,
 		validate_async_source,
 		validate_lend_fields,
+		validate_record_io,
 	];
 
 	for validator in validators {
@@ -20,6 +21,74 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+fn validate_record_io(parsed: &ParsedNodeFn) {
+	let value = crate::codegen::slot_value_type(&parsed.output_type);
+	if let Type::Tuple(tuple) = &value {
+		let has_attr_slot = tuple.elems.iter().any(|slot| attr_marker(slot).is_some());
+		if has_attr_slot && record_writes(&value).is_none() {
+			emit_error!(
+				parsed.output_type.span(),
+				"a record return tuple is the element first, then only `Attr<..>` writes"
+			);
+		}
+	} else if attr_marker(&value).is_some() {
+		emit_error!(parsed.output_type.span(), "an `Attr<..>` write needs an element in the first tuple slot, e.g. `(T, Attr<..>)`");
+	}
+
+	let writes = record_writes(&value);
+	if parsed.attribute_reads.is_empty() && writes.is_none() {
+		return;
+	}
+
+	if parsed.is_async || crate::codegen::is_source_kernel(&parsed.output_type) {
+		emit_error!(parsed.output_type.span(), "attribute io is not supported on async source kernels");
+	}
+	if crate::codegen::is_poll_kernel(&parsed.output_type) {
+		emit_error!(parsed.output_type.span(), "attribute io needs a plain or `Result<_, Interrupt>` kernel, not a `GPoll` one");
+	}
+
+	match parsed.fields.first() {
+		None => emit_error!(
+			parsed.fn_name.span(),
+			"attribute io needs a value carrier as the first parameter after the context"
+		),
+		Some(carrier) => {
+			let valid = !carrier.is_data_field
+				&& matches!(&carrier.ty, ParsedFieldType::Regular(RegularParsedField { ty, lend: None, .. }) if !matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()));
+			if !valid {
+				emit_error!(
+					carrier.pat_ident.span(),
+					"attribute io needs a value carrier as the first parameter after the context: an owned element type, not `()`, `#[data]`, `&T`, or `impl Node`"
+				);
+			}
+		}
+	}
+	for field in parsed.fields.iter().skip(1) {
+		if matches!(field.ty, ParsedFieldType::Node(_)) {
+			emit_error!(field.pat_ident.span(), "record nodes take no lazy inputs yet");
+		}
+	}
+
+	let mut seen_reads: Vec<String> = Vec::new();
+	for read in &parsed.attribute_reads {
+		let marker = read.marker.to_token_stream().to_string();
+		if seen_reads.contains(&marker) {
+			emit_error!(read.pat_ident.span(), "attribute `{}` is read twice", marker);
+		}
+		seen_reads.push(marker);
+	}
+	if let Some(writes) = &writes {
+		let mut seen_writes: Vec<String> = Vec::new();
+		for marker in &writes.markers {
+			let written = marker.to_token_stream().to_string();
+			if seen_writes.contains(&written) {
+				emit_error!(parsed.output_type.span(), "attribute `{}` is written twice", written);
+			}
+			seen_writes.push(written);
+		}
+	}
 }
 
 fn validate_async_source(parsed: &ParsedNodeFn) {
@@ -206,6 +275,8 @@ fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
 
 fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 	let has_skip_impl = parsed.attributes.skip_impl;
+	let routing = crate::codegen::routing_io(parsed);
+	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {
 		for field in &parsed.fields {
@@ -217,6 +288,9 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 			let pat_ident = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {
+					if routing_source(ty) {
+						continue;
+					}
 					if contains_generic_param(ty, &parsed.fn_generics) && implementations.is_empty() {
 						emit_error!(
 							ty.span(),
@@ -234,6 +308,9 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 					implementations,
 					..
 				}) => {
+					if routing_source(output_type) {
+						continue;
+					}
 					if (contains_generic_param(input_type, &parsed.fn_generics) || contains_generic_param(output_type, &parsed.fn_generics)) && implementations.is_empty() {
 						emit_error!(
 							pat_ident.span(),

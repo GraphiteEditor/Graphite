@@ -954,6 +954,15 @@ impl<T> List<T> {
 		}
 	}
 
+	/// Creates a list from element values with no attributes.
+	pub fn from_element_values(element: Vec<T>) -> Self {
+		let len = element.len();
+		Self {
+			element,
+			attributes: Attributes::with_len(len),
+		}
+	}
+
 	/// Creates a list containing a single item from the given [`Item`], preserving its attributes.
 	pub fn new_from_item(item: Item<T>) -> Self {
 		let mut attributes = Attributes::new();
@@ -998,6 +1007,11 @@ impl<T> List<T> {
 	/// Returns an iterator over shared references to all element values.
 	pub fn iter_element_values(&self) -> std::slice::Iter<'_, T> {
 		self.element.iter()
+	}
+
+	/// Consumes the list, returning its element values and dropping its attributes.
+	pub fn into_element_values(self) -> Vec<T> {
+		self.element
 	}
 
 	/// Returns an iterator over mutable references to all element values.
@@ -1085,6 +1099,20 @@ impl<T> List<T> {
 			pad_with_implicit_default(&key, &mut new_attribute, trailing_defaults);
 			self.attributes.attributes.push((key, new_attribute));
 		}
+	}
+
+	/// Removes and returns the attribute column for the given key, if present.
+	pub fn take_attribute_dyn(&mut self, key: &str) -> Option<AttributeDyn> {
+		let position = self.attributes.attributes.iter().position(|(k, _)| k == key)?;
+		Some(AttributeDyn(self.attributes.attributes.remove(position).1))
+	}
+
+	/// Replaces (or adds) an attribute, taking ownership of the column, whose length must equal this list's item count.
+	pub fn insert_attribute_dyn(&mut self, key: impl Into<String>, column: AttributeDyn) {
+		assert_eq!(column.len(), self.element.len(), "attribute column length must match the list's item count");
+		let key = key.into();
+		self.attributes.attributes.retain(|(k, _)| k != &key);
+		self.attributes.attributes.push((key, column.0));
 	}
 
 	/// Removes the entire attribute for the given key, if present.

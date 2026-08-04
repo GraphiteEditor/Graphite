@@ -624,6 +624,7 @@ pub struct EvalScope<'a> {
 	pointer_position: Option<DVec2>,
 	generations: &'a [(SourceId, u64)],
 	arena: &'a Arena,
+	frame: Option<&'a crate::record::Frame>,
 	hash: u64,
 }
 
@@ -635,10 +636,17 @@ impl<'a> EvalScope<'a> {
 			pointer_position,
 			generations,
 			arena,
+			frame: None,
 			hash: 0,
 		};
 		scope.hash = scope.compute_hash(|_| true);
 		scope
+	}
+
+	/// Attaches the record frame. Operational like the arena: not part of the
+	/// scope hash.
+	pub fn with_frame(&self, frame: &'a crate::record::Frame) -> EvalScope<'a> {
+		EvalScope { frame: Some(frame), ..*self }
 	}
 
 	pub fn with_real_time(&self, real_time: Option<f64>) -> EvalScope<'a> {
@@ -699,6 +707,23 @@ impl<'a> EvalScope<'a> {
 
 	pub fn arena(&self) -> &'a Arena {
 		self.arena
+	}
+
+	pub fn frame(&self) -> Option<&'a crate::record::Frame> {
+		self.frame
+	}
+}
+
+/// Read access to the record frame, the operational sibling of
+/// [`ExtractArena`]. `None` on contexts whose scope carries no frame (a
+/// graph without record edges allocates none).
+pub trait ExtractFrame<'e> {
+	fn frame(&self) -> Option<&'e crate::record::Frame>;
+}
+
+impl<'a> ExtractFrame<'a> for ContextImpl<'a> {
+	fn frame(&self) -> Option<&'a crate::record::Frame> {
+		self.scope.frame()
 	}
 }
 

@@ -5,6 +5,8 @@ pub mod debug;
 pub mod extract_xy;
 pub mod memo;
 pub mod ops;
+#[cfg(test)]
+mod record;
 
 // Re-export all nodes
 pub use animation::*;

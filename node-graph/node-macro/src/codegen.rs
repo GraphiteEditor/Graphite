@@ -605,6 +605,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			top_level: quote!(),
 		});
 	}
+	let record = record_shape(parsed);
+	if record.is_none() && has_record_io(parsed) {
+		return Ok(NodeImplTokens {
+			in_mod: quote!(),
+			top_level: quote!(),
+		});
+	}
+	let routing = routing_io(parsed);
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
@@ -665,26 +673,44 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		true => quote!(#ctx_ident),
 		false => quote!(#ctx_ident: #(#ctx_bounds)+*),
 	};
-	let mut generics: Vec<TokenStream2> = parsed
+	let generic_tokens = |param: &GenericParam| match param {
+		GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_param.map(|ctx_param| &ctx_param.ident) => ctx_generic.clone(),
+		param => quote!(#param),
+	};
+	let mut generics: Vec<TokenStream2> = parsed.fn_generics.iter().map(&generic_tokens).collect();
+	let mut impl_generics: Vec<TokenStream2> = parsed
 		.fn_generics
 		.iter()
-		.map(|param| match param {
-			GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_param.map(|ctx_param| &ctx_param.ident) => ctx_generic.clone(),
-			param => quote!(#param),
+		.filter(|param| match (param, &routing) {
+			(GenericParam::Type(type_param), Some(routing)) => type_param.ident != routing.generic,
+			_ => true,
 		})
+		.map(&generic_tokens)
 		.collect();
 	if ctx_param.is_none() {
-		generics.push(ctx_generic);
+		generics.push(ctx_generic.clone());
+		impl_generics.push(ctx_generic);
 	}
 	if let Some(lifetime) = &introduced_lend_lifetime {
 		generics.insert(0, quote!(#lifetime));
+		impl_generics.insert(0, quote!(#lifetime));
+	}
+	if routing.is_some() {
+		impl_generics.insert(0, quote!('__record));
 	}
 
 	let fn_name = &parsed.fn_name;
 	let mod_name = format_ident!("_{}_mod", parsed.mod_name);
 	let struct_name = format_ident!("{}Node", parsed.struct_name);
 	let output_type = &parsed.output_type;
-	let trait_output = slot_value_type(&parsed.output_type);
+	let trait_output = match (&record, &routing) {
+		(Some(shape), _) => {
+			let element_out = &shape.element_out;
+			syn::parse_quote!(#core_types::list::List<#element_out>)
+		}
+		(None, Some(_)) => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
+		(None, None) => slot_value_type(&parsed.output_type),
+	};
 	let raw_lazy = matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_));
 	let injected_name = |ident: &Ident| async_source && (ident == "_runtime" || ident == "_source");
 	let where_predicates: Vec<TokenStream2> = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter()).map(|predicate| quote!(#predicate)).collect();
@@ -723,28 +749,49 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(#core_types::node::Node<#ctx_ident, Output = #output_type>),
 	};
 
-	let kernel_params = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).map(|field| {
-		let pat = &field.pat_ident;
-		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
-				let bound = lazy_bound(output_type);
-				quote!(#pat: &impl #bound)
-			}
-			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
-				let bound = lazy_bound(output_type);
-				quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
-			}
-		}
+	let attr_kernel_params = parsed.attribute_reads.iter().map(|read| {
+		let pat = &read.pat_ident;
+		let marker = &read.marker;
+		quote!(#pat: #core_types::attribute::Attr<#marker>)
 	});
+	let kernel_params = regular_fields
+		.iter()
+		.filter(|field| !injected_name(&field.pat_ident.ident))
+		.map(|field| {
+			let pat = &field.pat_ident;
+			match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
+					let bound = lazy_bound(output_type);
+					quote!(#pat: &impl #bound)
+				}
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
+					let bound = lazy_bound(output_type);
+					quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
+				}
+			}
+		})
+		.chain(attr_kernel_params);
 
-	let node_bounds = regular_fields.iter().zip(&node_generics).map(|(field, node_generic)| match &field.ty {
+	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
+	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
+	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
 			let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = &#lifetime #ty>)
 		}
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if record.is_some() && index == 0 => {
+			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #core_types::list::List<#ty>>)
+		}
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => {
+			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
+		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => {
+			let bound = lazy_bound(&record_value_ty);
+			quote!(#node_generic: #bound)
+		}
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 			let bound = lazy_bound(output_type);
 			quote!(#node_generic: #bound)
@@ -801,6 +848,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let eval_values = regular_fields.iter().enumerate().map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
+			ParsedFieldType::Regular(_) if record.is_some() && index == 0 => quote! {
+				let mut __record_list = match __cell.eval_input(#index, &self.#name, __input) {
+					Ok(value) => value,
+					Err(interrupt) => return interrupt.into(),
+				};
+			},
 			ParsedFieldType::Regular(_) => quote! {
 				let #name = match __cell.eval_input(#index, &self.#name, __input) {
 					Ok(value) => value,
@@ -994,8 +1047,109 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#fallback
 		}
 	};
+	let record_tail = record.as_ref().map(|shape| {
+		let record_call_args = regular_fields.iter().enumerate().map(|(index, field)| {
+			let name = &field.pat_ident.ident;
+			match (index, &field.ty) {
+				(0, _) => quote!(__element),
+				(_, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })) => quote!(#name),
+				_ => quote!(#name.clone()),
+			}
+		});
+		let attr_call_args = parsed.attribute_reads.iter().map(|read| {
+			let pat = &read.pat_ident.ident;
+			quote!(#pat)
+		});
+		let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #record_call_args)* #(, #attr_call_args)*));
+		let read_columns = parsed.attribute_reads.iter().enumerate().map(|(index, read)| {
+			let marker = &read.marker;
+			let column = format_ident!("__read_{index}");
+			quote! {
+				let #column = __record_list
+					.iter_attribute_values::<<#marker as #core_types::attribute::Attribute>::Value>(<#marker as #core_types::attribute::Attribute>::NAME)
+					.map(|__values| __values.cloned().collect::<::std::vec::Vec<_>>());
+			}
+		});
+		let read_bindings = parsed.attribute_reads.iter().enumerate().map(|(index, read)| {
+			let pat = &read.pat_ident;
+			let marker = &read.marker;
+			let column = format_ident!("__read_{index}");
+			quote! {
+				let #pat = #core_types::attribute::Attr::<#marker>(match &#column {
+					Some(__values) => __values[__index].clone(),
+					None => <#marker as #core_types::attribute::Attribute>::default(),
+				});
+			}
+		});
+		let write_markers = &shape.write_markers;
+		let write_columns: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__write_{index}")).collect();
+		let write_column_decls = write_markers.iter().zip(&write_columns).map(|(marker, column)| {
+			quote! {
+				let mut #column: ::std::vec::Vec<<#marker as #core_types::attribute::Attribute>::Value> = ::std::vec::Vec::with_capacity(__len);
+			}
+		});
+		let write_pats: Vec<Ident> = (0..write_markers.len()).map(|index| format_ident!("__written_{index}")).collect();
+		let destructure = match write_markers.is_empty() {
+			true => quote!(let __element_out = __kernel_value;),
+			false => quote!(let (__element_out #(, #core_types::attribute::Attr(#write_pats))*) = __kernel_value;),
+		};
+		let write_pushes = write_columns.iter().zip(&write_pats).map(|(column, pat)| quote!(#column.push(#pat);));
+		let written_names = write_markers.iter().map(|marker| quote!(<#marker as #core_types::attribute::Attribute>::NAME));
+		let write_inserts = write_markers.iter().zip(&write_columns).map(|(marker, column)| {
+			quote! {
+				__out.insert_attribute_dyn(
+					<#marker as #core_types::attribute::Attribute>::NAME,
+					#core_types::list::AttributeDyn(::std::boxed::Box::new(#core_types::list::Attribute(#column))),
+				);
+			}
+		});
+		let kernel_value = match shape.dialect {
+			RecordDialect::Plain => quote!(#record_kernel_call),
+			RecordDialect::Interrupt => quote! {
+				match #record_kernel_call {
+					Ok(__value) => __value,
+					Err(__interrupt) => return __interrupt.into(),
+				}
+			},
+		};
+		let element_out = &shape.element_out;
+		quote! {
+			let __len = __record_list.len();
+			#(#read_columns)*
+			let __written_names: &[&str] = &[#(#written_names),*];
+			let __carried_keys: ::std::vec::Vec<::std::string::String> = __record_list
+				.attribute_keys()
+				.filter(|__key| !__written_names.contains(__key))
+				.map(::std::string::String::from)
+				.collect();
+			let mut __carried: ::std::vec::Vec<(::std::string::String, #core_types::list::AttributeDyn)> = ::std::vec::Vec::with_capacity(__carried_keys.len());
+			for __key in __carried_keys {
+				if let Some(__column) = __record_list.take_attribute_dyn(&__key) {
+					__carried.push((__key, __column));
+				}
+			}
+			#(#write_column_decls)*
+			let mut __out_elements: ::std::vec::Vec<#element_out> = ::std::vec::Vec::with_capacity(__len);
+			for (__index, __element) in __record_list.into_element_values().into_iter().enumerate() {
+				#(#read_bindings)*
+				let __kernel_value = #kernel_value;
+				#destructure
+				__out_elements.push(__element_out);
+				#(#write_pushes)*
+			}
+			let mut __out = #core_types::list::List::from_element_values(__out_elements);
+			for (__key, __column) in __carried {
+				__out.insert_attribute_dyn(__key, __column);
+			}
+			#(#write_inserts)*
+			__cell.finish(__out)
+		}
+	});
 	let eval_tail = match (async_fn, future_kernel) {
-		(false, false) => lift,
+		(false, false) => match record_tail {
+			Some(tail) => tail,
+			None => lift,
+		},
 		(true, _) => {
 			let kernel_value_names: Vec<&Ident> = kernel_fields.iter().map(|field| &field.pat_ident.ident).collect();
 			let snapshot_binding = snapshot_ctx.then(|| quote!(let __snapshot = #core_types::context::CtxSnapshot::capture(__input);)).into_iter();
@@ -1044,18 +1198,32 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
+	let record_bounds: Vec<TokenStream2> = match &record {
+		Some(_) => regular_fields
+			.iter()
+			.skip(1)
+			.filter_map(|field| match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => None,
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
+				_ => None,
+			})
+			.collect(),
+		None => Vec::new(),
+	};
+
 	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
 	let cfg = crate::shader_nodes::modify_cfg(&parsed.attributes);
 
 	let top_level = quote! {
 		#cfg
 		#[automatically_derived]
-		impl<#(#generics,)* #(#node_generics,)*> #core_types::node::Node<#ctx_ident> for #mod_name::#struct_name<#(#struct_type_params,)*>
+		impl<#(#impl_generics,)* #(#node_generics,)*> #core_types::node::Node<#ctx_ident> for #mod_name::#struct_name<#(#struct_type_params,)*>
 		where
 			#(#node_bounds,)*
 			#(#lend_outlives,)*
 			#(#clampable_bounds,)*
 			#(#async_bounds,)*
+			#(#record_bounds,)*
 			#(#where_predicates,)*
 		{
 			type Output = #trait_output;
@@ -1082,6 +1250,140 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 			#top_level
 		},
+	})
+}
+
+pub(crate) enum RecordDialect {
+	Plain,
+	Interrupt,
+}
+
+/// The record io of a node fn: the output element type and the written
+/// markers. Present exactly when the signature declares attribute reads or
+/// writes in a shape the driver supports (the carrier is the first field);
+/// malformed record io is reported by validation and generates no node impl.
+pub(crate) struct RecordShape {
+	pub(crate) element_out: Type,
+	pub(crate) write_markers: Vec<Type>,
+	pub(crate) dialect: RecordDialect,
+}
+
+pub(crate) fn has_record_io(parsed: &ParsedNodeFn) -> bool {
+	!parsed.attribute_reads.is_empty() || record_writes(&slot_value_type(&parsed.output_type)).is_some()
+}
+
+pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
+	let (value, dialect) = match kernel_kind(&parsed.output_type) {
+		KernelKind::Plain => (parsed.output_type.clone(), RecordDialect::Plain),
+		KernelKind::Interrupt(inner) => (inner, RecordDialect::Interrupt),
+		_ => return None,
+	};
+	let writes = record_writes(&value);
+	if parsed.attribute_reads.is_empty() && writes.is_none() {
+		return None;
+	}
+	if parsed.is_async {
+		return None;
+	}
+	let carrier = parsed.fields.first()?;
+	if carrier.is_data_field {
+		return None;
+	}
+	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, .. }) = &carrier.ty else {
+		return None;
+	};
+	if matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()) {
+		return None;
+	}
+	if parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		return None;
+	}
+	let (element_out, write_markers) = match writes {
+		Some(RecordWrites { element, markers }) => (element, markers),
+		None => (value, Vec::new()),
+	};
+	Some(RecordShape {
+		element_out,
+		write_markers,
+		dialect,
+	})
+}
+
+pub(crate) fn is_poll_kernel(output: &Type) -> bool {
+	matches!(kernel_kind(output), KernelKind::Poll(_))
+}
+
+/// A routing family: an unbounded generic shared by lazy inputs (and
+/// optionally the first parameter) and returned whole, instantiated at
+/// `RecordValue` so opaque records flow through the kernel. Detected only
+/// when the family's fields carry no implementations lists, so the existing
+/// per-type row spelling keeps its meaning.
+pub(crate) struct RoutingIo {
+	pub(crate) generic: Ident,
+}
+
+pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
+	if has_record_io(parsed) || parsed.is_async {
+		return None;
+	}
+	if !matches!(kernel_kind(&parsed.output_type), KernelKind::Plain | KernelKind::Interrupt(_)) {
+		return None;
+	}
+	let value = slot_value_type(&parsed.output_type);
+	let Type::Path(path) = &value else { return None };
+	let ident = path.path.get_ident()?.clone();
+	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
+	parsed
+		.fn_generics
+		.iter()
+		.find(|param| matches!(param, GenericParam::Type(type_param) if type_param.ident == ident && type_param.bounds.is_empty() && Some(&type_param.ident) != ctx_ident.as_ref()))?;
+	if let Some(where_clause) = &parsed.where_clause
+		&& tokens_contain_ident(where_clause.to_token_stream(), &ident)
+	{
+		return None;
+	}
+	let mut sources = 0;
+	for (index, field) in parsed.fields.iter().enumerate() {
+		match &field.ty {
+			ParsedFieldType::Node(NodeParsedField {
+				output_type,
+				input_type,
+				implementations,
+			}) => {
+				if bare_ident(output_type) == Some(&ident) {
+					if !implementations.is_empty() || type_contains_ident(input_type, &ident) {
+						return None;
+					}
+					sources += 1;
+				} else if type_contains_ident(output_type, &ident) || type_contains_ident(input_type, &ident) {
+					return None;
+				}
+			}
+			ParsedFieldType::Regular(RegularParsedField { ty, implementations, lend, .. }) => {
+				if bare_ident(ty) == Some(&ident) {
+					if index != 0 || field.is_data_field || !implementations.is_empty() || lend.is_some() {
+						return None;
+					}
+					sources += 1;
+				} else if type_contains_ident(ty, &ident) {
+					return None;
+				}
+			}
+		}
+	}
+	(sources > 0).then(|| RoutingIo { generic: ident })
+}
+
+fn bare_ident(ty: &Type) -> Option<&Ident> {
+	let Type::Path(path) = ty else { return None };
+	path.path.get_ident()
+}
+
+fn tokens_contain_ident(tokens: TokenStream2, ident: &Ident) -> bool {
+	tokens.into_iter().any(|token| match token {
+		proc_macro2::TokenTree::Ident(candidate) => &candidate == ident,
+		proc_macro2::TokenTree::Group(group) => tokens_contain_ident(group.stream(), ident),
+		_ => false,
 	})
 }
 
@@ -1252,14 +1554,17 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 		.map(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })))
 		.collect();
 
+	let record_carrier = record_shape(parsed).is_some();
 	let entries = rows.iter().map(|row| {
-		let input_types = row.iter().zip(&lend_flags).map(|(ty, lend)| match lend {
-			true => quote!(gcore::registry::lend_edge_type::<#ty>()),
-			false => quote!(gcore::registry::edge_type::<#ty>()),
+		let input_types = row.iter().enumerate().zip(&lend_flags).map(|((index, ty), lend)| match (lend, record_carrier && index == 0) {
+			(true, _) => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			(false, true) => quote!(gcore::registry::edge_type::<gcore::list::List<#ty>>()),
+			(false, false) => quote!(gcore::registry::edge_type::<#ty>()),
 		});
-		let edge_types = row.iter().zip(&lend_flags).map(|(ty, lend)| match lend {
-			true => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedLendNode<#ty>>),
-			false => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>),
+		let edge_types = row.iter().enumerate().zip(&lend_flags).map(|((index, ty), lend)| match (lend, record_carrier && index == 0) {
+			(true, _) => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedLendNode<#ty>>),
+			(false, true) => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<gcore::list::List<#ty>>>),
+			(false, false) => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>),
 		});
 		let output = quote!(<#struct_name<#(#edge_types),*> as gcore::node::Node<gcore::context::ContextImpl<'static>>>::Output);
 		let (io_output, construct) = match &ref_output_inner {
@@ -1272,9 +1577,10 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 				quote!(Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedNode<#output>>))),
 			),
 		};
-		let downcasts = names.iter().zip(row.iter()).zip(&lend_flags).map(|((name, ty), lend)| match lend {
-			true => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
-			false => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
+		let downcasts = names.iter().zip(row.iter().enumerate()).zip(&lend_flags).map(|((name, (index, ty)), lend)| match (lend, record_carrier && index == 0) {
+			(true, _) => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			(false, true) => quote!(let #name = inputs.next().unwrap().downcast::<gcore::list::List<#ty>>()?;),
+			(false, false) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
 		});
 		quote! {
 			gcore::registry::RegistryEntry {
