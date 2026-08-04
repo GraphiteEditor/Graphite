@@ -33,7 +33,7 @@ pub mod migrations {
 			pub start: DVec2,
 			pub end: DVec2,
 			#[serde(default)]
-			pub gradient_spread: vector::style::GradientSpread,
+			pub spread_method: vector::style::GradientSpread,
 			#[serde(default)]
 			pub absolute: bool,
 			#[serde(default)]

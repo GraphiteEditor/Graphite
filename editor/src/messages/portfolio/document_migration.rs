@@ -1643,7 +1643,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
 					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
 					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::GradientRamp(GradientRamp {
-						gradient_spread: gradient.gradient_spread,
+						gradient_spread: gradient.spread_method,
 						..gradient.stops.clone()
 					}),
 				};
@@ -1690,7 +1690,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				&InputConnector::node_at_index(*node_id, 3),
 				NodeInput::value(
 					TaggedValue::GradientRamp(GradientRamp {
-						gradient_spread: g.gradient_spread,
+						gradient_spread: g.spread_method,
 						..g.stops.clone()
 					}),
 					false,
