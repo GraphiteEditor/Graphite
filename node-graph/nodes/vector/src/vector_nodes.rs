@@ -27,8 +27,8 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use vector_types::ATTR_GRADIENT_TYPE;
-use vector_types::GradientType;
+use vector_types::ATTR_GRADIENT_FORM;
+use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -276,15 +276,15 @@ fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'stat
 
 /// The gradient defaulting the legacy fill performed, applied to the nested
 /// stops list the paint table wraps.
-fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, transform: Option<DAffine2>) {
-	let has_type = paint.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_some();
+fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientForm, transform: Option<DAffine2>) {
+	let has_type = paint.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_some();
 	let has_transform = paint.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some();
 	for index in 0..paint.len() {
 		if !matches!(paint.element(index), Some(Graphic::Gradient(_))) {
 			continue;
 		}
 		if !has_type {
-			paint.set_attribute(ATTR_GRADIENT_TYPE, index, gradient_type);
+			paint.set_attribute(ATTR_GRADIENT_FORM, index, gradient_type);
 		}
 		if !has_transform {
 			let transform = transform.unwrap_or_else(|| {
@@ -320,13 +320,13 @@ fn fill<'e>(
 	#[default(Color::BLACK)]
 	fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: IList<Gradient>,
-	_gradient_type: GradientType,
+	_backup_gradient: IList<Gradient>,
+	_gradient_form: GradientForm,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _has_transform.then_some(_transform));
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -340,8 +340,8 @@ fn fill_graphic_leveled<'e>(
 	(element, _content_fill): (Graphic<'static>, Attr<Fill>),
 	#[default(Color::BLACK)] fill: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
-	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: IList<Gradient>,
-	_gradient_type: GradientType,
+	_backup_gradient: IList<Gradient>,
+	_gradient_form: GradientForm,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
@@ -350,7 +350,7 @@ fn fill_graphic_leveled<'e>(
 		_ => None,
 	};
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, bounds, _gradient_type, _has_transform.then_some(_transform));
+	default_gradient_paint(&mut paint, bounds, _gradient_form, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -1312,55 +1312,49 @@ fn points_to_polyline(_: impl Ctx, mut points: Vector, #[default(true)] closed: 
 fn relax_points(
 	_: impl Ctx,
 	/// A vector path or point cloud to relax.
-	source: Vector,
+	mut source: Vector,
 	/// The number of relaxation steps to apply. A fractional value runs the whole steps and then blends partway toward one more step, so the amount of relaxation can be animated smoothly.
 	#[default(1.)]
 	#[hard(0..1000)]
 	iterations: f64,
 ) -> Vector {
-	let mut vector = source;
-
-	let relaxed = crate::voronoi::relax_sites(vector.point_domain.positions(), iterations);
-	for ((_, position), new_position) in vector.point_domain.positions_mut().zip(relaxed) {
+	let relaxed = crate::voronoi::relax_sites(source.point_domain.positions(), iterations);
+	for ((_, position), new_position) in source.point_domain.positions_mut().zip(relaxed) {
 		*position = new_position;
 	}
 
-	vector
+	source
 }
 
 /// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
 ///
 /// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh with no fillable regions.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
-fn voronoi_cells(_: impl Ctx, source: Vector, connect_cells: bool) -> Vector {
-	let mut vector = source;
-
-	let sites = vector.point_domain.positions().to_vec();
+fn voronoi_cells(_: impl Ctx, mut source: Vector, connect_cells: bool) -> Vector {
+	let sites = source.point_domain.positions().to_vec();
 	let cells = crate::voronoi::voronoi_cells(&sites);
 	if !cells.is_empty() {
-		replace_with_polygons(&mut vector, cells, connect_cells);
+		replace_with_polygons(&mut source, cells, connect_cells);
 	}
 
-	vector
+	source
 }
 
 /// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
 ///
 /// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh with no fillable regions.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
-fn triangulate(_: impl Ctx, source: Vector, connect_cells: bool) -> Vector {
-	let mut vector = source;
-
-	let sites = vector.point_domain.positions().to_vec();
+fn triangulate(_: impl Ctx, mut source: Vector, connect_cells: bool) -> Vector {
+	let sites = source.point_domain.positions().to_vec();
 	let triangles = crate::voronoi::delaunay_triangles(&sites);
 	if !triangles.is_empty() {
 		// `delaunator` emits triangle vertices clockwise; reverse to `[a, c, b]` so triangles wind counter-clockwise to
 		// match the Voronoi cells and the rest of the framework's fill winding.
 		let polygons = triangles.iter().map(|&[a, b, c]| vec![sites[a], sites[c], sites[b]]).collect();
-		replace_with_polygons(&mut vector, polygons, connect_cells);
+		replace_with_polygons(&mut source, polygons, connect_cells);
 	}
 
-	vector
+	source
 }
 
 /// Replaces a vector's geometry (points, segments, and regions) with the given closed polygons, preserving its style.
@@ -3979,6 +3973,7 @@ mod test {
 		// contour returns to approximately, not exactly, its start; that near-coincident point must close, not duplicate).
 		let delaunay = super::triangulate(&(), vector_from_points(&SQUARE_WITH_CENTER), false);
 		let (result, _) = super::offset_path(&(), (delaunay, Attr(DAffine2::IDENTITY)), 0.5, StrokeJoin::Miter, 4.);
+
 		let mut subpaths = 0;
 		for (group, closed) in result.stroke_manipulator_groups() {
 			subpaths += 1;
@@ -4130,7 +4125,6 @@ mod test {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
-
 	#[test]
 	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);

@@ -14,7 +14,7 @@ use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, wal
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::gradient::{GradientSpread, GradientType as GradientTypeValue};
+use vector_types::gradient::{GradientForm as GradientFormValue, GradientSpread};
 use vector_types::{Gradient, ReferencePoint};
 
 fn arena_exhausted() -> Interrupt {
@@ -253,8 +253,8 @@ attribute_reads! {
 	read_color_attribute: Color => Color;
 	/// Reads a named `BlendMode` attribute, such as `blend_mode`.
 	read_blend_mode_attribute: core_types::blending::BlendMode => core_types::blending::BlendMode;
-	/// Reads a named gradient-shape attribute, such as `gradient_type`.
-	read_gradient_type_attribute: GradientTypeValue => GradientTypeValue;
+	/// Reads a named gradient-shape attribute, such as `gradient_form`.
+	read_gradient_form_attribute: GradientFormValue => GradientFormValue;
 	/// Reads a named gradient-spread attribute, such as `gradient_spread`.
 	read_gradient_spread_attribute: GradientSpread => GradientSpread;
 }
