@@ -12,7 +12,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
-use vector_types::markers::{GradientSpread as GradientSpreadAttr, GradientType as GradientTypeAttr};
+use vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1203,10 +1203,10 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 	gradient
 }
 
-/// Sets the type (linear or radial) of each gradient in the input list.
+/// Sets the form (linear or radial) of each gradient in the input list.
 #[node_macro::node(category("Gradient"))]
-fn gradient_type(_: impl Ctx, gradient: Gradient, gradient_type: vector_types::GradientType) -> (Gradient, Attr<GradientTypeAttr>) {
-	(gradient, Attr(gradient_type))
+fn gradient_form(_: impl Ctx, gradient: Gradient, gradient_form: vector_types::GradientForm) -> (Gradient, Attr<GradientFormAttr>) {
+	(gradient, Attr(gradient_form))
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.

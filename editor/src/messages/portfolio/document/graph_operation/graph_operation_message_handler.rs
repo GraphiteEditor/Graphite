@@ -14,7 +14,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientSpread, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -43,12 +43,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient,
-				gradient_type,
+				gradient_form,
 				gradient_spread,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_type, gradient_spread, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -76,9 +76,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_transform_set(transform);
 				}
 			}
-			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
+			GraphOperationMessage::GradientFormSet { layer, gradient_form } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_type_set(gradient_type);
+					modify_inputs.gradient_form_set(gradient_form);
 				}
 			}
 			GraphOperationMessage::GradientSpreadSet { layer, gradient_spread } => {
@@ -824,7 +824,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
-			let gradient_type = GradientType::Linear;
+			let gradient_form = GradientForm::Linear;
 
 			let gradient = match graphite_gradient_stops.get(linear.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
@@ -838,7 +838,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				}
 			};
 			let gradient_spread = convert_gradient_spread(linear.spread_method());
-			modify_inputs.fill_gradient_set(gradient, gradient_type, gradient_spread, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -848,7 +848,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
 
-			let gradient_type = GradientType::Radial;
+			let gradient_form = GradientForm::Radial;
 
 			let gradient = match graphite_gradient_stops.get(radial.id()) {
 				Some(graphite_stops) => graphite_stops.clone(),
@@ -863,7 +863,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			};
 			let gradient_spread = convert_gradient_spread(radial.spread_method());
 
-			modify_inputs.fill_gradient_set(gradient, gradient_type, gradient_spread, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

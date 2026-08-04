@@ -16,7 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpread, GradientStop, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientRamp, GradientSpread, GradientStop, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -27,7 +27,7 @@ pub struct GradientTool {
 
 #[derive(Default)]
 pub struct GradientOptions {
-	gradient_type: GradientType,
+	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
 }
 
@@ -60,7 +60,7 @@ pub enum GradientToolMessage {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GradientOptionsUpdate {
-	Type(GradientType),
+	Form(GradientForm),
 	ReverseStops,
 	ReverseDirection,
 }
@@ -82,14 +82,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		match message {
 			ToolMessage::Gradient(GradientToolMessage::UpdateOptions { options }) => match options {
-				GradientOptionsUpdate::Type(gradient_type) => {
-					self.options.gradient_type = gradient_type;
+				GradientOptionsUpdate::Form(gradient_form) => {
+					self.options.gradient_form = gradient_form;
 					apply_gradient_update(
 						&mut self.data,
 						context,
 						responses,
-						|(_gradient, appearance)| appearance.gradient_type != gradient_type,
-						|(_gradient, appearance)| appearance.gradient_type = gradient_type,
+						|(_gradient, appearance)| appearance.gradient_form != gradient_form,
+						|(_gradient, appearance)| appearance.gradient_form = gradient_form,
 					);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(ToolMessage::UpdateCursor);
@@ -167,8 +167,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 
 				let mut needs_refresh = false;
 				if let Some((_gradient, appearance)) = &current_gradient {
-					if self.options.gradient_type != appearance.gradient_type {
-						self.options.gradient_type = appearance.gradient_type;
+					if self.options.gradient_form != appearance.gradient_form {
+						self.options.gradient_form = appearance.gradient_form;
 						needs_refresh = true;
 					}
 					if self.options.gradient_spread != appearance.gradient_spread {
@@ -230,21 +230,21 @@ impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let mut widgets: Vec<WidgetInstance> = Vec::new();
 
-		let gradient_type = RadioInput::new(vec![
+		let gradient_form = RadioInput::new(vec![
 			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::Type(GradientType::Linear),
+					options: GradientOptionsUpdate::Form(GradientForm::Linear),
 				}
 				.into()
 			}),
 			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::Type(GradientType::Radial),
+					options: GradientOptionsUpdate::Form(GradientForm::Radial),
 				}
 				.into()
 			}),
 		])
-		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
+		.selected_index(Some((self.options.gradient_form == GradientForm::Radial) as u32))
 		.widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
@@ -296,7 +296,7 @@ impl LayoutHolder for GradientTool {
 		};
 		let reverse_direction = IconButton::new(reverse_direction_icon, 24)
 			.tooltip_label("Reverse Direction")
-			.tooltip_description(reverse_direction_tooltip_description(self.options.gradient_type))
+			.tooltip_description(reverse_direction_tooltip_description(self.options.gradient_form))
 			.disabled(!self.data.has_selected_gradient)
 			.on_update(|_| {
 				GradientToolMessage::UpdateOptions {
@@ -311,7 +311,7 @@ impl LayoutHolder for GradientTool {
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			reverse_stops,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			gradient_type,
+			gradient_form,
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			reverse_direction,
 		]);
@@ -362,7 +362,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 			return Some((
 				gradient.stops,
 				GradientAppearance {
-					gradient_type: gradient.gradient_type,
+					gradient_form: gradient.gradient_form,
 					gradient_spread: gradient.gradient_spread,
 					transform: gradient.transform,
 				},
@@ -381,7 +381,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 #[derive(Clone, Copy, Debug, Default)]
 struct GradientAppearance {
 	transform: DAffine2,
-	gradient_type: GradientType,
+	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
 }
 
@@ -392,11 +392,11 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
-	let gradient_type_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_type::IDENTIFIER);
+	let gradient_form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
 	let gradient_spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
 
 	let mut transforms_downstream_to_upstream: Vec<DAffine2> = Vec::new();
-	let mut gradient_type: Option<GradientType> = None;
+	let mut gradient_form: Option<GradientForm> = None;
 	let mut gradient_spread: Option<GradientSpread> = None;
 
 	for node_id in network_interface
@@ -411,11 +411,11 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 
 		if reference == transform_reference {
 			transforms_downstream_to_upstream.push(read_transform_node_value(&document_node.inputs));
-		} else if reference == gradient_type_reference
-			&& gradient_type.is_none()
-			&& let Some(TaggedValue::GradientType(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
+		} else if reference == gradient_form_reference
+			&& gradient_form.is_none()
+			&& let Some(TaggedValue::GradientForm(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
 		{
-			gradient_type = Some(*value);
+			gradient_form = Some(*value);
 		} else if reference == gradient_spread_reference
 			&& gradient_spread.is_none()
 			&& let Some(TaggedValue::GradientSpread(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
@@ -429,7 +429,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 
 	GradientAppearance {
 		transform: composed_transform,
-		gradient_type: gradient_type.unwrap_or_default(),
+		gradient_form: gradient_form.unwrap_or_default(),
 		gradient_spread: gradient_spread.unwrap_or_default(),
 	}
 }
@@ -552,7 +552,7 @@ impl SelectedGradient {
 		responses: &mut VecDeque<Message>,
 		snap_rotate: bool,
 		lock_angle: bool,
-		gradient_type: GradientType,
+		gradient_form: GradientForm,
 		drag_start: DVec2,
 		snap_data: SnapData,
 		snap_manager: &mut SnapManager,
@@ -565,7 +565,7 @@ impl SelectedGradient {
 			return;
 		}
 
-		self.appearance.gradient_type = gradient_type;
+		self.appearance.gradient_form = gradient_form;
 
 		let anchor_point = || {
 			let (start, end) = self.viewport_handle_positions();
@@ -765,7 +765,7 @@ impl SelectedGradient {
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
 					gradient: self.gradient.clone(),
-					gradient_type: self.appearance.gradient_type,
+					gradient_form: self.appearance.gradient_form,
 					gradient_spread: self.appearance.gradient_spread,
 					transform: self.appearance.transform,
 				});
@@ -797,9 +797,9 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 		layer,
 		transform: appearance.transform,
 	});
-	responses.add(GraphOperationMessage::GradientTypeSet {
+	responses.add(GraphOperationMessage::GradientFormSet {
 		layer,
-		gradient_type: appearance.gradient_type,
+		gradient_form: appearance.gradient_form,
 	});
 	responses.add(GraphOperationMessage::GradientSpreadSet {
 		layer,
@@ -808,9 +808,9 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 }
 
 impl GradientTool {
-	/// Get the gradient type of the selected gradient (if it exists)
-	pub fn selected_gradient(&self) -> Option<GradientType> {
-		self.data.selected_gradient.as_ref().map(|selected| selected.appearance.gradient_type)
+	/// Get the Gradient Form of the selected gradient (if it exists)
+	pub fn selected_gradient(&self) -> Option<GradientForm> {
+		self.data.selected_gradient.as_ref().map(|selected| selected.appearance.gradient_form)
 	}
 }
 
@@ -1482,7 +1482,7 @@ impl Fsm for GradientToolFsmState {
 								]),
 								GradientAppearance {
 									transform: DAffine2::IDENTITY,
-									gradient_type: tool_options.gradient_type,
+									gradient_form: tool_options.gradient_form,
 									gradient_spread: tool_options.gradient_spread,
 								},
 								GradientSource::Direct,
@@ -1533,7 +1533,7 @@ impl Fsm for GradientToolFsmState {
 						responses,
 						input.keyboard.get(constrain_axis as usize),
 						input.keyboard.get(lock_angle as usize),
-						selected_gradient.appearance.gradient_type,
+						selected_gradient.appearance.gradient_form,
 						drag_start_viewport,
 						snap_data,
 						&mut tool_data.snap_manager,
@@ -1835,7 +1835,7 @@ fn apply_gradient_update(
 				responses.add(GraphOperationMessage::FillGradientSet {
 					layer,
 					gradient,
-					gradient_type: appearance.gradient_type,
+					gradient_form: appearance.gradient_form,
 					gradient_spread: appearance.gradient_spread,
 					transform: appearance.transform,
 				});
@@ -1882,7 +1882,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 			responses.add(GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient: new_gradient.clone(),
-				gradient_type: appearance.gradient_type,
+				gradient_form: appearance.gradient_form,
 				gradient_spread,
 				transform: appearance.transform,
 			});

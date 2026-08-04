@@ -8,11 +8,11 @@ use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::Gradient;
-use graphic_types::vector_types::gradient::{GradientSpread, GradientType};
+use graphic_types::vector_types::gradient::{GradientForm, GradientSpread};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
-use graphic_types::vector_types::{ATTR_GRADIENT_SPREAD, ATTR_GRADIENT_TYPE};
+use graphic_types::vector_types::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPREAD};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Graphic, IntoGraphicList, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -288,8 +288,8 @@ fn gradient_paint_row(stops: Gradient, mut attributes: core_types::list::ItemAtt
 	if let Some(transform) = attributes.remove::<DAffine2>(ATTR_TRANSFORM) {
 		gradient_paint.set_attribute(ATTR_TRANSFORM, 0, transform);
 	}
-	if let Some(gradient_type) = attributes.remove::<GradientType>(ATTR_GRADIENT_TYPE) {
-		gradient_paint.set_attribute(ATTR_GRADIENT_TYPE, 0, gradient_type);
+	if let Some(gradient_form) = attributes.remove::<GradientForm>(ATTR_GRADIENT_FORM) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_FORM, 0, gradient_form);
 	}
 	if let Some(spread_method) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
 		gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, spread_method);
