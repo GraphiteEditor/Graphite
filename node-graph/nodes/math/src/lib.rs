@@ -1387,9 +1387,9 @@ fn gradient_type(_: impl Ctx, gradient: Item<Gradient>, gradient_type: Item<vect
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Gradient"))]
-fn spread_method(_: impl Ctx, gradient: Item<Gradient>, spread_method: Item<vector_types::GradientSpreadMethod>) -> Item<Gradient> {
+fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_SPREAD_METHOD, *spread_method.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
 	gradient
 }
 
@@ -1417,11 +1417,11 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `spread_method` attribute: Pad (default), Reflect, or Repeat.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
-	let spread_method = gradient.attribute_cloned_or_default::<vector_types::GradientSpreadMethod>(core_types::ATTR_SPREAD_METHOD);
-	let color = gradient.element().evaluate(*position.element(), spread_method);
+	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
+	let color = gradient.element().evaluate(*position.element(), gradient_spread);
 	Item::new_from_element(color)
 }
 
