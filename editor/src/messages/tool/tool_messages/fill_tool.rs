@@ -1,9 +1,13 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, blank_paint_chain_attachment_input, get_upstream_color_value_node_id};
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, blank_paint_chain_attachment_input, get_upstream_color_value_node_id, gradient_chain_target_input};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
+use graphene_std::subpath::Subpath;
+use graphene_std::vector::PointId;
 use graphene_std::vector::style::FillChoice;
 
 #[derive(Default, ExtractField)]
@@ -140,10 +144,16 @@ impl Fsm for FillToolFsmState {
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
-				// Get the layer the user is hovering over
-				if let Some(layer) = document.click(input, viewport) {
+				// Pattern the layer the fill would land on, over its whole expanse when the color is its entire content
+				if let Some(layer) = fill_target_layer(document, input, viewport) {
 					let color_hex = SRGBA8::from(preview_color).to_css_hex();
-					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &color_hex);
+
+					if paints_whole_expanse(layer, &document.network_interface) {
+						let expanse = whole_expanse_rect(layer, document, overlay_context.viewport.size().into_dvec2());
+						overlay_context.fill_path_pattern(std::iter::once(expanse), DAffine2::IDENTITY, &color_hex);
+					} else {
+						overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &color_hex);
+					}
 				}
 
 				self
@@ -154,17 +164,10 @@ impl Fsm for FillToolFsmState {
 				self
 			}
 			(FillToolFsmState::Ready, color_event) => {
-				// Blank layers and whole-expanse color chains render no clickable geometry, so fall back to a selected layer of either kind
-				let clicked_layer = document.click(input, viewport).or_else(|| {
-					document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).find(|&layer| {
-						get_upstream_color_value_node_id(layer, &document.network_interface).is_some() || blank_paint_chain_attachment_input(layer, &document.network_interface).is_some()
-					})
-				});
-				let Some(layer_identifier) = clicked_layer else { return self };
+				let Some(layer_identifier) = fill_target_layer(document, input, viewport) else { return self };
 
 				// A whole-expanse color chain (existing, or newly started on a blank layer) routes to its 'Color Value' node; geometry gets its Fill set
-				let route_to_color_chain = get_upstream_color_value_node_id(layer_identifier, &document.network_interface).is_some()
-					|| blank_paint_chain_attachment_input(layer_identifier, &document.network_interface).is_some();
+				let route_to_color_chain = routes_to_color_chain(layer_identifier, &document.network_interface);
 
 				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
 				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
@@ -212,6 +215,42 @@ impl Fsm for FillToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+	}
+}
+
+/// Whether the fill lands on the layer's 'Color Value' node rather than on geometry's Fill.
+fn routes_to_color_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	get_upstream_color_value_node_id(layer, network_interface).is_some() || blank_paint_chain_attachment_input(layer, network_interface).is_some()
+}
+
+/// The layer the fill acts on: the one under the cursor, or else a selected layer painted through a color chain,
+/// since blank layers and whole-expanse colors render no clickable geometry.
+fn fill_target_layer(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<LayerNodeIdentifier> {
+	document.click(input, viewport).or_else(|| {
+		document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_layers(&document.network_interface)
+			.find(|&layer| routes_to_color_chain(layer, &document.network_interface))
+	})
+}
+
+/// Whether the color is the layer's whole content rather than paint applied to its geometry, meaning there is no
+/// outline to pattern and the preview covers the layer's whole expanse instead.
+fn paints_whole_expanse(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	gradient_chain_target_input(layer, network_interface) == InputConnector::layer_secondary_input(layer.to_node()) && routes_to_color_chain(layer, network_interface)
+}
+
+/// The viewport-space area a whole-expanse color paints: the artboard containing the layer, since the color fills it,
+/// or else the visible viewport for a layer living outside any artboard.
+fn whole_expanse_rect(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport_size: DVec2) -> Subpath<PointId> {
+	let containing_artboard = layer
+		.ancestors(document.metadata())
+		.find(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT && document.network_interface.is_artboard(&ancestor.to_node(), &[]));
+
+	match containing_artboard.and_then(|artboard| document.metadata().bounding_box_viewport(artboard)) {
+		Some([min, max]) => Subpath::new_rectangle(min, max),
+		None => Subpath::new_rectangle(DVec2::ZERO, viewport_size),
 	}
 }
 
