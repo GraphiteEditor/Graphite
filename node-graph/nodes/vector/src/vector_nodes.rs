@@ -27,6 +27,8 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use vector_types::ATTR_GRADIENT_TYPE;
+use vector_types::GradientType;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -40,8 +42,6 @@ use vector_types::vector::misc::{
 use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
-use vector_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD};
-use vector_types::{GradientSpreadMethod, GradientType};
 
 /// The standard row attributes a per-lane re-emission carries from its
 /// materialized source lane, parked for the fresh output row.
@@ -290,9 +290,8 @@ fn park_paint<'e>(arena: &'e core_types::arena::Arena, paint: List<Graphic<'stat
 
 /// The gradient defaulting the legacy fill performed, applied to the nested
 /// stops list the paint table wraps.
-fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: Option<DAffine2>) {
+fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>, gradient_type: GradientType, transform: Option<DAffine2>) {
 	let has_type = paint.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_some();
-	let has_spread = paint.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_some();
 	let has_transform = paint.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_some();
 	for index in 0..paint.len() {
 		if !matches!(paint.element(index), Some(Graphic::Gradient(_))) {
@@ -300,9 +299,6 @@ fn default_gradient_paint(paint: &mut List<Graphic>, bounds: Option<[DVec2; 2]>,
 		}
 		if !has_type {
 			paint.set_attribute(ATTR_GRADIENT_TYPE, index, gradient_type);
-		}
-		if !has_spread {
-			paint.set_attribute(ATTR_SPREAD_METHOD, index, spread_method);
 		}
 		if !has_transform {
 			let transform = transform.unwrap_or_else(|| {
@@ -340,12 +336,11 @@ fn fill<'e>(
 	_backup_color: IList<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
-	_spread_method: GradientSpreadMethod,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Vector, Attr<'e, Fill>), Interrupt> {
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _spread_method, _has_transform.then_some(_transform));
+	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_type, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
@@ -361,7 +356,6 @@ fn fill_graphic_leveled<'e>(
 	_backup_color: IList<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: IList<Gradient>,
 	_gradient_type: GradientType,
-	_spread_method: GradientSpreadMethod,
 	_has_transform: bool,
 	_transform: DAffine2,
 ) -> Result<(Graphic<'static>, Attr<'e, Fill>), Interrupt> {
@@ -370,7 +364,7 @@ fn fill_graphic_leveled<'e>(
 		_ => None,
 	};
 	let mut paint = paint_table(fill);
-	default_gradient_paint(&mut paint, bounds, _gradient_type, _spread_method, _has_transform.then_some(_transform));
+	default_gradient_paint(&mut paint, bounds, _gradient_type, _has_transform.then_some(_transform));
 	let parked = park_paint(ctx.arena(), paint)?;
 	Ok((element, Attr(Some(parked))))
 }
