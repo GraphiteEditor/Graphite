@@ -167,7 +167,15 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Box::new(DashPattern::from(lengths)),
 					Self::BoxCorners(values) => Box::new(BoxCorners::from(values)),
 					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
-					Self::GradientRamp(ramp) => Box::new(List::<Gradient>::new_from_element(Gradient::from(ramp))),
+					Self::GradientRamp(ramp) => {
+						// The ramp's spread method rides the served list as its attribute, as `Item<Gradient>::from` does on master.
+						let spread_method = ramp.spread_method;
+						let mut list = List::<Gradient>::new_from_element(Gradient::from(ramp));
+						if !spread_method.is_default() {
+							list.set_attribute(graphic_types::vector_types::ATTR_SPREAD_METHOD, 0, spread_method);
+						}
+						Box::new(list)
+					}
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
@@ -213,7 +221,15 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Arc::new(DashPattern::from(lengths)),
 					Self::BoxCorners(values) => Arc::new(BoxCorners::from(values)),
 					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
-					Self::GradientRamp(ramp) => Arc::new(List::<Gradient>::new_from_element(Gradient::from(ramp))),
+					Self::GradientRamp(ramp) => {
+						// The ramp's spread method rides the served list as its attribute, as `Item<Gradient>::from` does on master.
+						let spread_method = ramp.spread_method;
+						let mut list = List::<Gradient>::new_from_element(Gradient::from(ramp));
+						if !spread_method.is_default() {
+							list.set_attribute(graphic_types::vector_types::ATTR_SPREAD_METHOD, 0, spread_method);
+						}
+						Arc::new(list)
+					}
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
@@ -415,7 +431,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(downcast::<Item<Gradient>>(input).unwrap().into_element()))),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(*downcast(input).unwrap())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(downcast::<Item<BrushTrace>>(input).unwrap().into_element().0.iter_element_values().cloned().collect())),
 					// =======================
@@ -449,7 +465,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap().element()))),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<Vec<BrushStroke>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Vec<BrushStroke>>().unwrap().clone())),
 					x if x == TypeId::of::<Item<BrushTrace>>() => Ok(TaggedValue::BrushStrokes(input.downcast_ref::<Item<BrushTrace>>().unwrap().element().0.iter_element_values().cloned().collect())),
 					// =======================
@@ -1096,6 +1112,8 @@ mod paint_default_parsing {
 
 #[cfg(test)]
 mod gradient_shape_migration {
+	use graphic_types::vector_types::GradientSpreadMethod;
+
 	use super::*;
 
 	fn load(payload: serde_json::Value) -> TaggedValue {
@@ -1114,7 +1132,10 @@ mod gradient_shape_migration {
 	fn modern_ramp_payload_round_trips() {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_positions(&[0.2, 0.9]);
-		let value = TaggedValue::GradientRamp(GradientRamp::from(gradient));
+		let value = TaggedValue::GradientRamp(GradientRamp {
+			spread_method: GradientSpreadMethod::Reflect,
+			..GradientRamp::from(gradient)
+		});
 
 		let json = serde_json::to_value(&value).unwrap();
 		assert!(json.get("GradientRamp").and_then(|payload| payload.get("stops")).is_some(), "the payload should nest its stops: {json}");
