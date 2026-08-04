@@ -27,7 +27,7 @@ use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, 
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
-use graphic_types::vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod};
+use graphic_types::vector_types::markers::{GradientSpread as GradientSpreadAttr, GradientType as GradientTypeAttr};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -44,7 +44,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use text_nodes::markers::{Font, TextAlign};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::GradientSpread;
 use vector_types::markers::EditorClickTarget;
 use vello::*;
 
@@ -430,7 +430,7 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list
 
 	let gradient_type: GradientType = gradient_list.attr::<GradientTypeAttr>(0);
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
-	let spread_method: GradientSpreadMethod = gradient_list.attr::<SpreadMethod>(0);
+	let gradient_spread: GradientSpread = gradient_list.attr::<GradientSpreadAttr>(0);
 
 	let peniko_stops = peniko_color_stops(stops);
 
@@ -452,10 +452,10 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list
 			}
 			.into(),
 		},
-		extend: match spread_method {
-			GradientSpreadMethod::Pad => peniko::Extend::Pad,
-			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+		extend: match gradient_spread {
+			GradientSpread::Pad => peniko::Extend::Pad,
+			GradientSpread::Reflect => peniko::Extend::Reflect,
+			GradientSpread::Repeat => peniko::Extend::Repeat,
 		},
 		stops: peniko_stops,
 		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
@@ -2327,7 +2327,7 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 		let blend_mode: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
-		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(index);
+		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
 		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
@@ -2366,10 +2366,10 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 			};
 
 			let gradient_id = generate_uuid();
-			let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
+			let spread_method_attribute = if gradient_spread == GradientSpread::Pad {
 				String::new()
 			} else {
-				format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+				format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
 			};
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
@@ -2411,7 +2411,7 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 
 	for index in 0..source.lane_count() {
 		let Some(gradient) = source.element(index) else { continue };
-		let spread_method: GradientSpreadMethod = source.attr::<SpreadMethod>(index);
+		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
 		let gradient_type: GradientType = source.attr::<GradientTypeAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
@@ -2424,10 +2424,10 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 
 		let stops = peniko_color_stops(gradient);
 
-		let extend = match spread_method {
-			GradientSpreadMethod::Pad => peniko::Extend::Pad,
-			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+		let extend = match gradient_spread {
+			GradientSpread::Pad => peniko::Extend::Pad,
+			GradientSpread::Reflect => peniko::Extend::Reflect,
+			GradientSpread::Repeat => peniko::Extend::Repeat,
 		};
 
 		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.

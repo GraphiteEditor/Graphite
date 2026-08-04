@@ -14,7 +14,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientSpreadMethod, GradientType, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientSpread, GradientType, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
@@ -660,7 +660,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 pub struct FillNodeGradient {
 	pub stops: Gradient,
 	pub gradient_type: GradientType,
-	pub spread_method: GradientSpreadMethod,
+	pub gradient_spread: GradientSpread,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
@@ -673,7 +673,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	let TaggedValue::GradientRamp(ramp) = fill_node.input(fill::FillInput)?.as_value()? else {
 		return None;
 	};
-	let spread_method = ramp.spread_method;
+	let gradient_spread = ramp.gradient_spread;
 	let stops = Gradient::from(ramp);
 	let gradient_type = match fill_node.input(fill::GradientTypeInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientType(value)) => value,
@@ -690,7 +690,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	Some(FillNodeGradient {
 		stops,
 		gradient_type,
-		spread_method,
+		gradient_spread,
 		transform,
 		transform_is_value: transform_input.is_some(),
 	})
@@ -839,7 +839,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					layer,
 					gradient: Gradient::from(ramp),
 					gradient_type,
-					spread_method: ramp.spread_method,
+					gradient_spread: ramp.gradient_spread,
 					transform,
 				});
 			}

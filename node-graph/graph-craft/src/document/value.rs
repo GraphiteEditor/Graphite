@@ -168,11 +168,11 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Box::new(BoxCorners::from(values)),
 					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
 					Self::GradientRamp(ramp) => {
-						// The ramp's spread method rides the served list as its attribute, as `Item<Gradient>::from` does on master.
-						let spread_method = ramp.spread_method;
+						// The ramp's gradient spread rides the served list as its attribute, as `Item<Gradient>::from` does on master.
+						let gradient_spread = ramp.gradient_spread;
 						let mut list = List::<Gradient>::new_from_element(Gradient::from(ramp));
-						if !spread_method.is_default() {
-							list.set_attribute(graphic_types::vector_types::ATTR_SPREAD_METHOD, 0, spread_method);
+						if !gradient_spread.is_default() {
+							list.set_attribute(graphic_types::vector_types::ATTR_GRADIENT_SPREAD, 0, gradient_spread);
 						}
 						Box::new(list)
 					}
@@ -222,11 +222,11 @@ macro_rules! tagged_value {
 					Self::BoxCorners(values) => Arc::new(BoxCorners::from(values)),
 					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
 					Self::GradientRamp(ramp) => {
-						// The ramp's spread method rides the served list as its attribute, as `Item<Gradient>::from` does on master.
-						let spread_method = ramp.spread_method;
+						// The ramp's gradient spread rides the served list as its attribute, as `Item<Gradient>::from` does on master.
+						let gradient_spread = ramp.gradient_spread;
 						let mut list = List::<Gradient>::new_from_element(Gradient::from(ramp));
-						if !spread_method.is_default() {
-							list.set_attribute(graphic_types::vector_types::ATTR_SPREAD_METHOD, 0, spread_method);
+						if !gradient_spread.is_default() {
+							list.set_attribute(graphic_types::vector_types::ATTR_GRADIENT_SPREAD, 0, gradient_spread);
 						}
 						Arc::new(list)
 					}
@@ -627,7 +627,8 @@ tagged_value! {
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
 	GradientType(vector::style::GradientType),
-	GradientSpreadMethod(vector::style::GradientSpreadMethod),
+	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
+	GradientSpread(vector::style::GradientSpread),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
@@ -1102,7 +1103,7 @@ mod paint_default_parsing {
 
 #[cfg(test)]
 mod gradient_shape_migration {
-	use graphic_types::vector_types::GradientSpreadMethod;
+	use graphic_types::vector_types::GradientSpread;
 
 	use super::*;
 
@@ -1123,7 +1124,7 @@ mod gradient_shape_migration {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		gradient.set_positions(&[0.2, 0.9]);
 		let value = TaggedValue::GradientRamp(GradientRamp {
-			spread_method: GradientSpreadMethod::Reflect,
+			gradient_spread: GradientSpread::Reflect,
 			..GradientRamp::from(gradient)
 		});
 

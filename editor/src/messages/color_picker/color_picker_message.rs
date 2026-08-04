@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::widgets::input_widgets::{SpectrumInputUpdate, VisualColorPickersInputUpdate};
 use crate::messages::prelude::*;
-use graphene_std::vector::style::{FillChoice, GradientSpreadMethod};
+use graphene_std::vector::style::{FillChoice, GradientSpread};
 
 /// Identifies which RGB channel a numeric input change targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -47,8 +47,8 @@ pub enum ColorPickerMessage {
 
 	/// `SpectrumInput` change: marker move/insert/delete, midpoint move/reset, or active marker selection changed.
 	GradientUpdate { update: SpectrumInputUpdate },
-	/// Spread method choice from the gradient "Ends" selection.
-	SetSpreadMethod { spread_method: GradientSpreadMethod },
+	/// Gradient spread choice from the gradient "Ends" selection.
+	SetGradientSpread { gradient_spread: GradientSpread },
 
 	/// Tell the frontend to start an undo transaction (forwarded as a `FrontendMessage` it bridges out to the picker's parent).
 	StartTransaction,

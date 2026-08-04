@@ -5,7 +5,7 @@ use core_types::attribute::Attribute;
 
 core_types::attribute! {
 	/// Gradient's spread behavior past its endpoints (`Pad`, `Reflect`, or `Repeat`).
-	pub SpreadMethod("spread_method"): crate::gradient::GradientSpreadMethod;
+	pub GradientSpread("gradient_spread"): crate::gradient::GradientSpread;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientType("gradient_type"): crate::gradient::GradientType;
 	/// Optional `Vector` that overrides the item's own geometry for click-target generation.
@@ -18,11 +18,11 @@ core_types::attribute! {
 // The value types a name-generic attribute can name here, so a compile-time
 // named write or read reaches this crate's enums like any other plain value.
 core_types::named_value! {
-	for crate::gradient::GradientSpreadMethod;
+	for crate::gradient::GradientSpread;
 	for crate::gradient::GradientType;
 }
 
-pub const ATTR_SPREAD_METHOD: &str = SpreadMethod::NAME;
+pub const ATTR_GRADIENT_SPREAD: &str = GradientSpread::NAME;
 pub const ATTR_GRADIENT_TYPE: &str = GradientType::NAME;
 pub const ATTR_EDITOR_CLICK_TARGET: &str = EditorClickTarget::NAME;
 
@@ -35,7 +35,7 @@ mod tests {
 	#[test]
 	fn the_census_carries_this_crates_names() {
 		assert_eq!(info("gradient_type").unwrap().value_type, TypeId::of::<crate::gradient::GradientType>());
-		assert_eq!(info("spread_method").unwrap().value_type, TypeId::of::<crate::gradient::GradientSpreadMethod>());
+		assert_eq!(info("gradient_spread").unwrap().value_type, TypeId::of::<crate::gradient::GradientSpread>());
 		assert_eq!(info("editor:click_target").unwrap().value_type, TypeId::of::<Option<&'static crate::Vector>>());
 	}
 
