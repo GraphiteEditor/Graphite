@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpread, GradientStops};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientInterpolation, GradientRamp, GradientSpread, GradientStops};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -30,6 +30,7 @@ pub struct ColorPickerMessageHandler {
 	// When set, the picker is editing a gradient: the visual pickers and inputs target the active stop's color.
 	gradient: Option<Gradient>,
 	gradient_spread: GradientSpread,
+	gradient_interpolation: GradientInterpolation,
 	active_marker_index: Option<u32>,
 	active_marker_is_midpoint: bool,
 
@@ -52,6 +53,7 @@ impl Default for ColorPickerMessageHandler {
 			old_is_none: true,
 			gradient: None,
 			gradient_spread: GradientSpread::default(),
+			gradient_interpolation: GradientInterpolation::default(),
 			active_marker_index: None,
 			active_marker_is_midpoint: false,
 			allow_none: true,
@@ -73,12 +75,14 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.set_new_hsva(0., 0., 0., 1., true);
 						self.gradient = None;
 						self.gradient_spread = GradientSpread::default();
+						self.gradient_interpolation = GradientInterpolation::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
 					}
 					FillChoice::Solid(color) => {
 						self.gradient = None;
 						self.gradient_spread = GradientSpread::default();
+						self.gradient_interpolation = GradientInterpolation::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
 						self.adopt_color(color);
@@ -87,6 +91,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.active_marker_index = Some(0);
 						self.active_marker_is_midpoint = false;
 						self.gradient_spread = ramp.gradient_spread;
+						self.gradient_interpolation = ramp.gradient_interpolation;
 						let gradient = Gradient::from(ramp);
 						let first_color = gradient.color(0).unwrap_or(Color::BLACK);
 						self.gradient = Some(gradient);
@@ -199,6 +204,20 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerColorChanged {
 					value: FillChoice::Gradient(GradientRamp {
 						gradient_spread,
+						gradient_interpolation: self.gradient_interpolation,
+						..GradientRamp::from(gradient)
+					}),
+				});
+				self.send_layouts(responses);
+			}
+			ColorPickerMessage::SetGradientInterpolation { gradient_interpolation } => {
+				let Some(gradient) = &self.gradient else { return };
+				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
+				self.gradient_interpolation = gradient_interpolation;
+				responses.add(FrontendMessage::ColorPickerColorChanged {
+					value: FillChoice::Gradient(GradientRamp {
+						gradient_spread: self.gradient_spread,
+						gradient_interpolation,
 						..GradientRamp::from(gradient)
 					}),
 				});
@@ -290,6 +309,7 @@ impl ColorPickerMessageHandler {
 			responses.add(FrontendMessage::ColorPickerColorChanged {
 				value: FillChoice::Gradient(GradientRamp {
 					gradient_spread: self.gradient_spread,
+					gradient_interpolation: self.gradient_interpolation,
 					..GradientRamp::from(&*gradient)
 				}),
 			});
@@ -420,6 +440,7 @@ impl ColorPickerMessageHandler {
 		responses.add(FrontendMessage::ColorPickerColorChanged {
 			value: FillChoice::Gradient(GradientRamp {
 				gradient_spread: self.gradient_spread,
+				gradient_interpolation: self.gradient_interpolation,
 				..GradientRamp::from(&gradient)
 			}),
 		});
@@ -450,6 +471,7 @@ impl ColorPickerMessageHandler {
 			let markers = gradient.iter().map(|stop| SpectrumMarker::new(stop.position, stop.midpoint, stop.color)).collect();
 			let mut row_widgets = vec![
 				SpectrumInput::new(GradientStops::from(gradient))
+					.track_interpolation(self.gradient_interpolation)
 					.markers(markers)
 					.active_marker_index(self.active_marker_index)
 					.active_marker_is_midpoint(self.active_marker_is_midpoint)
@@ -632,6 +654,20 @@ impl ColorPickerMessageHandler {
 			]));
 		}
 
+		// Gradient interpolation color space (only present when the picker is in gradient mode)
+		if self.gradient.is_some() {
+			let entries = MenuListEntry::sections_from_choice_type(|gradient_interpolation| ColorPickerMessage::SetGradientInterpolation { gradient_interpolation }.into());
+
+			groups.push(LayoutGroup::row(vec![
+				TextLabel::new("Space").tooltip_label("Gradient Interpolation").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				DropdownInput::new(entries)
+					.selected_index(Some(self.gradient_interpolation as u32))
+					.disabled(self.disabled)
+					.widget_instance(),
+			]));
+		}
+
 		// Color presets (None / Black / White / pure colors / eyedropper)
 		groups.push(LayoutGroup::row(vec![
 			ColorPresetsInput::default()
@@ -686,6 +722,7 @@ const SATURATION_DESCRIPTION: &str = "The vividness from grayscale to full color
 const VALUE_DESCRIPTION: &str = "The brightness from black to full color.";
 const ALPHA_DESCRIPTION: &str = "The level of translucency, from transparent (0%) to opaque (100%).";
 const ENDS_DESCRIPTION: &str = "The method for how the gradient continues beyond its ends.";
+const SPACE_DESCRIPTION: &str = "The color space where stops blend into their neighbors.";
 
 /// The popover's background color as sRGB gamma-encoded channels (the `--color-2-mildblack` design token, `#222`).
 /// Used by the comparison swatch's outline computation to brighten the inset border for colors close to this background.
