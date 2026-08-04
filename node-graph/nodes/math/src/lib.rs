@@ -1204,13 +1204,13 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 }
 
 /// Sets the type (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn gradient_type(_: impl Ctx, gradient: Gradient, gradient_type: vector_types::GradientType) -> (Gradient, Attr<GradientTypeAttr>) {
 	(gradient, Attr(gradient_type))
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn spread_method(_: impl Ctx, gradient: Gradient, spread_method: vector_types::GradientSpreadMethod) -> (Gradient, Attr<SpreadMethodAttr>) {
 	(gradient, Attr(spread_method))
 }
@@ -1218,7 +1218,7 @@ fn spread_method(_: impl Ctx, gradient: Gradient, spread_method: vector_types::G
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: IList<f64>) -> Gradient {
 	let positions: Vec<f64> = positions.iter().collect();
 	gradient.set_positions(&positions);
@@ -1230,7 +1230,7 @@ fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: IList<f64>
 /// The final stop belongs to no interval so its midpoint is ignored.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Gradient"))]
 fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: IList<f64>) -> Gradient {
 	let midpoints: Vec<f64> = midpoints.iter().collect();
 	gradient.set_midpoints(&midpoints);
