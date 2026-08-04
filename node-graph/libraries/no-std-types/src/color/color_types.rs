@@ -919,6 +919,14 @@ impl Color {
 		)
 	}
 
+	/// Like [`Self::lerp`] but interpolating in gamma sRGB space, the space SVG interpolates in between adjacent gradient stops.
+	#[inline(always)]
+	pub fn lerp_gamma_srgb(&self, other: &Color, t: f32) -> Self {
+		let a = self.to_gamma_srgb_channels();
+		let b = other.to_gamma_srgb_channels();
+		Color::from_gamma_srgb_channels(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t)
+	}
+
 	/// Generic power curve `c.powf(1 / exponent)` applied per RGB channel. Distinct from the sRGB transfer curve (see [`Self::to_gamma_srgb_channels`]).
 	/// The expected output must still be treated as linear-light.
 	#[inline(always)]

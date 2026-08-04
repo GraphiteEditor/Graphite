@@ -33,7 +33,7 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientRamp, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -303,6 +303,7 @@ pub(crate) fn property_from_type(
 						// =========================
 						Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
@@ -1387,6 +1388,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
 		SpectrumInput::new(GradientStops::from(&bw_track()))
+			.track_interpolation(GradientInterpolation::SrgbGamma)
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1559,6 +1561,7 @@ fn spectrum_slider_row(
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
 			SpectrumInput::new(GradientStops::from(&track))
+				.track_interpolation(GradientInterpolation::SrgbGamma)
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)

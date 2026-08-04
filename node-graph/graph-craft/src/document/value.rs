@@ -555,6 +555,7 @@ tagged_value! {
 	GradientForm(vector::style::GradientForm),
 	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
 	GradientSpread(vector::style::GradientSpread),
+	GradientInterpolation(vector::style::GradientInterpolation),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),

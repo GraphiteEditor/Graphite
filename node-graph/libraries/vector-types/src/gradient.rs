@@ -1,6 +1,6 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
+use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -93,8 +93,8 @@ impl From<&GradientStops<SRGBA8>> for Gradient {
 
 impl GradientStops<SRGBA8> {
 	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
-	pub fn to_css_linear_gradient(&self) -> String {
-		Gradient::from(self).to_css_linear_gradient()
+	pub fn to_css_linear_gradient(&self, gradient_interpolation: GradientInterpolation) -> String {
+		Gradient::from(self).to_css_linear_gradient(gradient_interpolation)
 	}
 }
 
@@ -107,6 +107,9 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpread::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_spread: GradientSpread,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub gradient_interpolation: GradientInterpolation,
 }
 
 unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C> {
@@ -118,6 +121,7 @@ impl<C> From<GradientStops<C>> for GradientRamp<C> {
 		Self {
 			stops,
 			gradient_spread: Default::default(),
+			gradient_interpolation: Default::default(),
 		}
 	}
 }
@@ -127,6 +131,7 @@ impl From<&Gradient> for GradientRamp {
 		Self {
 			stops: gradient.into(),
 			gradient_spread: Default::default(),
+			gradient_interpolation: Default::default(),
 		}
 	}
 }
@@ -157,6 +162,9 @@ impl From<GradientRamp> for Item<Gradient> {
 		if !ramp.gradient_spread.is_default() {
 			item.set_attribute(ATTR_GRADIENT_SPREAD, ramp.gradient_spread);
 		}
+		if !ramp.gradient_interpolation.is_default() {
+			item.set_attribute(ATTR_GRADIENT_INTERPOLATION, ramp.gradient_interpolation);
+		}
 		item
 	}
 }
@@ -166,6 +174,7 @@ impl From<&Item<Gradient>> for GradientRamp {
 		Self {
 			stops: item.element().into(),
 			gradient_spread: item.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD),
+			gradient_interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
 		}
 	}
 }
@@ -192,6 +201,7 @@ impl From<&GradientRamp> for GradientRamp<SRGBA8> {
 		Self {
 			stops: ramp.into(),
 			gradient_spread: ramp.gradient_spread,
+			gradient_interpolation: ramp.gradient_interpolation,
 		}
 	}
 }
@@ -201,6 +211,7 @@ impl From<&Gradient> for GradientRamp<SRGBA8> {
 		Self {
 			stops: gradient.into(),
 			gradient_spread: Default::default(),
+			gradient_interpolation: Default::default(),
 		}
 	}
 }
@@ -209,6 +220,7 @@ impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 	fn from(ramp: &GradientRamp<SRGBA8>) -> Self {
 		Self {
 			gradient_spread: ramp.gradient_spread,
+			gradient_interpolation: ramp.gradient_interpolation,
 			..Self::from(&ramp.stops)
 		}
 	}
@@ -257,6 +269,20 @@ fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
 		let p = -1. / midpoint.log2();
 		t.powf(p)
 	}
+}
+
+/// Interpolates between two adjacent stops' colors at `t` across their interval, in the gradient's interpolation color space.
+pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_interpolation: GradientInterpolation) -> Color {
+	match gradient_interpolation {
+		GradientInterpolation::SrgbLinear => color_a.lerp(&color_b, t),
+		GradientInterpolation::SrgbGamma => color_a.lerp_gamma_srgb(&color_b, t),
+	}
+}
+
+/// The largest difference between two colors across their gamma sRGB channels, the 8-bit-adjacent measure that rendered output quantizes to.
+fn max_gamma_channel_deviation(a: Color, b: Color) -> f64 {
+	let (a, b) = (a.to_gamma_srgb_channels(), b.to_gamma_srgb_channels());
+	(0..4).fold(0_f64, |max, i| max.max((a[i] - b[i]).abs() as f64))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -633,6 +659,7 @@ impl Gradient {
 			if t >= a.position && t <= b.position {
 				let normalized_t = (t - a.position) / (b.position - a.position);
 				let adjusted_t = apply_midpoint(normalized_t, a.midpoint);
+				// Sampling deliberately stays in linear light; the ramp's interpolation space attribute only shapes what the renderers draw
 				return a.color.lerp(&b.color, adjusted_t as f32);
 			}
 		}
@@ -674,14 +701,14 @@ impl Gradient {
 		mapped
 	}
 
-	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves so the rendered gradient matches Graphite's interpolation rather than browser defaults.
-	pub fn to_css_linear_gradient(&self) -> String {
+	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves and interpolation color space so the rendered gradient matches Graphite's interpolation rather than browser defaults.
+	pub fn to_css_linear_gradient(&self, gradient_interpolation: GradientInterpolation) -> String {
 		if self.len() <= 1 {
 			let hex = self.color(0).map(|c| SRGBA8::from(c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
 			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
 		}
 		let pieces = self
-			.interpolated_samples()
+			.interpolated_samples(gradient_interpolation)
 			.into_iter()
 			.map(|(position, color, _)| {
 				let percent = ((position * 100.) * 1e2).round() / 1e2;
@@ -692,21 +719,33 @@ impl Gradient {
 		format!("linear-gradient(to right, {pieces})")
 	}
 
-	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves.
+	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves
+	/// and interpolation color space.
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
-	/// midpoint for actual gradient stops, and `None` for synthesized midpoint-curve approximation samples.
+	/// midpoint for actual gradient stops, and `None` for synthesized curve approximation samples.
 	///
-	/// Interpolation is performed in sRGB gamma space (then lifted back to linear-light for output) because the downstream SVG/CSS
-	/// renderer interpolates between adjacent `<stop>` colors in gamma space; doing the subdivision math in the same space ensures
-	/// the chosen samples actually match the curve the browser will draw.
-	pub fn interpolated_samples(&self) -> Vec<(f64, Color, Option<f64>)> {
+	/// The downstream SVG/CSS and Vello renderers interpolate between adjacent emitted stops in gamma sRGB space, so the
+	/// subdivision emits enough samples that the gamma-drawn segments match the ramp's true curve: the midpoint bias, and
+	/// the interpolation color space when it is not gamma itself.
+	pub fn interpolated_samples(&self, gradient_interpolation: GradientInterpolation) -> Vec<(f64, Color, Option<f64>)> {
 		/// Controls accuracy vs. number of samples tradeoff.
 		/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve with this midpoint bias.
 		const THRESHOLD: f64 = 2. / 255.;
 
 		#[allow(clippy::too_many_arguments)]
-		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a_gamma: [f32; 4], color_b_gamma: [f32; 4], result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
+		fn subdivide(
+			left: f64,
+			right: f64,
+			midpoint: f64,
+			pos_a: f64,
+			pos_b: f64,
+			color_a: Color,
+			color_b: Color,
+			gradient_interpolation: GradientInterpolation,
+			result: &mut Vec<(f64, Color, Option<f64>)>,
+			depth: u32,
+		) {
 			const MAX_DEPTH: u32 = 20;
 			if depth >= MAX_DEPTH {
 				return;
@@ -719,19 +758,24 @@ impl Gradient {
 			let y_right = apply_midpoint(right, midpoint);
 			let y_linear = (y_left + y_right) / 2.;
 
-			if (y_actual - y_linear).abs() > THRESHOLD {
-				subdivide(left, mid, midpoint, pos_a, pos_b, color_a_gamma, color_b_gamma, result, depth + 1);
+			// A sample is needed wherever the renderer's gamma segment between the flanking samples would stray
+			// from the ramp's true curve: from the midpoint bias, or from a non-gamma space's own curvature
+			let midpoint_deviates = (y_actual - y_linear).abs() > THRESHOLD;
+			let space_deviates = gradient_interpolation != GradientInterpolation::SrgbGamma && {
+				let color_target = interpolate_stop_colors(color_a, color_b, y_actual as f32, gradient_interpolation);
+				let color_left = interpolate_stop_colors(color_a, color_b, y_left as f32, gradient_interpolation);
+				let color_right = interpolate_stop_colors(color_a, color_b, y_right as f32, gradient_interpolation);
+				max_gamma_channel_deviation(color_target, color_left.lerp_gamma_srgb(&color_right, 0.5)) > THRESHOLD
+			};
+
+			if midpoint_deviates || space_deviates {
+				subdivide(left, mid, midpoint, pos_a, pos_b, color_a, color_b, gradient_interpolation, result, depth + 1);
 
 				let global_pos = pos_a + mid * (pos_b - pos_a);
-				let t = y_actual as f32;
-				let r = color_a_gamma[0] + (color_b_gamma[0] - color_a_gamma[0]) * t;
-				let g = color_a_gamma[1] + (color_b_gamma[1] - color_a_gamma[1]) * t;
-				let b = color_a_gamma[2] + (color_b_gamma[2] - color_a_gamma[2]) * t;
-				let a = color_a_gamma[3] + (color_b_gamma[3] - color_a_gamma[3]) * t;
-				let color = Color::from_gamma_srgb_channels(r, g, b, a);
+				let color = interpolate_stop_colors(color_a, color_b, y_actual as f32, gradient_interpolation);
 				result.push((global_pos, color, None));
 
-				subdivide(mid, right, midpoint, pos_a, pos_b, color_a_gamma, color_b_gamma, result, depth + 1);
+				subdivide(mid, right, midpoint, pos_a, pos_b, color_a, color_b, gradient_interpolation, result, depth + 1);
 			}
 		}
 
@@ -760,9 +804,9 @@ impl Gradient {
 				result.push((pos_a, color_a, Some(midpoint)));
 			}
 
-			// Only subdivide if midpoint deviates from linear (0.5)
-			if (midpoint - 0.5).abs() >= 1e-6 {
-				subdivide(0., 1., midpoint, pos_a, pos_b, color_a.to_gamma_srgb_channels(), color_b.to_gamma_srgb_channels(), &mut result, 0);
+			// Only subdivide if the midpoint deviates from linear (0.5) or a non-gamma space may curve away from the drawn gamma segment
+			if (midpoint - 0.5).abs() >= 1e-6 || gradient_interpolation != GradientInterpolation::SrgbGamma {
+				subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, gradient_interpolation, &mut result, 0);
 			}
 
 			// Add the end stop
@@ -819,6 +863,27 @@ impl GradientSpread {
 		}
 	}
 
+	pub fn is_default(&self) -> bool {
+		*self == Self::default()
+	}
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Dropdown)]
+pub enum GradientInterpolation {
+	/// Blends stops in linear light, keeping transitions evenly bright.
+	#[default]
+	#[label("sRGB Linear")]
+	SrgbLinear,
+	/// Blends stops in gamma-encoded sRGB, the classic SVG and CSS look.
+	#[label("sRGB Gamma")]
+	SrgbGamma,
+}
+
+impl GradientInterpolation {
 	pub fn is_default(&self) -> bool {
 		*self == Self::default()
 	}
@@ -958,6 +1023,119 @@ mod tests {
 	}
 
 	#[test]
+	fn gradient_interpolation_serializes_only_when_not_default() {
+		let default_interpolation = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		let json = serde_json::to_string(&default_interpolation).unwrap();
+		assert!(!json.contains("gradient_interpolation"), "the default SrgbLinear interpolation must not serialize: {json}");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_interpolation);
+
+		let gamma = GradientRamp {
+			gradient_interpolation: GradientInterpolation::SrgbGamma,
+			..default_interpolation.clone()
+		};
+		let json = serde_json::to_string(&gamma).unwrap();
+		assert!(json.contains(r#""gradient_interpolation":"SrgbGamma""#), "a non-default interpolation must serialize: {json}");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), gamma);
+	}
+
+	#[test]
+	fn gradient_interpolation_round_trips_through_the_item_attribute() {
+		let ramp = GradientRamp {
+			gradient_interpolation: GradientInterpolation::SrgbGamma,
+			..GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]))
+		};
+
+		let item = Item::<Gradient>::from(ramp.clone());
+		assert_eq!(
+			item.attribute_cloned_or_default::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION),
+			GradientInterpolation::SrgbGamma,
+			"the runtime item should carry the interpolation as its attribute"
+		);
+		assert_eq!(GradientRamp::from(&item), ramp);
+
+		let linear = Item::<Gradient>::from(GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])));
+		assert!(
+			linear.attribute::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION).is_none(),
+			"the default Linear must stay absent rather than materialize"
+		);
+	}
+
+	#[test]
+	fn linear_interpolation_densifies_samples_where_gamma_segments_deviate() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		// Gamma needs no synthesized samples since the renderers already draw gamma segments
+		assert_eq!(gradient.interpolated_samples(GradientInterpolation::SrgbGamma).len(), 2);
+
+		// A linear black-to-white ramp curves away from any single gamma segment, so samples must densify,
+		// keeping the end stops in place and every synthesized color on the linear-light line
+		let samples = gradient.interpolated_samples(GradientInterpolation::SrgbLinear);
+		assert!(samples.len() > 2, "linear interpolation should synthesize samples, got {}", samples.len());
+		assert_eq!(samples.first().unwrap().0, 0.);
+		assert_eq!(samples.last().unwrap().0, 1.);
+		for &(position, color, _) in &samples {
+			assert!(
+				(color.r() as f64 - position).abs() < 1e-5,
+				"sample at {position} should sit on the linear-light line, got {}",
+				color.r()
+			);
+		}
+
+		// Identical end colors leave nothing to densify
+		let flat = Gradient::from(vec![Color::WHITE, Color::WHITE]);
+		assert_eq!(flat.interpolated_samples(GradientInterpolation::SrgbLinear).len(), 2);
+	}
+
+	#[test]
+	fn midpoint_bias_and_interpolation_space_compose_within_playback_tolerance() {
+		let color_pairs = [
+			(Color::BLACK, Color::WHITE),
+			(Color::RED, Color::WHITE),
+			(Color::from_rgbaf32_unchecked(0.9, 0.2, 0.05, 1.), Color::from_rgbaf32_unchecked(0.05, 0.3, 0.8, 0.5)),
+		];
+
+		// Sweep the midpoint against each space so its bias and the space's curvature also oppose each other,
+		// asserting the emitted samples' gamma playback tracks the composed midpoint-then-space theoretical curve
+		for gradient_interpolation in [GradientInterpolation::SrgbLinear, GradientInterpolation::SrgbGamma] {
+			for &(color_a, color_b) in &color_pairs {
+				for midpoint_step in 1..40 {
+					let midpoint = midpoint_step as f64 / 40.;
+
+					let mut gradient = Gradient::from(vec![color_a, color_b]);
+					gradient.set_midpoints(&[midpoint, 0.5]);
+					let samples = gradient.interpolated_samples(gradient_interpolation);
+
+					for probe in 0..=1000 {
+						let t = probe as f64 / 1000.;
+
+						let after = samples.iter().position(|&(position, ..)| position >= t).unwrap_or(samples.len() - 1);
+						let playback = if after == 0 {
+							samples[0].1
+						} else {
+							let (left_position, left_color, _) = samples[after - 1];
+							let (right_position, right_color, _) = samples[after];
+							let span = right_position - left_position;
+							if span < 1e-12 {
+								right_color
+							} else {
+								left_color.lerp_gamma_srgb(&right_color, ((t - left_position) / span) as f32)
+							}
+						};
+
+						let true_color = interpolate_stop_colors(color_a, color_b, apply_midpoint(t, midpoint) as f32, gradient_interpolation);
+						let deviation = max_gamma_channel_deviation(playback, true_color);
+						assert!(
+							deviation <= 4. / 255.,
+							"playback deviates {:.1}/255 at t={t} with midpoint {midpoint} in {gradient_interpolation:?} between {color_a:?} and {color_b:?}",
+							deviation * 255.
+						);
+					}
+				}
+			}
+		}
+	}
+
+	#[test]
 	fn clear_spread_evaluates_to_transparency_outside_the_unit_range() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
@@ -1008,7 +1186,7 @@ mod tests {
 		gradient.set_positions(&[1.5, 0.4, -0.5]);
 		assert_eq!(gradient.positions(), vec![1.5, 0.4, -0.5]);
 
-		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
+		let sample_positions: Vec<f64> = gradient.interpolated_samples(GradientInterpolation::SrgbGamma).iter().map(|(position, ..)| *position).collect();
 		assert!(sample_positions.windows(2).all(|pair| pair[0] <= pair[1]), "samples must ascend: {sample_positions:?}");
 		assert_eq!(sample_positions.first(), Some(&0.));
 		assert_eq!(sample_positions.last(), Some(&1.));
@@ -1022,7 +1200,7 @@ mod tests {
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK]);
 		gradient.set_positions(&[f64::INFINITY, f64::NEG_INFINITY]);
 
-		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
+		let sample_positions: Vec<f64> = gradient.interpolated_samples(GradientInterpolation::SrgbGamma).iter().map(|(position, ..)| *position).collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
 		assert_eq!(gradient.evaluate(0., Default::default()), Color::BLACK);
 		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
@@ -1033,7 +1211,7 @@ mod tests {
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK, Color::RED]);
 		gradient.set_positions(&[0., f64::NAN, 1.]);
 
-		let sample_positions: Vec<f64> = gradient.interpolated_samples().iter().map(|(position, ..)| *position).collect();
+		let sample_positions: Vec<f64> = gradient.interpolated_samples(GradientInterpolation::SrgbGamma).iter().map(|(position, ..)| *position).collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
 		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::WHITE.lerp(&Color::RED, 0.5));
 
@@ -1043,7 +1221,7 @@ mod tests {
 		// With every position NaN the gradient samples as stopless, painting solid black to signal the upstream bug
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::RED]);
 		gradient.set_positions(&[f64::NAN, f64::NAN]);
-		assert!(gradient.interpolated_samples().is_empty());
+		assert!(gradient.interpolated_samples(GradientInterpolation::SrgbGamma).is_empty());
 		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::BLACK);
 	}
 
@@ -1052,7 +1230,7 @@ mod tests {
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK]);
 		gradient.set_positions(&[0.3, 1.]);
 
-		let samples = gradient.interpolated_samples();
+		let samples = gradient.interpolated_samples(GradientInterpolation::SrgbGamma);
 		assert_eq!(samples[0], (0.3, Color::WHITE, None), "renderers that need a flat lead-in before the first stop add it themselves");
 	}
 
@@ -1064,7 +1242,7 @@ mod tests {
 		gradient.set_midpoints(&[f64::NAN, f64::NAN]);
 		assert_eq!(gradient.evaluate(0.25, Default::default()), linear_result);
 		let no_nan_annotations = gradient
-			.interpolated_samples()
+			.interpolated_samples(GradientInterpolation::SrgbGamma)
 			.iter()
 			.all(|(position, _, midpoint)| position.is_finite() && !midpoint.is_some_and(|midpoint| midpoint.is_nan()));
 		assert!(no_nan_annotations, "NaN must not escape into rendered sample annotations");
