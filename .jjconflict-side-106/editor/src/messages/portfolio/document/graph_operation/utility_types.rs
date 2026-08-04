@@ -410,6 +410,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
 		let ramp = GradientRamp::from(gradient);
+		let ramp = GradientRamp { spread_method, ..ramp };
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
@@ -443,12 +444,6 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput),
 			NodeInput::value(TaggedValue::GradientType(gradient_type), false),
-			true,
-		);
-
-		self.set_input_with_refresh(
-			InputConnector::node(fill_node_id, graphene_std::vector::fill::SpreadMethodInput),
-			NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false),
 			false,
 		);
 	}
