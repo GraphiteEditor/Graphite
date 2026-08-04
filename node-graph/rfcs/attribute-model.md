@@ -148,7 +148,7 @@ fn repeat<T>(
 	direction: DVec2,
 	transform: Attr<Transform>,
 ) -> List<(T, Attr<Transform>)> {
-	let offset = direction * ctx.index() as f64;
+	let offset = direction * ctx.innermost_index() as f64;
 	emit(element, Attr(DAffine2::from_translation(offset) * *transform))
 }
 ```
@@ -396,11 +396,12 @@ buffers keep them valid side by side), pass them through helper
 functions, and return any of them. The returned value's record is the
 node's output, so provenance is carried by the value itself: element and
 attributes travel together, and returning a result obtained before some
-later evaluation is well-defined. Re-evaluating the same source
-overwrites that source's buffer with an identical record, by purity, so
-stale handles are benign. The values are opaque and unforgeable, and
-inspecting one requires bounds on the generic, which is element access
-and monomorphization as usual.
+later evaluation is well-defined. A value is live until its own source
+is evaluated again, which overwrites that source's buffer; a kernel that
+needs two results of one input side by side declares the input twice.
+The values are opaque and unforgeable, and inspecting one requires
+bounds on the generic, which is element access and monomorphization as
+usual.
 
 This is the general form of selection: switch, fallback, N-way
 multiplexers, and per-lane data-driven choice among inputs are all plain
