@@ -167,15 +167,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Box::new(DashPattern::from(lengths)),
 					Self::BoxCorners(values) => Box::new(BoxCorners::from(values)),
 					Self::Color(color) => Box::new(List::<Color>::new_from_element(color)),
-					Self::GradientRamp(ramp) => {
-						// The ramp's spread method rides the served list as its attribute, as `Item<Gradient>::from` does on master.
-						let spread_method = ramp.spread_method;
-						let mut list = List::<Gradient>::new_from_element(Gradient::from(ramp));
-						if !spread_method.is_default() {
-							list.set_attribute(graphic_types::vector_types::ATTR_SPREAD_METHOD, 0, spread_method);
-						}
-						Box::new(list)
-					}
+					Self::GradientRamp(ramp) => Box::new(List::new_from_item(Item::<Gradient>::from(ramp))),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
@@ -221,15 +213,7 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Arc::new(DashPattern::from(lengths)),
 					Self::BoxCorners(values) => Arc::new(BoxCorners::from(values)),
 					Self::Color(color) => Arc::new(List::<Color>::new_from_element(color)),
-					Self::GradientRamp(ramp) => {
-						// The ramp's spread method rides the served list as its attribute, as `Item<Gradient>::from` does on master.
-						let spread_method = ramp.spread_method;
-						let mut list = List::<Gradient>::new_from_element(Gradient::from(ramp));
-						if !spread_method.is_default() {
-							list.set_attribute(graphic_types::vector_types::ATTR_SPREAD_METHOD, 0, spread_method);
-						}
-						Arc::new(list)
-					}
+					Self::GradientRamp(ramp) => Arc::new(List::new_from_item(Item::<Gradient>::from(ramp))),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
@@ -636,8 +620,8 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	GradientType(vector::style::GradientType),
-	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
+	GradientForm(vector::style::GradientForm),
+	#[serde(alias = "GradientSpread")] // TODO: Eventually remove this document upgrade code
 	GradientSpread(vector::style::GradientSpread),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),

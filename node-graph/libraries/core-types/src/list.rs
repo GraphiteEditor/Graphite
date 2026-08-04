@@ -1161,7 +1161,7 @@ impl<T: CacheHash> CacheHash for List<T> {
 		self.element.cache_hash(state);
 
 		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
-		// (e.g., gradient_type, gradient_spread) invalidate downstream graph caches as expected
+		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
 		for (key, attribute) in &self.attributes.attributes {
 			std::hash::Hash::hash(key.as_str(), state);
 			attribute.cache_hash_dyn(state);
