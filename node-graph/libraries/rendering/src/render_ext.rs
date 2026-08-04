@@ -3,14 +3,14 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_SPREAD, ATTR_GRADIENT_TYPE, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -95,7 +95,7 @@ impl RenderExt for List<Gradient> {
 		let Some(stops) = self.element(0) else { return 0 };
 		let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
 		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+		let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
 
 		for (position, color, original_midpoint) in stops.interpolated_samples() {
 			stop.push_str("<stop");
@@ -134,10 +134,10 @@ impl RenderExt for List<Gradient> {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let spread_method = if spread_method == GradientSpreadMethod::Pad {
+		let gradient_spread = if gradient_spread == GradientSpread::Pad {
 			String::new()
 		} else {
-			format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+			format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
 		};
 
 		let gradient_id = generate_uuid();
@@ -146,14 +146,14 @@ impl RenderExt for List<Gradient> {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,
+					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
 					gradient_id, stop
 				);
 			}
 			GradientType::Radial => {
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
+					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
 					gradient_id, stop
 				);
 			}

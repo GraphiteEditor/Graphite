@@ -16,7 +16,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStop, GradientType, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpread, GradientStop, GradientType, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -28,7 +28,7 @@ pub struct GradientTool {
 #[derive(Default)]
 pub struct GradientOptions {
 	gradient_type: GradientType,
-	spread_method: GradientSpreadMethod,
+	gradient_spread: GradientSpread,
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
@@ -136,8 +136,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 			}
 			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
 				let ramp = GradientRamp::from(&ramp);
-				self.options.spread_method = ramp.spread_method;
-				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), ramp.spread_method);
+				self.options.gradient_spread = ramp.gradient_spread;
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), ramp.gradient_spread);
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -171,8 +171,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 						self.options.gradient_type = appearance.gradient_type;
 						needs_refresh = true;
 					}
-					if self.options.spread_method != appearance.spread_method {
-						self.options.spread_method = appearance.spread_method;
+					if self.options.gradient_spread != appearance.gradient_spread {
+						self.options.gradient_spread = appearance.gradient_spread;
 						needs_refresh = true;
 					}
 				}
@@ -263,7 +263,7 @@ impl LayoutHolder for GradientTool {
 			])
 		});
 		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp {
-			spread_method: self.options.spread_method,
+			gradient_spread: self.options.gradient_spread,
 			..GradientRamp::from(&stops_value)
 		}))
 		.allow_none(false)
@@ -363,7 +363,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 				gradient.stops,
 				GradientAppearance {
 					gradient_type: gradient.gradient_type,
-					spread_method: gradient.spread_method,
+					gradient_spread: gradient.gradient_spread,
 					transform: gradient.transform,
 				},
 				GradientSource::Direct,
@@ -382,22 +382,22 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 struct GradientAppearance {
 	transform: DAffine2,
 	gradient_type: GradientType,
-	spread_method: GradientSpreadMethod,
+	gradient_spread: GradientSpread,
 }
 
-/// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
-/// 'Transform' nodes. Type and spread method come from the closest-to-layer node of each kind, or the type default.
+/// Resolve the gradient transform, type, and gradient spread by walking the chain feeding the layer. Transform composes all
+/// 'Transform' nodes. Type and gradient spread come from the closest-to-layer node of each kind, or the type default.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientAppearance {
 	let target_input = gradient_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 	let gradient_type_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_type::IDENTIFIER);
-	let spread_method_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
+	let gradient_spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
 
 	let mut transforms_downstream_to_upstream: Vec<DAffine2> = Vec::new();
 	let mut gradient_type: Option<GradientType> = None;
-	let mut spread_method: Option<GradientSpreadMethod> = None;
+	let mut gradient_spread: Option<GradientSpread> = None;
 
 	for node_id in network_interface
 		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
@@ -416,11 +416,11 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 			&& let Some(TaggedValue::GradientType(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
 		{
 			gradient_type = Some(*value);
-		} else if reference == spread_method_reference
-			&& spread_method.is_none()
-			&& let Some(TaggedValue::GradientSpreadMethod(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
+		} else if reference == gradient_spread_reference
+			&& gradient_spread.is_none()
+			&& let Some(TaggedValue::GradientSpread(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
 		{
-			spread_method = Some(*value);
+			gradient_spread = Some(*value);
 		}
 	}
 
@@ -430,7 +430,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	GradientAppearance {
 		transform: composed_transform,
 		gradient_type: gradient_type.unwrap_or_default(),
-		spread_method: spread_method.unwrap_or_default(),
+		gradient_spread: gradient_spread.unwrap_or_default(),
 	}
 }
 
@@ -766,7 +766,7 @@ impl SelectedGradient {
 					layer,
 					gradient: self.gradient.clone(),
 					gradient_type: self.appearance.gradient_type,
-					spread_method: self.appearance.spread_method,
+					gradient_spread: self.appearance.gradient_spread,
 					transform: self.appearance.transform,
 				});
 			}
@@ -801,9 +801,9 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 		layer,
 		gradient_type: appearance.gradient_type,
 	});
-	responses.add(GraphOperationMessage::GradientSpreadMethodSet {
+	responses.add(GraphOperationMessage::GradientSpreadSet {
 		layer,
-		spread_method: appearance.spread_method,
+		gradient_spread: appearance.gradient_spread,
 	});
 }
 
@@ -1483,7 +1483,7 @@ impl Fsm for GradientToolFsmState {
 								GradientAppearance {
 									transform: DAffine2::IDENTITY,
 									gradient_type: tool_options.gradient_type,
-									spread_method: tool_options.spread_method,
+									gradient_spread: tool_options.gradient_spread,
 								},
 								GradientSource::Direct,
 							),
@@ -1836,7 +1836,7 @@ fn apply_gradient_update(
 					layer,
 					gradient,
 					gradient_type: appearance.gradient_type,
-					spread_method: appearance.spread_method,
+					gradient_spread: appearance.gradient_spread,
 					transform: appearance.transform,
 				});
 			}
@@ -1860,7 +1860,7 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, spread_method: GradientSpreadMethod) {
+fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, gradient_spread: GradientSpread) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -1876,14 +1876,14 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 
 		if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
-			responses.add(GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method });
+			responses.add(GraphOperationMessage::GradientSpreadSet { layer, gradient_spread });
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient: new_gradient.clone(),
 				gradient_type: appearance.gradient_type,
-				spread_method,
+				gradient_spread,
 				transform: appearance.transform,
 			});
 			updated_any_layer = true;
@@ -1892,7 +1892,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 
 	if let Some(selected_gradient) = &mut data.selected_gradient {
 		selected_gradient.gradient = new_gradient.clone();
-		selected_gradient.appearance.spread_method = spread_method;
+		selected_gradient.appearance.gradient_spread = gradient_spread;
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
@@ -1989,14 +1989,14 @@ mod test_gradient {
 	use graph_craft::document::NodeInput;
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::vector::style::{GradientSpreadMethod, build_transform_with_y_preservation};
+	use graphene_std::vector::style::{GradientSpread, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
 	use super::gradient_space_transform;
 
 	struct ResolvedGradient {
 		stops: Gradient,
-		spread_method: GradientSpreadMethod,
+		gradient_spread: GradientSpread,
 		transform: DAffine2,
 	}
 
@@ -2004,7 +2004,7 @@ mod test_gradient {
 		fn new(stops: Gradient, appearance: super::GradientAppearance) -> Self {
 			Self {
 				stops,
-				spread_method: appearance.spread_method,
+				gradient_spread: appearance.gradient_spread,
 				transform: appearance.transform,
 			}
 		}
@@ -2032,8 +2032,8 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let (stops, spread_method) = match fill_node.input(fill::FillInput)?.as_value()? {
-					TaggedValue::GradientRamp(ramp) => (Gradient::from(ramp), ramp.spread_method),
+				let (stops, gradient_spread) = match fill_node.input(fill::FillInput)?.as_value()? {
+					TaggedValue::GradientRamp(ramp) => (Gradient::from(ramp), ramp.gradient_spread),
 					_ => return None,
 				};
 
@@ -2045,7 +2045,7 @@ mod test_gradient {
 
 				let gradient = ResolvedGradient {
 					stops,
-					spread_method,
+					gradient_spread,
 					transform: local_transform,
 				};
 
@@ -2575,77 +2575,77 @@ mod test_gradient {
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted after drawing a gradient");
 	}
 
-	/// Build the JS-boundary ramp the stops swatch's picker would send when choosing a new spread method.
-	fn ramp_with_spread(stops: &Gradient, spread_method: GradientSpreadMethod) -> GradientRamp<SRGBA8> {
+	/// Build the JS-boundary ramp the stops swatch's picker would send when choosing a new gradient spread.
+	fn ramp_with_spread(stops: &Gradient, gradient_spread: GradientSpread) -> GradientRamp<SRGBA8> {
 		GradientRamp::<SRGBA8>::from(&GradientRamp {
-			spread_method,
+			gradient_spread,
 			..GradientRamp::from(stops)
 		})
 	}
 
 	#[tokio::test]
-	async fn change_spread_method() {
+	async fn change_gradient_spread() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		editor.drag_tool(ToolType::Gradient, 10., 10., 90., 90., ModifierKeys::empty()).await;
 
-		// Verify default spread method is Pad
+		// Verify default gradient spread is Pad
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
 
-		// Update spread method to Repeat
+		// Update the gradient spread to Repeat
 		editor
 			.handle_message(GradientToolMessage::UpdateRamp {
-				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Repeat),
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Repeat),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat);
 
-		// Update spread method to Reflect
+		// Update the gradient spread to Reflect
 		editor
 			.handle_message(GradientToolMessage::UpdateRamp {
-				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Reflect),
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Reflect),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Reflect);
 	}
 
 	#[tokio::test]
-	async fn change_spread_method_chain() {
+	async fn change_gradient_spread_chain() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		let layer = create_fill_gradient_chain_layer(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
 
-		// Verify default spread method is Pad
+		// Verify default gradient spread is Pad
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
 
-		// Update spread method to Repeat
+		// Update the gradient spread to Repeat
 		editor
 			.handle_message(GradientToolMessage::UpdateRamp {
-				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Repeat),
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Repeat),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat);
 
-		// Update spread method to Reflect
+		// Update the gradient spread to Reflect
 		editor
 			.handle_message(GradientToolMessage::UpdateRamp {
-				ramp: ramp_with_spread(&gradient.stops, GradientSpreadMethod::Reflect),
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Reflect),
 			})
 			.await;
 
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
-		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
+		assert_eq!(gradient.gradient_spread, GradientSpread::Reflect);
 	}
 
 	#[tokio::test]
@@ -2797,7 +2797,7 @@ mod test_gradient {
 	// graph space rather than stranded at the origin.
 	#[tokio::test]
 	async fn gradient_chain_node_on_fill_secondary_input_takes_feeder_slot() {
-		use graphene_std::vector::style::GradientSpreadMethod;
+		use graphene_std::vector::style::GradientSpread;
 
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -2855,17 +2855,17 @@ mod test_gradient {
 			.await;
 		let feeder_position = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position");
 
-		// Set the spread method through the tool, which splices a 'Spread Method' node onto the Fill's fill input wire.
+		// Set the gradient spread through the tool, which splices a 'Gradient Spread' node onto the Fill's fill input wire.
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
 		let stops = get_gradient_stops(layer, &editor.active_document().network_interface).expect("the chain layer should resolve its gradient stops");
 		editor
 			.handle_message(GradientToolMessage::UpdateRamp {
-				ramp: ramp_with_spread(&stops, GradientSpreadMethod::Reflect),
+				ramp: ramp_with_spread(&stops, GradientSpread::Reflect),
 			})
 			.await;
 
-		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
+		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
 		let spread_node_id = {
 			let network_interface = &editor.active_document().network_interface;
 			network_interface
@@ -2874,10 +2874,10 @@ mod test_gradient {
 				.keys()
 				.copied()
 				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference))
-				.expect("Spread Method node should have been inserted")
+				.expect("Gradient Spread node should have been inserted")
 		};
 
-		let spread_position = editor.active_document_mut().network_interface.position(&spread_node_id, &[]).expect("Spread Method position");
+		let spread_position = editor.active_document_mut().network_interface.position(&spread_node_id, &[]).expect("Gradient Spread position");
 		let feeder_position_after = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position after");
 
 		assert_eq!(spread_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");

@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpreadMethod, GradientStops};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientRamp, GradientSpread, GradientStops};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -29,7 +29,7 @@ pub struct ColorPickerMessageHandler {
 
 	// When set, the picker is editing a gradient: the visual pickers and inputs target the active stop's color.
 	gradient: Option<Gradient>,
-	spread_method: GradientSpreadMethod,
+	gradient_spread: GradientSpread,
 	active_marker_index: Option<u32>,
 	active_marker_is_midpoint: bool,
 
@@ -51,7 +51,7 @@ impl Default for ColorPickerMessageHandler {
 			old_alpha: 1.,
 			old_is_none: true,
 			gradient: None,
-			spread_method: GradientSpreadMethod::default(),
+			gradient_spread: GradientSpread::default(),
 			active_marker_index: None,
 			active_marker_is_midpoint: false,
 			allow_none: true,
@@ -72,13 +72,13 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 					FillChoice::None => {
 						self.set_new_hsva(0., 0., 0., 1., true);
 						self.gradient = None;
-						self.spread_method = GradientSpreadMethod::default();
+						self.gradient_spread = GradientSpread::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
 					}
 					FillChoice::Solid(color) => {
 						self.gradient = None;
-						self.spread_method = GradientSpreadMethod::default();
+						self.gradient_spread = GradientSpread::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
 						self.adopt_color(color);
@@ -86,7 +86,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 					FillChoice::Gradient(ramp) => {
 						self.active_marker_index = Some(0);
 						self.active_marker_is_midpoint = false;
-						self.spread_method = ramp.spread_method;
+						self.gradient_spread = ramp.gradient_spread;
 						let gradient = Gradient::from(ramp);
 						let first_color = gradient.color(0).unwrap_or(Color::BLACK);
 						self.gradient = Some(gradient);
@@ -192,13 +192,13 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.send_layouts(responses);
 			}
 			ColorPickerMessage::GradientUpdate { update } => self.apply_gradient_update(update, responses),
-			ColorPickerMessage::SetSpreadMethod { spread_method } => {
+			ColorPickerMessage::SetGradientSpread { gradient_spread } => {
 				let Some(gradient) = &self.gradient else { return };
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
-				self.spread_method = spread_method;
+				self.gradient_spread = gradient_spread;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
 					value: FillChoice::Gradient(GradientRamp {
-						spread_method,
+						gradient_spread,
 						..GradientRamp::from(gradient)
 					}),
 				});
@@ -289,7 +289,7 @@ impl ColorPickerMessageHandler {
 			gradient.set_color(active_index as usize, color);
 			responses.add(FrontendMessage::ColorPickerColorChanged {
 				value: FillChoice::Gradient(GradientRamp {
-					spread_method: self.spread_method,
+					gradient_spread: self.gradient_spread,
 					..GradientRamp::from(&*gradient)
 				}),
 			});
@@ -419,7 +419,7 @@ impl ColorPickerMessageHandler {
 
 		responses.add(FrontendMessage::ColorPickerColorChanged {
 			value: FillChoice::Gradient(GradientRamp {
-				spread_method: self.spread_method,
+				gradient_spread: self.gradient_spread,
 				..GradientRamp::from(&gradient)
 			}),
 		});
@@ -621,21 +621,21 @@ impl ColorPickerMessageHandler {
 				.widget_instance(),
 		]));
 
-		// Gradient ends spread method (only present when the picker is in gradient mode)
+		// Gradient spread (only present when the picker is in gradient mode)
 		if self.gradient.is_some() {
-			let entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
+			let entries = [GradientSpread::Pad, GradientSpread::Reflect, GradientSpread::Repeat]
 				.into_iter()
-				.map(|spread_method| {
-					RadioEntryData::new(format!("{spread_method:?}"))
-						.label(spread_method.to_string())
-						.on_update(move |_| ColorPickerMessage::SetSpreadMethod { spread_method }.into())
+				.map(|gradient_spread| {
+					RadioEntryData::new(format!("{gradient_spread:?}"))
+						.label(gradient_spread.to_string())
+						.on_update(move |_| ColorPickerMessage::SetGradientSpread { gradient_spread }.into())
 				})
 				.collect();
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Ends").tooltip_label("Spread Method").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
+				TextLabel::new("Ends").tooltip_label("Gradient Spread").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				RadioInput::new(entries).selected_index(Some(self.spread_method as u32)).disabled(self.disabled).widget_instance(),
+				RadioInput::new(entries).selected_index(Some(self.gradient_spread as u32)).disabled(self.disabled).widget_instance(),
 			]));
 		}
 

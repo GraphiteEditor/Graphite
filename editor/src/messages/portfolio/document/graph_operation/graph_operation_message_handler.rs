@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientSpreadMethod, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientSpread, GradientStop, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -43,11 +43,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				layer,
 				gradient,
 				gradient_type,
-				spread_method,
+				gradient_spread,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_type, gradient_spread, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -80,9 +80,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_type_set(gradient_type);
 				}
 			}
-			GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method } => {
+			GraphOperationMessage::GradientSpreadSet { layer, gradient_spread } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_spread_method_set(spread_method);
+					modify_inputs.gradient_spread_set(gradient_spread);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -805,11 +805,11 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 	}
 }
 
-fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMethod {
+fn convert_gradient_spread(spread_method: usvg::SpreadMethod) -> GradientSpread {
 	match spread_method {
-		usvg::SpreadMethod::Pad => GradientSpreadMethod::Pad,
-		usvg::SpreadMethod::Reflect => GradientSpreadMethod::Reflect,
-		usvg::SpreadMethod::Repeat => GradientSpreadMethod::Repeat,
+		usvg::SpreadMethod::Pad => GradientSpread::Pad,
+		usvg::SpreadMethod::Reflect => GradientSpread::Reflect,
+		usvg::SpreadMethod::Repeat => GradientSpread::Repeat,
 	}
 }
 
@@ -836,8 +836,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let spread_method = convert_spread_method(linear.spread_method());
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+			let gradient_spread = convert_gradient_spread(linear.spread_method());
+			modify_inputs.fill_gradient_set(gradient, gradient_type, gradient_spread, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -860,9 +860,9 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let spread_method = convert_spread_method(radial.spread_method());
+			let gradient_spread = convert_gradient_spread(radial.spread_method());
 
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_type, gradient_spread, transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

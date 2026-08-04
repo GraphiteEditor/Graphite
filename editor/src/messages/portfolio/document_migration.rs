@@ -17,7 +17,7 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{GradientRamp, GradientSpreadMethod, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -168,6 +168,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
+		node: graphene_std::graphic::read_attribute_gradient_spread::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ReadAttributeSpreadMethodNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::graphic::remove_at_index::IDENTIFIER,
 		aliases: &["graphic_nodes::graphic::OmitElementNode"],
 	},
@@ -261,6 +265,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::footprint_value::IDENTIFIER,
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
+		aliases: &["math_nodes::SpreadMethodNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
@@ -1406,10 +1414,10 @@ fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
 	Some(NodeInput::value(TaggedValue::BoxCorners(values), *exposed))
 }
 
-/// Rewrites a gradient ramp value input to carry the given spread method, which used to live in the Fill node's retired `_spread_method` input.
-fn fold_spread_method_into_ramp_input(input: &NodeInput, spread_method: GradientSpreadMethod) -> NodeInput {
+/// Rewrites a gradient ramp value input to carry the given gradient spread, which used to live in the Fill node's retired `_spread_method` input.
+fn fold_gradient_spread_into_ramp_input(input: &NodeInput, gradient_spread: GradientSpread) -> NodeInput {
 	match input.as_value() {
-		Some(TaggedValue::GradientRamp(ramp)) => NodeInput::value(TaggedValue::GradientRamp(GradientRamp { spread_method, ..ramp.clone() }), input.is_exposed()),
+		Some(TaggedValue::GradientRamp(ramp)) => NodeInput::value(TaggedValue::GradientRamp(GradientRamp { gradient_spread, ..ramp.clone() }), input.is_exposed()),
 		_ => input.clone(),
 	}
 }
@@ -1635,7 +1643,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					graphic_types::migrations::legacy::LegacyFill::None => TaggedValue::no_paint(),
 					graphic_types::migrations::legacy::LegacyFill::Solid(color) => TaggedValue::Color(*color),
 					graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) => TaggedValue::GradientRamp(GradientRamp {
-						spread_method: gradient.spread_method,
+						gradient_spread: gradient.spread_method,
 						..gradient.stops.clone()
 					}),
 				};
@@ -1682,7 +1690,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				&InputConnector::node_at_index(*node_id, 3),
 				NodeInput::value(
 					TaggedValue::GradientRamp(GradientRamp {
-						spread_method: g.spread_method,
+						gradient_spread: g.spread_method,
 						..g.stops.clone()
 					}),
 					false,
@@ -1723,20 +1731,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Fill split its `Option<DAffine2>` placement into a `_has_transform` bool immediately before the `_transform` matrix. The modern
 	// shape is also 7 inputs, so this era is identified by its `_spread_method` input at 5 or its optional transform at 6.
 	let is_pre_transform_split_fill = inputs_count == 7
-		&& (matches!(node.inputs.get(5).and_then(|input| input.as_value()), Some(TaggedValue::GradientSpreadMethod(_)))
+		&& (matches!(node.inputs.get(5).and_then(|input| input.as_value()), Some(TaggedValue::GradientSpread(_)))
 			|| matches!(node.inputs.get(6).and_then(|input| input.as_value()), Some(TaggedValue::LegacyOptionalDAffine2(_))));
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && is_pre_transform_split_fill {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		let spread_method = match old_inputs.get(5).and_then(|input| input.as_value()) {
-			Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-			_ => GradientSpreadMethod::default(),
+		let gradient_spread = match old_inputs.get(5).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::GradientSpread(value)) => value,
+			_ => GradientSpread::default(),
 		};
 
 		for (index, input) in old_inputs.iter().enumerate().take(5) {
 			let input = if index == 1 || index == 3 {
-				fold_spread_method_into_ramp_input(input, spread_method)
+				fold_gradient_spread_into_ramp_input(input, gradient_spread)
 			} else {
 				input.clone()
 			};
@@ -1767,19 +1775,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 7;
 	}
 
-	// The Fill node's `_spread_method` input moved into the `GradientRamp` value's own `spread_method` field
+	// The Fill node's `_spread_method` input moved into the `GradientRamp` value's own `gradient_spread` field
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER) && inputs_count == 8 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		let spread_method = match old_inputs.get(5).and_then(|input| input.as_value()) {
-			Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-			_ => GradientSpreadMethod::default(),
+		let gradient_spread = match old_inputs.get(5).and_then(|input| input.as_value()) {
+			Some(&TaggedValue::GradientSpread(value)) => value,
+			_ => GradientSpread::default(),
 		};
 
 		for (index, input) in old_inputs.iter().enumerate().take(5) {
 			let input = if index == 1 || index == 3 {
-				fold_spread_method_into_ramp_input(input, spread_method)
+				fold_gradient_spread_into_ramp_input(input, gradient_spread)
 			} else {
 				input.clone()
 			};

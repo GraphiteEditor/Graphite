@@ -16,7 +16,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientSpreadMethod, GradientType, Stroke};
+use graphene_std::vector::style::{GradientSpread, GradientType, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
@@ -403,14 +403,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_type: GradientType, gradient_spread: GradientSpread, transform: DAffine2) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
 		let ramp = GradientRamp::from(gradient);
-		let ramp = GradientRamp { spread_method, ..ramp };
+		let ramp = GradientRamp { gradient_spread, ..ramp };
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
@@ -676,20 +676,20 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
 	}
 
-	/// Write the spread method to the last 'Spread Method' node in the chain, inserting one only when the value differs
+	/// Write the gradient spread to the last 'Gradient Spread' node in the chain, inserting one only when the value differs
 	/// from the default (`Pad`).
-	pub fn gradient_spread_method_set(&mut self, spread_method: GradientSpreadMethod) {
+	pub fn gradient_spread_set(&mut self, gradient_spread: GradientSpread) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
-		let identifier = graphene_std::math_nodes::spread_method::IDENTIFIER;
-		let create_if_nonexistent = spread_method != GradientSpreadMethod::default();
+		let identifier = graphene_std::math_nodes::gradient_spread::IDENTIFIER;
+		let create_if_nonexistent = gradient_spread != GradientSpread::default();
 		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
 			return;
 		};
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::spread_method::SpreadMethodInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false), false);
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_spread::GradientSpreadInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpread(gradient_spread), false), false);
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
