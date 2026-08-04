@@ -147,7 +147,7 @@ async function migrateToNewFormat() {
 	if (oldDocuments) {
 		Object.values(oldDocuments).forEach((value) => {
 			const oldEntry: unknown = value;
-			if (typeof oldEntry !== "object" || oldEntry === null) return;
+			if (!oldEntry || typeof oldEntry !== "object") return;
 			if (!("documentId" in oldEntry) || !("document" in oldEntry) || !("details" in oldEntry)) return;
 
 			// Extract the document ID, handling bigint, number, and string formats
@@ -168,7 +168,7 @@ async function migrateToNewFormat() {
 
 			// Extract document details, handling camelCase from the old shipped format
 			const details: unknown = oldEntry.details;
-			if (typeof details !== "object" || details === null) return;
+			if (!details || typeof details !== "object") return;
 
 			let name = "";
 			if ("name" in details && typeof details.name === "string") name = details.name;
@@ -193,7 +193,7 @@ async function migrateToNewFormat() {
 
 // TODO: Eventually remove this document upgrade code
 function extractIsSavedFromUnknown(details: unknown): boolean {
-	if (typeof details !== "object" || details === null) return false;
+	if (!details || typeof details !== "object") return false;
 
 	// Old camelCase format
 	if ("isSaved" in details) return Boolean(details.isSaved);
