@@ -381,6 +381,14 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 	metadata.transform_to_viewport(layer)
 }
 
+/// Tooltip description for a "Reverse Direction" gradient button, phrased for the given gradient type.
+pub fn reverse_direction_tooltip_description(gradient_type: GradientType) -> &'static str {
+	match gradient_type {
+		GradientType::Radial => "Reverse which end the gradient radiates from.",
+		GradientType::Linear => "Swap the start and end points of the gradient line.",
+	}
+}
+
 /// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
 /// vertical lines we fall back to a stable tiebreaker on (x + y) so the choice doesn't flicker between equal alternatives.
 pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
@@ -665,14 +673,11 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	let TaggedValue::GradientRamp(ramp) = fill_node.input(fill::FillInput)?.as_value()? else {
 		return None;
 	};
+	let spread_method = ramp.spread_method;
 	let stops = Gradient::from(ramp);
 	let gradient_type = match fill_node.input(fill::GradientTypeInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientType(value)) => value,
 		_ => GradientType::default(),
-	};
-	let spread_method = match fill_node.input(fill::SpreadMethodInput).and_then(|input| input.as_value()) {
-		Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-		_ => GradientSpreadMethod::default(),
 	};
 	let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
 	let transform_input = fill_node.input(fill::TransformInput).and_then(|input| input.as_value());
@@ -823,10 +828,6 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					Some(TaggedValue::GradientType(value)) => *value,
 					_ => GradientType::default(),
 				};
-				let spread_method = match fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::SpreadMethodInput)) {
-					Some(TaggedValue::GradientSpreadMethod(value)) => *value,
-					_ => GradientSpreadMethod::default(),
-				};
 				let has_transform = matches!(fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::HasTransformInput)), Some(TaggedValue::Bool(true)));
 				let transform = match (has_transform, fill_parameters.as_ref().and_then(|parameters| parameters.value(fill::TransformInput))) {
 					(true, Some(TaggedValue::DAffine2(value))) => *value,
@@ -838,7 +839,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					layer,
 					gradient: Gradient::from(ramp),
 					gradient_type,
-					spread_method,
+					spread_method: ramp.spread_method,
 					transform,
 				});
 			}

@@ -8,8 +8,8 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
-	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
+	ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -21,6 +21,7 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use vector_types::GradientType;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -34,7 +35,6 @@ use vector_types::vector::misc::{
 use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
-use vector_types::{GradientSpreadMethod, GradientType};
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
 /// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
@@ -192,14 +192,13 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_backup_color: Item<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
 	_gradient_type: Item<GradientType>,
-	_spread_method: Item<GradientSpreadMethod>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
-	let (_gradient_type, _spread_method) = (_gradient_type.into_element(), _spread_method.into_element());
+	let _gradient_type = _gradient_type.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
@@ -212,12 +211,6 @@ where
 		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
 			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
 				*value = _gradient_type;
-			}
-		}
-
-		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
-				*value = _spread_method;
 			}
 		}
 

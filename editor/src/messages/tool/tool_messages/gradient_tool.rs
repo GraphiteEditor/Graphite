@@ -2060,14 +2060,9 @@ mod test_gradient {
 				let fill_node_id = get_fill_node_id_with_direct_fill_input(layer, &document.network_interface)?;
 				let fill_node = document.network_interface.document_network().nodes.get(&fill_node_id)?;
 
-				let stops = match fill_node.input(fill::FillInput)?.as_value()? {
-					TaggedValue::GradientRamp(ramp) => Gradient::from(ramp),
+				let (stops, spread_method) = match fill_node.input(fill::FillInput)?.as_value()? {
+					TaggedValue::GradientRamp(ramp) => (Gradient::from(ramp), ramp.spread_method),
 					_ => return None,
-				};
-
-				let spread_method = match fill_node.input(fill::SpreadMethodInput).and_then(|input| input.as_value()) {
-					Some(&TaggedValue::GradientSpreadMethod(value)) => value,
-					_ => GradientSpreadMethod::default(),
 				};
 
 				let has_transform = matches!(fill_node.input(fill::HasTransformInput).and_then(|input| input.as_value()), Some(&TaggedValue::Bool(true)));
