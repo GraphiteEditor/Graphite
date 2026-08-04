@@ -168,6 +168,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
+		node: graphene_std::graphic::read_attribute_gradient_form::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ReadAttributeGradientTypeNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::graphic::read_attribute_gradient_spread::IDENTIFIER,
 		aliases: &["graphic_nodes::graphic::ReadAttributeSpreadMethodNode"],
 	},
@@ -265,6 +269,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::footprint_value::IDENTIFIER,
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_form::IDENTIFIER,
+		aliases: &["math_nodes::GradientTypeNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
@@ -1626,7 +1634,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the legacy 4-input Fill node (content, fill: Fill, _backup_color, _backup_gradient: Gradient) to the value-model
-	// 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_type, _has_transform, _transform).
+	// 7-input shape (content, fill: generic paint list, _backup_color, _backup_gradient, _gradient_form, _has_transform, _transform).
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1655,7 +1663,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				if let graphic_types::migrations::legacy::LegacyFill::Gradient(gradient) = old_fill {
 					document.network_interface.set_input(
 						&InputConnector::node_at_index(*node_id, 4),
-						NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false),
+						NodeInput::value(TaggedValue::GradientForm(gradient.gradient_type), false),
 						network_path,
 					);
 
@@ -1707,7 +1715,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			) {
 				document.network_interface.set_input(
 					&InputConnector::node_at_index(*node_id, 4),
-					NodeInput::value(TaggedValue::GradientType(g.gradient_type), false),
+					NodeInput::value(TaggedValue::GradientForm(g.gradient_type), false),
 					network_path,
 				);
 

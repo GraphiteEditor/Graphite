@@ -551,7 +551,8 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	GradientType(vector::style::GradientType),
+	#[serde(alias = "GradientType")] // TODO: Eventually remove this document upgrade code
+	GradientForm(vector::style::GradientForm),
 	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
 	GradientSpread(vector::style::GradientSpread),
 	ReferencePoint(vector::ReferencePoint),

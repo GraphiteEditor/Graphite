@@ -8,7 +8,7 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
 	ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
@@ -21,7 +21,7 @@ use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArcle
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use vector_types::GradientType;
+use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -191,14 +191,14 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	fill: F,
 	_backup_color: Item<Color>,
 	#[default(Color::BLACK, Color::WHITE)] _backup_gradient: Item<Gradient>,
-	_gradient_type: Item<GradientType>,
+	_gradient_form: Item<GradientForm>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
 {
-	let _gradient_type = _gradient_type.into_element();
+	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
 
 	let mut content = content;
@@ -208,9 +208,9 @@ where
 	for graphic in fill.iter_element_values_mut() {
 		let Graphic::Gradient(gradient) = graphic else { continue };
 
-		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
-			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
-				*value = _gradient_type;
+		if gradient.iter_attribute_values::<GradientForm>(ATTR_GRADIENT_FORM).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+				*value = _gradient_form;
 			}
 		}
 
