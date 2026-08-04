@@ -12,7 +12,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
-use vector_types::markers::{GradientType as GradientTypeAttr, SpreadMethod as SpreadMethodAttr};
+use vector_types::markers::{GradientSpread as GradientSpreadAttr, GradientType as GradientTypeAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1211,8 +1211,8 @@ fn gradient_type(_: impl Ctx, gradient: Gradient, gradient_type: vector_types::G
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
 #[node_macro::node(category("Gradient"))]
-fn spread_method(_: impl Ctx, gradient: Gradient, spread_method: vector_types::GradientSpreadMethod) -> (Gradient, Attr<SpreadMethodAttr>) {
-	(gradient, Attr(spread_method))
+fn gradient_spread(_: impl Ctx, gradient: Gradient, gradient_spread: vector_types::GradientSpread) -> (Gradient, Attr<GradientSpreadAttr>) {
+	(gradient, Attr(gradient_spread))
 }
 
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
@@ -1237,7 +1237,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: IList<f64>
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `spread_method` attribute: Pad (default), Reflect, or Repeat.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, or Repeat.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(
 	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
@@ -1250,7 +1250,7 @@ fn sample_gradient(
 		return Err(GraphError::past_end().into());
 	}
 
-	let spread_method = gradient.lane(0).attr::<SpreadMethodAttr>();
+	let spread_method = gradient.lane(0).attr::<GradientSpreadAttr>();
 	Ok(gradient.element_ref(0).evaluate(position, spread_method))
 }
 

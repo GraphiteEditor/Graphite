@@ -23,7 +23,7 @@ use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{DashPattern, FillChoice, GradientRamp, GradientSpreadMethod, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, FillChoice, GradientRamp, GradientSpread, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Graphic};
 use std::any::Any;
@@ -217,7 +217,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<DAffine2>,
 		List<BlendMode>,
 		List<GradientType>,
-		List<GradientSpreadMethod>,
+		List<GradientSpread>,
 		List<DashPattern>,
 		List<BoxCorners>,
 		List<StrokeJoin>,
@@ -270,7 +270,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		DAffine2,
 		BlendMode,
 		GradientType,
-		GradientSpreadMethod,
+		GradientSpread,
 		DashPattern,
 		BoxCorners,
 		StrokeJoin,
@@ -1008,7 +1008,7 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 impl_table_item_layout_for_choice_enum!(
 	BlendMode,
 	GradientType,
-	GradientSpreadMethod,
+	GradientSpread,
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
@@ -1220,7 +1220,7 @@ macro_rules! known_item_types {
 			BoxCorners,
 			BlendMode,
 			GradientType,
-			GradientSpreadMethod,
+			GradientSpread,
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
@@ -1325,7 +1325,7 @@ fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut Lay
 }
 
 /// Type-dispatched recursion into an attribute value for the Data panel breadcrumb navigation.
-/// Mirrors [`dispatch_value_widget`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
+/// Mirrors [`dispatch_value_widgets`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `List<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
