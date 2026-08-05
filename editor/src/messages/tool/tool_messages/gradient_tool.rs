@@ -9,8 +9,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
-	reverse_direction_tooltip_description,
+	self, NodeGraphLayer, get_chain_source_gradient_spread, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
@@ -377,19 +377,16 @@ struct GradientAppearance {
 	gradient_spread: GradientSpread,
 }
 
-/// Resolve the gradient transform, type, and gradient spread by walking the chain feeding the layer. Transform composes all
-/// 'Transform' nodes. Type and gradient spread come from the closest-to-layer node of each kind, or the type default.
+/// Resolve the gradient transform, form, and spread by walking the chain feeding the layer.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientAppearance {
 	let target_input = gradient_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 	let gradient_form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
-	let gradient_spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
 
 	let mut transforms_downstream_to_upstream: Vec<DAffine2> = Vec::new();
 	let mut gradient_form: Option<GradientForm> = None;
-	let mut gradient_spread: Option<GradientSpread> = None;
 
 	for node_id in network_interface
 		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
@@ -408,11 +405,6 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 			&& let Some(TaggedValue::GradientForm(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
 		{
 			gradient_form = Some(*value);
-		} else if reference == gradient_spread_reference
-			&& gradient_spread.is_none()
-			&& let Some(TaggedValue::GradientSpread(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
-		{
-			gradient_spread = Some(*value);
 		}
 	}
 
@@ -422,7 +414,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	GradientAppearance {
 		transform: composed_transform,
 		gradient_form: gradient_form.unwrap_or_default(),
-		gradient_spread: gradient_spread.unwrap_or_default(),
+		gradient_spread: get_chain_source_gradient_spread(layer, network_interface).unwrap_or_default(),
 	}
 }
 
@@ -1979,14 +1971,14 @@ mod test_gradient {
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 	use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_node_id_with_direct_fill_input;
-	use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
 	use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_gradient_value_node_id;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::NodeInput;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeParameter;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::vector::style::{GradientSpread, build_transform_with_y_preservation};
+	use graphene_std::vector::style::{GradientForm, GradientSpread, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
 	use super::gradient_space_transform;
@@ -2646,6 +2638,82 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn spread_set_on_the_gradient_value_node_reaches_the_tool() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_fill_gradient_chain_layer(&mut editor).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
+
+		// Stamp the spread into the value node's ramp, the way the Properties panel's color picker writes it
+		let gradient_value_id = {
+			let network_interface = &editor.active_document().network_interface;
+			get_upstream_gradient_value_node_id(layer, network_interface).expect("the chain should have a gradient value node")
+		};
+		editor
+			.handle_message(NodeGraphMessage::SetInputValue {
+				node_id: gradient_value_id,
+				input_index: graphene_std::math_nodes::gradient_value::GradientInput::INDEX,
+				value: TaggedValue::GradientRamp(GradientRamp {
+					gradient_spread: GradientSpread::Repeat,
+					..GradientRamp::from(&gradient.stops)
+				})
+				.into(),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat, "the tool should read the spread baked into the value node");
+
+		// Editing the stops must carry that spread through rather than stamping the default back over it
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Repeat),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		assert_eq!(gradient.gradient_spread, GradientSpread::Repeat, "editing the stops should preserve the spread");
+	}
+
+	#[tokio::test]
+	async fn spread_set_from_the_tool_lands_on_the_gradient_value_node() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_chain_source_gradient_spread;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_fill_gradient_chain_layer(&mut editor).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+
+		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&gradient.stops, GradientSpread::Reflect),
+			})
+			.await;
+
+		// The Properties panel reads the value node's own ramp, so the spread has to be stored there
+		let network_interface = &editor.active_document().network_interface;
+		assert_eq!(
+			get_chain_source_gradient_spread(layer, network_interface),
+			Some(GradientSpread::Reflect),
+			"the spread should be written into the gradient value's ramp"
+		);
+
+		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
+		let inserted_spread_node = network_interface
+			.document_network()
+			.nodes
+			.keys()
+			.any(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference));
+		assert!(!inserted_spread_node, "the tool should leave graph topology alone rather than authoring a 'Gradient Spread' node");
+	}
+
+	#[tokio::test]
 	async fn gradient_list_layer_drag_endpoint() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -2794,8 +2862,6 @@ mod test_gradient {
 	// graph space rather than stranded at the origin.
 	#[tokio::test]
 	async fn gradient_chain_node_on_fill_secondary_input_takes_feeder_slot() {
-		use graphene_std::vector::style::GradientSpread;
-
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Ellipse, 0., 0., 100., 100., ModifierKeys::empty()).await;
@@ -2852,32 +2918,31 @@ mod test_gradient {
 			.await;
 		let feeder_position = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position");
 
-		// Set the gradient spread through the tool, which splices a 'Gradient Spread' node onto the Fill's fill input wire.
+		// Set the gradient form through the tool, which splices a 'Gradient Form' node onto the Fill's fill input wire.
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
-		let stops = get_gradient_stops(layer, &editor.active_document().network_interface).expect("the chain layer should resolve its gradient stops");
 		editor
-			.handle_message(GradientToolMessage::UpdateRamp {
-				ramp: ramp_with_spread(&stops, GradientSpread::Reflect),
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
 			})
 			.await;
 
-		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_spread::IDENTIFIER);
-		let spread_node_id = {
+		let form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
+		let form_node_id = {
 			let network_interface = &editor.active_document().network_interface;
 			network_interface
 				.document_network()
 				.nodes
 				.keys()
 				.copied()
-				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference))
-				.expect("Gradient Spread node should have been inserted")
+				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&form_reference))
+				.expect("Gradient Form node should have been inserted")
 		};
 
-		let spread_position = editor.active_document_mut().network_interface.position(&spread_node_id, &[]).expect("Gradient Spread position");
+		let form_position = editor.active_document_mut().network_interface.position(&form_node_id, &[]).expect("Gradient Form position");
 		let feeder_position_after = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position after");
 
-		assert_eq!(spread_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
+		assert_eq!(form_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
 		assert_eq!(
 			feeder_position_after,
 			feeder_position - glam::IVec2::new(crate::consts::NODE_CHAIN_WIDTH, 0),

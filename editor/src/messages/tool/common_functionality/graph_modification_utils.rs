@@ -388,6 +388,15 @@ pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &No
 	Some(*node_id)
 }
 
+/// The spread baked into the 'Gradient Value' node feeding a layer's chain.
+pub fn get_chain_source_gradient_spread(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSpread> {
+	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
+	let TaggedValue::GradientRamp(ramp) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
+		return None;
+	};
+	Some(ramp.gradient_spread)
+}
+
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	// Try to find the gradient stops value that is created by a Fill node first
