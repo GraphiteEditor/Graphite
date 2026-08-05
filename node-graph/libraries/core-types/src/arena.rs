@@ -187,7 +187,7 @@ impl Drop for Arena {
 
 pub struct ArenaWeak<T> {
 	word: u64,
-	_marker: PhantomData<*const T>,
+	_marker: PhantomData<fn() -> T>,
 }
 
 impl<T> Clone for ArenaWeak<T> {

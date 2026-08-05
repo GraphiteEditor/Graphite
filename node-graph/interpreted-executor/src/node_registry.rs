@@ -376,6 +376,30 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		lend_node!(f64),
 		record_lift_node!(f64),
 		record_extract_node!(f64),
+		(
+			ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode"),
+			RegistryEntry {
+				io: NodeIOTypes::new(
+					concrete!(Context),
+					core_types::Type::Record(Box::new(core_types::Type::Generic(std::borrow::Cow::Borrowed("T")))),
+					vec![core_types::registry::generic_record_edge_type("T")],
+				),
+				constructor: |inputs| {
+					if inputs.len() != 1 {
+						return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
+					}
+					let mut inputs = inputs.into_iter();
+					let handle = inputs.next().unwrap();
+					let ty = handle.ty().clone();
+					let Some(layout) = handle.layout().cloned() else {
+						return Err(ConstructionError::MissingLayout);
+					};
+					let edge = handle.downcast_erased::<core_types::registry::ErasedRecordNode>(ty.clone())?;
+					let node = core_types::record::RecordMonitor::new(edge, &layout);
+					Ok(EdgeHandle::new_erased(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>, ty))
+				},
+			},
+		),
 		clone_node!(f64),
 		frame_memo_node!(f64),
 		lend_node!(f32),
@@ -782,7 +806,7 @@ mod node_registry_macros {
 							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
 						}
 						let mut inputs = inputs.into_iter();
-						let node = core_types::record::RecordLift::<$type, _>::wire(inputs.next().unwrap().downcast::<$type>()?);
+						let node = core_types::record::RecordLift::<$type, _>::new(inputs.next().unwrap().downcast::<$type>()?);
 						Ok(EdgeHandle::new_record::<$type>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
 					},
 				},
@@ -801,7 +825,7 @@ mod node_registry_macros {
 							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
 						}
 						let mut inputs = inputs.into_iter();
-						let node = core_types::record::RecordExtract::<$type, _>::wire(inputs.next().unwrap().downcast_record::<$type>()?);
+						let node = core_types::record::RecordExtract::<$type, _>::new(inputs.next().unwrap().downcast_record::<$type>()?);
 						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
 					},
 				},

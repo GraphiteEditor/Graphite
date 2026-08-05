@@ -145,8 +145,14 @@ impl DynamicExecutor {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
+	/// A record capture materializes here against the arena, inside the introspection window.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-		self.tree.introspect(node_path)
+		let result = self.tree.introspect(node_path)?;
+		if let Some(capture) = result.downcast_ref::<core_types::record::RecordCapture>() {
+			let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+			return capture.materialize(&arena).map(|fields| Arc::new(fields) as Arc<_>).ok_or(IntrospectError::NoData);
+		}
+		Ok(result)
 	}
 
 	pub fn input_type(&self) -> Option<Type> {
@@ -622,6 +628,30 @@ mod test {
 		assert_eq!(lift.ty(), &core_types::registry::record_edge_type::<f64>());
 		assert!(lift.layout().is_some());
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
+	}
+
+	#[test]
+	fn a_record_monitor_row_forwards_and_introspects_through_the_executor() {
+		let mut monitor = proto_node("graphene_core::memo::MonitorNode", vec![NodeId(1)]);
+		monitor.original_location.path = Some(vec![NodeId(9)]);
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), proto_node("core_types::record::RecordLiftNode", vec![NodeId(0)])),
+				(NodeId(2), monitor),
+				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
+		let fields = executor.introspect(&[NodeId(9)]).unwrap();
+		let fields = fields
+			.downcast_ref::<Vec<(&'static str, Box<dyn core_types::list::AnyAttributeValue>)>>()
+			.expect("a record capture materializes to its fields");
+		assert!(fields.is_empty(), "an element-only record has no attribute fields");
 	}
 
 	#[test]

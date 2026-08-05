@@ -33,6 +33,10 @@ pub trait Attribute: 'static {
 	fn default<'e>() -> Self::Value<'e> {
 		Default::default()
 	}
+
+	/// # Safety
+	/// `ptr` must point at a live field of this marker's value type.
+	unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue>;
 }
 
 /// A kernel-facing attribute value. A parameter `Attr<A>` is a read of `A`
@@ -154,6 +158,10 @@ macro_rules! attribute {
 					$default
 				}
 			)?
+
+			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
+				::std::boxed::Box::new(unsafe { ptr.cast::<&$value>().read() }.to_owned())
+			}
 		}
 
 		$crate::attribute!(@register $marker);
@@ -171,6 +179,10 @@ macro_rules! attribute {
 					$default
 				}
 			)?
+
+			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
+				::std::boxed::Box::new(unsafe { ptr.cast::<$value>().read() })
+			}
 		}
 
 		$crate::attribute!(@register $marker);
@@ -256,6 +268,10 @@ mod tests {
 		impl Attribute for Conflict {
 			const NAME: &'static str = "opacity";
 			type Value<'e> = bool;
+
+			unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue> {
+				Box::new(unsafe { ptr.cast::<bool>().read() })
+			}
 		}
 		register::<Conflict>();
 	}

@@ -135,7 +135,16 @@ mod tests {
 	}
 
 	fn f64_layout(names: &[&'static str]) -> Layout {
-		let writes: Vec<(&'static str, u8, usize, usize)> = names.iter().map(|name| (*name, 0, 8, 8)).collect();
+		let writes: Vec<core_types::record::FieldWrite> = names
+			.iter()
+			.map(|name| core_types::record::FieldWrite {
+				name,
+				level: 0,
+				size: 8,
+				align: 8,
+				read_erased: <Opacity as AttributeMarker>::read_erased,
+			})
+			.collect();
 		Layout::default().with_writes(0, (8, 8), &writes)
 	}
 
@@ -168,8 +177,8 @@ mod tests {
 		let stacked = multiply_opacity_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &stacked]);
 
-		let chain = MultiplyOpacityNode::wire(
-			MultiplyOpacityNode::wire(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
+		let chain = MultiplyOpacityNode::new(
+			MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
 			ValueNode(0.5),
 			&modified,
 		);
@@ -193,7 +202,7 @@ mod tests {
 		let measured = measure_layout(&source_layout);
 		reserve_for(&[&source_layout, &measured]);
 
-		let chain = MeasureNode::wire(bare_source(&source_layout, -2.), &source_layout);
+		let chain = MeasureNode::new(bare_source(&source_layout, -2.), &source_layout);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -214,7 +223,7 @@ mod tests {
 		let measured = measure_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &measured]);
 
-		let chain = MeasureNode::wire(MultiplyOpacityNode::wire(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout), &modified);
+		let chain = MeasureNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, -2.), ValueNode(0.5), &source_layout), &modified);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -235,13 +244,13 @@ mod tests {
 		let shaded = shade_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &shaded]);
 
-		let bare = ShadeNode::wire(bare_source(&source_layout, 4.), &source_layout);
+		let bare = ShadeNode::new(bare_source(&source_layout, 4.), &source_layout);
 		let GPoll::Final(value) = bare.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { value.rec().element::<f64>() }, 4.);
 
-		let chain = ShadeNode::wire(MultiplyOpacityNode::wire(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), &modified);
+		let chain = ShadeNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), &modified);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -263,7 +272,7 @@ mod tests {
 		let u32_faded = fade_layout(&u32_source);
 		reserve_for(&[&f64_source, &f64_faded, &u32_source, &u32_faded]);
 
-		let wide = FadeNode::wire(bare_source(&f64_source, 8.), ValueNode(0.5), &f64_source);
+		let wide = FadeNode::new(bare_source(&f64_source, 8.), ValueNode(0.5), &f64_source);
 		let GPoll::Final(value) = wide.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -271,7 +280,7 @@ mod tests {
 		assert_eq!(unsafe { rec.element::<f64>() }, 8.);
 		assert_eq!(unsafe { rec.read::<f64>(f64_faded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
-		let narrow = FadeNode::wire(
+		let narrow = FadeNode::new(
 			RecordSourceNode {
 				frame_bytes: frame_bytes(&u32_source),
 				element: 7u32,
@@ -299,7 +308,7 @@ mod tests {
 		let layout = source_opacity_layout();
 		reserve_for(&[&layout]);
 
-		let node = SourceOpacityNode::wire(ValueNode(3.), ValueNode(0.25));
+		let node = SourceOpacityNode::new(ValueNode(3.), ValueNode(0.25));
 		assert_eq!(Node::<ContextImpl>::layout(&node), Some(&layout));
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
@@ -320,7 +329,7 @@ mod tests {
 		let modified = multiply_opacity_layout(&source_layout);
 		reserve_for(&[&source_layout, &modified]);
 
-		let chain = MultiplyOpacityNode::wire(
+		let chain = MultiplyOpacityNode::new(
 			RecordSourceNode {
 				frame_bytes: frame_bytes(&source_layout),
 				element: 1.,
@@ -347,13 +356,13 @@ mod tests {
 		let modified = checked_multiply_opacity_layout(&source_layout);
 		reserve_for(&[&source_layout, &modified]);
 
-		let ok = CheckedMultiplyOpacityNode::wire(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout);
+		let ok = CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(0.5), &source_layout);
 		let GPoll::Final(value) = ok.eval(&ctx) else {
 			panic!("expected a final record");
 		};
 		assert_eq!(unsafe { value.rec().read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
-		let failing = CheckedMultiplyOpacityNode::wire(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout);
+		let failing = CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout);
 		let GPoll::Error(error) = failing.eval(&ctx) else {
 			panic!("expected an error");
 		};
@@ -384,8 +393,8 @@ mod tests {
 		let scaled = scale_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &scaled]);
 
-		let chain = ScaleNode::wire(
-			MultiplyOpacityNode::wire(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
+		let chain = ScaleNode::new(
+			MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
 			StaticLendNode(&FACTOR),
 			&modified,
 		);
@@ -409,8 +418,8 @@ mod tests {
 		let relabeled = label_layout(&labeled);
 		reserve_for(&[&source_layout, &labeled, &relabeled]);
 
-		let chain = LabelNode::wire(
-			LabelNode::wire(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
+		let chain = LabelNode::new(
+			LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout),
 			ValueNode(String::from("b")),
 			&labeled,
 		);
@@ -425,7 +434,7 @@ mod tests {
 	#[test]
 	fn census_fills_reference_defaults_from_static_data() {
 		let source = f64_layout(&[]);
-		let labeled = Layout::default().with_writes(0, (8, 8), &[(Label::NAME, 0, 16, 8)]);
+		let labeled = Layout::default().with_writes(0, (8, 8), &[core_types::record::FieldWrite::of::<Label>(0)]);
 
 		let plan = core_types::record::SourcePlan::new(&source, &labeled).unwrap();
 		let record = [5f64];
@@ -445,6 +454,35 @@ mod tests {
 	}
 
 	#[test]
+	fn record_monitor_forwards_and_captures_for_the_introspection_window() {
+		let mut arena = Arena::new(1024).unwrap();
+		let generations = [];
+
+		let layout = f64_layout(&["opacity"]);
+		reserve_for(&[&layout, &layout]);
+
+		let monitor = core_types::record::RecordMonitor::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout);
+		{
+			let scope = scope_fixture(&generations, &arena);
+			let ctx = ContextImpl::root(&scope);
+			let GPoll::Final(value) = monitor.eval(&ctx) else {
+				panic!("expected a final record");
+			};
+			assert_eq!(unsafe { value.rec().element::<f64>() }, 4.);
+		}
+
+		let capture = Node::<ContextImpl>::serialize(&monitor).unwrap();
+		let capture = capture.downcast_ref::<core_types::record::RecordCapture>().unwrap();
+		let fields = capture.materialize(&arena).unwrap();
+		assert_eq!(fields.len(), 1);
+		assert_eq!(fields[0].0, "opacity");
+		assert_eq!(*fields[0].1.as_any().downcast_ref::<f64>().unwrap(), 0.25);
+
+		arena.reset();
+		assert!(capture.materialize(&arena).is_none(), "a dead generation materializes to nothing");
+	}
+
+	#[test]
 	fn routing_unions_branch_layouts_and_fills_census_defaults() {
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
@@ -459,8 +497,8 @@ mod tests {
 		let taken = |second: bool| {
 			PickNode::new(
 				ValueNode(second),
-				RecordSource::wire(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
-				RecordSource::wire(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
+				RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
+				RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
 			)
 		};
 
@@ -495,8 +533,8 @@ mod tests {
 
 		let chain = HoldFirstNode::new(
 			ValueNode(false),
-			RecordSource::wire(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
-			RecordSource::wire(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
+			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
+			RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
 		);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {
@@ -520,7 +558,7 @@ mod tests {
 		let base = stack::push(0);
 		stack::pop(base);
 
-		let chain = ForwardRecordNode::new(RecordSource::wire(
+		let chain = ForwardRecordNode::new(RecordSource::new(
 			f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]),
 			&layout,
 			&layout.clone(),
@@ -545,7 +583,7 @@ mod tests {
 		let layout = f64_layout(&["opacity"]);
 		reserve_for(&[&layout]);
 
-		let chain = ForwardRecordNode::new(RecordSource::wire(
+		let chain = ForwardRecordNode::new(RecordSource::new(
 			RecordSourceNode {
 				frame_bytes: frame_bytes(&layout),
 				element: 4.,

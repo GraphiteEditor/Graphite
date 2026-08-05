@@ -1241,16 +1241,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let write_descs: Vec<TokenStream2> = shape
 			.write_markers
 			.iter()
-			.map(|marker| {
-				quote! {
-					(
-						<#marker as #core_types::attribute::Attribute>::NAME,
-						0u8,
-						::core::mem::size_of::<<#marker as #core_types::attribute::Attribute>::Value<'static>>(),
-						::core::mem::align_of::<<#marker as #core_types::attribute::Attribute>::Value<'static>>(),
-					)
-				}
-			})
+			.map(|marker| quote!(#core_types::record::FieldWrite::of::<#marker>(0)))
 			.collect();
 		let element_dims = match &shape.element_write {
 			Some(ty) => quote!((::core::mem::size_of::<#ty>(), ::core::mem::align_of::<#ty>())),
@@ -1306,7 +1297,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#[automatically_derived]
 			impl<#(#data_field_generic_idents,)* #(#node_generics,)*> #mod_name::#struct_name<#(#struct_type_params,)*> {
 				#[allow(clippy::too_many_arguments)]
-				#vis fn wire(#(#edge_args,)* #(#carrier_layout_param)*) -> Self {
+				#vis fn new(#(#edge_args,)* #(#carrier_layout_param)*) -> Self {
 					#layout_binding
 					#plan_binding
 					#(#read_inits)*
@@ -1905,7 +1896,7 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					let __node = #struct_name::wire(#(#names,)* #(#wire_layout_arg)*);
+					let __node = #struct_name::new(#(#names,)* #(#wire_layout_arg)*);
 					#construct_output
 				},
 			}]

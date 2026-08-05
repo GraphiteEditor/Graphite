@@ -10,16 +10,51 @@ use crate::attribute;
 use crate::gpoll::GPoll;
 use crate::node::Node;
 
+/// A field write declared at wiring, carrying the marker's erased-read glue
+/// so introspection and persistence never consult the census at runtime.
+#[derive(Clone, Copy, Debug)]
+pub struct FieldWrite {
+	pub name: &'static str,
+	pub level: u8,
+	pub size: usize,
+	pub align: usize,
+	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
+}
+
+impl FieldWrite {
+	pub fn of<A: crate::attribute::Attribute>(level: u8) -> Self {
+		Self {
+			name: A::NAME,
+			level,
+			size: size_of::<A::Value<'static>>(),
+			align: align_of::<A::Value<'static>>(),
+			read_erased: A::read_erased,
+		}
+	}
+}
+
 /// One field of a [`Layout`]: a (name, level) key resolved to an offset.
 /// Levels are numbered innermost-out; only level 0 exists at rank 0.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Equality is structural: the glue pointer is excluded, since fn-pointer
+/// identity is not guaranteed across codegen units and layout equality
+/// drives identity forwarding.
+#[derive(Clone, Debug)]
 pub struct FieldDesc {
 	pub name: &'static str,
 	pub level: u8,
 	pub offset: usize,
 	pub size: usize,
 	pub align: usize,
+	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
 }
+
+impl PartialEq for FieldDesc {
+	fn eq(&self, other: &Self) -> bool {
+		(self.name, self.level, self.offset, self.size, self.align) == (other.name, other.level, other.offset, other.size, other.align)
+	}
+}
+
+impl Eq for FieldDesc {}
 
 /// A record layout: the element at offset 0, then the written attributes in
 /// canonical order (descending alignment, then size, then name, then level).
@@ -43,31 +78,42 @@ impl Layout {
 	/// (size, align) at `depth`, in canonical order. A (name, level) written
 	/// at a different size is a type conflict and panics; the census keeps
 	/// declared names to one type, so this only fires on wiring bugs.
-	pub fn with_writes(&self, depth: u8, element: (usize, usize), writes: &[(&'static str, u8, usize, usize)]) -> Layout {
-		let mut merged: Vec<(&'static str, u8, usize, usize)> = self.fields.iter().map(|field| (field.name, field.level, field.size, field.align)).collect();
-		for &(name, level, size, align) in writes {
-			match merged.iter().find(|(n, l, ..)| *n == name && *l == level) {
-				Some(&(.., existing_size, _)) => assert_eq!(existing_size, size, "attribute `{name}` written at two different sizes"),
-				None => merged.push((name, level, size, align)),
+	pub fn with_writes(&self, depth: u8, element: (usize, usize), writes: &[FieldWrite]) -> Layout {
+		let mut merged: Vec<FieldWrite> = self
+			.fields
+			.iter()
+			.map(|field| FieldWrite {
+				name: field.name,
+				level: field.level,
+				size: field.size,
+				align: field.align,
+				read_erased: field.read_erased,
+			})
+			.collect();
+		for &write in writes {
+			match merged.iter().find(|field| field.name == write.name && field.level == write.level) {
+				Some(existing) => assert_eq!(existing.size, write.size, "attribute `{}` written at two different sizes", write.name),
+				None => merged.push(write),
 			}
 		}
-		merged.sort_by(|a, b| b.3.cmp(&a.3).then(b.2.cmp(&a.2)).then(a.0.cmp(b.0)).then(a.1.cmp(&b.1)));
+		merged.sort_by(|a, b| b.align.cmp(&a.align).then(b.size.cmp(&a.size)).then(a.name.cmp(b.name)).then(a.level.cmp(&b.level)));
 		let (element_size, element_align) = element;
 		let mut offset = element_size;
 		let mut align = element_align.max(1);
 		let fields = merged
 			.into_iter()
-			.map(|(name, level, size, field_align)| {
-				offset = offset.next_multiple_of(field_align.max(1));
-				align = align.max(field_align);
+			.map(|write| {
+				offset = offset.next_multiple_of(write.align.max(1));
+				align = align.max(write.align);
 				let desc = FieldDesc {
-					name,
-					level,
+					name: write.name,
+					level: write.level,
 					offset,
-					size,
-					align: field_align,
+					size: write.size,
+					align: write.align,
+					read_erased: write.read_erased,
 				};
-				offset += size;
+				offset += write.size;
 				desc
 			})
 			.collect();
@@ -89,7 +135,17 @@ impl Layout {
 			assert_eq!(union.element_size, layout.element_size, "union layouts must share the element size");
 			assert_eq!(union.element_align, layout.element_align, "union layouts must share the element alignment");
 			assert_eq!(union.depth, layout.depth, "union layouts must share the depth");
-			let writes: Vec<(&'static str, u8, usize, usize)> = layout.fields.iter().map(|field| (field.name, field.level, field.size, field.align)).collect();
+			let writes: Vec<FieldWrite> = layout
+				.fields
+				.iter()
+				.map(|field| FieldWrite {
+					name: field.name,
+					level: field.level,
+					size: field.size,
+					align: field.align,
+					read_erased: field.read_erased,
+				})
+				.collect();
 			union = union.with_writes(union.depth, (union.element_size, union.element_align), &writes);
 		}
 		union
@@ -344,11 +400,83 @@ pub struct RecordSource<N> {
 }
 
 impl<N> RecordSource<N> {
-	pub fn wire(edge: N, source: &Layout, union: &Layout) -> Self {
+	pub fn new(edge: N, source: &Layout, union: &Layout) -> Self {
 		Self {
 			edge,
 			plan: SourcePlan::new(source, union),
 		}
+	}
+}
+
+/// A captured record: the layout plus a generation-checked handle to the
+/// arena copy, materialized by the introspection holder, which owns the
+/// arena. A dead generation materializes to `None`, never to a stale read.
+#[derive(Clone)]
+pub struct RecordCapture {
+	layout: Layout,
+	bytes: crate::arena::ArenaWeak<Box<[u8]>>,
+}
+
+impl RecordCapture {
+	pub fn materialize(&self, arena: &crate::arena::Arena) -> Option<Vec<(&'static str, Box<dyn crate::list::AnyAttributeValue>)>> {
+		let bytes = self.bytes.upgrade(arena)?;
+		Some(
+			self.layout
+				.fields
+				.iter()
+				.map(|field| (field.name, unsafe { (field.read_erased)(bytes.as_ptr().add(field.offset)) }))
+				.collect(),
+		)
+	}
+}
+
+// TODO: Convert to a `#[node_macro::node]` node once routing nodes forward
+// layouts and the macro grows a capture capability.
+/// The monitor over a record wire: forwards the record and captures an arena
+/// copy readable through the introspection window, like a frame memo.
+pub struct RecordMonitor<N> {
+	edge: N,
+	layout: Layout,
+	capture: std::sync::Mutex<Option<RecordCapture>>,
+}
+
+impl<N> RecordMonitor<N> {
+	pub fn new(edge: N, layout: &Layout) -> Self {
+		Self {
+			edge,
+			layout: layout.clone(),
+			capture: std::sync::Mutex::new(None),
+		}
+	}
+}
+
+impl<'e, C, N> Node<C> for RecordMonitor<N>
+where
+	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	type Output = RecordValue<'e>;
+
+	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
+		let value = self.edge.eval(input);
+		if let GPoll::Final(record) | GPoll::Partial(record) = &value {
+			let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(record.rec().ptr(), self.layout.size) }.into();
+			let capture = input.arena().alloc(bytes).map(|(_, weak)| RecordCapture {
+				layout: self.layout.clone(),
+				bytes: weak,
+			});
+			*self.capture.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = capture;
+		}
+		value
+	}
+
+	fn layout(&self) -> Option<&Layout> {
+		Some(&self.layout)
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		let capture = self.capture.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()?;
+		Some(std::sync::Arc::new(capture))
 	}
 }
 
@@ -363,7 +491,7 @@ pub struct RecordLift<El, N> {
 }
 
 impl<El: Copy + 'static, N> RecordLift<El, N> {
-	pub fn wire(edge: N) -> Self {
+	pub fn new(edge: N) -> Self {
 		let layout = Layout::default().with_writes(0, (size_of::<El>(), align_of::<El>()), &[]);
 		let frame_bytes = layout.size.next_multiple_of(8);
 		Self {
@@ -405,7 +533,7 @@ pub struct RecordExtract<El, N> {
 }
 
 impl<El, N> RecordExtract<El, N> {
-	pub fn wire(edge: N) -> Self {
+	pub fn new(edge: N) -> Self {
 		Self {
 			edge,
 			_marker: std::marker::PhantomData,
@@ -447,13 +575,21 @@ where
 mod tests {
 	use super::*;
 
-	fn f64_field(name: &'static str) -> (&'static str, u8, usize, usize) {
-		(name, 0, 8, 8)
+	unsafe fn unread(_: *const u8) -> Box<dyn crate::list::AnyAttributeValue> {
+		unreachable!("layout-only test field")
+	}
+
+	fn sized_field(name: &'static str, size: usize, align: usize) -> FieldWrite {
+		FieldWrite { name, level: 0, size, align, read_erased: unread }
+	}
+
+	fn f64_field(name: &'static str) -> FieldWrite {
+		sized_field(name, 8, 8)
 	}
 
 	#[test]
 	fn canonical_order_and_offsets() {
-		let layout = Layout::default().with_writes(0, (8, 8), &[("tint", 0, 4, 4), f64_field("opacity"), ("flag", 0, 1, 1)]);
+		let layout = Layout::default().with_writes(0, (8, 8), &[sized_field("tint", 4, 4), f64_field("opacity"), sized_field("flag", 1, 1)]);
 		assert_eq!(layout.offset_of("opacity", 0), Some(8));
 		assert_eq!(layout.offset_of("tint", 0), Some(16));
 		assert_eq!(layout.offset_of("flag", 0), Some(20));
@@ -465,7 +601,7 @@ mod tests {
 	#[should_panic(expected = "two different sizes")]
 	fn size_conflicts_panic() {
 		let layout = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
-		layout.with_writes(0, (8, 8), &[("opacity", 0, 4, 4)]);
+		layout.with_writes(0, (8, 8), &[sized_field("opacity", 4, 4)]);
 	}
 
 	#[test]
