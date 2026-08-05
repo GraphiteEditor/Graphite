@@ -20,6 +20,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		color: Option<Color>,
 	},
+	ColorValueSet {
+		layer: LayerNodeIdentifier,
+		color: Color,
+	},
 	FillGradientSet {
 		layer: LayerNodeIdentifier,
 		#[serde(skip)]

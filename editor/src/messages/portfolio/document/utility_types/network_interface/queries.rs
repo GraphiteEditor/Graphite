@@ -897,6 +897,11 @@ impl NodeNetworkInterface {
 		self.query(network_path, "is_artboard", |view| Ok(view.is_artboard(node_id))).unwrap_or_default()
 	}
 
+	/// Whether the node is a Merge node by identity, meaning it is the generic layer wrapper rather than a specialized node displayed as a layer.
+	pub fn is_merge(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "is_merge", |view| Ok(view.is_merge(node_id))).unwrap_or_default()
+	}
+
 	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		// O(n * (nodes + wires)) since connected_to_output performs a graph walk per artboard candidate
