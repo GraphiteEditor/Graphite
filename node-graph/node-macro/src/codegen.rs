@@ -1279,10 +1279,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.filter(|field| matches!(field.ty, ParsedFieldType::Regular(_)))
 		.map(|field| &field.pat_ident.ident)
 		.collect();
+	// Async slots persist plain values across evaluations; a flipped source
+	// lifts the slot value onto its record wire at every merge point.
+	let merge_lifted = |poll: TokenStream2| match flip {
+		true => quote!(__cell.merge(#core_types::record::lift_poll(#poll, &self.__layout, #core_types::context::ExtractArena::arena(__input)))),
+		false => quote!(__cell.merge(#poll)),
+	};
 	let inflight = match &parsed.attributes.placeholder {
-		Some(path) => quote!(__cell.merge(#core_types::gpoll::GPoll::Partial(#path(#(&#placeholder_value_names),*)))),
+		Some(path) => merge_lifted(quote!(#core_types::gpoll::GPoll::Partial(#path(#(&#placeholder_value_names),*)))),
 		None => quote!(#core_types::gpoll::GPoll::Pending),
 	};
+	let slot_hit = merge_lifted(quote!(value.clone()));
 	let slot_check = quote! {
 		let __scope = #core_types::context::DeriveCtx::scope(__input).excluding(_source);
 		let __key = #core_types::registry::cache_key(&#core_types::context::DeriveCtx::with_scope(__input, &__scope));
@@ -1290,7 +1297,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let __entries = self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 			if let Some(__state) = __entries.get(&__key) {
 				return match __state {
-					Some(value) => __cell.merge(value.clone()),
+					Some(value) => #slot_hit,
 					None => #inflight,
 				};
 			}
@@ -1306,7 +1313,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		},
 		_ => quote!(#core_types::gpoll::GPoll::Final(__future.await)),
 	};
+	let spawned_hit = merge_lifted(quote!(__value.clone()));
 	let spawn_tail = |completion: TokenStream2, fallback: TokenStream2| {
+		let spawned_hit = spawned_hit.clone();
 		quote! {
 			self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(__key, None);
 			let __slot = std::sync::Arc::clone(&self.slot);
@@ -1316,7 +1325,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})) {
 				let __entries = self.slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 				if let Some(Some(__value)) = __entries.get(&__key) {
-					return __cell.merge(__value.clone());
+					return #spawned_hit;
 				}
 			}
 			#fallback
@@ -1464,7 +1473,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let (placeholder_binding, spawn_return) = match &parsed.attributes.placeholder {
 				Some(path) => (
 					quote!(let __placeholder = #path(#(&#placeholder_value_names),*);),
-					quote!(__cell.merge(#core_types::gpoll::GPoll::Partial(__placeholder))),
+					merge_lifted(quote!(#core_types::gpoll::GPoll::Partial(__placeholder))),
 				),
 				None => (quote!(), quote!(#core_types::gpoll::GPoll::Pending)),
 			};
@@ -1880,9 +1889,6 @@ pub(crate) struct RoutingIo {
 /// land.
 pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() {
-		return false;
-	}
-	if parsed.is_async || is_source_kernel(&parsed.output_type) {
 		return false;
 	}
 	if parsed.attributes.batch.is_some() || parsed.attributes.shader_node.is_some() || parsed.attributes.plain {
