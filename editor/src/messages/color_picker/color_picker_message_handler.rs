@@ -569,7 +569,7 @@ impl ColorPickerMessageHandler {
 		groups.push(LayoutGroup::row(vec![
 			TextLabel::new("HSV")
 				.tooltip_label("Hue/Saturation/Value")
-				.tooltip_description("Also known as Hue/Saturation/Brightness (HSB). Not to be confused with Hue/Saturation/Lightness (HSL), a different color model.")
+				.tooltip_description("Also known as Hue/Saturation/Brightness (HSB), but distinct from Hue/Saturation/Lightness (HSL), a different color model.")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			hsv_input(
@@ -685,12 +685,7 @@ const HUE_DESCRIPTION: &str = "The shade along the spectrum of the rainbow.";
 const SATURATION_DESCRIPTION: &str = "The vividness from grayscale to full color.";
 const VALUE_DESCRIPTION: &str = "The brightness from black to full color.";
 const ALPHA_DESCRIPTION: &str = "The level of translucency, from transparent (0%) to opaque (100%).";
-const ENDS_DESCRIPTION: &str = "\
-	How the gradient continues beyond its ends:\n\
-	**Pad** extends the end colors outward.\n\
-	**Reflect** loops the gradient by mirroring back-and-forth.\n\
-	**Repeat** loops the gradient as copies of itself.\
-";
+const ENDS_DESCRIPTION: &str = "The method for how the gradient continues beyond its ends.";
 
 /// The popover's background color as sRGB gamma-encoded channels (the `--color-2-mildblack` design token, `#222`).
 /// Used by the comparison swatch's outline computation to brighten the inset border for colors close to this background.

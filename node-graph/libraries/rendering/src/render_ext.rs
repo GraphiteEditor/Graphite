@@ -1,4 +1,4 @@
-use crate::renderer::{RenderParams, format_transform_matrix, gradient_placement, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
@@ -97,7 +97,9 @@ impl RenderExt for List<Gradient> {
 		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
 
-		for (position, color, original_midpoint) in stops.interpolated_samples() {
+		let (samples, _) = spread_adjusted_samples(stops, gradient_spread, gradient_form, ClearGuardPlacement::SvgStopOrder);
+
+		for (position, color, original_midpoint) in samples {
 			stop.push_str("<stop");
 			if position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
@@ -134,7 +136,7 @@ impl RenderExt for List<Gradient> {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let gradient_spread = if gradient_spread == GradientSpread::Pad {
+		let gradient_spread = if matches!(gradient_spread, GradientSpread::Pad | GradientSpread::Clear) {
 			String::new()
 		} else {
 			format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
