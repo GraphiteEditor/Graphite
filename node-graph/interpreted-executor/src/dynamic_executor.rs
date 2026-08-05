@@ -590,15 +590,16 @@ mod test {
 	}
 
 	#[test]
-	fn a_flipped_ref_parameter_gets_its_producer_lend_spliced() {
+	fn a_flipped_ref_parameter_reads_the_borrow_from_its_record_wire() {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(2),
+			output: NodeId(3),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
 				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
 				(NodeId(2), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(0), NodeId(1)])),
+				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
 			],
 		};
 
@@ -607,8 +608,8 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster::color::Color>>> = executor.tree().eval(NodeId(2), &ctx);
-		assert!(matches!(result, Some(GPoll::Final(_))), "the palette must evaluate through the spliced lend, got {result:?}");
+		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster::color::Color>>> = executor.tree().eval(NodeId(3), &ctx);
+		assert!(matches!(result, Some(GPoll::Final(_))), "the palette must evaluate through its record wires, got {result:?}");
 	}
 
 	#[test]

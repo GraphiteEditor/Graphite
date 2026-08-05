@@ -113,6 +113,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) batch: Option<Path>,
 	/// Whether partial upstream values are mapped to `Pending` instead of flowing into this node
 	pub(crate) no_partial: bool,
+	/// Whether this node keeps the plain-wire lowering during the record transition
+	pub(crate) plain: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -375,6 +377,7 @@ impl Parse for NodeFnAttributes {
 		let mut extent = None;
 		let mut batch = None;
 		let mut no_partial = false;
+		let mut plain = false;
 
 		let content = input;
 		// let content;
@@ -560,6 +563,13 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., no_partial, ...)]
+				"plain" => {
+					let path = meta.require_path_only()?;
+					if plain {
+						return Err(Error::new_spanned(path, "Multiple 'plain' attributes are not allowed"));
+					}
+					plain = true;
+				}
 				"no_partial" => {
 					let path = meta.require_path_only()?;
 					if no_partial {
@@ -611,6 +621,7 @@ impl Parse for NodeFnAttributes {
 			extent,
 			batch,
 			no_partial,
+			plain,
 		})
 	}
 }
@@ -1278,6 +1289,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1354,6 +1366,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1444,6 +1457,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1516,6 +1530,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1600,6 +1615,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1687,6 +1703,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1759,6 +1776,7 @@ mod tests {
 				extent: None,
 				batch: None,
 				no_partial: false,
+				plain: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

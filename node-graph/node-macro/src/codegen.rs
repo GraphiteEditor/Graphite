@@ -787,7 +787,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		})
 	});
-	let introduced_lend_lifetime = (has_lend && declared_arena_lifetime.is_none()).then(|| Lifetime::new("'__lend", proc_macro2::Span::call_site()));
+	let introduced_lend_lifetime = (has_lend && !flip && declared_arena_lifetime.is_none()).then(|| Lifetime::new("'__lend", proc_macro2::Span::call_site()));
 	let lend_lifetime = declared_arena_lifetime.or_else(|| introduced_lend_lifetime.clone());
 	if let Some(lifetime) = &introduced_lend_lifetime {
 		ctx_bounds.push(quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>));
@@ -961,6 +961,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
 	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
+		ParsedFieldType::Regular(_) if flip => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
 			let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = &#lifetime #ty>)
@@ -971,7 +972,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => {
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
 		}
-		ParsedFieldType::Regular(_) if flip => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => match derives {
 			true => quote!(#node_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>),
@@ -989,7 +989,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let mut lend_outlives: Vec<TokenStream2> = regular_fields
 		.iter()
 		.filter_map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) if !flip => {
 				let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
 				Some(quote!(#ty: #lifetime))
 			}
@@ -1037,6 +1037,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			ParsedFieldType::Regular(_) if record.is_some() && !skips_carrier && index == 0 => quote!(),
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) if flip => {
+				let slot = format_ident!("__in_{index}");
+				let record_local = format_ident!("__record_{index}");
+				quote! {
+					let #record_local = match __cell.eval_input(#index, &self.#name, __input) {
+						Ok(value) => value,
+						Err(interrupt) => return interrupt.into(),
+					};
+					let #name: &#ty = unsafe { #core_types::record::borrow_element(self.#slot.rec(&#record_local)) };
+				}
+			}
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if flip => {
 				let slot = format_ident!("__in_{index}");
 				quote! {
@@ -1436,6 +1447,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let mut bounds: Vec<TokenStream2> = regular_fields
 				.iter()
 				.filter_map(|field| match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => None,
 					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
 					_ => None,
 				})
@@ -1813,7 +1825,7 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	if parsed.is_async || is_source_kernel(&parsed.output_type) {
 		return false;
 	}
-	if parsed.attributes.batch.is_some() || parsed.attributes.shader_node.is_some() {
+	if parsed.attributes.batch.is_some() || parsed.attributes.shader_node.is_some() || parsed.attributes.plain {
 		return false;
 	}
 	if matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_)) {
@@ -1842,10 +1854,7 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 			GenericParam::Lifetime(_) | GenericParam::Const(_) => return false,
 		}
 	}
-	parsed.fields.iter().all(|field| match &field.ty {
-		ParsedFieldType::Regular(RegularParsedField { lend, .. }) => lend.is_none(),
-		ParsedFieldType::Node(_) => false,
-	})
+	parsed.fields.iter().all(|field| matches!(&field.ty, ParsedFieldType::Regular(_)))
 }
 
 pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
