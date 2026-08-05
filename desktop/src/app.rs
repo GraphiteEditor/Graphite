@@ -10,18 +10,20 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ButtonSource, ElementState, MouseButton, StartCause, WindowEvent};
+use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
+use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
+use crate::input::{InputAction, InputState};
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::ui::{UiCommand, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -33,8 +35,8 @@ pub(crate) struct App {
 	window_maximized: bool,
 	window_fullscreen: bool,
 	window_pending_drag: bool,
-	pointer_position: PhysicalPosition<f64>,
 	pointer_lock_position: Option<PhysicalPosition<f64>>,
+	input_state: InputState,
 	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
@@ -106,8 +108,8 @@ impl App {
 			window_maximized: false,
 			window_fullscreen: false,
 			window_pending_drag: false,
-			pointer_position: Default::default(),
 			pointer_lock_position: Default::default(),
+			input_state: InputState::new(),
 			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
@@ -125,8 +127,8 @@ impl App {
 		}
 	}
 
-	pub(crate) fn run(mut self, event_loop: EventLoop) -> ExitReason {
-		event_loop.run_app(&mut self).unwrap();
+	pub(crate) fn run(mut self, mut event_loop: EventLoop) -> ExitReason {
+		event_loop.run_app_on_demand(&mut self).unwrap();
 		self.exit_reason
 	}
 
@@ -264,6 +266,8 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
+				self.input_state.set_viewport_info(x, y, width, height, self.window_scale);
+
 				if let Some(render_state) = &mut self.render_state
 					&& let Some(window) = &self.window
 				{
@@ -342,7 +346,8 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::PointerLock => {
-				self.pointer_lock_position = Some(self.pointer_position);
+				self.pointer_lock_position = Some(self.input_state.pointer_position());
+				self.input_state.set_pointer_locked(true);
 				if let Some(window) = &self.window {
 					window.start_pointer_lock();
 				}
@@ -538,11 +543,13 @@ impl ApplicationHandler for App {
 		if let Some(pointer_lock_position) = self.pointer_lock_position
 			&& let WindowEvent::PointerButton {
 				state: ElementState::Released,
-				button: ButtonSource::Mouse(MouseButton::Left),
+				button,
 				..
-			} = event
+			} = &event
+			&& button.clone().mouse_button() == Some(MouseButton::Left)
 		{
 			self.pointer_lock_position = None;
+			self.input_state.set_pointer_locked(false);
 			if let Some(window) = &self.window {
 				window.end_pointer_lock();
 			}
@@ -554,7 +561,12 @@ impl ApplicationHandler for App {
 			}));
 		}
 
-		self.ui.send(UiCommand::Input(event.clone()));
+		for action in self.input_state.process(&event) {
+			match action {
+				InputAction::Ui(event) => self.ui.send(UiCommand::Input(event)),
+				InputAction::Editor(message) => self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message)),
+			}
+		}
 
 		match event {
 			WindowEvent::CloseRequested => {
@@ -611,50 +623,20 @@ impl ApplicationHandler for App {
 				}
 			}
 
-			// Forward and Back buttons are not supported by CEF and thus need to be directly forwarded the editor
-			WindowEvent::PointerButton {
-				button: ButtonSource::Mouse(button),
-				state: ElementState::Pressed,
-				..
-			} => {
-				let mouse_keys = match button {
-					MouseButton::Back => Some(MouseKeys::BACK),
-					MouseButton::Forward => Some(MouseKeys::FORWARD),
-					_ => None,
-				};
-				if let Some(mouse_keys) = mouse_keys {
-					let message = DesktopWrapperMessage::Input(InputMessage::PointerDown {
-						editor_mouse_state: MouseState { mouse_keys, ..Default::default() },
-						modifier_keys: Default::default(),
-					});
-					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-
-					let message = DesktopWrapperMessage::Input(InputMessage::PointerUp {
-						editor_mouse_state: Default::default(),
-						modifier_keys: Default::default(),
-					});
-					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-				}
-			}
-
-			WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerLeft { position: Some(position), .. } | WindowEvent::PointerEntered { position, .. }
-				if self.pointer_lock_position.is_none() =>
+			WindowEvent::PointerMoved { .. } | WindowEvent::PointerLeft { position: Some(_), .. } | WindowEvent::PointerEntered { .. }
+				if self.pointer_lock_position.is_none() && self.window_pending_drag =>
 			{
-				self.pointer_position = position;
-
-				if self.window_pending_drag {
-					self.window_pending_drag = false;
-					if let Some(window) = &self.window {
-						window.start_drag();
-					}
+				self.window_pending_drag = false;
+				if let Some(window) = &self.window {
+					window.start_drag();
 				}
 			}
 
 			WindowEvent::PointerButton {
-				button: ButtonSource::Mouse(MouseButton::Left),
+				button,
 				state: ElementState::Released,
 				..
-			} => {
+			} if button.clone().mouse_button() == Some(MouseButton::Left) => {
 				self.window_pending_drag = false;
 			}
 
