@@ -39,6 +39,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.fill_color_set(color);
 				}
 			}
+			GraphOperationMessage::ColorValueSet { layer, color } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.color_value_set(color);
+				}
+			}
 			GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient,
@@ -323,7 +328,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::NewColorFillLayer { node_id, color, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(node_id);
-				modify_inputs.insert_color_value(color, layer);
+				modify_inputs.insert_color_value(color, layer, InputConnector::layer_secondary_input(layer.to_node()));
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
