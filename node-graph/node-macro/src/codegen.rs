@@ -41,6 +41,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let record = record_shape(parsed);
 	let routing = routing_io(parsed);
+	let flip = record_flip(parsed);
 	let record_skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	// Record nodes with a `_: ()` primary input have no carrier edge; the unit
 	// field stays visible in the metadata but claims no struct field.
@@ -139,6 +140,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			state
 		}
 		None if routing.is_some() => vec![quote!(pub(super) __layout: gcore::record::Layout)],
+		None if flip => {
+			let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __frame_bytes: usize)];
+			state.extend((0..struct_regular_fields.len()).map(|index| {
+				let slot = format_ident!("__in_{index}");
+				quote!(pub(super) #slot: gcore::record::Layout)
+			}));
+			state
+		}
 		None => Vec::new(),
 	};
 
@@ -260,7 +269,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let all_field_inits = data_inits.chain(regular_inits).chain(slot_init);
 
 	// Data fields may not implement Copy, PartialEq, etc., so only derive Debug and Clone
-	let struct_derives = if record.is_some() || routing.is_some() {
+	let struct_derives = if record.is_some() || routing.is_some() || flip {
 		quote!(#[derive(Debug, Clone)])
 	} else if data_fields.is_empty() && !async_source {
 		quote!(#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)])
@@ -289,16 +298,46 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// offsets from the carrier layout; `new` cannot fill that state.
 	let routing_layout_param = routing.is_some().then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
 	let routing_layout_init = routing.is_some().then(|| quote!(__layout: __layout.clone(),)).into_iter();
+	let flip_layout_params = flip
+		.then(|| {
+			(0..struct_regular_fields.len()).map(|index| {
+				let slot = format_ident!("__in_{index}");
+				quote!(#slot: &gcore::record::Layout,)
+			})
+		})
+		.into_iter()
+		.flatten();
+	let flip_layout_inits = flip
+		.then(|| {
+			(0..struct_regular_fields.len()).map(|index| {
+				let slot = format_ident!("__in_{index}");
+				quote!(#slot: #slot.clone(),)
+			})
+		})
+		.into_iter()
+		.flatten();
+	let flip_prelude = flip
+		.then(|| {
+			quote! {
+				let __layout = gcore::record::Layout::default().with_writes(0, gcore::record::element_dims::<#slot_value_type>(), &[]);
+				let __frame_bytes = __layout.frame_bytes();
+			}
+		})
+		.into_iter();
+	let flip_output_inits = flip.then(|| quote!(__layout, __frame_bytes,)).into_iter();
 	let new_impl = match record.is_none() {
 		true => quote! {
 			#[automatically_derived]
 			impl<'n, #(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*>
 			{
 				#[allow(clippy::too_many_arguments)]
-				pub fn new(#(#new_args,)* #(#routing_layout_param)*) -> Self {
+				pub fn new(#(#new_args,)* #(#routing_layout_param)* #(#flip_layout_params)*) -> Self {
+					#(#flip_prelude)*
 					Self {
 						#(#all_field_inits,)*
 						#(#routing_layout_init)*
+						#(#flip_layout_inits)*
+						#(#flip_output_inits)*
 					}
 				}
 			}
@@ -662,6 +701,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	let skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	let routing = routing_io(parsed);
+	let flip = record_flip(parsed);
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
@@ -755,7 +795,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		generics.insert(0, quote!(#lifetime));
 		impl_generics.insert(0, quote!(#lifetime));
 	}
-	if routing.is_some() || record.is_some() {
+	if routing.is_some() || record.is_some() || flip {
 		impl_generics.insert(0, quote!('__record));
 	}
 	if derive_routing {
@@ -768,6 +808,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let output_type = &parsed.output_type;
 	let trait_output = match (&record, &routing) {
 		(Some(_), _) | (None, Some(_)) => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
+		(None, None) if flip => syn::parse_quote!(#core_types::record::RecordValue<'__record>),
 		(None, None) => slot_value_type(&parsed.output_type),
 	};
 	let raw_lazy = matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_));
@@ -868,6 +909,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => {
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
 		}
+		ParsedFieldType::Regular(_) if flip => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => match derives {
 			true => quote!(#node_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>),
@@ -933,6 +975,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			ParsedFieldType::Regular(_) if record.is_some() && !skips_carrier && index == 0 => quote!(),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if flip => {
+				let slot = format_ident!("__in_{index}");
+				quote! {
+					let #name = match __cell.eval_input(#index, &self.#name, __input) {
+						Ok(value) => value,
+						Err(interrupt) => return interrupt.into(),
+					};
+					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
+				}
+			}
 			ParsedFieldType::Regular(_) => quote! {
 				let #name = match __cell.eval_input(#index, &self.#name, __input) {
 					Ok(value) => value,
@@ -1223,10 +1275,41 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			__cell.finish(__value)
 		}
 	});
+	let flip_tail = flip.then(|| {
+		let kernel_value = match kernel_kind(&parsed.output_type) {
+			KernelKind::Interrupt(_) => quote! {
+				match #kernel_call {
+					Ok(value) => value,
+					Err(interrupt) => return interrupt.into(),
+				}
+			},
+			_ => quote!(#kernel_call),
+		};
+		quote! {
+			let __kernel_value = #kernel_value;
+			let mut __value = #core_types::record::RecordValue::zeroed();
+			let __dst = match self.__frame_bytes {
+				0 => __value.as_mut_ptr(),
+				__bytes => #core_types::record::stack::push(__bytes),
+			};
+			let __written = unsafe { #core_types::record::write_element(__dst, __kernel_value, #core_types::context::ExtractArena::arena(__input)) };
+			if self.__frame_bytes != 0 {
+				#core_types::record::stack::pop(__dst);
+				__value = #core_types::record::RecordValue::spilled(unsafe { #core_types::record::Rec::new(__dst.cast_const()) });
+			}
+			match __written {
+				Some(()) => __cell.finish(__value),
+				None => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError {
+					kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
+					trace: ::std::vec::Vec::new(),
+				})),
+			}
+		}
+	});
 	let eval_tail = match (async_fn, future_kernel) {
 		(false, false) => match record_tail {
 			Some(tail) => tail,
-			None => lift,
+			None => flip_tail.unwrap_or(lift),
 		},
 		(true, _) => {
 			let kernel_value_names: Vec<&Ident> = kernel_fields.iter().map(|field| &field.pat_ident.ident).collect();
@@ -1280,13 +1363,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(shape) if shape.skips_carrier() => {
 			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
 		}
-		None if derive_routing => {
+		None if derive_routing || flip => {
 			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
 		}
 		_ => Vec::new(),
 	};
 
-	let record_layout_impl = match record.is_some() || routing.is_some() {
+	let record_layout_impl = match record.is_some() || routing.is_some() || flip {
 		true => quote! {
 			fn layout(&self) -> Option<&#core_types::record::Layout> {
 				Some(&self.__layout)
@@ -1615,6 +1698,41 @@ pub(crate) struct RoutingIo {
 	pub(crate) generic: Ident,
 }
 
+/// Whether a plain node's lowering flips onto record wires: sync,
+/// fully-concrete value-input nodes in this cut; batch, shader, async, lend,
+/// lazy, and generic nodes keep the plain lowering until their record forms
+/// land.
+pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
+	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() {
+		return false;
+	}
+	if parsed.is_async || is_source_kernel(&parsed.output_type) {
+		return false;
+	}
+	if parsed.attributes.batch.is_some() || parsed.attributes.shader_node.is_some() {
+		return false;
+	}
+	if matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_)) {
+		return false;
+	}
+	if matches!(slot_value_type(&parsed.output_type), Type::Reference(_)) {
+		return false;
+	}
+	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
+	let concrete = parsed.fn_generics.iter().all(|param| match param {
+		GenericParam::Type(type_param) => Some(&type_param.ident) == ctx_ident.as_ref(),
+		GenericParam::Lifetime(_) => false,
+		GenericParam::Const(_) => false,
+	});
+	if !concrete {
+		return false;
+	}
+	parsed.fields.iter().all(|field| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { lend, .. }) => lend.is_none(),
+		ParsedFieldType::Node(_) => false,
+	})
+}
+
 pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
 	if has_record_io(parsed) || parsed.is_async {
 		return None;
@@ -1821,6 +1939,9 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 	if routing_io(parsed).is_some() {
 		return routing_entries_tokens(parsed, struct_name, regular_fields);
 	}
+	if record_flip(parsed) {
+		return flip_entries_tokens(parsed, struct_name, regular_fields);
+	}
 	let Some(rows) = implementation_rows(parsed, regular_fields) else {
 		return quote!();
 	};
@@ -1891,6 +2012,71 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
 					#construct
+				},
+			}
+		}
+	});
+
+	quote! {
+		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
+			vec![#(#entries),*]
+		}
+	}
+}
+
+/// The registry rows of a flipped plain node: every wire is a record wire,
+/// inputs resolve their layouts off the claimed handles, and the output is an
+/// element-only record of the kernel's return type.
+fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
+	let Some(rows) = implementation_rows(parsed, regular_fields) else {
+		return quote!();
+	};
+	let rows: Vec<&Vec<Type>> = rows.iter().filter(|row| row.iter().all(|ty| !type_disqualifies(ty))).collect();
+	if rows.is_empty() {
+		return quote!();
+	}
+	let output = slot_value_type(&parsed.output_type);
+	if type_disqualifies(&output) {
+		return quote!();
+	}
+
+	let fn_name = &parsed.fn_name;
+	let entries_name = format_ident!("{}_entries", fn_name);
+	let arity = regular_fields.len();
+	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+
+	let entries = rows.iter().map(|row| {
+		let input_types = row.iter().map(|ty| quote!(gcore::registry::record_edge_type::<#ty>()));
+		let downcasts = names.iter().zip(row.iter()).enumerate().map(|(index, (name, ty))| {
+			let handle = format_ident!("__handle_{index}");
+			let layout = format_ident!("__layout_{index}");
+			quote! {
+				let #handle = inputs.next().unwrap();
+				let Some(#layout) = #handle.layout().cloned() else {
+					return Err(gcore::registry::ConstructionError::MissingLayout);
+				};
+				let #name = #handle.downcast_record::<#ty>()?;
+			}
+		});
+		let layout_args = (0..arity).map(|index| {
+			let layout = format_ident!("__layout_{index}");
+			quote!(&#layout,)
+		});
+		quote! {
+			gcore::registry::RegistryEntry {
+				io: gcore::registry::NodeIOTypes::new(
+					gcore::concrete!(gcore::context::ContextImpl<'static>),
+					gcore::registry::record_type::<#output>(),
+					vec![#(#input_types),*],
+				),
+				constructor: |inputs| {
+					if inputs.len() != #arity {
+						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
+					}
+					let mut inputs = inputs.into_iter();
+					#(#downcasts)*
+					let __node = #struct_name::new(#(#names,)* #(#layout_args)*);
+					Ok(gcore::registry::EdgeHandle::new_record::<#output>(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>))
 				},
 			}
 		}

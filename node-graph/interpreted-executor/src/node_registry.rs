@@ -677,6 +677,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		.flatten(),
 	);
 
+	node_types.extend(graph_craft::document::value::TaggedValue::record_bridge_entries());
+	node_types.extend(core_types::registry::record_bridge_rows::<graphene_std::application_io::resource::Resource>());
+
 	let mut map: HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> = HashMap::new();
 	let insert = |map: &mut HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>, id: ProtoNodeIdentifier, entry: RegistryEntry| {
 		let rows = map.entry(id).or_default();

@@ -934,6 +934,8 @@ fn ref_adapter(proposed: &Type, wanted: &Type) -> Option<ProtoNodeIdentifier> {
 		(proposed_output @ Type::Concrete(_), Type::Ref(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("graphene_core::memo::LendNode")),
 		(Type::Record(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("core_types::record::RecordExtractNode")),
 		(proposed_output @ Type::Concrete(_), Type::Record(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordLiftNode")),
+		(Type::Ref(inner), Type::Record(wanted_inner)) if valid_type(inner, wanted_inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordLiftLendNode")),
+		(Type::Record(inner), Type::Ref(wanted_inner)) if valid_type(inner, wanted_inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordExtractLendNode")),
 		_ => None,
 	}
 }

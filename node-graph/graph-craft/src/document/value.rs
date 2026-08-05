@@ -263,6 +263,27 @@ macro_rules! tagged_value {
 				}
 			}
 
+			/// The bridge rows for every wire type a value can carry, spliced
+			/// while plain and record worlds coexist.
+			pub fn record_bridge_entries() -> Vec<(core_types::ProtoNodeIdentifier, core_types::registry::RegistryEntry)> {
+				let mut entries = Vec::new();
+				entries.extend(core_types::registry::record_bridge_rows::<()>());
+				entries.extend(core_types::registry::record_bridge_rows::<List<f64>>());
+				entries.extend(core_types::registry::record_bridge_rows::<List<Color>>());
+				entries.extend(core_types::registry::record_bridge_rows::<List<GradientStops>>());
+				entries.extend(core_types::registry::record_bridge_rows::<List<BrushStroke>>());
+				entries.extend(core_types::registry::record_bridge_rows::<RenderOutput>());
+				entries.extend(core_types::registry::record_bridge_rows::<List<NodeId>>());
+				entries.extend(core_types::registry::record_bridge_rows::<DocumentNode>());
+				entries.extend(core_types::registry::record_bridge_rows::<ContextModification>());
+				entries.extend(core_types::registry::record_bridge_rows::<Arc<PlatformEditorApi>>());
+				entries.extend(core_types::registry::record_bridge_rows::<ResourceHash>());
+				$(
+					entries.extend(core_types::registry::record_bridge_rows::<$ty>());
+				)*
+				entries
+			}
+
 			/// Materializes the value as [`Self::to_dynany`] does, wrapped in a `ClonedNode` edge typed by [`Self::ty`].
 			pub fn to_edge(self) -> Result<EdgeHandle, String> {
 				match self {
@@ -389,8 +410,8 @@ macro_rules! tagged_value {
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
-					Type::Ref(_) => None,
-					Type::Record(_) => None,
+					Type::Ref(inner) => Self::from_type(inner),
+					Type::Record(inner) => Self::from_type(inner),
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
