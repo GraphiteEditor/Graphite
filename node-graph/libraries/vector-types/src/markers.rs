@@ -4,7 +4,7 @@
 use core_types::attribute::Attribute;
 
 core_types::attribute! {
-	/// Gradient's spread behavior past its endpoints (`Pad`, `Reflect`, or `Repeat`).
+	/// Gradient's spread behavior past its endpoints (`Pad`, `Reflect`, `Repeat`, or `Clear`).
 	pub GradientSpread("gradient_spread"): crate::gradient::GradientSpread;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientForm("gradient_form"): crate::gradient::GradientForm;
