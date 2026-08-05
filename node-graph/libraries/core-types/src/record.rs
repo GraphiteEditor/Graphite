@@ -289,6 +289,65 @@ pub trait RecordEdge<'e, C>: Node<C, Output = RecordValue<'e>> {}
 
 impl<'e, C, N: Node<C, Output = RecordValue<'e>>> RecordEdge<'e, C> for N {}
 
+/// Builds an element-only record from a kernel's poll: inline layouts land
+/// in the value, larger ones spill to the record stack, arena exhaustion of
+/// a parked element reports as an error poll.
+pub fn lift_poll<'e, T: Send + Sync + 'static>(poll: GPoll<T>, layout: &Layout, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+	let build = |element: T| {
+		if layout.is_inline() {
+			let mut value = RecordValue::zeroed();
+			unsafe { write_element(value.as_mut_ptr(), element, arena)? };
+			Some(value)
+		} else {
+			let dst = stack::push(layout.frame_bytes());
+			let written = unsafe { write_element(dst, element, arena) };
+			stack::pop(dst);
+			written.map(|()| RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+		}
+	};
+	let exhausted = || {
+		GPoll::Error(Box::new(crate::gpoll::GraphError {
+			kind: crate::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		}))
+	};
+	match poll {
+		GPoll::Final(element) => build(element).map_or_else(exhausted, GPoll::Final),
+		GPoll::Partial(element) => build(element).map_or_else(exhausted, GPoll::Partial),
+		GPoll::Fallback(boxed) => {
+			let (element, error) = *boxed;
+			build(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
+		}
+		GPoll::Pending => GPoll::Pending,
+		GPoll::Error(error) => GPoll::Error(error),
+	}
+}
+
+/// The raw lazy edge handed to a poll kernel whose wire rides records while
+/// the kernel consumes the plain element.
+pub struct ElementEdge<'a, El, N> {
+	node: &'a N,
+	layout: &'a Layout,
+	_marker: std::marker::PhantomData<fn() -> El>,
+}
+
+impl<'a, El: Clone, N> ElementEdge<'a, El, N> {
+	pub fn new(node: &'a N, layout: &'a Layout) -> Self {
+		Self {
+			node,
+			layout,
+			_marker: std::marker::PhantomData,
+		}
+	}
+
+	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<El>
+	where
+		N: Node<C, Output = RecordValue<'d>>,
+	{
+		self.node.eval(ctx).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
+	}
+}
+
 /// The lazy input handed to a kernel whose edge rides a record wire while
 /// the kernel consumes the plain element.
 #[derive(Clone, Copy)]
@@ -696,34 +755,7 @@ where
 	type Output = RecordValue<'e>;
 
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		let build = |element: El| {
-			if self.layout.is_inline() {
-				let mut value = RecordValue::zeroed();
-				unsafe { write_element(value.as_mut_ptr(), element, input.arena())? };
-				Some(value)
-			} else {
-				let dst = stack::push(self.layout.frame_bytes());
-				let written = unsafe { write_element(dst, element, input.arena()) };
-				stack::pop(dst);
-				written.map(|()| RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
-			}
-		};
-		let exhausted = || {
-			GPoll::Error(Box::new(crate::gpoll::GraphError {
-				kind: crate::gpoll::ErrorKind::ArenaExhausted,
-				trace: Vec::new(),
-			}))
-		};
-		match self.edge.eval(input) {
-			GPoll::Final(element) => build(element).map_or_else(exhausted, GPoll::Final),
-			GPoll::Partial(element) => build(element).map_or_else(exhausted, GPoll::Partial),
-			GPoll::Fallback(boxed) => {
-				let (element, error) = *boxed;
-				build(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
-			}
-			GPoll::Pending => GPoll::Pending,
-			GPoll::Error(error) => GPoll::Error(error),
-		}
+		lift_poll(self.edge.eval(input), &self.layout, input.arena())
 	}
 
 	fn layout(&self) -> Option<&Layout> {

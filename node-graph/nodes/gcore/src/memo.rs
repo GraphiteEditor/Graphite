@@ -12,7 +12,7 @@ use std::sync::Mutex;
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
 /// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
-#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl, extent(memoize_extent))]
+#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl, plain, extent(memoize_extent))]
 fn memoize<I: CacheHash, T: Clone>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T, Finality)>>>, content: impl Node<I, Output = T>) -> GPoll<T> {
 	let key = cache_key(&input);
 	if let Some((hash, value, finality)) = cache.lock().unwrap().as_ref()
@@ -111,7 +111,7 @@ fn lend<'e, T: Send + Sync>(ctx: impl Ctx + ExtractArena<'e>, value: T) -> GPoll
 type MonitorValue<T> = Arc<Mutex<Option<Arc<IORecord<CtxSnapshot, T>>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl, plain)]
 fn monitor<T: Clone + 'static + Send + Sync>(
 	ctx: impl Ctx + DeriveCtx + ExtractAll,
 	#[allow(clippy::type_complexity)]

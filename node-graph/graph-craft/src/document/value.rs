@@ -357,6 +357,30 @@ macro_rules! tagged_value {
 				if ty == edge_type::<RenderOutput>() {
 					return Ok(handle.downcast::<RenderOutput>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(TaggedValue::RenderOutput));
 				}
+				// =======================
+				// RECORD WIRES, WHICH LAND AS THEIR ELEMENT
+				// =======================
+				if ty == core_types::registry::record_edge_type::<()>() {
+					return Ok(handle.downcast_record::<()>().map_err(|e| format!("{e:?}"))?.eval(ctx).map(|_| TaggedValue::None));
+				}
+				$(
+					if ty == core_types::registry::record_edge_type::<$ty>() {
+						let layout = handle.layout().ok_or_else(|| "a record edge must carry its layout".to_string())?.clone();
+						return Ok(handle
+							.downcast_record::<$ty>()
+							.map_err(|e| format!("{e:?}"))?
+							.eval(ctx)
+							.map(|value| TaggedValue::$identifier(unsafe { core_types::record::read_element::<$ty>(layout.rec(&value)) })));
+					}
+				)*
+				if ty == core_types::registry::record_edge_type::<RenderOutput>() {
+					let layout = handle.layout().ok_or_else(|| "a record edge must carry its layout".to_string())?.clone();
+					return Ok(handle
+						.downcast_record::<RenderOutput>()
+						.map_err(|e| format!("{e:?}"))?
+						.eval(ctx)
+						.map(|value| TaggedValue::RenderOutput(unsafe { core_types::record::read_element::<RenderOutput>(layout.rec(&value)) })));
+				}
 				Err(format!("Cannot convert edge of type {ty} to TaggedValue"))
 			}
 
