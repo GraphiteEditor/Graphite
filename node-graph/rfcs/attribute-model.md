@@ -49,7 +49,7 @@ nesting levels. Items whose element types agree can merge regardless of
 their attribute sets, with missing values filled from name-specific
 defaults. Names resolve at graph compile time, with a dynamic escape
 hatch for runtime-shaped data. A wire without attributes costs what a
-wire costs today, and an attribute that is constant across a domain
+plain wire costs, and an attribute that is constant across a domain
 costs one slot rather than one per element. Batch access is the case to
 optimize, and scalar access should not require a second representation
 with conversions between the two.
@@ -108,15 +108,15 @@ fn opacity<T>(
 
 `Attr<Opacity>` as a parameter is a read (it yields the declared default
 if nothing upstream wrote the attribute), in the return tuple it is a
-write, and the same marker on both sides is a modify. Note what is gone
-compared to today: the trait bounds and the implementations list. The
-first parameter after the context is the primary input, and an unbounded
+write, and the same marker on both sides is a modify. The first
+parameter after the context is the primary input, and an unbounded
 generic `element: T` that is returned in the first tuple position means
 "I pass the element through unchanged". The compiler lowers this to a
 byte copy (often to nothing, see below), and a single compiled instance
-covers every element type. A node that actually computes on the element
-uses a concrete type or a bound instead and monomorphizes per its
-implementations list, as today. `_: ()` still means "no primary input".
+covers every element type, with no trait bounds and no implementations
+list. A node that actually computes on the element uses a concrete type
+or a bound instead and monomorphizes per its implementations list.
+`_: ()` means "no primary input".
 
 ## Levels: before vs. after a structure node
 
@@ -209,7 +209,7 @@ defaults per branch. A lazy input with a concrete output type is an
 ordinary value input: its value flows, the attributes on its wire do
 not.
 
-Everything else about authoring is unchanged. Categories, per-parameter
+The rest of the authoring surface composes. Categories, per-parameter
 doc comments, `#[default]`, `#[hard]`, `#[expose]`, widget overrides, and
 the kernel dialects (`Result<_, Interrupt>` with `?`, `GPoll` returns,
 async sources) all compose with the forms above.
@@ -234,8 +234,8 @@ and level), computed at graph compile time. Some consequences:
 - Reads resolve to `Option<offset>` at wiring. Present means a field
   access, and absent means the macro emits the default constant. Writes
   always resolve. The runtime does no name lookup, no hashing, and no
-  downcasting. In our benchmarks a resolved read costs the same as a
-  native struct field access (0.43ns for both).
+  downcasting. A resolved read costs the same as a native struct field
+  access (0.43ns).
 - Writes that are never read are diagnosed. Eliding them is a permitted
   whole-graph optimization but not required. Keeping them in the layout
   is what keeps the layout a pure function of the upstream cone.
@@ -281,26 +281,32 @@ item.
 
 Storage is level-resident and columnar, and the contiguous record is a view.
 Per-lane consumers get the view assembled across levels and columns into
-a compiler-assigned buffer. Reads across a level boundary use the same
+their activation frames. Reads across a level boundary use the same
 index decomposition the structure nodes already perform, and in batches
 that decomposition is hoisted per run.
 
 ## Runtime representation
 
-- Every node's per-lane output gets a fixed slot in a per-graph frame,
-  assigned at compile time (all layout sizes are static). There is one
-  frame instance per worker. The base pointer travels in the operational
-  half of the context next to the arena, the offsets sit in node state.
-  "Allocating" a result is pointer arithmetic. Slots are overwritten
-  each lane, transients never touch the arena, and publishing into a
-  cache copies out of the frame.
-- When an edge has a single consumer and the layout is unchanged,
-  producer and consumer share a slot and the record carry disappears.
-  An elementwise node then costs its arithmetic plus dispatch.
-- This imposes one rule: a borrow of a slot must not survive a sibling
-  evaluation within the same pull. Consuming by copy is always fine.
-  The compiler knows the fan-out statically and inserts a copy or a
-  cache where sharing actually occurs.
+- Every node's per-lane output is an activation frame on a per-thread
+  record stack, the shape of an ordinary call stack: an evaluation
+  claims its frame at the stack pointer, evaluates its carrier beyond
+  it, and releases on completion, leaving the returned record readable
+  until the next claim. A node with several record sources lays their
+  regions side by side, so values held across sibling evaluations
+  survive. "Allocating" a result is pointer arithmetic; frames are
+  overwritten each lane, transients never touch the arena, and
+  publishing into a cache copies out of the stack.
+- No global slot assignment exists: a node's wiring state is its own
+  frame size, so incremental recompiles and instance reuse cannot
+  invalidate storage, and the stack belongs to whichever thread runs
+  the evaluation, created lazily in thread-local storage, so worker
+  counts never enter wiring. The total stack bound is derived by the
+  wiring layer from the same layouts it computes (own frame plus
+  carrier need, maxed over value inputs, summed over sources) and
+  reserved once per evaluation.
+- This imposes one rule: a borrow of a released frame must not survive
+  the next claim. Consuming by copy is always fine, and the per-source
+  regions above make kernel-held record values safe by construction.
 - Batch results are per-field columns, each statically Varying (an
   array) or Uniform (a single value) per the residency analysis. A node
   that does not touch a column forwards the pointer, so bypass costs
@@ -309,7 +315,7 @@ that decomposition is hoisted per run.
   descriptor, and crossing from a batched producer to a per-lane consumer
   costs about 1.5ns per lane through a lane-view adapter.
 - Alignment padding only exists in the per-lane view. In a row, a `u8`
-  element costs the same as a `u64` (we measured them identical), while
+  element costs the same as a `u64`, while
   packed columns keep the cost proportional to the element size (2x
   cheaper than rows when cache-resident, around 8x when memory-bound).
   Columns are the storage format, so the proportional cost holds
@@ -327,7 +333,7 @@ that decomposition is hoisted per run.
 | `x: Attr<A>` | attribute read | offset read, or the default constant |
 | `Attr<A>` in the return tuple | attribute write | offset write into the output record |
 | `keys: List<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
-| plain parameters | wired value inputs | as today |
+| plain parameters | wired value inputs | ordinary wired edges |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
 | `impl Node<Context<'_>, Output = T>` (unbounded) | source of an opaque record family | routing, see below |
 | `-> List<W>` with `level_extent =` | per-lane level production | structural skeleton emitted by the macro |
@@ -338,9 +344,7 @@ that decomposition is hoisted per run.
 the extent formula and the matching index decomposition from this one
 declaration, which is what keeps them consistent. `emit(...)` is an
 optional tail marker for the per-lane form whose parentheses double as
-the tuple's, so multi-write lanes pay no extra nesting. A literal
-`yield` would have been nicer but is not available: stable rustc records
-the feature gate while parsing the item, before attribute macros run.
+the tuple's, so multi-write lanes pay no extra nesting.
 
 The rule behind all the lazy forms: kernels control whether, when, and
 at which index their inputs are evaluated, but never how the records
@@ -385,10 +389,9 @@ unchanged context and yields a value carrying the resulting record,
 either through the plan into that source's own buffer, or, when the
 source's layout already equals the union, by forwarding the record
 pointer untouched. The forwarding case compiles to a conditional move
-plus a tail call. In our measurements the routing itself is nearly free
-and the observed +4.7ns per lane for a two-branch switch is the
-condition and ordinary branch misprediction. A translating source costs
-+6.5ns per lane at eight attributes.
+plus a tail call; the +4.7ns per lane of a two-branch switch is the
+condition and ordinary branch misprediction, and a translating source
+costs +6.5ns per lane at eight attributes.
 
 The kernel routes these values as ordinary Rust values. It can evaluate
 any source any number of times, hold several results at once (per-source
@@ -412,20 +415,17 @@ collapses through nullification, a varying one selects per lane.
 
 The one-source shape also covers the registry's infrastructure rows.
 Monitor, context modification, memoize, and the lend and clone adapters
-are all `T -> T` passthroughs with a side effect, and each is listed in
-the registry today once per wire type, several hundred hand-maintained
-rows in total. Over the record family they become single generic nodes:
-the record forwards, and the side effect is orthogonal to the type (a
-reflective snapshot through the layout descriptor, a derived context, or
-a persistence copy sized by the layout). Persisting a non-Copy element
-needs a clone and drop function per element type, registered once beside
-the type itself rather than once per infrastructure node, so the
-per-type surface shrinks from types times nodes to types plus nodes.
-Compiler-inserted infrastructure then splices one generic proto node
-without naming value types, which was the wiring layer's stated goal.
-The genuine conversion rows (the Into and Convert matrix) remain,
-because those do real per-type work; the type-erased attribute
-conversion rows disappear with the representation they serve.
+are all `T -> T` passthroughs with a side effect. Over the record family
+each is a single generic node: the record forwards, and the side effect
+is orthogonal to the type (a reflective snapshot through the layout
+descriptor, a derived context, or a persistence copy sized by the
+layout). Persisting a non-Copy element needs a clone and drop function
+per element type, registered once beside the type itself rather than
+once per infrastructure node, so the per-type surface is types plus
+nodes rather than types times nodes, and compiler-inserted
+infrastructure splices one generic proto node without naming value
+types. The genuine conversion rows (the Into and Convert matrix)
+remain, because those do real per-type work.
 
 A kernel that modifies the index on the context evaluates an input at a
 lane other than its own, which makes index-computable reorders plain
@@ -463,7 +463,7 @@ Everything happens at graph compile time. The census is assembled from
 the marker declarations (names, types, defaults, combine rules). Each
 wire's layout is constructed from its upstream write set, and residency
 comes from the index-invariance analysis. Offsets are resolved into node
-state, the frame layout is computed with slots coalesced, and union and
+state, the stack bound is folded from the layouts, and union and
 translation plans are built at selectors and merges. A per-name
 dependency analysis feeds the cache keys. The diagnostics produced along
 the way are unknown or misspelled names (checked against the census,
