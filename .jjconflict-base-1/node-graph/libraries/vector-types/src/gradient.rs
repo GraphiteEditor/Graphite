@@ -611,6 +611,12 @@ impl Gradient {
 				let cycle = t.rem_euclid(2.);
 				if cycle > 1. { 2. - cycle } else { cycle }
 			}
+			GradientSpread::Clear => {
+				if !(0. ..=1.).contains(&t) {
+					return Color::TRANSPARENT;
+				}
+				t
+			}
 		};
 
 		let stops = self.normalized_stops();
@@ -797,7 +803,9 @@ pub enum GradientSpread {
 	/// Loops the gradient as copies of itself.
 	#[icon("GradientSpreadRepeat")]
 	Repeat,
-	// TODO: Add a "Clear" variant that returns transparent black outside the gradient's range
+	/// Cuts off to transparency beyond the ends.
+	#[icon("GradientSpreadClear")]
+	Clear,
 }
 
 impl GradientSpread {
@@ -806,6 +814,8 @@ impl GradientSpread {
 			GradientSpread::Pad => "pad",
 			GradientSpread::Reflect => "reflect",
 			GradientSpread::Repeat => "repeat",
+			// SVG has no clear mode; renderers emulate it over pad with transparent guard stops
+			GradientSpread::Clear => "pad",
 		}
 	}
 
@@ -945,6 +955,22 @@ mod tests {
 			padded.attribute::<GradientSpread>(ATTR_GRADIENT_SPREAD).is_none(),
 			"the default Pad must stay absent rather than materialize"
 		);
+	}
+
+	#[test]
+	fn clear_spread_evaluates_to_transparency_outside_the_unit_range() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		assert_eq!(gradient.evaluate(-0.25, GradientSpread::Clear), Color::TRANSPARENT);
+		assert_eq!(gradient.evaluate(1.25, GradientSpread::Clear), Color::TRANSPARENT);
+
+		for t in [0., 0.25, 1.] {
+			assert_eq!(
+				gradient.evaluate(t, GradientSpread::Clear),
+				gradient.evaluate(t, GradientSpread::Pad),
+				"inside the range Clear must match Pad at t = {t}"
+			);
+		}
 	}
 
 	#[test]
