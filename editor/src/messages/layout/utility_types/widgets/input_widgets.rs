@@ -151,6 +151,35 @@ impl std::hash::Hash for MenuListEntry {
 	}
 }
 
+impl MenuListEntry {
+	/// One entry per variant of a choice type enum, keeping the choice type's section groupings, shown as the variant's label alongside its icon when it has one.
+	pub fn sections_from_choice_type<E>(to_message: impl Fn(E) -> Message + Clone + Send + Sync + 'static) -> MenuListEntrySections
+	where
+		E: graphene_std::choice_type::ChoiceTypeStatic + 'static,
+	{
+		E::list()
+			.iter()
+			.map(|section| {
+				section
+					.iter()
+					.map(|(variant, metadata)| {
+						let to_message = to_message.clone();
+						let variant = *variant;
+
+						let entry = MenuListEntry::new(metadata.name)
+							.label(metadata.label)
+							.tooltip_label(metadata.label)
+							.tooltip_description(metadata.description.unwrap_or_default())
+							.on_update(move |_| to_message(variant));
+
+						if let Some(icon) = metadata.icon { entry.icon(icon) } else { entry }
+					})
+					.collect()
+			})
+			.collect()
+	}
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]

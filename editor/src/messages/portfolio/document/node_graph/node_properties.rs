@@ -2905,24 +2905,22 @@ pub mod choice {
 			U: Fn(&E) -> Message + 'static + Send + Sync,
 			C: Fn(&()) -> Message + 'static + Send + Sync,
 		{
-			let items = E::list()
-				.iter()
+			let updater = std::sync::Arc::new(updater_factory());
+			let committer = std::sync::Arc::new(committer_factory());
+
+			let items = MenuListEntry::sections_from_choice_type(move |variant: E| updater(&variant))
+				.into_iter()
 				.map(|section| {
 					section
-						.iter()
-						.map(|(item, metadata)| {
-							let updater = updater_factory();
-							let committer = committer_factory();
-							MenuListEntry::new(metadata.name)
-								.label(metadata.label)
-								.tooltip_label(metadata.label)
-								.tooltip_description(metadata.description.unwrap_or_default())
-								.on_update(move |_| updater(item))
-								.on_commit(committer)
+						.into_iter()
+						.map(|entry| {
+							let committer = committer.clone();
+							entry.on_commit(move |value| committer(value))
 						})
 						.collect()
 				})
 				.collect();
+
 			DropdownInput::new(items).disabled(self.disabled).selected_index(Some(current.as_u32())).widget_instance()
 		}
 
