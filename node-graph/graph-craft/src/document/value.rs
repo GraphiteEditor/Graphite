@@ -390,6 +390,7 @@ macro_rules! tagged_value {
 				match input {
 					Type::Generic(_) => None,
 					Type::Ref(_) => None,
+					Type::Record(_) => None,
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
@@ -651,6 +652,7 @@ impl TaggedValue {
 		match ty {
 			Type::Generic(_) => None,
 			Type::Ref(_) => None,
+			Type::Record(_) => None,
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;
 				use std::any::TypeId;

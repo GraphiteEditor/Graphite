@@ -1731,7 +1731,7 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 		return quote!();
 	}
 	if has_record_io(parsed) {
-		return quote!();
+		return record_entries_tokens(parsed, struct_name, regular_fields);
 	}
 	let Some(rows) = implementation_rows(parsed, regular_fields) else {
 		return quote!();
@@ -1811,6 +1811,104 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![#(#entries),*]
+		}
+	}
+}
+
+fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
+	let Some(shape) = record_shape(parsed) else {
+		return quote!();
+	};
+	let carrier_in_fields = !shape.skips_carrier();
+	let values_concrete = regular_fields.iter().skip(carrier_in_fields as usize).all(|field| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => !contains_open_generic(parsed, ty) && (lend.is_some() || !type_disqualifies(ty)),
+		_ => false,
+	});
+	if !values_concrete {
+		return quote!();
+	}
+
+	let fn_name = &parsed.fn_name;
+	let entries_name = format_ident!("{}_entries", fn_name);
+	let arity = regular_fields.len();
+	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+
+	let input_types = regular_fields.iter().enumerate().map(|(index, field)| {
+		let ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) = &field.ty else {
+			unreachable!("record nodes take no lazy inputs")
+		};
+		if carrier_in_fields && index == 0 {
+			return match &shape.carrier {
+				RecordCarrier::Token(token) => {
+					let name = token.to_string();
+					quote!(gcore::registry::generic_record_edge_type(#name))
+				}
+				RecordCarrier::Read(carrier_ty) => quote!(gcore::registry::record_edge_type::<#carrier_ty>()),
+				RecordCarrier::None => unreachable!(),
+			};
+		}
+		match lend.is_some() {
+			true => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			false => quote!(gcore::registry::edge_type::<#ty>()),
+		}
+	});
+	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
+		let name = &field.pat_ident.ident;
+		let ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) = &field.ty else {
+			unreachable!("record nodes take no lazy inputs")
+		};
+		if carrier_in_fields && index == 0 {
+			return quote! {
+				let __carrier_handle = inputs.next().unwrap();
+				let __carrier_ty = __carrier_handle.ty().clone();
+				let Some(__carrier_layout) = __carrier_handle.layout().cloned() else {
+					return Err(gcore::registry::ConstructionError::MissingLayout);
+				};
+				let #name = __carrier_handle.downcast_erased::<gcore::registry::ErasedRecordNode>(__carrier_ty.clone())?;
+			};
+		}
+		match lend.is_some() {
+			true => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			false => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
+		}
+	});
+	let wire_layout_arg = carrier_in_fields.then(|| quote!(&__carrier_layout,)).into_iter();
+	let (io_output, construct_output) = match (&shape.carrier, &shape.element_write) {
+		(RecordCarrier::Token(token), _) => {
+			let name = token.to_string();
+			(
+				quote!(gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#name))))),
+				quote!(Ok(gcore::registry::EdgeHandle::new_erased(
+					::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
+					__carrier_ty,
+				))),
+			)
+		}
+		(_, Some(element)) => (
+			quote!(gcore::registry::record_type::<#element>()),
+			quote!(Ok(gcore::registry::EdgeHandle::new_record::<#element>(::std::sync::Arc::new(__node)))),
+		),
+		(_, None) => unreachable!("non-token record nodes write an element"),
+	};
+
+	quote! {
+		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
+			vec![gcore::registry::RegistryEntry {
+				io: gcore::registry::NodeIOTypes::new(
+					gcore::concrete!(gcore::context::ContextImpl<'static>),
+					#io_output,
+					vec![#(#input_types),*],
+				),
+				constructor: |inputs| {
+					if inputs.len() != #arity {
+						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
+					}
+					let mut inputs = inputs.into_iter();
+					#(#downcasts)*
+					let __node = #struct_name::wire(#(#names,)* #(#wire_layout_arg)*);
+					#construct_output
+				},
+			}]
 		}
 	}
 }

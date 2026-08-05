@@ -20,7 +20,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, SourceId, concrete, fn_type};
-use node_registry_macros::{async_node, clone_node, convert_node, frame_memo_node, into_node, lend_node};
+use node_registry_macros::{async_node, clone_node, convert_node, frame_memo_node, into_node, lend_node, record_extract_node, record_lift_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutorHandle;
@@ -374,6 +374,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		#[cfg(target_family = "wasm")]
 		frame_memo_node!(CanvasHandle),
 		lend_node!(f64),
+		record_lift_node!(f64),
+		record_extract_node!(f64),
 		clone_node!(f64),
 		frame_memo_node!(f64),
 		lend_node!(f32),
@@ -769,6 +771,44 @@ mod node_registry_macros {
 		};
 	}
 
+	macro_rules! record_lift_node {
+		($type:ty) => {
+			(
+				ProtoNodeIdentifier::new("core_types::record::RecordLiftNode"),
+				RegistryEntry {
+					io: NodeIOTypes::new(concrete!(Context), core_types::registry::record_type::<$type>(), vec![fn_type!(Context, $type)]),
+					constructor: |inputs| {
+						if inputs.len() != 1 {
+							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
+						}
+						let mut inputs = inputs.into_iter();
+						let node = core_types::record::RecordLift::<$type, _>::wire(inputs.next().unwrap().downcast::<$type>()?);
+						Ok(EdgeHandle::new_record::<$type>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
+					},
+				},
+			)
+		};
+	}
+
+	macro_rules! record_extract_node {
+		($type:ty) => {
+			(
+				ProtoNodeIdentifier::new("core_types::record::RecordExtractNode"),
+				RegistryEntry {
+					io: NodeIOTypes::new(concrete!(Context), concrete!($type), vec![core_types::registry::record_edge_type::<$type>()]),
+					constructor: |inputs| {
+						if inputs.len() != 1 {
+							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
+						}
+						let mut inputs = inputs.into_iter();
+						let node = core_types::record::RecordExtract::<$type, _>::wire(inputs.next().unwrap().downcast_record::<$type>()?);
+						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
+					},
+				},
+			)
+		};
+	}
+
 	macro_rules! clone_node {
 		($type:ty) => {
 			(
@@ -813,4 +853,6 @@ mod node_registry_macros {
 	pub(crate) use frame_memo_node;
 	pub(crate) use into_node;
 	pub(crate) use lend_node;
+	pub(crate) use record_extract_node;
+	pub(crate) use record_lift_node;
 }

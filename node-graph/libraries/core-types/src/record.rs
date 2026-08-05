@@ -352,6 +352,79 @@ impl<N> RecordSource<N> {
 	}
 }
 
+/// Lifts a plain producer onto a record wire: the element lands at offset 0
+/// of a fresh element-only record. `Copy` elements only until droppable
+/// elements ride records.
+pub struct RecordLift<El, N> {
+	edge: N,
+	layout: Layout,
+	frame_bytes: usize,
+	_marker: std::marker::PhantomData<fn() -> El>,
+}
+
+impl<El: Copy + 'static, N> RecordLift<El, N> {
+	pub fn wire(edge: N) -> Self {
+		let layout = Layout::default().with_writes(0, (size_of::<El>(), align_of::<El>()), &[]);
+		let frame_bytes = layout.size.next_multiple_of(8);
+		Self {
+			edge,
+			layout,
+			frame_bytes,
+			_marker: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'e, C, El, N> Node<C> for RecordLift<El, N>
+where
+	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	El: Copy + 'static,
+	N: Node<C, Output = El>,
+{
+	type Output = RecordValue<'e>;
+
+	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
+		let dst = stack::push(self.frame_bytes);
+		let value = self.edge.eval(input).map(|element| {
+			unsafe { write_field(dst, 0, element) };
+			RecordValue::from_rec(unsafe { Rec::new(dst.cast_const()) })
+		});
+		stack::pop(dst);
+		value
+	}
+
+	fn layout(&self) -> Option<&Layout> {
+		Some(&self.layout)
+	}
+}
+
+/// Extracts the element from a record wire for a plain consumer.
+pub struct RecordExtract<El, N> {
+	edge: N,
+	_marker: std::marker::PhantomData<fn() -> El>,
+}
+
+impl<El, N> RecordExtract<El, N> {
+	pub fn wire(edge: N) -> Self {
+		Self {
+			edge,
+			_marker: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'e, C, El, N> Node<C> for RecordExtract<El, N>
+where
+	El: Copy + 'static,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	type Output = El;
+
+	fn eval(&self, input: &C) -> GPoll<El> {
+		self.edge.eval(input).map(|value| unsafe { value.rec().element::<El>() })
+	}
+}
+
 impl<'e, C, N> Node<C> for RecordSource<N>
 where
 	N: Node<C, Output = RecordValue<'e>>,

@@ -79,6 +79,12 @@ pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T> +
 #[cfg(target_family = "wasm")]
 pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T>;
 
+/// Element-independent by erasure; the wire's `Type::Record(El)` keeps element reads proven at wiring.
+#[cfg(not(target_family = "wasm"))]
+pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>, Output = crate::record::RecordValue<'c>> + Send + Sync;
+#[cfg(target_family = "wasm")]
+pub type ErasedRecordNode = dyn for<'c> Node<ContextImpl<'c>, Output = crate::record::RecordValue<'c>>;
+
 #[cfg(not(target_family = "wasm"))]
 type DynEdge = dyn std::any::Any + Send + Sync;
 #[cfg(target_family = "wasm")]
@@ -96,6 +102,22 @@ pub fn lend_edge_type<T: 'static>() -> Type {
 	Type::Fn(Box::new(concrete!(Context)), Box::new(ref_type::<T>()))
 }
 
+pub fn record_type<T: 'static>() -> Type {
+	Type::Record(Box::new(concrete!(T)))
+}
+
+pub fn record_edge_type<T: 'static>() -> Type {
+	Type::Fn(Box::new(concrete!(Context)), Box::new(record_type::<T>()))
+}
+
+/// The record edge type of a token row, generic over the element.
+pub fn generic_record_edge_type(name: &'static str) -> Type {
+	Type::Fn(
+		Box::new(concrete!(Context)),
+		Box::new(Type::Record(Box::new(Type::Generic(std::borrow::Cow::Borrowed(name))))),
+	)
+}
+
 pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
 	let mut hasher = graphene_hash::FxHasher64::new();
 	ctx.cache_hash(&mut hasher);
@@ -106,6 +128,7 @@ pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
 pub enum ConstructionError {
 	Arity { expected: usize, got: usize },
 	Type { expected: Box<Type>, found: Box<Type> },
+	MissingLayout,
 }
 
 pub struct SharedEdge<N: ?Sized> {
@@ -198,6 +221,10 @@ impl EdgeHandle {
 		Self::new_erased(node, lend_edge_type::<T>())
 	}
 
+	pub fn new_record<T: 'static>(node: std::sync::Arc<ErasedRecordNode>) -> Self {
+		Self::new_erased(node, record_edge_type::<T>())
+	}
+
 	pub fn new_erased<N>(node: std::sync::Arc<N>, ty: Type) -> Self
 	where
 		N: ?Sized + 'static + for<'c> Node<ContextImpl<'c>>,
@@ -240,6 +267,10 @@ impl EdgeHandle {
 
 	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendNode<T>>, ConstructionError> {
 		self.downcast_erased(lend_edge_type::<T>())
+	}
+
+	pub fn downcast_record<T: 'static>(self) -> Result<SharedEdge<ErasedRecordNode>, ConstructionError> {
+		self.downcast_erased(record_edge_type::<T>())
 	}
 
 	pub fn downcast_erased<N: ?Sized + 'static>(self, expected: Type) -> Result<SharedEdge<N>, ConstructionError> {

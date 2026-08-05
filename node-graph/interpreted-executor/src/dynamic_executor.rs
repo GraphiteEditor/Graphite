@@ -181,6 +181,7 @@ where
 			return Err("Output node not found in executor".into());
 		};
 		let mut arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
+		core_types::record::stack::reserve(self.tree.stack_need());
 		let result = eval_root(&mut arena, &self.runtime, &input, |ctx| match TaggedValue::from_edge(handle.duplicate(), ctx) {
 			Ok(poll) => poll.map(Ok),
 			Err(error) => GPoll::Final(Err(error)),
@@ -469,6 +470,14 @@ impl BorrowTree {
 	pub fn source_map(&self) -> &HashMap<Path, (NodeId, NodeTypes)> {
 		&self.source_map
 	}
+
+	/// The record-stack bound of an evaluation: the sum over all node frames.
+	pub fn stack_need(&self) -> usize {
+		self.nodes
+			.values()
+			.map(|(handle, _)| handle.layout().map_or(0, |layout| layout.size.next_multiple_of(8)))
+			.sum()
+	}
 }
 
 #[cfg(test)]
@@ -594,6 +603,40 @@ mod test {
 		let ctx = ContextImpl::root(&scope);
 		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster::color::Color>>> = executor.tree().eval(NodeId(2), &ctx);
 		assert!(matches!(result, Some(GPoll::Final(_))), "the palette must evaluate through the spliced lend, got {result:?}");
+	}
+
+	#[test]
+	fn a_record_wire_types_wires_and_evaluates_through_the_registry() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(2),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), proto_node("core_types::record::RecordLiftNode", vec![NodeId(0)])),
+				(NodeId(2), proto_node("core_types::record::RecordExtractNode", vec![NodeId(1)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		let lift = executor.tree().get(NodeId(1)).unwrap();
+		assert_eq!(lift.ty(), &core_types::registry::record_edge_type::<f64>());
+		assert!(lift.layout().is_some());
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
+	}
+
+	#[test]
+	fn a_lift_adapter_is_spliced_between_a_plain_producer_and_a_record_consumer() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), proto_node("core_types::record::RecordExtractNode", vec![NodeId(0)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 	}
 
 	#[test]

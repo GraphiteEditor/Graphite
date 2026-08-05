@@ -236,6 +236,8 @@ pub enum Type {
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
 	Ref(Box<Type>),
+	/// A packed record wire over the element type; the layout stays node-resident metadata.
+	Record(Box<Type>),
 }
 
 impl Default for Type {
@@ -310,6 +312,7 @@ impl Type {
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
 			Self::Ref(_) => None,
+			Self::Record(_) => None,
 		}
 	}
 
@@ -320,6 +323,7 @@ impl Type {
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
 			Self::Ref(_) => None,
+			Self::Record(_) => None,
 		}
 	}
 
@@ -330,6 +334,7 @@ impl Type {
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
 			Self::Ref(inner) => inner.nested_type(),
+			Self::Record(inner) => inner.nested_type(),
 		}
 	}
 
@@ -343,6 +348,7 @@ impl Type {
 			Self::Fn(_, output) => output.replace_nested(f),
 			Self::Future(output) => output.replace_nested(f),
 			Self::Ref(inner) => inner.replace_nested(f),
+			Self::Record(inner) => inner.replace_nested(f),
 		}
 	}
 
@@ -353,6 +359,7 @@ impl Type {
 			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
 			Type::Future(ty) => ty.identifier_name(),
 			Type::Ref(ty) => ty.identifier_name(),
+			Type::Record(ty) => ty.identifier_name(),
 		}
 	}
 }
@@ -448,6 +455,7 @@ impl std::fmt::Display for Type {
 			Type::Fn(_, return_value) => write!(f, "{return_value}"),
 			Type::Future(ty) => write!(f, "{ty}"),
 			Type::Ref(ty) => write!(f, "{ty}"),
+			Type::Record(ty) => write!(f, "{ty}"),
 		}
 	}
 }

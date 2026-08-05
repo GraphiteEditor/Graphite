@@ -902,6 +902,8 @@ fn valid_type(from: &Type, to: &Type) -> bool {
 		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
 		// A lend edge is substitutable exactly when the lent values are.
 		(Type::Ref(in1), Type::Ref(in2)) => valid_type(in1, in2),
+		// A record edge is substitutable exactly when the elements are.
+		(Type::Record(in1), Type::Record(in2)) => valid_type(in1, in2),
 		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 		// TODO: Add proper generic counting which is not based on the name
 		(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -925,6 +927,8 @@ fn ref_adapter(proposed: &Type, wanted: &Type) -> Option<ProtoNodeIdentifier> {
 	match (proposed_output.as_ref(), wanted_output.as_ref()) {
 		(Type::Ref(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("graphene_core::debug::CloneNode")),
 		(proposed_output @ Type::Concrete(_), Type::Ref(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("graphene_core::memo::LendNode")),
+		(Type::Record(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("core_types::record::RecordExtractNode")),
+		(proposed_output @ Type::Concrete(_), Type::Record(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordLiftNode")),
 		_ => None,
 	}
 }
@@ -980,10 +984,23 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 
 /// Checks if a generic type can be substituted with a concrete type and returns the concrete type
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
+	fn record_element(ty: Option<&Type>) -> Option<&Type> {
+		match ty {
+			Some(Type::Record(inner)) => Some(inner.as_ref()),
+			_ => None,
+		}
+	}
 	let inputs = [(Some(&types.call_argument), Some(input))]
 		.into_iter()
 		.chain(types.inputs.iter().map(|x| x.fn_input()).zip(parameters.iter().map(|x| x.fn_input())))
-		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
+		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())))
+		.chain(
+			types
+				.inputs
+				.iter()
+				.map(|x| record_element(x.fn_output()))
+				.zip(parameters.iter().map(|x| record_element(x.fn_output()))),
+		);
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
 	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs
