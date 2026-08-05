@@ -636,9 +636,9 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let lift = core_types::record::RecordLiftRef::<String, _>::new(ValueNode(String::from("parked")));
+		let lift = core_types::record::RecordLift::<String, _>::new(ValueNode(String::from("parked")));
 		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
-		let chain = core_types::record::RecordExtractClone::<String, _>::new(lift, &layout);
+		let chain = core_types::record::RecordExtract::<String, _>::new(lift, &layout);
 
 		let GPoll::Final(text) = chain.eval(&ctx) else {
 			panic!("expected a final value");

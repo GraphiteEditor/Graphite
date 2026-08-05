@@ -422,6 +422,54 @@ pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 	unsafe { dst.add(offset).cast::<T>().write(value) }
 }
 
+/// Whether elements of `T` move once into the arena and ride as references:
+/// records byte-copy their contents and never run drop glue, so a type is
+/// byte-carried exactly when it has none.
+pub const fn element_parked<T>() -> bool {
+	std::mem::needs_drop::<T>()
+}
+
+/// The element (size, align) a record wire of `T` carries.
+pub fn element_dims<T>() -> (usize, usize) {
+	match element_parked::<T>() {
+		true => (size_of::<*const u8>(), align_of::<*const u8>()),
+		false => (size_of::<T>(), align_of::<T>()),
+	}
+}
+
+/// # Safety
+/// The record's element must be a `T` in the form [`element_parked`] picks,
+/// and the borrow is only valid while the record is.
+pub unsafe fn borrow_element<'e, T>(rec: Rec) -> &'e T {
+	match element_parked::<T>() {
+		true => unsafe { rec.element::<&T>() },
+		false => unsafe { &*rec.ptr().cast::<T>() },
+	}
+}
+
+/// # Safety
+/// The record's element must be a `T` in the form [`element_parked`] picks.
+pub unsafe fn read_element<T: Clone>(rec: Rec) -> T {
+	unsafe { borrow_element::<T>(rec) }.clone()
+}
+
+/// # Safety
+/// `dst` must be fresh element storage of a record whose element is `T`.
+/// `None` reports arena exhaustion for a parked element.
+pub unsafe fn write_element<T: Send + Sync + 'static>(dst: *mut u8, value: T, arena: &crate::arena::Arena) -> Option<()> {
+	match element_parked::<T>() {
+		true => {
+			let (parked, _) = arena.alloc(value)?;
+			unsafe { dst.cast::<&T>().write(parked) };
+			Some(())
+		}
+		false => {
+			unsafe { dst.cast::<T>().write(value) };
+			Some(())
+		}
+	}
+}
+
 /// # Safety
 /// `src` must be a record of the plan's source layout and `dst` a buffer of
 /// the plan's target layout; both are proven at wiring.
@@ -584,19 +632,18 @@ where
 }
 
 /// Lifts a plain producer onto a record wire: the element lands at offset 0
-/// of a fresh element-only record. `Copy` elements only until droppable
-/// elements ride records.
+/// of a fresh element-only record, parked when it carries drop glue.
 pub struct RecordLift<El, N> {
 	edge: N,
 	layout: Layout,
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
-impl<El: Copy + 'static, N> RecordLift<El, N> {
+impl<El: 'static, N> RecordLift<El, N> {
 	pub fn new(edge: N) -> Self {
 		Self {
 			edge,
-			layout: Layout::default().with_writes(0, (size_of::<El>(), align_of::<El>()), &[]),
+			layout: Layout::default().with_writes(0, element_dims::<El>(), &[]),
 			_marker: std::marker::PhantomData,
 		}
 	}
@@ -605,66 +652,23 @@ impl<El: Copy + 'static, N> RecordLift<El, N> {
 impl<'e, C, El, N> Node<C> for RecordLift<El, N>
 where
 	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
-	El: Copy + 'static,
-	N: Node<C, Output = El>,
-{
-	type Output = RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		if self.layout.is_inline() {
-			return self.edge.eval(input).map(|element| {
-				let mut value = RecordValue::zeroed();
-				unsafe { write_field(value.as_mut_ptr(), 0, element) };
-				value
-			});
-		}
-		let dst = stack::push(self.layout.frame_bytes());
-		let value = self.edge.eval(input).map(|element| {
-			unsafe { write_field(dst, 0, element) };
-			RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) })
-		});
-		stack::pop(dst);
-		value
-	}
-
-	fn layout(&self) -> Option<&Layout> {
-		Some(&self.layout)
-	}
-}
-
-/// Lifts a droppable producer onto a record wire: the owned element parks in
-/// the arena and the record's element is the parked reference, the same rule
-/// reference-valued attributes follow.
-pub struct RecordLiftRef<El, N> {
-	edge: N,
-	layout: Layout,
-	_marker: std::marker::PhantomData<fn() -> El>,
-}
-
-impl<El: 'static, N> RecordLiftRef<El, N> {
-	pub fn new(edge: N) -> Self {
-		Self {
-			edge,
-			layout: Layout::default().with_writes(0, (size_of::<&El>(), align_of::<&El>()), &[]),
-			_marker: std::marker::PhantomData,
-		}
-	}
-}
-
-impl<'e, C, El, N> Node<C> for RecordLiftRef<El, N>
-where
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
 	El: Send + Sync + 'static,
 	N: Node<C, Output = El>,
 {
 	type Output = RecordValue<'e>;
 
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		let park = |element: El| {
-			let (parked, _) = input.arena().alloc(element)?;
-			let mut value = RecordValue::zeroed();
-			unsafe { write_field::<&El>(value.as_mut_ptr(), 0, parked) };
-			Some(value)
+		let build = |element: El| {
+			if self.layout.is_inline() {
+				let mut value = RecordValue::zeroed();
+				unsafe { write_element(value.as_mut_ptr(), element, input.arena())? };
+				Some(value)
+			} else {
+				let dst = stack::push(self.layout.frame_bytes());
+				let written = unsafe { write_element(dst, element, input.arena()) };
+				stack::pop(dst);
+				written.map(|()| RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }))
+			}
 		};
 		let exhausted = || {
 			GPoll::Error(Box::new(crate::gpoll::GraphError {
@@ -673,11 +677,11 @@ where
 			}))
 		};
 		match self.edge.eval(input) {
-			GPoll::Final(element) => park(element).map_or_else(exhausted, GPoll::Final),
-			GPoll::Partial(element) => park(element).map_or_else(exhausted, GPoll::Partial),
+			GPoll::Final(element) => build(element).map_or_else(exhausted, GPoll::Final),
+			GPoll::Partial(element) => build(element).map_or_else(exhausted, GPoll::Partial),
 			GPoll::Fallback(boxed) => {
 				let (element, error) = *boxed;
-				park(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
+				build(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
 			}
 			GPoll::Pending => GPoll::Pending,
 			GPoll::Error(error) => GPoll::Error(error),
@@ -689,37 +693,8 @@ where
 	}
 }
 
-/// Extracts a parked-reference element from a record wire by cloning it out
-/// for a plain consumer.
-pub struct RecordExtractClone<El, N> {
-	edge: N,
-	layout: Layout,
-	_marker: std::marker::PhantomData<fn() -> El>,
-}
-
-impl<El, N> RecordExtractClone<El, N> {
-	pub fn new(edge: N, layout: &Layout) -> Self {
-		Self {
-			edge,
-			layout: layout.clone(),
-			_marker: std::marker::PhantomData,
-		}
-	}
-}
-
-impl<'e, C, El, N> Node<C> for RecordExtractClone<El, N>
-where
-	El: Clone + 'static,
-	N: Node<C, Output = RecordValue<'e>>,
-{
-	type Output = El;
-
-	fn eval(&self, input: &C) -> GPoll<El> {
-		self.edge.eval(input).map(|value| unsafe { self.layout.rec(&value).element::<&El>() }.clone())
-	}
-}
-
-/// Extracts the element from a record wire for a plain consumer.
+/// Extracts the element from a record wire for a plain consumer, cloning out
+/// of the parked reference when the element carries drop glue.
 pub struct RecordExtract<El, N> {
 	edge: N,
 	layout: Layout,
@@ -738,13 +713,13 @@ impl<El, N> RecordExtract<El, N> {
 
 impl<'e, C, El, N> Node<C> for RecordExtract<El, N>
 where
-	El: Copy + 'static,
+	El: Clone + 'static,
 	N: Node<C, Output = RecordValue<'e>>,
 {
 	type Output = El;
 
 	fn eval(&self, input: &C) -> GPoll<El> {
-		self.edge.eval(input).map(|value| unsafe { self.layout.rec(&value).element::<El>() })
+		self.edge.eval(input).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
 	}
 }
 
@@ -830,6 +805,33 @@ mod tests {
 	fn identity_layouts_forward() {
 		let layout = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
 		assert!(SourcePlan::new(&layout, &layout.clone()).is_none());
+	}
+
+	#[test]
+	fn elements_ride_as_bytes_exactly_without_drop_glue() {
+		assert!(!element_parked::<f64>());
+		assert!(!element_parked::<[f64; 4]>());
+		assert!(element_parked::<String>());
+		assert!(element_parked::<std::sync::Arc<str>>());
+		assert_eq!(element_dims::<[f64; 4]>(), (32, 8));
+		assert_eq!(element_dims::<String>(), (8, 8));
+	}
+
+	#[test]
+	fn elements_write_and_read_in_their_picked_form() {
+		let arena = crate::arena::Arena::new(256).unwrap();
+
+		let mut inline = [0u64; 2];
+		unsafe { write_element(inline.as_mut_ptr().cast(), 4.5f64, &arena) }.unwrap();
+		let rec = unsafe { Rec::new(inline.as_ptr().cast()) };
+		assert_eq!(unsafe { *borrow_element::<f64>(rec) }, 4.5);
+		assert_eq!(unsafe { read_element::<f64>(rec) }, 4.5);
+
+		let mut parked = [0u64; 2];
+		unsafe { write_element(parked.as_mut_ptr().cast(), String::from("moved once"), &arena) }.unwrap();
+		let rec = unsafe { Rec::new(parked.as_ptr().cast()) };
+		assert_eq!(unsafe { borrow_element::<String>(rec) }.as_str(), "moved once");
+		assert_eq!(unsafe { read_element::<String>(rec) }, "moved once");
 	}
 
 	#[test]
