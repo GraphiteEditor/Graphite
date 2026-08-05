@@ -807,6 +807,11 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	let Some(TaggedValue::GradientRamp(ramp)) = stops else {
 		panic!("the legacy stops parameter should become a gradient ramp value, but became {stops:?}");
 	};
+	assert_eq!(
+		ramp.gradient_interpolation,
+		graphene_std::vector::style::GradientInterpolation::SrgbGamma,
+		"a legacy document's ramps should deserialize with the explicit gamma interpolation"
+	);
 	let stops = graphene_std::vector::Gradient::from(ramp);
 	assert_eq!(stops.len(), 2);
 	assert!(!stops.has_position_attribute(), "even legacy tuple positions should elide rather than materialize");
@@ -844,12 +849,22 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 		panic!("the fill input should keep its gradient ramp value, but became {paint:?}");
 	};
 	assert_eq!(ramp.gradient_spread, GradientSpread::Repeat, "the spread input's value should fold into the fill ramp");
+	assert_eq!(
+		ramp.gradient_interpolation,
+		graphene_std::vector::style::GradientInterpolation::SrgbGamma,
+		"a legacy document's ramps should deserialize with the explicit gamma interpolation"
+	);
 
 	let backup = fill_node.input_value(graphene_std::vector::fill::BackupGradientInput);
 	let Some(TaggedValue::GradientRamp(backup_ramp)) = backup else {
 		panic!("the backup gradient input should keep its gradient ramp value, but became {backup:?}");
 	};
 	assert_eq!(backup_ramp.gradient_spread, GradientSpread::Repeat, "the spread input's value should fold into the backup ramp");
+	assert_eq!(
+		backup_ramp.gradient_interpolation,
+		graphene_std::vector::style::GradientInterpolation::SrgbGamma,
+		"the backup ramp should carry the explicit gamma interpolation too"
+	);
 
 	let has_transform = fill_node.input_value(graphene_std::vector::fill::HasTransformInput);
 	assert!(

@@ -98,7 +98,9 @@ impl GradientStops<SRGBA8> {
 	}
 }
 
-/// The serialized exchange form of a gradient: its stops, with whole-ramp settings as sibling fields serialized only when non-default.
+/// The serialized exchange form of a gradient: its stops, with whole-ramp settings as sibling fields serialized
+/// only when non-default. The interpolation is the exception: it always serializes, so its absence marks a ramp
+/// from before the field existed, which deserializes as the gamma those documents rendered with.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -107,8 +109,8 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpread::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_spread: GradientSpread,
-	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
-	#[cfg_attr(feature = "wasm", tsify(optional))]
+	// TODO: Elide the default again (removing `legacy_gamma`) when switching to the new document format and Ctrl-C node serialization format
+	#[cfg_attr(feature = "serde", serde(default = "GradientInterpolation::legacy_gamma"))]
 	pub gradient_interpolation: GradientInterpolation,
 }
 
@@ -887,6 +889,11 @@ impl GradientInterpolation {
 	pub fn is_default(&self) -> bool {
 		*self == Self::default()
 	}
+
+	// TODO: Remove when switching to the new document format and Ctrl-C node serialization format
+	fn legacy_gamma() -> Self {
+		Self::SrgbGamma
+	}
 }
 
 /// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
@@ -1023,10 +1030,13 @@ mod tests {
 	}
 
 	#[test]
-	fn gradient_interpolation_serializes_only_when_not_default() {
+	fn gradient_interpolation_always_serializes_and_its_absence_reads_as_legacy_gamma() {
 		let default_interpolation = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
 		let json = serde_json::to_string(&default_interpolation).unwrap();
-		assert!(!json.contains("gradient_interpolation"), "the default SrgbLinear interpolation must not serialize: {json}");
+		assert!(
+			json.contains(r#""gradient_interpolation":"SrgbLinear""#),
+			"the interpolation must serialize even at its default, marking the ramp as post-legacy: {json}"
+		);
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_interpolation);
 
 		let gamma = GradientRamp {
@@ -1036,6 +1046,13 @@ mod tests {
 		let json = serde_json::to_string(&gamma).unwrap();
 		assert!(json.contains(r#""gradient_interpolation":"SrgbGamma""#), "a non-default interpolation must serialize: {json}");
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), gamma);
+
+		let legacy_json = json.replace(r#","gradient_interpolation":"SrgbGamma""#, "");
+		assert_eq!(
+			serde_json::from_str::<GradientRamp>(&legacy_json).unwrap(),
+			gamma,
+			"a ramp saved before the field existed should read as the gamma it rendered with: {legacy_json}"
+		);
 	}
 
 	#[test]
