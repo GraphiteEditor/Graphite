@@ -624,6 +624,7 @@ tagged_value! {
 	GradientForm(vector::style::GradientForm),
 	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
 	GradientSpread(vector::style::GradientSpread),
+	GradientInterpolation(vector::style::GradientInterpolation),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
@@ -872,11 +873,15 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					.and_then(|c| c.get("element").or_else(|| c.get("instance")).or_else(|| c.get("instances")))
 					.and_then(|element| element.as_array());
 
-				// An empty legacy table wrapper carries no gradient, degrading to the default rather than failing the document load
+				// An empty legacy table wrapper carries no gradient, degrading to the default (in the era's gamma) rather than failing the document load
 				if let Some(array) = table_element
 					&& array.is_empty()
 				{
-					return Ok(MemoHash::new(TaggedValue::GradientRamp(GradientRamp::default())));
+					let ramp = GradientRamp {
+						gradient_interpolation: vector::style::GradientInterpolation::SrgbGamma,
+						..Default::default()
+					};
+					return Ok(MemoHash::new(TaggedValue::GradientRamp(ramp)));
 				}
 
 				let payload = table_element.and_then(|array| array.first()).unwrap_or(content);
@@ -1098,7 +1103,7 @@ mod paint_default_parsing {
 
 #[cfg(test)]
 mod gradient_shape_migration {
-	use graphic_types::vector_types::GradientSpread;
+	use graphic_types::vector_types::{GradientInterpolation, GradientSpread};
 
 	use super::*;
 
@@ -1125,7 +1130,27 @@ mod gradient_shape_migration {
 
 		let json = serde_json::to_value(&value).unwrap();
 		assert!(json.get("GradientRamp").and_then(|payload| payload.get("stops")).is_some(), "the payload should nest its stops: {json}");
+		assert_eq!(
+			json.get("GradientRamp").and_then(|payload| payload.get("gradient_interpolation")),
+			Some(&serde_json::json!("SrgbLinear")),
+			"the interpolation should serialize even at its default, marking the ramp as post-legacy: {json}"
+		);
 		assert_eq!(load(json), value);
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	#[test]
+	fn ramp_without_interpolation_field_reads_as_legacy_gamma() {
+		let json = serde_json::json!({ "GradientRamp": { "stops": { "color": [white(), white()] } } });
+		let TaggedValue::GradientRamp(ramp) = load(json) else {
+			panic!("the ramp payload should become a gradient ramp value")
+		};
+
+		assert_eq!(
+			ramp.gradient_interpolation,
+			GradientInterpolation::SrgbGamma,
+			"a ramp saved before the field existed should read as gamma"
+		);
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -1135,6 +1160,7 @@ mod gradient_shape_migration {
 		let TaggedValue::GradientRamp(ramp) = load(json) else {
 			panic!("the flat stops should become a gradient ramp value")
 		};
+		assert_eq!(ramp.gradient_interpolation, GradientInterpolation::SrgbGamma, "the pre-ramp flat form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
 		assert_eq!(gradient.positions(), vec![0., 0.25]);
@@ -1148,6 +1174,7 @@ mod gradient_shape_migration {
 		let TaggedValue::GradientRamp(ramp) = load(json) else {
 			panic!("the tuple stops should become a gradient ramp value")
 		};
+		assert_eq!(ramp.gradient_interpolation, GradientInterpolation::SrgbGamma, "the pre-ramp tuple form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
 		assert_eq!(gradient.positions(), vec![0., 1.]);
@@ -1158,7 +1185,11 @@ mod gradient_shape_migration {
 	#[test]
 	fn empty_legacy_gradient_table_degrades_to_the_default() {
 		let json = serde_json::json!({ "GradientTable": { "element": [] } });
-		assert_eq!(load(json), TaggedValue::GradientRamp(GradientRamp::default()));
+		let expected = GradientRamp {
+			gradient_interpolation: GradientInterpolation::SrgbGamma,
+			..Default::default()
+		};
+		assert_eq!(load(json), TaggedValue::GradientRamp(expected));
 	}
 
 	// TODO: Eventually remove this document upgrade code

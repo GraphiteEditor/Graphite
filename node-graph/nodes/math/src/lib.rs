@@ -12,7 +12,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
-use vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
+use vector_types::markers::{GradientForm as GradientFormAttr, GradientInterpolation as GradientInterpolationAttr, GradientSpread as GradientSpreadAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1215,12 +1215,18 @@ fn gradient_spread(_: impl Ctx, gradient: Gradient, gradient_spread: vector_type
 	(gradient, Attr(gradient_spread))
 }
 
+/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Gradient, gradient_interpolation: vector_types::GradientInterpolation) -> (Gradient, Attr<GradientInterpolationAttr>) {
+	(gradient, Attr(gradient_interpolation))
+}
+
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
 #[node_macro::node(category("Gradient"))]
-fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: IList<f64>) -> Gradient {
-	let positions: Vec<f64> = positions.iter().collect();
+fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: List<f64>) -> Gradient {
+	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
 	gradient.set_positions(&positions);
 	gradient
 }
@@ -1231,8 +1237,8 @@ fn gradient_positions(_: impl Ctx, mut gradient: Gradient, positions: IList<f64>
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
 #[node_macro::node(category("Gradient"))]
-fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: IList<f64>) -> Gradient {
-	let midpoints: Vec<f64> = midpoints.iter().collect();
+fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>) -> Gradient {
+	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
 	gradient.set_midpoints(&midpoints);
 	gradient
 }
