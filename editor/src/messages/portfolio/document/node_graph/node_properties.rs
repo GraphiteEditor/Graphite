@@ -2931,20 +2931,18 @@ pub mod choice {
 			U: Fn(&E) -> Message + 'static + Send + Sync,
 			C: Fn(&()) -> Message + 'static + Send + Sync,
 		{
-			let items = E::list()
-				.iter()
-				.flat_map(|section| section.iter())
-				.map(|(item, var_meta)| {
-					let updater = updater_factory();
-					let committer = committer_factory();
-					let entry = RadioEntryData::new(var_meta.name)
-						.on_update(move |_| updater(item))
-						.on_commit(committer)
-						.tooltip_label(var_meta.label)
-						.tooltip_description(var_meta.description.unwrap_or_default());
-					if let Some(icon) = var_meta.icon { entry.icon(icon) } else { entry.label(var_meta.label) }
+			// The entry builder clones one callback across all variants, so each factory yields a single shared handle
+			let updater = std::sync::Arc::new(updater_factory());
+			let committer = std::sync::Arc::new(committer_factory());
+
+			let items = RadioEntryData::list_from_choice_type(move |variant: E| updater(&variant))
+				.into_iter()
+				.map(|entry| {
+					let committer = committer.clone();
+					entry.on_commit(move |value| committer(value))
 				})
 				.collect();
+
 			RadioInput::new(items).selected_index(Some(current.as_u32())).disabled(self.disabled).widget_instance()
 		}
 	}
