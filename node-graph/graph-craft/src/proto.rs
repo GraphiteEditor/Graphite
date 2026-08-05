@@ -258,6 +258,11 @@ impl ProtoNetwork {
 			self.replace_node_id(&outwards_edges, NodeId(index as u64), sni);
 			self.nodes[index].0 = sni;
 		}
+
+		// Equal nodes hash to one id; the copies must go, or a pass that
+		// rewrites one of them (like adapter splicing) leaves the others stale.
+		let mut seen = HashSet::new();
+		self.nodes.retain(|(id, _)| seen.insert(*id));
 	}
 
 	// TODO: Remove
