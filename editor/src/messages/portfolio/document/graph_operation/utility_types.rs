@@ -18,7 +18,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientSpread, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientInterpolation, GradientSpread, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
@@ -432,14 +432,18 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, gradient_spread: GradientSpread, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, gradient_spread: GradientSpread, gradient_interpolation: GradientInterpolation, transform: DAffine2) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
 		let ramp = GradientRamp::from(gradient);
-		let ramp = GradientRamp { gradient_spread, ..ramp };
+		let ramp = GradientRamp {
+			gradient_spread,
+			gradient_interpolation,
+			..ramp
+		};
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
@@ -604,10 +608,9 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		// Only the stops are being replaced, so the ramp's other settings stay as the value node already holds them
-		let gradient_spread = self.gradient_value_ramp(gradient_value_id).unwrap_or_default().gradient_spread;
 		let ramp = GradientRamp {
-			gradient_spread,
-			..GradientRamp::from(stops)
+			stops: (&stops).into(),
+			..self.gradient_value_ramp(gradient_value_id).unwrap_or_default()
 		};
 
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
@@ -763,6 +766,20 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 		Some(ramp.clone())
+	}
+
+	/// Set the interpolation on the chain's gradient value, which is where the ramp carries it. Never touches a
+	/// 'Gradient Interpolation' node: that one is a user-authored procedural override, not something the tools manage.
+	pub fn gradient_interpolation_set(&mut self, gradient_interpolation: GradientInterpolation) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_interpolation, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
