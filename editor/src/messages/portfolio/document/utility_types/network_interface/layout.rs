@@ -980,6 +980,13 @@ impl NodeNetworkInterface {
 		let Some(feeder_position) = self.position(&feeder, network_path) else { return };
 
 		self.shift_node(node_id, feeder_position - node_position, network_path);
+
+		// A chain feeder derives its position from its distance to the layer, which this insertion already grew,
+		// so shifting it would move it twice and cost it its place in the chain
+		if !self.is_absolute(&feeder, network_path) {
+			return;
+		}
+
 		// Deduplicate, since `UpstreamFlow` can yield a shared node more than once and we must shift each node only once.
 		let upstream_nodes: HashSet<NodeId> = self.upstream_flow_back_from_nodes(vec![feeder], network_path, FlowType::UpstreamFlow).collect();
 		for upstream_node in &upstream_nodes {
