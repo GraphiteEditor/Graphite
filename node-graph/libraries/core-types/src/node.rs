@@ -71,6 +71,14 @@ pub trait Node<Input> {
 		None
 	}
 
+	/// The record layout of this node's output; `None` for element-only
+	/// producers. Consumers read their carrier's layout through this at
+	/// wiring, and the wiring layer derives stack sizing from the same
+	/// layouts, in the dynamic executor and exported source alike.
+	fn layout(&self) -> Option<&crate::record::Layout> {
+		None
+	}
+
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
@@ -133,6 +141,10 @@ where
 		(**self).serialize()
 	}
 
+	fn layout(&self) -> Option<&crate::record::Layout> {
+		(**self).layout()
+	}
+
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>
 	where
 		Input: InjectIndex + Copy,
@@ -157,6 +169,10 @@ where
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		(**self).serialize()
+	}
+
+	fn layout(&self) -> Option<&crate::record::Layout> {
+		(**self).layout()
 	}
 
 	fn eval_batch<'a>(&self, input: &'a Input, range: Range<u64>, scratch: Option<&'a mut [MaybeUninit<Self::Output>]>) -> BatchStatus<'a, Self::Output>

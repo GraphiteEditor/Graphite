@@ -3,6 +3,11 @@
 //! collects every declaration so name resolution, defaults, and diagnostics
 //! run at graph compile time. One name belongs to one marker, so a name can
 //! never mean two different types.
+//!
+//! Values are `Copy` and pack directly into record fields. Data with drop
+//! glue rides the arena instead: the marker declares a reference value
+//! (`&str`), the writing kernel parks the payload in the arena, and the
+//! record field carries the eval-lifetime reference.
 
 use crate::list::AnyAttributeValue;
 use glam::{DAffine2, DVec2};
@@ -18,11 +23,15 @@ use std::sync::{LazyLock, Mutex};
 pub trait Attribute: 'static {
 	/// The name as it appears in documents and diagnostics.
 	const NAME: &'static str;
-	/// The value type every read and write of this name shares.
-	type Value: AnyAttributeValue + Clone + Default + std::fmt::Debug;
+	/// The value type every read and write of this name shares. The lifetime
+	/// is the evaluation the value flows in; non-reference values ignore it.
+	type Value<'e>: Copy + Default + std::fmt::Debug;
 	/// The name-specific default, filled where an item lacks the attribute.
-	fn default() -> Self::Value {
-		Self::Value::default()
+	/// Producing a value for any `'e` from no inputs, reference defaults can
+	/// only point at `'static` data, which is what lets the census fill them
+	/// as plain bytes.
+	fn default<'e>() -> Self::Value<'e> {
+		Default::default()
 	}
 }
 
@@ -30,23 +39,25 @@ pub trait Attribute: 'static {
 /// (yielding the declared default where the attribute is absent upstream), an
 /// `Attr<A>` in the return tuple is a write, and the same marker on both
 /// sides is a modify.
-pub struct Attr<A: Attribute>(pub A::Value);
+pub struct Attr<'e, A: Attribute>(pub A::Value<'e>);
 
-impl<A: Attribute> Deref for Attr<A> {
-	type Target = A::Value;
+impl<'e, A: Attribute> Deref for Attr<'e, A> {
+	type Target = A::Value<'e>;
 
-	fn deref(&self) -> &A::Value {
+	fn deref(&self) -> &A::Value<'e> {
 		&self.0
 	}
 }
 
-impl<A: Attribute> Clone for Attr<A> {
+impl<'e, A: Attribute> Clone for Attr<'e, A> {
 	fn clone(&self) -> Self {
-		Attr(self.0.clone())
+		*self
 	}
 }
 
-impl<A: Attribute> std::fmt::Debug for Attr<A> {
+impl<'e, A: Attribute> Copy for Attr<'e, A> {}
+
+impl<'e, A: Attribute> std::fmt::Debug for Attr<'e, A> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_tuple(A::NAME).field(&self.0).finish()
 	}
@@ -61,20 +72,14 @@ pub struct AttributeInfo {
 	pub default: fn() -> Box<dyn AnyAttributeValue>,
 	pub size: usize,
 	pub align: usize,
-	/// Whether the value is eligible for packed-record fields: no drop glue,
-	/// so its bytes copy freely. Droppable values stay on the erased path
-	/// until the per-type clone/drop glue lands.
-	pub packable: bool,
 	/// Writes the declared default's bytes into a `size`-long slice.
-	/// Meaningful only when `packable`.
 	pub write_default_bytes: fn(&mut [u8]),
 }
 
 fn write_default_bytes<A: Attribute>(out: &mut [u8]) {
-	assert!(!std::mem::needs_drop::<A::Value>(), "default bytes exist only for packable values");
-	assert_eq!(out.len(), size_of::<A::Value>());
-	let value = A::default();
-	unsafe { std::ptr::copy_nonoverlapping((&raw const value).cast::<u8>(), out.as_mut_ptr(), size_of::<A::Value>()) };
+	assert_eq!(out.len(), size_of::<A::Value<'static>>());
+	let value: A::Value<'static> = A::default();
+	unsafe { std::ptr::copy_nonoverlapping((&raw const value).cast::<u8>(), out.as_mut_ptr(), size_of::<A::Value<'static>>()) };
 }
 
 /// All declared attribute names, keyed by name.
@@ -84,15 +89,17 @@ pub static ATTRIBUTE_REGISTRY: LazyLock<Mutex<HashMap<&'static str, AttributeInf
 /// startup (ctor natively, a `__node_registry_attribute_*` export on wasm).
 /// Re-registration at the same value type is idempotent; a second marker
 /// claiming the name at a different value type panics.
-pub fn register<A: Attribute>() {
+pub fn register<A: Attribute>()
+where
+	A::Value<'static>: AnyAttributeValue,
+{
 	let info = AttributeInfo {
 		name: A::NAME,
-		value_type: TypeId::of::<A::Value>(),
-		value_type_name: std::any::type_name::<A::Value>(),
+		value_type: TypeId::of::<A::Value<'static>>(),
+		value_type_name: std::any::type_name::<A::Value<'static>>(),
 		default: || Box::new(A::default()),
-		size: size_of::<A::Value>(),
-		align: align_of::<A::Value>(),
-		packable: !std::mem::needs_drop::<A::Value>(),
+		size: size_of::<A::Value<'static>>(),
+		align: align_of::<A::Value<'static>>(),
 		write_default_bytes: write_default_bytes::<A>,
 	};
 	let conflict = match ATTRIBUTE_REGISTRY.lock().unwrap().entry(A::NAME) {
@@ -124,44 +131,65 @@ pub fn default_value(name: &str) -> Option<Box<dyn AnyAttributeValue>> {
 /// core_types::attribute! {
 ///     /// How visible the content is.
 ///     pub Opacity("opacity"): f64 = 1.;
-///     /// The item's transformation.
-///     pub Transform("transform"): glam::DAffine2;
+///     /// The item's label, parked in the arena by the writer.
+///     pub Label("label"): &str;
 /// }
 /// ```
 ///
 /// The trailing `= expr` is the name-specific default; without it the value
-/// type's `Default` applies.
+/// type's `Default` applies. A `&T` value carries the eval lifetime, so its
+/// default must be `'static` data.
 #[macro_export]
 macro_rules! attribute {
-	($($(#[$meta:meta])* $vis:vis $marker:ident($name:literal): $value:ty $(= $default:expr)?;)+) => {
-		$(
-			$(#[$meta])*
-			$vis struct $marker;
+	() => {};
+	($(#[$meta:meta])* $vis:vis $marker:ident($name:literal): &$value:ty $(= $default:expr)?; $($rest:tt)*) => {
+		$(#[$meta])*
+		$vis struct $marker;
 
-			impl $crate::attribute::Attribute for $marker {
-				const NAME: &'static str = $name;
-				type Value = $value;
-				$(
-					fn default() -> $value {
-						$default
-					}
-				)?
+		impl $crate::attribute::Attribute for $marker {
+			const NAME: &'static str = $name;
+			type Value<'e> = &'e $value;
+			$(
+				fn default<'e>() -> Self::Value<'e> {
+					$default
+				}
+			)?
+		}
+
+		$crate::attribute!(@register $marker);
+		$crate::attribute!($($rest)*);
+	};
+	($(#[$meta:meta])* $vis:vis $marker:ident($name:literal): $value:ty $(= $default:expr)?; $($rest:tt)*) => {
+		$(#[$meta])*
+		$vis struct $marker;
+
+		impl $crate::attribute::Attribute for $marker {
+			const NAME: &'static str = $name;
+			type Value<'e> = $value;
+			$(
+				fn default<'e>() -> Self::Value<'e> {
+					$default
+				}
+			)?
+		}
+
+		$crate::attribute!(@register $marker);
+		$crate::attribute!($($rest)*);
+	};
+	(@register $marker:ident) => {
+		const _: () = {
+			#[cfg(not(target_family = "wasm"))]
+			#[$crate::ctor::ctor]
+			fn register() {
+				$crate::attribute::register::<$marker>();
 			}
 
-			const _: () = {
-				#[cfg(not(target_family = "wasm"))]
-				#[$crate::ctor::ctor]
-				fn register() {
-					$crate::attribute::register::<$marker>();
-				}
-
-				#[cfg(target_family = "wasm")]
-				#[unsafe(export_name = concat!("__node_registry_attribute_", stringify!($marker)))]
-				extern "C" fn register() {
-					$crate::attribute::register::<$marker>();
-				}
-			};
-		)+
+			#[cfg(target_family = "wasm")]
+			#[unsafe(export_name = concat!("__node_registry_attribute_", stringify!($marker)))]
+			extern "C" fn register() {
+				$crate::attribute::register::<$marker>();
+			}
+		};
 	};
 }
 
@@ -180,7 +208,7 @@ attribute! {
 	/// Artboard's top-left corner in document coordinates.
 	pub Location("location"): DVec2;
 	/// A regex named-capture-group's name, or empty for unnamed groups.
-	pub Name("name"): String;
+	pub Name("name"): &str;
 }
 
 #[cfg(test)]
@@ -198,13 +226,20 @@ mod tests {
 	#[test]
 	fn name_specific_default_overrides_the_type_default() {
 		assert_eq!(<Opacity as Attribute>::default(), 1.);
-		assert_eq!(<Name as Attribute>::default(), String::new());
+		assert_eq!(<Name as Attribute>::default(), "");
 	}
 
 	#[test]
 	fn erased_default_downcasts_to_the_declared_type() {
 		let value = default_value("opacity_fill").unwrap();
 		assert_eq!(*value.as_any().downcast_ref::<f64>().unwrap(), 1.);
+	}
+
+	#[test]
+	fn reference_values_register_at_the_static_instantiation() {
+		let row = info("name").unwrap();
+		assert_eq!(row.value_type, TypeId::of::<&'static str>());
+		assert_eq!(row.size, size_of::<&str>());
 	}
 
 	#[test]
@@ -220,7 +255,7 @@ mod tests {
 		struct Conflict;
 		impl Attribute for Conflict {
 			const NAME: &'static str = "opacity";
-			type Value = bool;
+			type Value<'e> = bool;
 		}
 		register::<Conflict>();
 	}

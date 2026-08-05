@@ -716,6 +716,16 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
 					fields.push(field);
 				}
+			} else if let Pat::Wild(wild) = &**pat {
+				let pat_ident = PatIdent {
+					attrs: wild.attrs.clone(),
+					by_ref: None,
+					mutability: None,
+					ident: format_ident!("_unit{}", index, span = wild.underscore_token.span),
+					subpat: None,
+				};
+				let field = parse_field(pat_ident, (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat, format!("Failed to parse argument: {e}")))?;
+				fields.push(field);
 			} else {
 				return Err(Error::new_spanned(pat, "Expected a simple identifier for the field name"));
 			}

@@ -1,15 +1,14 @@
 //! The packed-record tier at rank 0. A record is the element at offset 0
 //! plus one field per written attribute; its [`Layout`] is computed at
 //! wiring from the upstream write set and never serialized. Records live as
-//! per-lane views in a per-worker [`Frame`] whose slots are assigned at
-//! wiring, and kernels route them as opaque [`RecordValue`]s that carry
+//! per-lane views on the per-thread record [`stack`], claimed per
+//! evaluation, and kernels route them as opaque [`RecordValue`]s that carry
 //! their provenance. Only generated or wiring code touches offsets, so a
 //! safe kernel cannot misalign a field.
 
 use crate::attribute;
 use crate::gpoll::GPoll;
 use crate::node::Node;
-use std::cell::UnsafeCell;
 
 /// One field of a [`Layout`]: a (name, level) key resolved to an offset.
 /// Levels are numbered innermost-out; only level 0 exists at rank 0.
@@ -97,6 +96,13 @@ impl Layout {
 	}
 }
 
+/// The stand-in fed to a kernel's unbounded `element: T` parameter. The type
+/// system forces the kernel to route it to the element position of its return
+/// tuple, so the passthrough is explicit in the signature while the lowering
+/// carries the element bytes untyped through the copy plan.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ElToken;
+
 /// A view of one record: a pointer whose layout is proven at wiring.
 #[derive(Clone, Copy, Debug)]
 pub struct Rec(*const u8);
@@ -148,58 +154,89 @@ impl<'e> RecordValue<'e> {
 	}
 }
 
-/// Assigns frame slots at wiring: a bump allocator over slot sizes, aligned
-/// to at most 8 (record layouts never exceed word alignment).
-#[derive(Debug, Default)]
-pub struct FrameLayout {
-	size: usize,
-}
+/// The per-thread record stack: every record evaluation claims its activation
+/// frame at the stack pointer and evaluates its carrier beyond it, so slot
+/// addresses are a property of the evaluating thread and no global assignment
+/// exists. Thread-local by construction, so access is single-threaded without
+/// claims or gates. Records are overwritten per lane and never touch the
+/// arena.
+pub mod stack {
+	use std::cell::Cell;
 
-impl FrameLayout {
-	pub fn slot(&mut self, layout: &Layout) -> usize {
-		assert!(layout.align <= 8, "record layouts align to at most 8");
-		self.size = self.size.next_multiple_of(layout.align.max(1));
-		let offset = self.size;
-		self.size += layout.size;
-		offset
+	struct Stack {
+		base: Cell<*mut u8>,
+		capacity: Cell<usize>,
+		sp: Cell<usize>,
 	}
 
-	pub fn size(&self) -> usize {
-		self.size
-	}
-}
-
-/// The per-worker record frame: every record-producing slot lives at a
-/// wiring-assigned offset. Slots are overwritten per lane and never touch
-/// the arena.
-pub struct Frame {
-	words: Box<[UnsafeCell<u64>]>,
-}
-
-// SAFETY: a frame belongs to one worker; slot writes happen only inside that
-// worker's evaluation, and wiring assigns disjoint offsets per slot.
-unsafe impl Send for Frame {}
-unsafe impl Sync for Frame {}
-
-impl Frame {
-	pub fn new(size: usize) -> Self {
-		Self {
-			words: (0..size.div_ceil(8).max(1)).map(|_| UnsafeCell::new(0)).collect(),
+	impl Stack {
+		fn free(&self) {
+			let base = self.base.get();
+			if !base.is_null() {
+				drop(unsafe { Vec::from_raw_parts(base.cast::<u64>(), 0, self.capacity.get() / 8) });
+			}
 		}
 	}
 
-	/// # Safety
-	/// `offset` must be a slot offset assigned by [`FrameLayout`] for this
-	/// frame, and the caller must be the slot's owning node evaluation.
-	pub unsafe fn slot(&self, offset: usize) -> *mut u8 {
-		debug_assert!(offset <= self.words.len() * 8);
-		unsafe { self.words.as_ptr().cast::<u8>().cast_mut().add(offset) }
+	impl Drop for Stack {
+		fn drop(&mut self) {
+			self.free();
+		}
 	}
-}
 
-impl std::fmt::Debug for Frame {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("Frame").field("bytes", &(self.words.len() * 8)).finish()
+	thread_local! {
+		static STACK: Stack = const {
+			Stack {
+				base: Cell::new(std::ptr::null_mut()),
+				capacity: Cell::new(0),
+				sp: Cell::new(0),
+			}
+		};
+	}
+
+	/// Ensures the calling thread's stack holds `bytes`, the root's wiring-
+	/// derived stack need, and resets the stack pointer. Called only between
+	/// evaluations, like the arena reset: nothing survives it, so frames
+	/// leaked by an interrupted evaluation are reclaimed here.
+	pub fn reserve(bytes: usize) {
+		STACK.with(|stack| {
+			stack.sp.set(0);
+			if stack.capacity.get() >= bytes {
+				return;
+			}
+			let words = bytes.div_ceil(8).max(1);
+			let mut memory = vec![0u64; words];
+			let base = memory.as_mut_ptr().cast::<u8>();
+			std::mem::forget(memory);
+			stack.free();
+			stack.base.set(base);
+			stack.capacity.set(words * 8);
+		});
+	}
+
+	/// Claims `bytes` (rounded to word alignment) at the stack pointer and
+	/// advances past them. The region stays claimed until [`pop`], and stays
+	/// readable until the next `push`. `reserve` derived from the root's
+	/// stack need makes the capacity bound exact, so overflow is a debug
+	/// assertion, not a hot-path branch.
+	pub fn push(bytes: usize) -> *mut u8 {
+		STACK.with(|stack| {
+			let sp = stack.sp.get();
+			let next = sp + bytes.next_multiple_of(8);
+			debug_assert!(next <= stack.capacity.get(), "record stack overflow: reserve() must cover the root's stack need");
+			stack.sp.set(next);
+			unsafe { stack.base.get().add(sp) }
+		})
+	}
+
+	/// Returns the stack pointer to `frame`, a pointer earlier returned by
+	/// [`push`] on this thread, releasing everything above it.
+	pub fn pop(frame: *mut u8) {
+		STACK.with(|stack| {
+			let offset = frame as usize - stack.base.get() as usize;
+			debug_assert!(offset <= stack.sp.get(), "pop target must lie within the claimed stack");
+			stack.sp.set(offset);
+		});
 	}
 }
 
@@ -222,6 +259,13 @@ pub fn copy_plan(from: &Layout, to: &Layout, carry_element: bool) -> Vec<(usize,
 }
 
 /// # Safety
+/// `offset` must be a field offset of the layout of the record under
+/// construction at `dst` and `T` the field's type; both are proven at wiring.
+pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
+	unsafe { dst.add(offset).cast::<T>().write(value) }
+}
+
+/// # Safety
 /// `src` must be a record of the plan's source layout and `dst` a buffer of
 /// the plan's target layout; both are proven at wiring.
 pub unsafe fn apply_plan(src: Rec, dst: *mut u8, plan: &[(usize, usize, usize)]) {
@@ -235,7 +279,6 @@ pub unsafe fn apply_plan(src: Rec, dst: *mut u8, plan: &[(usize, usize, usize)])
 fn default_fill_bytes(name: &str, size: usize) -> Box<[u8]> {
 	let mut bytes = vec![0u8; size].into_boxed_slice();
 	if let Some(info) = attribute::info(name)
-		&& info.packable
 		&& info.size == size
 	{
 		(info.write_default_bytes)(&mut bytes);
@@ -244,18 +287,18 @@ fn default_fill_bytes(name: &str, size: usize) -> Box<[u8]> {
 }
 
 /// A routing source's wiring-resolved translation: field moves into the
-/// consumer's frame buffer plus census default fill for union fields the
-/// source lacks. Absent when the source's layout already equals the union,
-/// in which case the record pointer forwards untouched.
+/// union layout plus census default fill for union fields the source lacks.
+/// Absent when the source's layout already equals the union, in which case
+/// the record pointer forwards untouched.
 #[derive(Debug)]
 pub struct SourcePlan {
 	moves: Vec<(usize, usize, usize)>,
 	fills: Vec<(usize, Box<[u8]>)>,
-	slot: usize,
+	union_bytes: usize,
 }
 
 impl SourcePlan {
-	pub fn new(source: &Layout, union: &Layout, slot: usize) -> Option<SourcePlan> {
+	pub fn new(source: &Layout, union: &Layout) -> Option<SourcePlan> {
 		if source == union {
 			return None;
 		}
@@ -266,15 +309,18 @@ impl SourcePlan {
 			.filter(|field| source.offset_of(field.name, field.level).is_none())
 			.map(|field| (field.offset, default_fill_bytes(field.name, field.size)))
 			.collect();
-		Some(SourcePlan { moves, fills, slot })
+		Some(SourcePlan {
+			moves,
+			fills,
+			union_bytes: union.size,
+		})
 	}
 
 	/// # Safety
-	/// `src` must be a record of this plan's source layout and `frame` the
-	/// frame whose slot was assigned to this plan at wiring.
-	pub unsafe fn translate(&self, src: Rec, frame: &Frame) -> Rec {
+	/// `src` must be a record of this plan's source layout and `dst` a
+	/// buffer of the plan's union layout.
+	pub unsafe fn translate(&self, src: Rec, dst: *mut u8) -> Rec {
 		unsafe {
-			let dst = frame.slot(self.slot);
 			apply_plan(src, dst, &self.moves);
 			for (offset, bytes) in &self.fills {
 				std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst.add(*offset), bytes.len());
@@ -288,36 +334,37 @@ impl SourcePlan {
 /// Evaluating it yields the source's record translated to the union layout
 /// (or forwarded untouched when the layouts already agree), so the kernel
 /// holds and returns record values without ever seeing the representation.
+/// A translation claims its landing region from the record stack without
+/// popping, so the value survives sibling evaluations; the region is
+/// released with the enclosing frame, which bounds claims at one per source
+/// evaluation the kernel performs.
 pub struct RecordSource<N> {
 	edge: N,
 	plan: Option<SourcePlan>,
 }
 
 impl<N> RecordSource<N> {
-	pub fn wire(edge: N, source: &Layout, union: &Layout, slot: usize) -> Self {
+	pub fn wire(edge: N, source: &Layout, union: &Layout) -> Self {
 		Self {
 			edge,
-			plan: SourcePlan::new(source, union, slot),
+			plan: SourcePlan::new(source, union),
 		}
 	}
 }
 
 impl<'e, C, N> Node<C> for RecordSource<N>
 where
-	C: crate::context::ExtractFrame<'e>,
 	N: Node<C, Output = RecordValue<'e>>,
 {
 	type Output = RecordValue<'e>;
 
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		let value = self.edge.eval(input);
 		match &self.plan {
-			None => value,
+			None => self.edge.eval(input),
 			Some(plan) => {
-				let Some(frame) = crate::context::ExtractFrame::frame(input) else {
-					return GPoll::error("record frame missing");
-				};
-				value.map(|value| RecordValue::from_rec(unsafe { plan.translate(value.rec(), frame) }))
+				let dst = stack::push(plan.union_bytes);
+				let value = self.edge.eval(input);
+				value.map(|value| RecordValue::from_rec(unsafe { plan.translate(value.rec(), dst) }))
 			}
 		}
 	}
@@ -357,26 +404,14 @@ mod tests {
 	}
 
 	#[test]
-	fn frame_slots_bump_aligned() {
-		let flag = Layout::default().with_writes(0, (1, 1), &[]);
-		let wide = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
-		let mut frame = FrameLayout::default();
-		assert_eq!(frame.slot(&flag), 0);
-		assert_eq!(frame.slot(&wide), 8);
-		assert_eq!(frame.size(), 24);
-	}
-
-	#[test]
 	fn translation_moves_fields_and_fills_census_defaults() {
 		let source = Layout::default().with_writes(0, (8, 8), &[f64_field("length")]);
 		let union = Layout::union(&[&source, &Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")])]);
-		let mut frame_layout = FrameLayout::default();
-		let slot = frame_layout.slot(&union);
-		let frame = Frame::new(frame_layout.size());
 
-		let plan = SourcePlan::new(&source, &union, slot).unwrap();
+		let plan = SourcePlan::new(&source, &union).unwrap();
 		let record = [5f64, 7f64];
-		let translated = unsafe { plan.translate(Rec::new(record.as_ptr().cast()), &frame) };
+		let mut buffer = vec![0u64; union.size.div_ceil(8)];
+		let translated = unsafe { plan.translate(Rec::new(record.as_ptr().cast()), buffer.as_mut_ptr().cast()) };
 		assert_eq!(unsafe { translated.element::<f64>() }, 5.);
 		assert_eq!(unsafe { translated.read::<f64>(union.offset_of("length", 0).unwrap()) }, 7.);
 		assert_eq!(unsafe { translated.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 1.);
@@ -385,6 +420,45 @@ mod tests {
 	#[test]
 	fn identity_layouts_forward() {
 		let layout = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
-		assert!(SourcePlan::new(&layout, &layout.clone(), 0).is_none());
+		assert!(SourcePlan::new(&layout, &layout.clone()).is_none());
+	}
+
+	#[test]
+	fn stack_frames_nest_and_release() {
+		stack::reserve(64);
+		let outer = stack::push(24);
+		let inner = stack::push(8);
+		assert_eq!(inner as usize - outer as usize, 24);
+		stack::pop(outer);
+		assert_eq!(stack::push(8), outer);
+		stack::pop(outer);
+	}
+
+	#[test]
+	fn stack_rounds_frames_to_word_alignment() {
+		stack::reserve(64);
+		let first = stack::push(21);
+		let second = stack::push(8);
+		assert_eq!(second as usize - first as usize, 24);
+		stack::pop(first);
+	}
+
+	#[test]
+	fn each_thread_gets_its_own_stack() {
+		stack::reserve(64);
+		let here = stack::push(8);
+		let here_address = here as usize;
+		std::thread::scope(|scope| {
+			scope
+				.spawn(move || {
+					stack::reserve(64);
+					let there = stack::push(8);
+					assert_ne!(here_address, there as usize, "stacks are per thread");
+					stack::pop(there);
+				})
+				.join()
+				.unwrap();
+		});
+		stack::pop(here);
 	}
 }

@@ -49,25 +49,61 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		emit_error!(parsed.output_type.span(), "attribute io needs a plain or `Result<_, Interrupt>` kernel, not a `GPoll` one");
 	}
 
-	match parsed.fields.first() {
-		None => emit_error!(
-			parsed.fn_name.span(),
-			"attribute io needs a value carrier as the first parameter after the context"
-		),
-		Some(carrier) => {
-			let valid = !carrier.is_data_field
-				&& matches!(&carrier.ty, ParsedFieldType::Regular(RegularParsedField { ty, lend: None, .. }) if !matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()));
-			if !valid {
-				emit_error!(
-					carrier.pat_ident.span(),
-					"attribute io needs a value carrier as the first parameter after the context: an owned element type, not `()`, `#[data]`, `&T`, or `impl Node`"
-				);
-			}
-		}
-	}
 	for field in parsed.fields.iter().skip(1) {
 		if matches!(field.ty, ParsedFieldType::Node(_)) {
 			emit_error!(field.pat_ident.span(), "record nodes take no lazy inputs yet");
+		}
+	}
+
+	let Some(carrier) = parsed.fields.first() else {
+		emit_error!(
+			parsed.fn_name.span(),
+			"attribute io needs a primary input as the first parameter after the context (`_: ()` for none)"
+		);
+		return;
+	};
+	let carrier_ty = match &carrier.ty {
+		ParsedFieldType::Regular(RegularParsedField { ty, lend: None, .. }) if !carrier.is_data_field => Some(ty),
+		_ => None,
+	};
+	let Some(carrier_ty) = carrier_ty else {
+		emit_error!(
+			carrier.pat_ident.span(),
+			"a record node's primary input is an owned element, an unbounded passthrough generic, or `_: ()`; not `#[data]`, `&T`, or `impl Node`"
+		);
+		return;
+	};
+
+	let no_carrier = matches!(carrier_ty, Type::Tuple(tuple) if tuple.elems.is_empty());
+	if no_carrier && !parsed.attribute_reads.is_empty() {
+		emit_error!(carrier.pat_ident.span(), "a node without a primary input has no attributes to read");
+	}
+	let token = match (no_carrier, &carrier.ty) {
+		(false, ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) if implementations.is_empty() => crate::codegen::unbounded_generic(parsed, ty),
+		_ => None,
+	};
+	let element = writes.as_ref().map(|writes| &writes.element).unwrap_or(&value);
+	match &token {
+		Some(token) => {
+			if !matches!(crate::codegen::bare_ident(element), Some(ident) if ident == token) {
+				emit_error!(
+					parsed.output_type.span(),
+					"a generic element passes through unchanged: return `{}` in the first tuple position",
+					token
+				);
+			}
+		}
+		None => {
+			if let Some(ident) = crate::codegen::unbounded_generic(parsed, element) {
+				emit_error!(parsed.output_type.span(), "the returned generic element `{}` has no matching input", ident);
+			} else if !no_carrier && crate::codegen::contains_open_generic(parsed, carrier_ty) {
+				emit_error!(
+					carrier.pat_ident.span(),
+					"record element reads are monomorphic for now; use a concrete element type or an unbounded passthrough generic"
+				);
+			} else if crate::codegen::contains_open_generic(parsed, element) {
+				emit_error!(parsed.output_type.span(), "a written element must be a concrete type");
+			}
 		}
 	}
 
@@ -276,7 +312,17 @@ fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
 fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 	let has_skip_impl = parsed.attributes.skip_impl;
 	let routing = crate::codegen::routing_io(parsed);
-	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
+	let record_token = crate::codegen::record_shape(parsed).and_then(|shape| match shape.carrier {
+		crate::codegen::RecordCarrier::Token(token) => Some(token),
+		_ => None,
+	});
+	let opaque_record_generic = |ty: &Type| {
+		let ident = match ty {
+			Type::Path(path) => path.path.get_ident(),
+			_ => None,
+		};
+		ident.is_some() && (ident == routing.as_ref().map(|routing| &routing.generic) || ident == record_token.as_ref())
+	};
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {
 		for field in &parsed.fields {
@@ -288,7 +334,7 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 			let pat_ident = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {
-					if routing_source(ty) {
+					if opaque_record_generic(ty) {
 						continue;
 					}
 					if contains_generic_param(ty, &parsed.fn_generics) && implementations.is_empty() {
@@ -308,7 +354,7 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 					implementations,
 					..
 				}) => {
-					if routing_source(output_type) {
+					if opaque_record_generic(output_type) {
 						continue;
 					}
 					if (contains_generic_param(input_type, &parsed.fn_generics) || contains_generic_param(output_type, &parsed.fn_generics)) && implementations.is_empty() {

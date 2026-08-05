@@ -154,6 +154,11 @@ where
 		unsafe { self.ptr.as_ref() }.serialize()
 	}
 
+	fn layout(&self) -> Option<&crate::record::Layout> {
+		// SAFETY: as in eval.
+		unsafe { self.ptr.as_ref() }.layout()
+	}
+
 	fn eval_batch<'a>(&self, input: &'a Input, range: std::ops::Range<u64>, scratch: Option<&'a mut [std::mem::MaybeUninit<Self::Output>]>) -> crate::node::BatchStatus<'a, Self::Output>
 	where
 		Input: crate::context::InjectIndex + Copy,
@@ -167,6 +172,7 @@ pub struct EdgeHandle {
 	node: Box<DynEdge>,
 	share: fn(&DynEdge) -> Box<DynEdge>,
 	serialize: fn(&DynEdge) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+	layout: fn(&DynEdge) -> Option<&crate::record::Layout>,
 	ty: Type,
 }
 
@@ -201,6 +207,7 @@ impl EdgeHandle {
 			node: Box::new(SharedEdge::new(node)),
 			share: |edge| Box::new(edge.downcast_ref::<SharedEdge<N>>().expect("share hook matches the stored edge type").share()),
 			serialize: |edge| Node::<ContextImpl>::serialize(edge.downcast_ref::<SharedEdge<N>>().expect("serialize hook matches the stored edge type")),
+			layout: |edge| Node::<ContextImpl>::layout(edge.downcast_ref::<SharedEdge<N>>().expect("layout hook matches the stored edge type")),
 			ty,
 		}
 	}
@@ -214,12 +221,17 @@ impl EdgeHandle {
 			node: (self.share)(&*self.node),
 			share: self.share,
 			serialize: self.serialize,
+			layout: self.layout,
 			ty: self.ty.clone(),
 		}
 	}
 
 	pub fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		(self.serialize)(&*self.node)
+	}
+
+	pub fn layout(&self) -> Option<&crate::record::Layout> {
+		(self.layout)(&*self.node)
 	}
 
 	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedNode<T>>, ConstructionError> {
