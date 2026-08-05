@@ -123,19 +123,9 @@ where
 	E: ChoiceTypeStatic + 'static,
 	F: Fn(E) -> Message + 'static + Send + Sync + Clone,
 {
-	let entries = E::list()
-		.iter()
-		.flat_map(|section| section.iter())
-		.map(|(value, meta)| {
-			let to_message = to_message.clone();
-			let value = *value;
-			let entry = RadioEntryData::new(meta.name)
-				.tooltip_label(meta.label)
-				.tooltip_description(meta.description.unwrap_or_default())
-				.on_update(move |_| to_message(value))
-				.on_commit(|_| DocumentMessage::StartTransaction.into());
-			if let Some(icon) = meta.icon { entry.icon(icon) } else { entry.label(meta.label) }
-		})
+	let entries = RadioEntryData::list_from_choice_type(to_message)
+		.into_iter()
+		.map(|entry| entry.on_commit(|_| DocumentMessage::StartTransaction.into()))
 		.collect();
 	vec![
 		TextLabel::new(label_text).table_align(true).widget_instance(),

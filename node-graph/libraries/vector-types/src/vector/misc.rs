@@ -155,9 +155,12 @@ pub enum GridType {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum ArcType {
+	/// Leaves the two ends of the arc unconnected.
 	#[default]
 	Open = 0,
+	/// Connects the two ends of the arc with a straight line.
 	Closed,
+	/// Connects the two ends of the arc to its center, forming a wedge.
 	PieSlice,
 }
 

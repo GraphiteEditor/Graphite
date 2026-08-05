@@ -89,7 +89,13 @@ export function destroyTooltipStore() {
 
 // Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip
 function onMouseOver(e: MouseEvent) {
-	const element = (e.target instanceof Element && e.target.closest("[data-tooltip-label], [data-tooltip-description], [data-tooltip-shortcut]")) || undefined;
+	const target = (e.target instanceof Element && e.target) || undefined;
+	let element = target?.closest("[data-tooltip-label], [data-tooltip-description], [data-tooltip-shortcut]") || undefined;
+
+	// A floating menu renders within the DOM of the widget that spawned it, so a match beyond the menu's own content
+	// is the spawner's tooltip rather than one belonging to whatever the cursor is actually over
+	const floatingMenuContent = target?.closest("[data-floating-menu-content]");
+	if (element && floatingMenuContent && !floatingMenuContent.contains(element)) element = undefined;
 
 	update((state) => {
 		state.visible = false;

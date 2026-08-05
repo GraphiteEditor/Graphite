@@ -20,7 +20,6 @@ use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
@@ -214,23 +213,12 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 			.into()
 		})
 		.widget_instance();
-	let align_entries: Vec<_> = TextAlign::list()
-		.iter()
-		.flat_map(|section| section.iter())
-		.map(|(item, var_meta)| {
-			let align = *item;
-			let entry = RadioEntryData::new(var_meta.name)
-				.tooltip_label(var_meta.label)
-				.tooltip_description(var_meta.description.unwrap_or_default())
-				.on_update(move |_| {
-					TextToolMessage::UpdateOptions {
-						options: TextOptionsUpdate::Align(align),
-					}
-					.into()
-				});
-			if let Some(icon) = var_meta.icon { entry.icon(icon) } else { entry.label(var_meta.label) }
-		})
-		.collect();
+	let align_entries = RadioEntryData::list_from_choice_type(|align| {
+		TextToolMessage::UpdateOptions {
+			options: TextOptionsUpdate::Align(align),
+		}
+		.into()
+	});
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,

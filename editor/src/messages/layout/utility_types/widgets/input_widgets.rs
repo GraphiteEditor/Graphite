@@ -1,6 +1,7 @@
 use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use derivative::*;
 use graphene_std::Color;
@@ -342,6 +343,30 @@ pub struct RadioEntryData {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+}
+
+impl RadioEntryData {
+	/// One entry per variant of a choice type enum, shown as the variant's icon when it has one and its text label otherwise.
+	pub fn list_from_choice_type<E>(to_message: impl Fn(E) -> Message + Clone + Send + Sync + 'static) -> Vec<Self>
+	where
+		E: graphene_std::choice_type::ChoiceTypeStatic + 'static,
+	{
+		E::list()
+			.iter()
+			.flat_map(|section| section.iter())
+			.map(|(variant, metadata)| {
+				let to_message = to_message.clone();
+				let variant = *variant;
+
+				let entry = RadioEntryData::new(metadata.name)
+					.tooltip_label(metadata.label)
+					.tooltip_description(metadata.description.unwrap_or_default())
+					.on_update(move |_| to_message(variant));
+
+				if let Some(icon) = metadata.icon { entry.icon(icon) } else { entry.label(metadata.label) }
+			})
+			.collect()
+	}
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

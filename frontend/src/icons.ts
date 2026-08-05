@@ -19,6 +19,10 @@ import Empty12px from "/../branding/assets/icon-12px-solid/empty-12px.svg";
 import Failure from "/../branding/assets/icon-12px-solid/failure.svg";
 import FullscreenEnter from "/../branding/assets/icon-12px-solid/fullscreen-enter.svg";
 import FullscreenExit from "/../branding/assets/icon-12px-solid/fullscreen-exit.svg";
+import GradientSpreadClear from "/../branding/assets/icon-12px-solid/gradient-spread-clear.svg";
+import GradientSpreadPad from "/../branding/assets/icon-12px-solid/gradient-spread-pad.svg";
+import GradientSpreadReflect from "/../branding/assets/icon-12px-solid/gradient-spread-reflect.svg";
+import GradientSpreadRepeat from "/../branding/assets/icon-12px-solid/gradient-spread-repeat.svg";
 import GridDotted from "/../branding/assets/icon-12px-solid/grid-dotted.svg";
 import Grid from "/../branding/assets/icon-12px-solid/grid.svg";
 import Info from "/../branding/assets/icon-12px-solid/info.svg";
@@ -67,6 +71,10 @@ const SOLID_12PX = {
 	Failure: { svg: Failure, size: 12 },
 	FullscreenEnter: { svg: FullscreenEnter, size: 12 },
 	FullscreenExit: { svg: FullscreenExit, size: 12 },
+	GradientSpreadClear: { svg: GradientSpreadClear, size: 12 },
+	GradientSpreadPad: { svg: GradientSpreadPad, size: 12 },
+	GradientSpreadReflect: { svg: GradientSpreadReflect, size: 12 },
+	GradientSpreadRepeat: { svg: GradientSpreadRepeat, size: 12 },
 	Grid: { svg: Grid, size: 12 },
 	GridDotted: { svg: GridDotted, size: 12 },
 	Info: { svg: Info, size: 12 },
