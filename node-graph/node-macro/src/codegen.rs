@@ -78,13 +78,45 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
+	// Flipped nodes carry their kernel generics as struct parameters: record
+	// edges no longer bind them through `Output`, so the struct must.
+	let ctx_ident_for_flip = context_param(parsed).map(|ctx| ctx.ident.clone());
+	let flip_generics: Vec<&syn::GenericParam> = if record_flip(parsed) {
+		fn_generics
+			.iter()
+			.filter(|param| match param {
+				syn::GenericParam::Type(tp) => Some(&tp.ident) != ctx_ident_for_flip.as_ref() && !data_field_generic_idents.contains(&tp.ident),
+				_ => false,
+			})
+			.collect()
+	} else {
+		Vec::new()
+	};
+	let flip_generic_idents: Vec<Ident> = flip_generics
+		.iter()
+		.filter_map(|param| match param {
+			syn::GenericParam::Type(tp) => Some(tp.ident.clone()),
+			_ => None,
+		})
+		.collect();
+
 	// Combined struct type parameters: data field generic idents (T, U, ...) + node generics (Node0, Node1, ...)
 	// For struct type instantiation: MemoizeNode<T, Node0>
-	let struct_type_params: Vec<Ident> = data_field_generic_idents.iter().cloned().chain(node_generics.iter().cloned()).collect();
+	let struct_type_params: Vec<Ident> = data_field_generic_idents
+		.iter()
+		.cloned()
+		.chain(node_generics.iter().cloned())
+		.chain(flip_generic_idents.iter().cloned())
+		.collect();
 
 	// Combined struct generic parameters with bounds for struct definition
 	// struct MemoizeNode<T: Clone, Node0>
-	let struct_generic_params: Vec<TokenStream2> = data_field_generics.iter().map(|gp| quote!(#gp)).chain(node_generics.iter().map(|id| quote!(#id))).collect();
+	let struct_generic_params: Vec<TokenStream2> = data_field_generics
+		.iter()
+		.map(|gp| quote!(#gp))
+		.chain(node_generics.iter().map(|id| quote!(#id)))
+		.chain(flip_generics.iter().map(|gp| quote!(#gp)))
+		.collect();
 	let context_features = &input.context_features;
 
 	// Regular field idents and names (for function parameters)
@@ -146,6 +178,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let slot = format_ident!("__in_{index}");
 				quote!(pub(super) #slot: gcore::record::Layout)
 			}));
+			if !flip_generic_idents.is_empty() {
+				state.push(quote!(pub(super) __marker: ::core::marker::PhantomData<fn() -> (#(#flip_generic_idents,)*)>));
+			}
 			state
 		}
 		None => Vec::new(),
@@ -324,11 +359,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		})
 		.into_iter();
-	let flip_output_inits = flip.then(|| quote!(__layout, __frame_bytes,)).into_iter();
+	let flip_output_inits = flip
+		.then(|| match flip_generic_idents.is_empty() {
+			true => quote!(__layout, __frame_bytes,),
+			false => quote!(__layout, __frame_bytes, __marker: ::core::marker::PhantomData,),
+		})
+		.into_iter();
+	let fn_where = &parsed.where_clause;
+	let new_where = flip.then(|| quote!(#fn_where)).into_iter();
 	let new_impl = match record.is_none() {
 		true => quote! {
 			#[automatically_derived]
-			impl<'n, #(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*>
+			impl<'n, #(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*> #(#new_where)*
 			{
 				#[allow(clippy::too_many_arguments)]
 				pub fn new(#(#new_args,)* #(#routing_layout_param)* #(#flip_layout_params)*) -> Self {
@@ -849,7 +891,27 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 
 	let node_generics: Vec<Ident> = regular_fields.iter().enumerate().map(|(index, _)| format_ident!("Node{}", index)).collect();
-	let struct_type_params: Vec<Ident> = data_field_generic_idents.iter().cloned().chain(node_generics.iter().cloned()).collect();
+	let flip_generic_idents: Vec<Ident> = match flip {
+		true => parsed
+			.fn_generics
+			.iter()
+			.filter_map(|param| match param {
+				GenericParam::Type(type_param)
+					if Some(&type_param.ident) != ctx_param.map(|ctx_param| &ctx_param.ident) && !data_field_generic_idents.contains(&type_param.ident) =>
+				{
+					Some(type_param.ident.clone())
+				}
+				_ => None,
+			})
+			.collect(),
+		false => Vec::new(),
+	};
+	let struct_type_params: Vec<Ident> = data_field_generic_idents
+		.iter()
+		.cloned()
+		.chain(node_generics.iter().cloned())
+		.chain(flip_generic_idents.iter().cloned())
+		.collect();
 
 	let data_names: Vec<&Ident> = data_fields.iter().map(|field| &field.pat_ident.ident).collect();
 	let data_params = data_fields.iter().map(|field| {
@@ -1369,6 +1431,22 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		_ => Vec::new(),
 	};
 
+	let flip_bounds: Vec<TokenStream2> = match flip {
+		true => {
+			let mut bounds: Vec<TokenStream2> = regular_fields
+				.iter()
+				.filter_map(|field| match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
+					_ => None,
+				})
+				.collect();
+			let out = slot_value_type(&parsed.output_type);
+			bounds.push(quote!(#out: ::core::marker::Send + ::core::marker::Sync + 'static));
+			bounds
+		}
+		false => Vec::new(),
+	};
+
 	let record_layout_impl = match record.is_some() || routing.is_some() || flip {
 		true => quote! {
 			fn layout(&self) -> Option<&#core_types::record::Layout> {
@@ -1474,6 +1552,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#clampable_bounds,)*
 			#(#async_bounds,)*
 			#(#record_bounds,)*
+			#(#flip_bounds,)*
 			#(#where_predicates,)*
 		{
 			type Output = #trait_output;
@@ -1547,6 +1626,31 @@ impl RecordShape {
 
 pub(crate) fn has_record_io(parsed: &ParsedNodeFn) -> bool {
 	!parsed.attribute_reads.is_empty() || record_writes(&slot_value_type(&parsed.output_type)).is_some()
+}
+
+/// Substitutes bare generic idents with their row-assigned types.
+fn substitute_ident_types(ty: &Type, assignments: &[(Ident, Type)]) -> Type {
+	struct Subst<'a> {
+		assignments: &'a [(Ident, Type)],
+	}
+
+	impl VisitMut for Subst<'_> {
+		fn visit_type_mut(&mut self, ty: &mut Type) {
+			if let Type::Path(path) = ty
+				&& path.qself.is_none()
+				&& let Some(ident) = path.path.get_ident()
+				&& let Some((_, replacement)) = self.assignments.iter().find(|(generic, _)| generic == ident)
+			{
+				*ty = replacement.clone();
+				return;
+			}
+			syn::visit_mut::visit_type_mut(self, ty);
+		}
+	}
+
+	let mut ty = ty.clone();
+	Subst { assignments }.visit_type_mut(&mut ty);
+	ty
 }
 
 /// Replaces the routing generic in a derive-routing kernel's return type with
@@ -1715,17 +1819,28 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	if matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_)) {
 		return false;
 	}
-	if matches!(slot_value_type(&parsed.output_type), Type::Reference(_)) {
+	if type_disqualifies(&slot_value_type(&parsed.output_type)) {
 		return false;
 	}
 	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
-	let concrete = parsed.fn_generics.iter().all(|param| match param {
-		GenericParam::Type(type_param) => Some(&type_param.ident) == ctx_ident.as_ref(),
-		GenericParam::Lifetime(_) => false,
-		GenericParam::Const(_) => false,
-	});
-	if !concrete {
-		return false;
+	for param in &parsed.fn_generics {
+		match param {
+			GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_ident.as_ref() => {}
+			// Registry rows assign a generic from a field it names bare, so a
+			// generic without such a position keeps the plain lowering.
+			GenericParam::Type(type_param) => {
+				let bare = parsed.fields.iter().any(|field| match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
+						matches!(ty, Type::Path(path) if path.qself.is_none() && path.path.get_ident() == Some(&type_param.ident))
+					}
+					_ => false,
+				});
+				if !bare {
+					return false;
+				}
+			}
+			GenericParam::Lifetime(_) | GenericParam::Const(_) => return false,
+		}
 	}
 	parsed.fields.iter().all(|field| match &field.ty {
 		ParsedFieldType::Regular(RegularParsedField { lend, .. }) => lend.is_none(),
@@ -2036,16 +2151,103 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 		return quote!();
 	}
 	let output = slot_value_type(&parsed.output_type);
-	if type_disqualifies(&output) {
+
+	let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
+	let generic_positions: Option<Vec<(Ident, usize)>> = parsed
+		.fn_generics
+		.iter()
+		.filter_map(|param| match param {
+			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(&type_param.ident),
+			_ => None,
+		})
+		.map(|generic| {
+			regular_fields
+				.iter()
+				.position(|field| match &field.ty {
+					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
+						matches!(ty, Type::Path(path) if path.qself.is_none() && path.path.get_ident() == Some(generic))
+					}
+					_ => false,
+				})
+				.map(|index| (generic.clone(), index))
+		})
+		.collect();
+	let Some(generic_positions) = generic_positions else {
 		return quote!();
-	}
+	};
 
 	let fn_name = &parsed.fn_name;
 	let entries_name = format_ident!("{}_entries", fn_name);
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+	let node_underscores: Vec<TokenStream2> = regular_fields.iter().map(|_| quote!(_)).collect();
 
-	let entries = rows.iter().map(|row| {
+	// Shorthand associated types in the output only resolve against the
+	// generics' bounds, so rows name the output through a bounded alias. Only
+	// output-reaching generics (directly or through a kept bound) may appear:
+	// an unused alias parameter is an error.
+	let candidate_params: Vec<&GenericParam> = parsed
+		.fn_generics
+		.iter()
+		.filter(|param| matches!(param, GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref()))
+		.collect();
+	let param_ident = |param: &&GenericParam| match param {
+		GenericParam::Type(type_param) => type_param.ident.clone(),
+		_ => unreachable!("candidates are type parameters"),
+	};
+	let mut kept: Vec<bool> = candidate_params.iter().map(|param| type_contains_ident(&output, &param_ident(param))).collect();
+	loop {
+		let mut grew = false;
+		for index in 0..candidate_params.len() {
+			if kept[index] {
+				continue;
+			}
+			let ident = param_ident(&candidate_params[index]);
+			let mentioned = candidate_params.iter().zip(&kept).any(|(param, kept)| {
+				*kept
+					&& match param {
+						GenericParam::Type(type_param) => type_param.bounds.iter().any(|bound| {
+							let bound: Type = syn::parse_quote!(dyn #bound);
+							type_contains_ident(&bound, &ident)
+						}),
+						_ => false,
+					}
+			});
+			if mentioned {
+				kept[index] = true;
+				grew = true;
+			}
+		}
+		if !grew {
+			break;
+		}
+	}
+	let alias_params: Vec<&GenericParam> = candidate_params.iter().zip(&kept).filter(|(_, kept)| **kept).map(|(param, _)| *param).collect();
+	let alias_param_idents: Vec<Ident> = alias_params.iter().map(|param| param_ident(param)).collect();
+	let alias_param_tokens: Vec<TokenStream2> = alias_params.iter().map(|param| quote!(#param)).collect();
+	let output_alias = format_ident!("__{}_output", fn_name);
+	let alias_def = match alias_param_tokens.is_empty() {
+		true => quote!(#[allow(non_camel_case_types)] type #output_alias = #output;),
+		false => quote!(#[allow(non_camel_case_types)] type #output_alias<#(#alias_param_tokens,)*> = #output;),
+	};
+
+	let entries = rows.iter().filter_map(|row| {
+		let assignments: Vec<(Ident, Type)> = generic_positions.iter().map(|(generic, index)| (generic.clone(), row[*index].clone())).collect();
+		if type_disqualifies(&substitute_ident_types(&output, &assignments)) {
+			return None;
+		}
+		let assignment_types: Vec<TokenStream2> = assignments.iter().map(|(_, ty)| quote!(#ty)).collect();
+		let alias_arguments: Vec<TokenStream2> = assignments
+			.iter()
+			.filter(|(generic, _)| alias_param_idents.contains(generic))
+			.map(|(_, ty)| quote!(#ty))
+			.collect();
+		let row_output = match alias_arguments.is_empty() {
+			true => quote!(#output_alias),
+			false => quote!(#output_alias<#(#alias_arguments),*>),
+		};
+		let assignment_types = assignment_types.iter();
+		let turbofish = quote!(::<#(#node_underscores,)* #(#assignment_types,)*>);
 		let input_types = row.iter().map(|ty| quote!(gcore::registry::record_edge_type::<#ty>()));
 		let downcasts = names.iter().zip(row.iter()).enumerate().map(|(index, (name, ty))| {
 			let handle = format_ident!("__handle_{index}");
@@ -2062,11 +2264,11 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 			let layout = format_ident!("__layout_{index}");
 			quote!(&#layout,)
 		});
-		quote! {
+		Some(quote! {
 			gcore::registry::RegistryEntry {
 				io: gcore::registry::NodeIOTypes::new(
 					gcore::concrete!(gcore::context::ContextImpl<'static>),
-					gcore::registry::record_type::<#output>(),
+					gcore::registry::record_type::<#row_output>(),
 					vec![#(#input_types),*],
 				),
 				constructor: |inputs| {
@@ -2075,15 +2277,20 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					let __node = #struct_name::new(#(#names,)* #(#layout_args)*);
-					Ok(gcore::registry::EdgeHandle::new_record::<#output>(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>))
+					let __node = #struct_name #turbofish::new(#(#names,)* #(#layout_args)*);
+					Ok(gcore::registry::EdgeHandle::new_record::<#row_output>(::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>))
 				},
 			}
-		}
+		})
 	});
+	let entries: Vec<TokenStream2> = entries.collect();
+	if entries.is_empty() {
+		return quote!();
+	}
 
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
+			#alias_def
 			vec![#(#entries),*]
 		}
 	}
