@@ -623,14 +623,7 @@ impl ColorPickerMessageHandler {
 
 		// Gradient spread (only present when the picker is in gradient mode)
 		if self.gradient.is_some() {
-			let entries = [GradientSpread::Pad, GradientSpread::Reflect, GradientSpread::Repeat]
-				.into_iter()
-				.map(|gradient_spread| {
-					RadioEntryData::new(format!("{gradient_spread:?}"))
-						.label(gradient_spread.to_string())
-						.on_update(move |_| ColorPickerMessage::SetGradientSpread { gradient_spread }.into())
-				})
-				.collect();
+			let entries = RadioEntryData::list_from_choice_type(|gradient_spread| ColorPickerMessage::SetGradientSpread { gradient_spread }.into());
 
 			groups.push(LayoutGroup::row(vec![
 				TextLabel::new("Ends").tooltip_label("Gradient Spread").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
