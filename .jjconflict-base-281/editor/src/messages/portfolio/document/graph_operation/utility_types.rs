@@ -603,8 +603,15 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		};
 
+		// Only the stops are being replaced, so the ramp's other settings stay as the value node already holds them
+		let gradient_spread = self.gradient_value_ramp(gradient_value_id).unwrap_or_default().gradient_spread;
+		let ramp = GradientRamp {
+			gradient_spread,
+			..GradientRamp::from(stops)
+		};
+
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(GradientRamp::from(stops)), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
 	/// Update the last 'Gradient Positions' node in the chain when one exists, so on-canvas stop drags stay live even
@@ -736,20 +743,26 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientForm(gradient_form), false), false);
 	}
 
-	/// Write the gradient spread to the last 'Gradient Spread' node in the chain, inserting one only when the value differs
-	/// from the default (`Pad`).
+	/// Set the spread on the chain's gradient value, which is where the ramp carries it.
 	pub fn gradient_spread_set(&mut self, gradient_spread: GradientSpread) {
 		let Some(output_layer) = self.get_output_layer() else { return };
-
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
-		let identifier = graphene_std::math_nodes::gradient_spread::IDENTIFIER;
-		let create_if_nonexistent = gradient_spread != GradientSpread::default();
-		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
 		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_spread::GradientSpreadInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpread(gradient_spread), false), false);
+		let ramp = GradientRamp { gradient_spread, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// The ramp currently held by a 'Gradient Value' node.
+	fn gradient_value_ramp(&self, gradient_value_id: NodeId) -> Option<GradientRamp> {
+		let node = self.network_interface.document_network().nodes.get(&gradient_value_id)?;
+		let TaggedValue::GradientRamp(ramp) = node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
+			return None;
+		};
+		Some(ramp.clone())
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
