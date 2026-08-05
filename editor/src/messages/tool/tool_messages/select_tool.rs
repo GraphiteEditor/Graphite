@@ -723,6 +723,40 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.unwrap_or_default()
 }
 
+fn snap_pivot_to_bounds(document: &DocumentMessageHandler, document_mouse: DVec2, selection_bounds: &Option<BoundingBoxManager>) -> Option<snapping::SnappedPoint> {
+	let Some(bounds) = selection_bounds else { return None };
+
+	// Build the cage quad in document space
+	let cage_quad = document.metadata().document_to_viewport.inverse() * bounds.transform * Quad::from_box(bounds.bounds);
+
+	let mut candidates = Vec::new();
+	snapping::get_bbox_points(cage_quad, &mut candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
+
+	if candidates.is_empty() {
+		return None;
+	}
+
+	// Find the closest candidate to the current document-space mouse position
+	let tolerance = snapping::snap_tolerance(document);
+	candidates
+		.into_iter()
+		.map(|candidate| {
+			let distance = candidate.document_point.distance(document_mouse);
+			(candidate, distance)
+		})
+		.filter(|&(_, distance)| distance < tolerance)
+		.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+		.map(|(candidate, distance)| snapping::SnappedPoint {
+			snapped_point_document: candidate.document_point,
+			source: candidate.source,
+			target: candidate.target,
+			distance,
+			tolerance,
+			target_bounds: candidate.quad,
+			..Default::default()
+		})
+}
+
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
@@ -1262,6 +1296,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1397,10 +1432,24 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
+				let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse_position);
 
+				let snap_data = SnapData::new(document, input, viewport);
+				let point = SnapCandidatePoint::handle(document_mouse);
+				let mut snapped = tool_data.snap_manager.free_snap(&snap_data, &point, snapping::SnapTypeConfiguration::default());
+
+				if let Some(cage_snap) = snap_pivot_to_bounds(document, document_mouse, &tool_data.bounding_box_manager)
+					&& cage_snap.distance < snapped.distance
+				{
+					snapped = cage_snap;
+				}
+
+				tool_data.snap_manager.update_indicator(snapped.clone());
+
+				let snapped_mouse_position = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
 
+				responses.add(OverlaysMessage::Draw);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
