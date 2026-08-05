@@ -1209,7 +1209,7 @@ fn gradient_form(_: impl Ctx, gradient: Gradient, gradient_form: vector_types::G
 	(gradient, Attr(gradient_form))
 }
 
-/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, or Repeat.
+/// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
 #[node_macro::node(category("Gradient"))]
 fn gradient_spread(_: impl Ctx, gradient: Gradient, gradient_spread: vector_types::GradientSpread) -> (Gradient, Attr<GradientSpreadAttr>) {
 	(gradient, Attr(gradient_spread))
@@ -1237,7 +1237,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>)
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, or Repeat.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(
 	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
