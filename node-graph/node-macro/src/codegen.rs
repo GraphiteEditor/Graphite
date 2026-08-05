@@ -947,6 +947,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let source_generic = format_ident!("__Source{index}");
 					quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>)
 				}
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip => {
+					quote!(#pat: #core_types::record::ElementLazyInput<'_, #output_type, impl for<'__el> #core_types::record::RecordEdge<'__el, #ctx_ident>>)
+				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
 					let bound = lazy_bound(output_type);
 					quote!(#pat: &impl #bound)
@@ -962,6 +965,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
 	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
 		ParsedFieldType::Regular(_) if flip => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
+		ParsedFieldType::Node(_) if flip => quote!(#node_generic: for<'__el> #core_types::record::RecordEdge<'__el, #ctx_ident>),
 		ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
 			let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = &#lifetime #ty>)
@@ -1067,6 +1071,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => quote! {
 				let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
 			},
+			ParsedFieldType::Node(_) if flip => {
+				let slot = format_ident!("__in_{index}");
+				quote! {
+					let #name = #core_types::record::ElementLazyInput::new(&self.#name, &__cell, #index, &self.#slot);
+				}
+			}
 			ParsedFieldType::Node(_) if raw_lazy => quote!(),
 			ParsedFieldType::Node(_) => quote! {
 				let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
@@ -1449,7 +1459,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.filter_map(|field| match &field.ty {
 					ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => None,
 					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
-					_ => None,
+					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some(quote!(#output_type: ::core::clone::Clone)),
 				})
 				.collect();
 			let out = slot_value_type(&parsed.output_type);
@@ -1854,7 +1864,16 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 			GenericParam::Lifetime(_) | GenericParam::Const(_) => return false,
 		}
 	}
-	parsed.fields.iter().all(|field| matches!(&field.ty, ParsedFieldType::Regular(_)))
+	let has_lazy = parsed.fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)));
+	let derives = context_param(parsed).is_some_and(|ctx_param| {
+		ctx_param.bounds.iter().any(|bound| match bound {
+			TypeParamBound::Trait(trait_bound) => trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx"),
+			_ => false,
+		})
+	});
+	// A derived-context kernel evaluates lazy edges at contexts the element
+	// wrapper cannot prove, so those keep the plain lowering for now.
+	!(has_lazy && derives)
 }
 
 pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {

@@ -282,6 +282,44 @@ where
 	}
 }
 
+/// A record edge at a caller-chosen lifetime; the lifetime is a trait
+/// parameter for the same constrained-position reason as
+/// [`DerivedRecordEdge`].
+pub trait RecordEdge<'e, C>: Node<C, Output = RecordValue<'e>> {}
+
+impl<'e, C, N: Node<C, Output = RecordValue<'e>>> RecordEdge<'e, C> for N {}
+
+/// The lazy input handed to a kernel whose edge rides a record wire while
+/// the kernel consumes the plain element.
+#[derive(Clone, Copy)]
+pub struct ElementLazyInput<'a, El, N> {
+	node: &'a N,
+	cell: &'a crate::node::StatusCell,
+	input_index: usize,
+	layout: &'a Layout,
+	_marker: std::marker::PhantomData<fn() -> El>,
+}
+
+impl<'a, El: Clone, N> ElementLazyInput<'a, El, N> {
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize, layout: &'a Layout) -> Self {
+		Self {
+			node,
+			cell,
+			input_index,
+			layout,
+			_marker: std::marker::PhantomData,
+		}
+	}
+
+	pub fn eval<'d, C>(&self, ctx: &C) -> Result<El, crate::gpoll::Interrupt>
+	where
+		N: Node<C, Output = RecordValue<'d>>,
+	{
+		let value = self.cell.eval_input(self.input_index, self.node, ctx)?;
+		Ok(unsafe { read_element::<El>(self.layout.rec(&value)) })
+	}
+}
+
 /// The lazy record input handed to a kernel that evaluates its edges under
 /// derived contexts: evaluating rebinds the record to the kernel's routing
 /// lifetime, so the value escapes the derivation scope.
