@@ -104,7 +104,7 @@ mod tests {
 	}
 
 	struct RecordSourceNode<E> {
-		frame_bytes: usize,
+		layout: Layout,
 		element: E,
 		fields: Vec<(usize, f64)>,
 		partial: bool,
@@ -114,15 +114,21 @@ mod tests {
 		type Output = RecordValue<'e>;
 
 		fn eval(&self, _input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
-			let dst = stack::push(self.frame_bytes);
-			let value = unsafe {
-				dst.cast::<E>().write(self.element);
-				for (offset, value) in &self.fields {
-					dst.add(*offset).cast::<f64>().write(*value);
-				}
-				RecordValue::from_rec(Rec::new(dst))
+			let mut value = RecordValue::zeroed();
+			let dst = match self.layout.frame_bytes() {
+				0 => value.as_mut_ptr(),
+				bytes => stack::push(bytes),
 			};
-			stack::pop(dst);
+			unsafe {
+				dst.cast::<E>().write(self.element);
+				for (offset, field) in &self.fields {
+					dst.add(*offset).cast::<f64>().write(*field);
+				}
+			}
+			if self.layout.frame_bytes() != 0 {
+				stack::pop(dst);
+				value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
+			}
 			match self.partial {
 				true => GPoll::Partial(value),
 				false => GPoll::Final(value),
@@ -148,17 +154,13 @@ mod tests {
 		Layout::default().with_writes(0, (8, 8), &writes)
 	}
 
-	fn frame_bytes(layout: &Layout) -> usize {
-		layout.size.next_multiple_of(8)
-	}
-
 	fn reserve_for(layouts: &[&Layout]) {
-		stack::reserve(layouts.iter().map(|layout| frame_bytes(layout)).sum());
+		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum());
 	}
 
 	fn bare_source(layout: &Layout, element: f64) -> RecordSourceNode<f64> {
 		RecordSourceNode {
-			frame_bytes: frame_bytes(layout),
+			layout: layout.clone(),
 			element,
 			fields: vec![],
 			partial: false,
@@ -186,7 +188,7 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = stacked.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 2.);
 		assert_eq!(unsafe { rec.read::<f64>(stacked.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
 	}
@@ -206,7 +208,7 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = measured.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, -2.);
 		assert_eq!(unsafe { rec.read::<f64>(measured.offset_of(Length::NAME, 0).unwrap()) }, 2.);
 	}
@@ -227,7 +229,7 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = measured.rec(&value);
 		assert_eq!(unsafe { rec.read::<f64>(measured.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 		assert_eq!(unsafe { rec.read::<f64>(measured.offset_of(Length::NAME, 0).unwrap()) }, 2.);
 	}
@@ -248,13 +250,13 @@ mod tests {
 		let GPoll::Final(value) = bare.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { value.rec().element::<f64>() }, 4.);
+		assert_eq!(unsafe { source_layout.rec(&value).element::<f64>() }, 4.);
 
 		let chain = ShadeNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), &modified);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = shaded.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 2.);
 		assert_eq!(unsafe { rec.read::<f64>(shaded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 	}
@@ -276,13 +278,13 @@ mod tests {
 		let GPoll::Final(value) = wide.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = f64_faded.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 8.);
 		assert_eq!(unsafe { rec.read::<f64>(f64_faded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
 		let narrow = FadeNode::new(
 			RecordSourceNode {
-				frame_bytes: frame_bytes(&u32_source),
+				layout: u32_source.clone(),
 				element: 7u32,
 				fields: vec![],
 				partial: false,
@@ -293,7 +295,7 @@ mod tests {
 		let GPoll::Final(value) = narrow.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = u32_faded.rec(&value);
 		assert_eq!(unsafe { rec.element::<u32>() }, 7);
 		assert_eq!(unsafe { rec.read::<f64>(u32_faded.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
 	}
@@ -313,7 +315,7 @@ mod tests {
 		let GPoll::Final(value) = node.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = layout.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 3.);
 		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
 	}
@@ -331,7 +333,7 @@ mod tests {
 
 		let chain = MultiplyOpacityNode::new(
 			RecordSourceNode {
-				frame_bytes: frame_bytes(&source_layout),
+				layout: source_layout.clone(),
 				element: 1.,
 				fields: vec![],
 				partial: true,
@@ -342,7 +344,7 @@ mod tests {
 		let GPoll::Partial(value) = chain.eval(&ctx) else {
 			panic!("expected a partial record");
 		};
-		assert_eq!(unsafe { value.rec().read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(unsafe { modified.rec(&value).read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 	}
 
 	#[test]
@@ -360,7 +362,7 @@ mod tests {
 		let GPoll::Final(value) = ok.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		assert_eq!(unsafe { value.rec().read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
+		assert_eq!(unsafe { modified.rec(&value).read::<f64>(modified.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 
 		let failing = CheckedMultiplyOpacityNode::new(bare_source(&source_layout, 1.), ValueNode(-1.), &source_layout);
 		let GPoll::Error(error) = failing.eval(&ctx) else {
@@ -401,7 +403,7 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = scaled.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
 		assert_eq!(unsafe { rec.read::<f64>(scaled.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5);
 	}
@@ -426,7 +428,7 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = relabeled.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
 		assert_eq!(unsafe { rec.read::<&str>(relabeled.offset_of(Label::NAME, 0).unwrap()) }, "ab");
 	}
@@ -446,7 +448,7 @@ mod tests {
 
 	fn f64_record_source(layout: &Layout, element: f64, fields: Vec<(usize, f64)>) -> RecordSourceNode<f64> {
 		RecordSourceNode {
-			frame_bytes: frame_bytes(layout),
+			layout: layout.clone(),
 			element,
 			fields,
 			partial: false,
@@ -468,7 +470,7 @@ mod tests {
 			let GPoll::Final(value) = monitor.eval(&ctx) else {
 				panic!("expected a final record");
 			};
-			assert_eq!(unsafe { value.rec().element::<f64>() }, 4.);
+			assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 4.);
 		}
 
 		let capture = Node::<ContextImpl>::serialize(&monitor).unwrap();
@@ -505,7 +507,7 @@ mod tests {
 		let GPoll::Final(value) = taken(false).eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = union.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 0.);
@@ -513,7 +515,7 @@ mod tests {
 		let GPoll::Final(value) = taken(true).eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = union.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 3.);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 1.);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 3.);
@@ -540,10 +542,37 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = union.rec(&value);
 		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 0.);
+	}
+
+	#[test]
+	fn inline_records_survive_sibling_evaluations_by_value() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout_a = f64_layout(&["opacity"]);
+		let layout_b = f64_layout(&[]);
+		let union = Layout::union(&[&layout_a, &layout_b]);
+		assert!(union.is_inline());
+		reserve_for(&[&layout_a, &layout_b, &union, &union]);
+
+		let chain = HoldFirstNode::new(
+			ValueNode(false),
+			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
+			RecordSource::new(f64_record_source(&layout_b, 3., vec![]), &layout_b, &union),
+		);
+
+		let GPoll::Final(value) = chain.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = union.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
+		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
 	}
 
 	#[test]
@@ -553,7 +582,7 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let layout = f64_layout(&["opacity"]);
+		let layout = f64_layout(&["opacity", "length"]);
 		reserve_for(&[&layout]);
 		let base = stack::push(0);
 		stack::pop(base);
@@ -567,7 +596,7 @@ mod tests {
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
-		let rec = value.rec();
+		let rec = layout.rec(&value);
 		assert_eq!(rec.ptr(), base.cast_const());
 		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
 		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.25);
@@ -585,7 +614,7 @@ mod tests {
 
 		let chain = ForwardRecordNode::new(RecordSource::new(
 			RecordSourceNode {
-				frame_bytes: frame_bytes(&layout),
+				layout: layout.clone(),
 				element: 4.,
 				fields: vec![],
 				partial: true,
@@ -597,6 +626,6 @@ mod tests {
 		let GPoll::Partial(value) = chain.eval(&ctx) else {
 			panic!("expected a partial record");
 		};
-		assert_eq!(unsafe { value.rec().element::<f64>() }, 4.);
+		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 4.);
 	}
 }

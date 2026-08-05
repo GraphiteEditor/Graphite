@@ -481,7 +481,7 @@ impl BorrowTree {
 	pub fn stack_need(&self) -> usize {
 		self.nodes
 			.values()
-			.map(|(handle, _)| handle.layout().map_or(0, |layout| layout.size.next_multiple_of(8)))
+			.map(|(handle, _)| handle.layout().map_or(0, |layout| layout.frame_bytes()))
 			.sum()
 	}
 }

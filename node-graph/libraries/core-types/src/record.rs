@@ -1,8 +1,9 @@
 //! The packed-record tier at rank 0. A record is the element at offset 0
 //! plus one field per written attribute; its [`Layout`] is computed at
-//! wiring from the upstream write set and never serialized. Records live as
+//! wiring from the upstream write set and never serialized. Records of
+//! inline layouts live in the [`RecordValue`] itself; larger ones live as
 //! per-lane views on the per-thread record [`stack`], claimed per
-//! evaluation, and kernels route them as opaque [`RecordValue`]s that carry
+//! evaluation. Kernels route them as opaque [`RecordValue`]s that carry
 //! their provenance. Only generated or wiring code touches offsets, so a
 //! safe kernel cannot misalign a field.
 
@@ -72,6 +73,23 @@ pub struct Layout {
 impl Layout {
 	pub fn offset_of(&self, name: &str, level: u8) -> Option<usize> {
 		self.fields.iter().find(|field| field.name == name && field.level == level).map(|field| field.offset)
+	}
+
+	pub fn is_inline(&self) -> bool {
+		self.size <= 16 && self.align <= 8
+	}
+
+	pub fn frame_bytes(&self) -> usize {
+		if self.is_inline() { 0 } else { self.size.next_multiple_of(8) }
+	}
+
+	/// Resolves a value of this layout, which must be its wiring-proven one,
+	/// to its record bytes.
+	pub fn rec(&self, value: &RecordValue<'_>) -> Rec {
+		match self.is_inline() {
+			true => Rec((&raw const *value).cast()),
+			false => Rec(value.ptr),
+		}
 	}
 
 	/// The union of this layout's fields and `writes` over an element of
@@ -190,23 +208,48 @@ impl Rec {
 	}
 }
 
-/// An opaque record value: element and attributes traveling as one unit.
-/// Lazy record inputs yield one per evaluation, kernels route them as
-/// ordinary values, and the returned value's record is the node's output, so
-/// provenance rides the value itself. The eval lifetime keeps it out of node
-/// state; the field is private, so it is unforgeable and uninspectable.
-#[derive(Clone, Copy, Debug)]
-pub struct RecordValue<'e>(Rec, std::marker::PhantomData<&'e ()>);
+/// An opaque, tagless record value: inline layouts live in the value's own
+/// two words, spilled layouts ride the pointer, and only [`Layout::rec`]
+/// tells them apart. Two scalar fields are load-bearing: a union or an
+/// over-aligned repr demotes the return to memory. Both constructors
+/// initialize all 16 bytes, and a raw pointer field accepts any bit
+/// pattern, so inline bytes overlay the fields soundly.
+#[derive(Clone, Copy)]
+pub struct RecordValue<'e> {
+	ptr: *const u8,
+	_extra: usize,
+	_lifetime: std::marker::PhantomData<&'e ()>,
+}
+
+impl std::fmt::Debug for RecordValue<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("RecordValue(..)")
+	}
+}
 
 impl<'e> RecordValue<'e> {
 	#[doc(hidden)]
-	pub fn from_rec(rec: Rec) -> Self {
-		RecordValue(rec, std::marker::PhantomData)
+	pub fn zeroed() -> Self {
+		RecordValue {
+			ptr: std::ptr::null(),
+			_extra: 0,
+			_lifetime: std::marker::PhantomData,
+		}
+	}
+
+	/// The inline storage under construction; writes land in the value itself.
+	#[doc(hidden)]
+	pub fn as_mut_ptr(&mut self) -> *mut u8 {
+		(&raw mut *self).cast()
 	}
 
 	#[doc(hidden)]
-	pub fn rec(self) -> Rec {
-		self.0
+	pub fn spilled(rec: Rec) -> Self {
+		RecordValue {
+			ptr: rec.ptr(),
+			_extra: 0,
+			_lifetime: std::marker::PhantomData,
+		}
 	}
 }
 
@@ -350,7 +393,8 @@ fn default_fill_bytes(name: &str, size: usize) -> Box<[u8]> {
 pub struct SourcePlan {
 	moves: Vec<(usize, usize, usize)>,
 	fills: Vec<(usize, Box<[u8]>)>,
-	union_bytes: usize,
+	source: Layout,
+	union: Layout,
 }
 
 impl SourcePlan {
@@ -368,7 +412,8 @@ impl SourcePlan {
 		Some(SourcePlan {
 			moves,
 			fills,
-			union_bytes: union.size,
+			source: source.clone(),
+			union: union.clone(),
 		})
 	}
 
@@ -460,7 +505,7 @@ where
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
 		let value = self.edge.eval(input);
 		if let GPoll::Final(record) | GPoll::Partial(record) = &value {
-			let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(record.rec().ptr(), self.layout.size) }.into();
+			let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(self.layout.rec(record).ptr(), self.layout.size) }.into();
 			let capture = input.arena().alloc(bytes).map(|(_, weak)| RecordCapture {
 				layout: self.layout.clone(),
 				bytes: weak,
@@ -486,18 +531,14 @@ where
 pub struct RecordLift<El, N> {
 	edge: N,
 	layout: Layout,
-	frame_bytes: usize,
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
 impl<El: Copy + 'static, N> RecordLift<El, N> {
 	pub fn new(edge: N) -> Self {
-		let layout = Layout::default().with_writes(0, (size_of::<El>(), align_of::<El>()), &[]);
-		let frame_bytes = layout.size.next_multiple_of(8);
 		Self {
 			edge,
-			layout,
-			frame_bytes,
+			layout: Layout::default().with_writes(0, (size_of::<El>(), align_of::<El>()), &[]),
 			_marker: std::marker::PhantomData,
 		}
 	}
@@ -512,10 +553,17 @@ where
 	type Output = RecordValue<'e>;
 
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		let dst = stack::push(self.frame_bytes);
+		if self.layout.is_inline() {
+			return self.edge.eval(input).map(|element| {
+				let mut value = RecordValue::zeroed();
+				unsafe { write_field(value.as_mut_ptr(), 0, element) };
+				value
+			});
+		}
+		let dst = stack::push(self.layout.frame_bytes());
 		let value = self.edge.eval(input).map(|element| {
 			unsafe { write_field(dst, 0, element) };
-			RecordValue::from_rec(unsafe { Rec::new(dst.cast_const()) })
+			RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) })
 		});
 		stack::pop(dst);
 		value
@@ -529,13 +577,15 @@ where
 /// Extracts the element from a record wire for a plain consumer.
 pub struct RecordExtract<El, N> {
 	edge: N,
+	layout: Layout,
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
 impl<El, N> RecordExtract<El, N> {
-	pub fn new(edge: N) -> Self {
+	pub fn new(edge: N, layout: &Layout) -> Self {
 		Self {
 			edge,
+			layout: layout.clone(),
 			_marker: std::marker::PhantomData,
 		}
 	}
@@ -549,7 +599,7 @@ where
 	type Output = El;
 
 	fn eval(&self, input: &C) -> GPoll<El> {
-		self.edge.eval(input).map(|value| unsafe { value.rec().element::<El>() })
+		self.edge.eval(input).map(|value| unsafe { self.layout.rec(&value).element::<El>() })
 	}
 }
 
@@ -562,10 +612,15 @@ where
 	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
 		match &self.plan {
 			None => self.edge.eval(input),
+			Some(plan) if plan.union.is_inline() => self.edge.eval(input).map(|value| {
+				let mut out = RecordValue::zeroed();
+				unsafe { plan.translate(plan.source.rec(&value), out.as_mut_ptr()) };
+				out
+			}),
 			Some(plan) => {
-				let dst = stack::push(plan.union_bytes);
+				let dst = stack::push(plan.union.frame_bytes());
 				let value = self.edge.eval(input);
-				value.map(|value| RecordValue::from_rec(unsafe { plan.translate(value.rec(), dst) }))
+				value.map(|value| RecordValue::spilled(unsafe { plan.translate(plan.source.rec(&value), dst) }))
 			}
 		}
 	}
@@ -630,6 +685,36 @@ mod tests {
 	fn identity_layouts_forward() {
 		let layout = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
 		assert!(SourcePlan::new(&layout, &layout.clone()).is_none());
+	}
+
+	#[test]
+	fn record_values_are_two_words() {
+		assert_eq!(size_of::<RecordValue>(), 16);
+		assert_eq!(align_of::<RecordValue>(), 8);
+	}
+
+	#[test]
+	fn layouts_resolve_inline_and_spilled_values() {
+		let inline = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
+		assert!(inline.is_inline());
+		assert_eq!(inline.frame_bytes(), 0);
+		let mut value = RecordValue::zeroed();
+		unsafe {
+			write_field(value.as_mut_ptr(), 0, 4f64);
+			write_field(value.as_mut_ptr(), inline.offset_of("opacity", 0).unwrap(), 0.5f64);
+		}
+		let rec = inline.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
+		assert_eq!(unsafe { rec.read::<f64>(inline.offset_of("opacity", 0).unwrap()) }, 0.5);
+
+		let spilled = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity"), f64_field("length")]);
+		assert!(!spilled.is_inline());
+		assert_eq!(spilled.frame_bytes(), 24);
+		let record = [1f64, 2., 3.];
+		let value = RecordValue::spilled(unsafe { Rec::new(record.as_ptr().cast()) });
+		assert_eq!(unsafe { spilled.rec(&value).element::<f64>() }, 1.);
+		assert_eq!(unsafe { spilled.rec(&value).read::<f64>(spilled.offset_of("length", 0).unwrap()) }, 2.);
+		assert_eq!(unsafe { spilled.rec(&value).read::<f64>(spilled.offset_of("opacity", 0).unwrap()) }, 3.);
 	}
 
 	#[test]

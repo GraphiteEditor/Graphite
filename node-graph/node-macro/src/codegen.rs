@@ -123,6 +123,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(shape) => {
 			let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout)];
 			if !shape.skips_carrier() {
+				state.push(quote!(pub(super) __carrier: gcore::record::Layout));
 				state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
 			}
 			state.push(quote!(pub(super) __frame_bytes: usize));
@@ -1113,7 +1114,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					Ok(value) => value,
 					Err(interrupt) => return interrupt.into(),
 				};
-				let __src_rec = #core_types::record::RecordValue::rec(__src);
+				let __src_rec = self.__carrier.rec(&__src);
 			}
 		});
 		let carry = (!shape.skips_carrier()).then(|| quote!(unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };));
@@ -1152,7 +1153,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(unsafe { #core_types::record::write_field(__dst, self.#slot, #binder) };)
 		});
 		quote! {
-			let __dst = #core_types::record::stack::push(self.__frame_bytes);
+			let mut __value = #core_types::record::RecordValue::zeroed();
+			let __dst = match self.__frame_bytes {
+				0 => __value.as_mut_ptr(),
+				__bytes => #core_types::record::stack::push(__bytes),
+			};
 			#carrier_eval
 			#carry
 			#(#read_bindings)*
@@ -1160,8 +1165,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#destructure
 			#element_store
 			#(#attr_stores)*
-			#core_types::record::stack::pop(__dst);
-			__cell.finish(#core_types::record::RecordValue::from_rec(unsafe { #core_types::record::Rec::new(__dst.cast_const()) }))
+			if self.__frame_bytes != 0 {
+				#core_types::record::stack::pop(__dst);
+				__value = #core_types::record::RecordValue::spilled(unsafe { #core_types::record::Rec::new(__dst.cast_const()) });
+			}
+			__cell.finish(__value)
 		}
 	});
 	let eval_tail = match (async_fn, future_kernel) {
@@ -1288,6 +1296,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let name = &field.pat_ident.ident;
 			quote!(#name,)
 		});
+		let carrier_init = (!shape.skips_carrier()).then(|| quote!(__carrier: __carrier_layout.clone(),)).into_iter();
 		let plan_init = (!shape.skips_carrier()).then(|| quote!(__plan,)).into_iter();
 		let read_names = (0..parsed.attribute_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
 		let write_names = (0..shape.write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot,));
@@ -1302,10 +1311,11 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					#plan_binding
 					#(#read_inits)*
 					#(#write_inits)*
-					let __frame_bytes = __layout.size.next_multiple_of(8);
+					let __frame_bytes = __layout.frame_bytes();
 					Self {
 						#(#data_inits)*
 						#(#edge_inits)*
+						#(#carrier_init)*
 						__layout,
 						#(#plan_init)*
 						__frame_bytes,

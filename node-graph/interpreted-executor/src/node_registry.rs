@@ -825,7 +825,9 @@ mod node_registry_macros {
 							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
 						}
 						let mut inputs = inputs.into_iter();
-						let node = core_types::record::RecordExtract::<$type, _>::new(inputs.next().unwrap().downcast_record::<$type>()?);
+						let edge = inputs.next().unwrap();
+						let layout = edge.layout().ok_or(ConstructionError::MissingLayout)?.clone();
+						let node = core_types::record::RecordExtract::<$type, _>::new(edge.downcast_record::<$type>()?, &layout);
 						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
 					},
 				},
