@@ -217,26 +217,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 }
 
 fn create_arc_type_widget(arc_type: ArcType) -> WidgetInstance {
-	let entries = vec![
-		RadioEntryData::new("Open").label("Open").on_update(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ArcType(ArcType::Open),
-			}
-			.into()
-		}),
-		RadioEntryData::new("Closed").label("Closed").on_update(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ArcType(ArcType::Closed),
-			}
-			.into()
-		}),
-		RadioEntryData::new("Pie").label("Pie").on_update(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ArcType(ArcType::PieSlice),
-			}
-			.into()
-		}),
-	];
+	let entries = RadioEntryData::list_from_choice_type(|arc_type| {
+		ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::ArcType(arc_type),
+		}
+		.into()
+	});
 	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_instance()
 }
 
@@ -307,20 +293,12 @@ fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetInstance {
 }
 
 fn create_grid_type_widget(grid_type: GridType) -> WidgetInstance {
-	let entries = vec![
-		RadioEntryData::new("Rectangular").label("Rectangular").on_update(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::GridType(GridType::Rectangular),
-			}
-			.into()
-		}),
-		RadioEntryData::new("Isometric").label("Isometric").on_update(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::GridType(GridType::Isometric),
-			}
-			.into()
-		}),
-	];
+	let entries = RadioEntryData::list_from_choice_type(|grid_type| {
+		ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::GridType(grid_type),
+		}
+		.into()
+	});
 	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_instance()
 }
 
