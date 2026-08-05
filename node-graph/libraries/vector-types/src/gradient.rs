@@ -10,8 +10,10 @@ use glam::{DAffine2, DVec2};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum GradientForm {
+	/// Transitions the colors along a straight line.
 	#[default]
 	Linear,
+	/// Transitions the colors outward from a center point.
 	Radial,
 }
 
@@ -787,10 +789,13 @@ impl Gradient {
 pub enum GradientSpread {
 	/// Extends the end colors outward.
 	#[default]
+	#[icon("GradientSpreadPad")]
 	Pad,
 	/// Loops the gradient by mirroring back-and-forth.
+	#[icon("GradientSpreadReflect")]
 	Reflect,
 	/// Loops the gradient as copies of itself.
+	#[icon("GradientSpreadRepeat")]
 	Repeat,
 	// TODO: Add a "Clear" variant that returns transparent black outside the gradient's range
 }

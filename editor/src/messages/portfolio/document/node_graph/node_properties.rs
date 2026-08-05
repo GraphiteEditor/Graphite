@@ -2629,7 +2629,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.iter()
 			.map(|&gradient_form| {
 				RadioEntryData::new(format!("{:?}", gradient_form))
-					.label(format!("{:?}", gradient_form))
+					.label(gradient_form.to_string())
 					.on_update(update_value(move |_| TaggedValue::GradientForm(gradient_form), node_id, GradientFormInput))
 					.on_commit(commit_value)
 			})
