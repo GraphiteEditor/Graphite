@@ -186,25 +186,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::text::TextAlign]),
 		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::ScaleType]),
 		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::InterpolationDistribution]),
-		// Context nullification
-		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => std::sync::Arc<PlatformEditorApi>, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RuntimeHandle, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => SourceId, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderOutput, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeDyn, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => ListDyn, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::GradientType, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::GradientSpreadMethod, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Option<DAffine2>, Context => graphene_std::ContextModification]),
-		#[cfg(target_family = "wasm")]
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => CanvasHandle, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => std::sync::Arc<PlatformEditorApi>, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuExecutorHandle, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Option<wgpu_executor::WgpuExecutorHandle>, Context => graphene_std::ContextModification]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuPipelineCache, Context => graphene_std::ContextModification]),
 		// ==========
 		// MEMO NODES
 		// ==========
@@ -376,6 +357,90 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		lend_node!(f64),
 		record_lift_node!(f64),
 		record_extract_node!(f64),
+		record_lift_node!(()),
+		record_extract_node!(()),
+		record_lift_node!(bool),
+		record_extract_node!(bool),
+		record_lift_node!(u32),
+		record_extract_node!(u32),
+		record_lift_node!(u64),
+		record_extract_node!(u64),
+		record_lift_node!(f32),
+		record_extract_node!(f32),
+		record_lift_node!(DVec2),
+		record_extract_node!(DVec2),
+		record_lift_node!(IVec2),
+		record_extract_node!(IVec2),
+		record_lift_node!(DAffine2),
+		record_extract_node!(DAffine2),
+		record_lift_node!(Option<DAffine2>),
+		record_extract_node!(Option<DAffine2>),
+		record_lift_node!(Footprint),
+		record_extract_node!(Footprint),
+		record_lift_node!(SourceId),
+		record_extract_node!(SourceId),
+		record_lift_node!(BlendMode),
+		record_extract_node!(BlendMode),
+		record_lift_node!(graphene_std::vector::style::GradientType),
+		record_extract_node!(graphene_std::vector::style::GradientType),
+		record_lift_node!(graphene_std::vector::style::GradientSpreadMethod),
+		record_extract_node!(graphene_std::vector::style::GradientSpreadMethod),
+		record_lift_node!(ref String),
+		record_extract_node!(clone String),
+		record_lift_node!(ref List<String>),
+		record_extract_node!(clone List<String>),
+		record_lift_node!(ref List<NodeId>),
+		record_extract_node!(clone List<NodeId>),
+		record_lift_node!(ref List<f64>),
+		record_extract_node!(clone List<f64>),
+		record_lift_node!(ref List<u8>),
+		record_extract_node!(clone List<u8>),
+		record_lift_node!(ref List<Vector>),
+		record_extract_node!(clone List<Vector>),
+		record_lift_node!(ref List<Graphic>),
+		record_extract_node!(clone List<Graphic>),
+		record_lift_node!(ref List<Raster<CPU>>),
+		record_extract_node!(clone List<Raster<CPU>>),
+		#[cfg(feature = "gpu")]
+		record_lift_node!(ref List<Raster<GPU>>),
+		#[cfg(feature = "gpu")]
+		record_extract_node!(clone List<Raster<GPU>>),
+		record_lift_node!(ref List<Color>),
+		record_extract_node!(clone List<Color>),
+		record_lift_node!(ref List<Artboard>),
+		record_extract_node!(clone List<Artboard>),
+		record_lift_node!(ref List<GradientStops>),
+		record_extract_node!(clone List<GradientStops>),
+		record_lift_node!(ref AttributeDyn),
+		record_extract_node!(clone AttributeDyn),
+		record_lift_node!(ref AttributeValueDyn),
+		record_extract_node!(clone AttributeValueDyn),
+		record_lift_node!(ref ListDyn),
+		record_extract_node!(clone ListDyn),
+		record_lift_node!(ref std::sync::Arc<PlatformEditorApi>),
+		record_extract_node!(clone std::sync::Arc<PlatformEditorApi>),
+		record_lift_node!(ref RuntimeHandle),
+		record_extract_node!(clone RuntimeHandle),
+		record_lift_node!(ref RenderIntermediate),
+		record_extract_node!(clone RenderIntermediate),
+		record_lift_node!(ref RenderOutput),
+		record_extract_node!(clone RenderOutput),
+		#[cfg(target_family = "wasm")]
+		record_lift_node!(ref CanvasHandle),
+		#[cfg(target_family = "wasm")]
+		record_extract_node!(clone CanvasHandle),
+		#[cfg(feature = "gpu")]
+		record_lift_node!(ref WgpuExecutorHandle),
+		#[cfg(feature = "gpu")]
+		record_extract_node!(clone WgpuExecutorHandle),
+		#[cfg(feature = "gpu")]
+		record_lift_node!(ref Option<WgpuExecutorHandle>),
+		#[cfg(feature = "gpu")]
+		record_extract_node!(clone Option<WgpuExecutorHandle>),
+		#[cfg(feature = "gpu")]
+		record_lift_node!(ref wgpu_executor::WgpuPipelineCache),
+		#[cfg(feature = "gpu")]
+		record_extract_node!(clone wgpu_executor::WgpuPipelineCache),
 		(
 			ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode"),
 			RegistryEntry {
@@ -812,6 +877,22 @@ mod node_registry_macros {
 				},
 			)
 		};
+		(ref $type:ty) => {
+			(
+				ProtoNodeIdentifier::new("core_types::record::RecordLiftNode"),
+				RegistryEntry {
+					io: NodeIOTypes::new(concrete!(Context), core_types::registry::record_type::<$type>(), vec![fn_type!(Context, $type)]),
+					constructor: |inputs| {
+						if inputs.len() != 1 {
+							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
+						}
+						let mut inputs = inputs.into_iter();
+						let node = core_types::record::RecordLiftRef::<$type, _>::new(inputs.next().unwrap().downcast::<$type>()?);
+						Ok(EdgeHandle::new_record::<$type>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
+					},
+				},
+			)
+		};
 	}
 
 	macro_rules! record_extract_node {
@@ -828,6 +909,24 @@ mod node_registry_macros {
 						let edge = inputs.next().unwrap();
 						let layout = edge.layout().ok_or(ConstructionError::MissingLayout)?.clone();
 						let node = core_types::record::RecordExtract::<$type, _>::new(edge.downcast_record::<$type>()?, &layout);
+						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
+					},
+				},
+			)
+		};
+		(clone $type:ty) => {
+			(
+				ProtoNodeIdentifier::new("core_types::record::RecordExtractNode"),
+				RegistryEntry {
+					io: NodeIOTypes::new(concrete!(Context), concrete!($type), vec![core_types::registry::record_edge_type::<$type>()]),
+					constructor: |inputs| {
+						if inputs.len() != 1 {
+							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
+						}
+						let mut inputs = inputs.into_iter();
+						let edge = inputs.next().unwrap();
+						let layout = edge.layout().ok_or(ConstructionError::MissingLayout)?.clone();
+						let node = core_types::record::RecordExtractClone::<$type, _>::new(edge.downcast_record::<$type>()?, &layout);
 						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
 					},
 				},

@@ -654,6 +654,65 @@ mod test {
 		assert!(fields.is_empty(), "an element-only record has no attribute fields");
 	}
 
+	fn modification_value() -> ProtoNode {
+		let modification = core_types::ContextModification::from_sources(core_types::context::ContextFeatures::all(), &[]);
+		ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextModification(modification).into()), vec![])
+	}
+
+	#[test]
+	fn a_context_modification_row_wires_over_a_plain_value_wire() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), modification_value()),
+				(NodeId(2), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(0), NodeId(1)])),
+				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
+	}
+
+	#[test]
+	fn a_context_modification_over_a_wire_without_a_lift_row_reports_at_typing() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::BrushStrokes(vec![]).into()), vec![])),
+				(NodeId(1), modification_value()),
+				(NodeId(2), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(0), NodeId(1)])),
+				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
+			],
+		};
+
+		let result = DynamicExecutor::new(network);
+		let error = format!("{:?}", result.err());
+		assert!(!error.contains("MissingLayout"), "an absent lift row must be a typing error, not a construction failure: {error}");
+	}
+
+	#[test]
+	fn nested_context_modifications_forward_the_layout() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(5),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
+				(NodeId(1), modification_value()),
+				(NodeId(2), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(0), NodeId(1)])),
+				(NodeId(3), modification_value()),
+				(NodeId(4), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(2), NodeId(3)])),
+				(NodeId(5), proto_node("core_types::record::RecordExtractNode", vec![NodeId(4)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
+	}
+
 	#[test]
 	fn a_lift_adapter_is_spliced_between_a_plain_producer_and_a_record_consumer() {
 		let network = ProtoNetwork {

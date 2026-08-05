@@ -1,14 +1,5 @@
-use core::f64;
-use core_types::Color;
 use core_types::context::{Context, ContextModification, Ctx, DeriveCtx};
-use core_types::gpoll::GPoll;
-use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
-use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
-use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
-use raster_types::{CPU, GPU, Raster};
+use core_types::gpoll::Interrupt;
 
 /// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
@@ -16,36 +7,10 @@ use raster_types::{CPU, GPU, Raster};
 fn context_modification<T>(
 	ctx: impl Ctx + DeriveCtx,
 	/// The data to pass through, evaluated with the stripped down context.
-	#[implementations(
-		Context -> (),
-		Context -> bool,
-		Context -> u32,
-		Context -> u64,
-		Context -> f32,
-		Context -> f64,
-		Context -> String,
-		Context -> DAffine2,
-		Context -> Footprint,
-		Context -> DVec2,
-		Context -> List<String>,
-		Context -> List<NodeId>,
-		Context -> List<f64>,
-		Context -> List<u8>,
-		Context -> List<Vector>,
-		Context -> List<Graphic>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
-		Context -> AttributeDyn,
-		Context -> AttributeValueDyn,
-		Context -> ListDyn,
-	)]
 	value: impl Node<Context<'_>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
 	modification: ContextModification,
-) -> GPoll<T> {
+) -> Result<T, Interrupt> {
 	let scope = ctx.scope().nullified(modification.features, Some(modification.sources()));
 	value.eval(&ctx.nullified(modification.features, &scope))
 }

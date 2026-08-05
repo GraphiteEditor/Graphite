@@ -501,6 +501,7 @@ mod tests {
 				ValueNode(second),
 				RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
 				RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
+				&union,
 			)
 		};
 
@@ -537,6 +538,7 @@ mod tests {
 			ValueNode(false),
 			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
 			RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
+			&union,
 		);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {
@@ -546,6 +548,102 @@ mod tests {
 		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("opacity", 0).unwrap()) }, 0.5);
 		assert_eq!(unsafe { rec.read::<f64>(union.offset_of("length", 0).unwrap()) }, 0.);
+	}
+
+	struct RealTimeProbe {
+		layout: Layout,
+	}
+
+	impl<'e> Node<ContextImpl<'e>> for RealTimeProbe {
+		type Output = RecordValue<'e>;
+
+		fn eval(&self, input: &ContextImpl<'e>) -> GPoll<RecordValue<'e>> {
+			assert!(self.layout.is_inline());
+			let mut value = RecordValue::zeroed();
+			let element: f64 = match core_types::context::ExtractRealTime::try_real_time(input) {
+				Some(_) => 1.,
+				None => 0.,
+			};
+			unsafe { value.as_mut_ptr().cast::<f64>().write(element) };
+			GPoll::Final(value)
+		}
+	}
+
+	#[test]
+	fn context_modification_nullifies_for_the_inner_record_edge() {
+		use core_types::context::{ContextFeatures, ContextModification};
+
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = f64_layout(&[]);
+		reserve_for(&[&layout]);
+
+		let probed = |features: ContextFeatures| {
+			let node = crate::context_modification::ContextModificationNode::new(
+				RealTimeProbe { layout: layout.clone() },
+				ValueNode(ContextModification::from_sources(features, &[])),
+				&layout,
+			);
+			assert_eq!(Node::<ContextImpl>::layout(&node), Some(&layout));
+			let GPoll::Final(value) = node.eval(&ctx) else {
+				panic!("expected a final record");
+			};
+			unsafe { layout.rec(&value).element::<f64>() }
+		};
+
+		assert_eq!(probed(ContextFeatures::all()), 1., "kept features stay readable under the modification");
+		assert_eq!(probed(ContextFeatures::empty()), 0., "nullified features read as absent for the inner edge");
+	}
+
+	#[test]
+	fn context_modification_forwards_record_partiality() {
+		use core_types::context::{ContextFeatures, ContextModification};
+
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = f64_layout(&["opacity"]);
+		reserve_for(&[&layout]);
+
+		let node = crate::context_modification::ContextModificationNode::new(
+			RecordSourceNode {
+				layout: layout.clone(),
+				element: 4.,
+				fields: vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)],
+				partial: true,
+			},
+			ValueNode(ContextModification::from_sources(ContextFeatures::all(), &[])),
+			&layout,
+		);
+
+		let GPoll::Partial(value) = node.eval(&ctx) else {
+			panic!("expected a partial record");
+		};
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
+		assert_eq!(unsafe { rec.read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.25);
+	}
+
+	#[test]
+	fn droppable_elements_park_and_clone_out() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let lift = core_types::record::RecordLiftRef::<String, _>::new(ValueNode(String::from("parked")));
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let chain = core_types::record::RecordExtractClone::<String, _>::new(lift, &layout);
+
+		let GPoll::Final(text) = chain.eval(&ctx) else {
+			panic!("expected a final value");
+		};
+		assert_eq!(text, "parked");
 	}
 
 	#[test]
@@ -565,6 +663,7 @@ mod tests {
 			ValueNode(false),
 			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
 			RecordSource::new(f64_record_source(&layout_b, 3., vec![]), &layout_b, &union),
+			&union,
 		);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {
@@ -587,11 +686,10 @@ mod tests {
 		let base = stack::push(0);
 		stack::pop(base);
 
-		let chain = ForwardRecordNode::new(RecordSource::new(
-			f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+		let chain = ForwardRecordNode::new(
+			RecordSource::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout, &layout.clone()),
 			&layout,
-			&layout.clone(),
-		));
+		);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -612,16 +710,19 @@ mod tests {
 		let layout = f64_layout(&["opacity"]);
 		reserve_for(&[&layout]);
 
-		let chain = ForwardRecordNode::new(RecordSource::new(
-			RecordSourceNode {
-				layout: layout.clone(),
-				element: 4.,
-				fields: vec![],
-				partial: true,
-			},
+		let chain = ForwardRecordNode::new(
+			RecordSource::new(
+				RecordSourceNode {
+					layout: layout.clone(),
+					element: 4.,
+					fields: vec![],
+					partial: true,
+				},
+				&layout,
+				&layout.clone(),
+			),
 			&layout,
-			&layout.clone(),
-		));
+		);
 
 		let GPoll::Partial(value) = chain.eval(&ctx) else {
 			panic!("expected a partial record");

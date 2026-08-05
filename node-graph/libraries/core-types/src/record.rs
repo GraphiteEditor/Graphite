@@ -251,6 +251,64 @@ impl<'e> RecordValue<'e> {
 			_lifetime: std::marker::PhantomData,
 		}
 	}
+
+	/// Rebinds the eval lifetime; validity stays stack and arena discipline,
+	/// which derived scopes share with their parent evaluation.
+	fn rebind<'a>(self) -> RecordValue<'a> {
+		RecordValue {
+			ptr: self.ptr,
+			_extra: self._extra,
+			_lifetime: std::marker::PhantomData,
+		}
+	}
+}
+
+/// A record edge evaluable at a derived context, yielding the record at that
+/// context's lifetime. The lifetime is a trait parameter because a bound like
+/// `for<'d> Node<Derived<'d, C>, Output = RecordValue<'d>>` is rejected: in a
+/// higher-ranked bound the lifetime must appear in a constrained input
+/// position, and both the `Derived` projection and the `Output` binding are
+/// unconstrained ones.
+pub trait DerivedRecordEdge<'derived, C> {
+	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt>;
+}
+
+impl<'derived, C, N> DerivedRecordEdge<'derived, C> for N
+where
+	N: Node<C, Output = RecordValue<'derived>>,
+{
+	fn eval_derived(&self, cell: &crate::node::StatusCell, input_index: usize, ctx: &C) -> Result<RecordValue<'derived>, crate::gpoll::Interrupt> {
+		cell.eval_input(input_index, self, ctx)
+	}
+}
+
+/// The lazy record input handed to a kernel that evaluates its edges under
+/// derived contexts: evaluating rebinds the record to the kernel's routing
+/// lifetime, so the value escapes the derivation scope.
+#[derive(Clone, Copy)]
+pub struct RecordLazyInput<'a, 'e, N> {
+	node: &'a N,
+	cell: &'a crate::node::StatusCell,
+	input_index: usize,
+	_lifetime: std::marker::PhantomData<fn() -> RecordValue<'e>>,
+}
+
+impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
+	pub fn new(node: &'a N, cell: &'a crate::node::StatusCell, input_index: usize) -> Self {
+		Self {
+			node,
+			cell,
+			input_index,
+			_lifetime: std::marker::PhantomData,
+		}
+	}
+
+	pub fn eval<'d, C>(&self, ctx: &C) -> Result<RecordValue<'e>, crate::gpoll::Interrupt>
+	where
+		N: DerivedRecordEdge<'d, C>,
+	{
+		Ok(self.node.eval_derived(self.cell, self.input_index, ctx)?.rebind())
+	}
 }
 
 /// The per-thread record stack: every record evaluation claims its activation
@@ -571,6 +629,93 @@ where
 
 	fn layout(&self) -> Option<&Layout> {
 		Some(&self.layout)
+	}
+}
+
+/// Lifts a droppable producer onto a record wire: the owned element parks in
+/// the arena and the record's element is the parked reference, the same rule
+/// reference-valued attributes follow.
+pub struct RecordLiftRef<El, N> {
+	edge: N,
+	layout: Layout,
+	_marker: std::marker::PhantomData<fn() -> El>,
+}
+
+impl<El: 'static, N> RecordLiftRef<El, N> {
+	pub fn new(edge: N) -> Self {
+		Self {
+			edge,
+			layout: Layout::default().with_writes(0, (size_of::<&El>(), align_of::<&El>()), &[]),
+			_marker: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'e, C, El, N> Node<C> for RecordLiftRef<El, N>
+where
+	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	El: Send + Sync + 'static,
+	N: Node<C, Output = El>,
+{
+	type Output = RecordValue<'e>;
+
+	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
+		let park = |element: El| {
+			let (parked, _) = input.arena().alloc(element)?;
+			let mut value = RecordValue::zeroed();
+			unsafe { write_field::<&El>(value.as_mut_ptr(), 0, parked) };
+			Some(value)
+		};
+		let exhausted = || {
+			GPoll::Error(Box::new(crate::gpoll::GraphError {
+				kind: crate::gpoll::ErrorKind::ArenaExhausted,
+				trace: Vec::new(),
+			}))
+		};
+		match self.edge.eval(input) {
+			GPoll::Final(element) => park(element).map_or_else(exhausted, GPoll::Final),
+			GPoll::Partial(element) => park(element).map_or_else(exhausted, GPoll::Partial),
+			GPoll::Fallback(boxed) => {
+				let (element, error) = *boxed;
+				park(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
+			}
+			GPoll::Pending => GPoll::Pending,
+			GPoll::Error(error) => GPoll::Error(error),
+		}
+	}
+
+	fn layout(&self) -> Option<&Layout> {
+		Some(&self.layout)
+	}
+}
+
+/// Extracts a parked-reference element from a record wire by cloning it out
+/// for a plain consumer.
+pub struct RecordExtractClone<El, N> {
+	edge: N,
+	layout: Layout,
+	_marker: std::marker::PhantomData<fn() -> El>,
+}
+
+impl<El, N> RecordExtractClone<El, N> {
+	pub fn new(edge: N, layout: &Layout) -> Self {
+		Self {
+			edge,
+			layout: layout.clone(),
+			_marker: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'e, C, El, N> Node<C> for RecordExtractClone<El, N>
+where
+	El: Clone + 'static,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	type Output = El;
+
+	fn eval(&self, input: &C) -> GPoll<El> {
+		self.edge.eval(input).map(|value| unsafe { self.layout.rec(&value).element::<&El>() }.clone())
 	}
 }
 

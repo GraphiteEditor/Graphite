@@ -40,6 +40,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields.iter().partition(|f| f.is_data_field);
 
 	let record = record_shape(parsed);
+	let routing = routing_io(parsed);
 	let record_skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	// Record nodes with a `_: ()` primary input have no carrier edge; the unit
 	// field stays visible in the metadata but claims no struct field.
@@ -137,6 +138,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}));
 			state
 		}
+		None if routing.is_some() => vec![quote!(pub(super) __layout: gcore::record::Layout)],
 		None => Vec::new(),
 	};
 
@@ -258,7 +260,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let all_field_inits = data_inits.chain(regular_inits).chain(slot_init);
 
 	// Data fields may not implement Copy, PartialEq, etc., so only derive Debug and Clone
-	let struct_derives = if record.is_some() {
+	let struct_derives = if record.is_some() || routing.is_some() {
 		quote!(#[derive(Debug, Clone)])
 	} else if data_fields.is_empty() && !async_source {
 		quote!(#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)])
@@ -285,15 +287,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	// Record nodes construct through the generated `wire` fn, which resolves
 	// offsets from the carrier layout; `new` cannot fill that state.
+	let routing_layout_param = routing.is_some().then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
+	let routing_layout_init = routing.is_some().then(|| quote!(__layout: __layout.clone(),)).into_iter();
 	let new_impl = match record.is_none() {
 		true => quote! {
 			#[automatically_derived]
 			impl<'n, #(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*>
 			{
 				#[allow(clippy::too_many_arguments)]
-				pub fn new(#(#new_args,)*) -> Self {
+				pub fn new(#(#new_args,)* #(#routing_layout_param)*) -> Self {
 					Self {
 						#(#all_field_inits,)*
+						#(#routing_layout_init)*
 					}
 				}
 			}
@@ -712,6 +717,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			_ => false,
 		})
 	});
+	let derive_routing = derives && routing.is_some();
 
 	let ctx_generic = match ctx_bounds.is_empty() {
 		true => quote!(#ctx_ident),
@@ -721,7 +727,15 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_param.map(|ctx_param| &ctx_param.ident) => ctx_generic.clone(),
 		param => quote!(#param),
 	};
-	let mut generics: Vec<TokenStream2> = parsed.fn_generics.iter().map(&generic_tokens).collect();
+	let mut generics: Vec<TokenStream2> = parsed
+		.fn_generics
+		.iter()
+		.filter(|param| match param {
+			GenericParam::Type(type_param) => !derive_routing || Some(&type_param.ident) != routing.as_ref().map(|routing| &routing.generic),
+			_ => true,
+		})
+		.map(&generic_tokens)
+		.collect();
 	let mut impl_generics: Vec<TokenStream2> = parsed
 		.fn_generics
 		.iter()
@@ -744,6 +758,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	if routing.is_some() || record.is_some() {
 		impl_generics.insert(0, quote!('__record));
 	}
+	if derive_routing {
+		generics.insert(0, quote!('__record));
+	}
 
 	let fn_name = &parsed.fn_name;
 	let mod_name = format_ident!("_{}_mod", parsed.mod_name);
@@ -759,6 +776,21 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = parsed.fields.iter().partition(|field| field.is_data_field);
 	let regular_fields: Vec<_> = regular_fields.into_iter().skip(skips_carrier as usize).collect();
+
+	if derive_routing {
+		for (index, field) in regular_fields.iter().enumerate() {
+			let source_ty = match &field.ty {
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
+			};
+			if matches!((&routing, source_ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic)) {
+				let source_generic = format_ident!("__Source{index}");
+				generics.push(quote! {
+					#source_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>
+				});
+			}
+		}
+	}
 
 	let data_field_generic_idents: Vec<Ident> = parsed
 		.fn_generics
@@ -792,6 +824,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(#core_types::node::Node<#ctx_ident, Output = #output_type>),
 	};
 
+	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
+
 	let attr_kernel_params = parsed.attribute_reads.iter().map(|read| {
 		let pat = &read.pat_ident;
 		let marker = &read.marker;
@@ -799,12 +833,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 	let kernel_params = regular_fields
 		.iter()
-		.filter(|field| !injected_name(&field.pat_ident.ident))
-		.map(|field| {
+		.enumerate()
+		.filter(|(_, field)| !injected_name(&field.pat_ident.ident))
+		.map(|(index, field)| {
 			let pat = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => {
+					let source_generic = format_ident!("__Source{index}");
+					quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>)
+				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
 					let bound = lazy_bound(output_type);
 					quote!(#pat: &impl #bound)
@@ -817,7 +856,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.chain(attr_kernel_params);
 
-	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
 	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
 	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
 		ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
@@ -831,10 +869,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
 		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
-		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => {
-			let bound = lazy_bound(&record_value_ty);
-			quote!(#node_generic: #bound)
-		}
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if routing_source(output_type) => match derives {
+			true => quote!(#node_generic: for<'__derived> #core_types::record::DerivedRecordEdge<'__derived, #core_types::context::Derived<'__derived, #ctx_ident>>),
+			false => {
+				let bound = lazy_bound(&record_value_ty);
+				quote!(#node_generic: #bound)
+			}
+		},
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 			let bound = lazy_bound(output_type);
 			quote!(#node_generic: #bound)
@@ -897,6 +938,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					Ok(value) => value,
 					Err(interrupt) => return interrupt.into(),
 				};
+			},
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => quote! {
+				let #name = #core_types::record::RecordLazyInput::new(&self.#name, &__cell, #index);
 			},
 			ParsedFieldType::Node(_) if raw_lazy => quote!(),
 			ParsedFieldType::Node(_) => quote! {
@@ -994,7 +1038,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// lifetime explicitly and pass through untouched.
 	let kernel_output = record.as_ref().and_then(|_| inject_attr_lifetimes(&parsed.output_type));
 	let attr_lifetime = kernel_output.is_some().then(|| quote!('__attr,));
-	let kernel_output = kernel_output.map(|ty| quote!(#ty)).unwrap_or_else(|| quote!(#output_type));
+	let kernel_output = match derive_routing {
+		true => {
+			let generic = &routing.as_ref().expect("derive routing implies routing").generic;
+			let ty = substitute_routing_record(&parsed.output_type, generic, core_types);
+			quote!(#ty)
+		}
+		false => kernel_output.map(|ty| quote!(#ty)).unwrap_or_else(|| quote!(#output_type)),
+	};
 	let kernel = match async_fn {
 		false => quote! {
 			#[allow(clippy::too_many_arguments)]
@@ -1229,16 +1280,19 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(shape) if shape.skips_carrier() => {
 			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
 		}
+		None if derive_routing => {
+			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
+		}
 		_ => Vec::new(),
 	};
 
-	let record_layout_impl = match &record {
-		Some(_) => quote! {
+	let record_layout_impl = match record.is_some() || routing.is_some() {
+		true => quote! {
 			fn layout(&self) -> Option<&#core_types::record::Layout> {
 				Some(&self.__layout)
 			}
 		},
-		None => quote!(),
+		false => quote!(),
 	};
 
 	let entries = entries_tokens(parsed, &struct_name, &data_field_generic_idents, &regular_fields);
@@ -1410,6 +1464,36 @@ impl RecordShape {
 
 pub(crate) fn has_record_io(parsed: &ParsedNodeFn) -> bool {
 	!parsed.attribute_reads.is_empty() || record_writes(&slot_value_type(&parsed.output_type)).is_some()
+}
+
+/// Replaces the routing generic in a derive-routing kernel's return type with
+/// the routing record value, since the kernel's edges rebind to '__record.
+fn substitute_routing_record(output: &Type, generic: &Ident, core_types: &TokenStream2) -> Type {
+	struct Subst<'a> {
+		generic: &'a Ident,
+		replacement: Type,
+	}
+
+	impl VisitMut for Subst<'_> {
+		fn visit_type_mut(&mut self, ty: &mut Type) {
+			if let Type::Path(path) = ty
+				&& path.qself.is_none()
+				&& path.path.get_ident() == Some(self.generic)
+			{
+				*ty = self.replacement.clone();
+				return;
+			}
+			syn::visit_mut::visit_type_mut(self, ty);
+		}
+	}
+
+	let mut ty = output.clone();
+	let mut subst = Subst {
+		generic,
+		replacement: syn::parse_quote!(#core_types::record::RecordValue<'__record>),
+	};
+	subst.visit_type_mut(&mut ty);
+	ty
 }
 
 fn inject_attr_lifetimes(output: &Type) -> Option<Type> {
@@ -1734,6 +1818,9 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 	if has_record_io(parsed) {
 		return record_entries_tokens(parsed, struct_name, regular_fields);
 	}
+	if routing_io(parsed).is_some() {
+		return routing_entries_tokens(parsed, struct_name, regular_fields);
+	}
 	let Some(rows) = implementation_rows(parsed, regular_fields) else {
 		return quote!();
 	};
@@ -1812,6 +1899,113 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 	quote! {
 		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
 			vec![#(#entries),*]
+		}
+	}
+}
+
+/// The registry row of a routing node: one instance covers every element,
+/// sources claim generic record edges, and the constructor wraps each source
+/// in its union translation and stores the union as the node's layout.
+fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
+	let Some(routing) = routing_io(parsed) else {
+		return quote!();
+	};
+	let is_source = |field: &ParsedField| {
+		let ty = match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
+		};
+		matches!(ty, Type::Path(path) if path.path.get_ident() == Some(&routing.generic))
+	};
+	let values_concrete = regular_fields.iter().filter(|field| !is_source(field)).all(|field| {
+		let (ty, lend) = match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => (ty, lend.is_some()),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => (output_type, false),
+		};
+		!contains_open_generic(parsed, ty) && (lend || !type_disqualifies(ty))
+	});
+	if !values_concrete {
+		return quote!();
+	}
+
+	let fn_name = &parsed.fn_name;
+	let entries_name = format_ident!("{}_entries", fn_name);
+	let arity = regular_fields.len();
+	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+	let token_name = routing.generic.to_string();
+
+	let input_types = regular_fields.iter().map(|field| {
+		if is_source(field) {
+			return quote!(gcore::registry::generic_record_edge_type(#token_name));
+		}
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::edge_type::<#ty>()),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
+		}
+	});
+	let source_layouts: Vec<Ident> = regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(_, field)| is_source(field))
+		.map(|(index, _)| format_ident!("__layout_{index}"))
+		.collect();
+	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
+		let name = &field.pat_ident.ident;
+		if is_source(field) {
+			let layout = format_ident!("__layout_{index}");
+			let handle = format_ident!("__handle_{index}");
+			let ty = format_ident!("__ty_{index}");
+			return quote! {
+				let #handle = inputs.next().unwrap();
+				let #ty = #handle.ty().clone();
+				let Some(#layout) = #handle.layout().cloned() else {
+					return Err(gcore::registry::ConstructionError::MissingLayout);
+				};
+				let #name = #handle.downcast_erased::<gcore::registry::ErasedRecordNode>(#ty.clone())?;
+			};
+		}
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
+		}
+	});
+	let source_wraps = regular_fields.iter().enumerate().filter(|(_, field)| is_source(field)).map(|(index, field)| {
+		let name = &field.pat_ident.ident;
+		let layout = format_ident!("__layout_{index}");
+		quote!(let #name = gcore::record::RecordSource::new(#name, &#layout, &__union);)
+	});
+	let first_source_ty = regular_fields
+		.iter()
+		.enumerate()
+		.find(|(_, field)| is_source(field))
+		.map(|(index, _)| format_ident!("__ty_{index}"))
+		.expect("routing nodes have a source");
+
+	quote! {
+		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
+			vec![gcore::registry::RegistryEntry {
+				io: gcore::registry::NodeIOTypes::new(
+					gcore::concrete!(gcore::context::ContextImpl<'static>),
+					gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed(#token_name)))),
+					vec![#(#input_types),*],
+				),
+				constructor: |inputs| {
+					if inputs.len() != #arity {
+						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
+					}
+					let mut inputs = inputs.into_iter();
+					#(#downcasts)*
+					let __union = gcore::record::Layout::union(&[#(&#source_layouts),*]);
+					#(#source_wraps)*
+					let __node = #struct_name::new(#(#names,)* &__union);
+					Ok(gcore::registry::EdgeHandle::new_erased(
+						::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
+						#first_source_ty,
+					))
+				},
+			}]
 		}
 	}
 }
