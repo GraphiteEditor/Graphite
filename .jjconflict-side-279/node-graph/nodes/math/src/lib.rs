@@ -1319,6 +1319,14 @@ fn gradient_spread(_: impl Ctx, gradient: GradientStops, gradient_spread: vector
 	(gradient, Attr(gradient_spread))
 }
 
+/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *gradient_interpolation.element());
+	gradient
+}
+
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.

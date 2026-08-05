@@ -8,6 +8,8 @@ core_types::attribute! {
 	pub GradientSpread("gradient_spread"): crate::gradient::GradientSpread;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientForm("gradient_form"): crate::gradient::GradientForm;
+	/// The color space a gradient's stops interpolate in.
+	pub GradientInterpolation("gradient_interpolation"): crate::gradient::GradientInterpolation;
 	/// Optional `Vector` that overrides the item's own geometry for click-target generation.
 	/// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
 	/// by clicking anywhere within their bounds, not just the filled letterform. An absent
@@ -17,6 +19,7 @@ core_types::attribute! {
 
 pub const ATTR_GRADIENT_SPREAD: &str = GradientSpread::NAME;
 pub const ATTR_GRADIENT_FORM: &str = GradientForm::NAME;
+pub const ATTR_GRADIENT_INTERPOLATION: &str = GradientInterpolation::NAME;
 pub const ATTR_EDITOR_CLICK_TARGET: &str = EditorClickTarget::NAME;
 
 #[cfg(test)]

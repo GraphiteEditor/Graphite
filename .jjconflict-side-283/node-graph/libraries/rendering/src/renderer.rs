@@ -14,8 +14,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
-	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPREAD, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH,
+	ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -39,7 +39,7 @@ use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpread;
+use vector_types::gradient::{GradientInterpolation, GradientSpread};
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -416,8 +416,14 @@ pub(crate) enum ClearGuardPlacement {
 /// The `Clear` spread brackets the samples with transparent guard stops placed per `guards`: the pad extension then
 /// paints transparency outward while hard stops cut the paint off exactly at the unit range's boundaries. A radial
 /// gradient's span still starts at zero, since its sampling distance never goes below the center.
-pub(crate) fn spread_adjusted_samples(gradient: &Gradient, gradient_spread: GradientSpread, gradient_form: GradientForm, guards: ClearGuardPlacement) -> (GradientSamples, (f64, f64)) {
-	let samples = gradient.interpolated_samples();
+pub(crate) fn spread_adjusted_samples(
+	gradient: &Gradient,
+	gradient_spread: GradientSpread,
+	gradient_form: GradientForm,
+	gradient_interpolation: GradientInterpolation,
+	guards: ClearGuardPlacement,
+) -> (GradientSamples, (f64, f64)) {
+	let samples = gradient.interpolated_samples(gradient_interpolation);
 	if gradient_spread != GradientSpread::Clear {
 		return (samples, (0., 1.));
 	}
@@ -502,8 +508,10 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 	let gradient_form: GradientForm = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 	let gradient_spread: GradientSpread = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
+	let gradient_interpolation: GradientInterpolation = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, 0);
 
-	let (samples, span) = spread_adjusted_samples(stops, gradient_spread, gradient_form, ClearGuardPlacement::VelloRampTexels);
+	let (samples, span) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::VelloRampTexels);
+
 	let peniko_stops = peniko_color_stops(&samples);
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
@@ -2170,6 +2178,7 @@ impl Render for List<Gradient> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index);
 			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
+			let gradient_interpolation: GradientInterpolation = self.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -2185,7 +2194,7 @@ impl Render for List<Gradient> {
 					attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 				}
 
-				let (samples, _) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, ClearGuardPlacement::SvgStopOrder);
+				let (samples, _) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::SvgStopOrder);
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in samples {
@@ -2267,7 +2276,9 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let (samples, span) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, ClearGuardPlacement::VelloRampTexels);
+			let gradient_interpolation: GradientInterpolation = self.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index);
+			let (samples, span) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::VelloRampTexels);
+
 			let stops = peniko_color_stops(&samples);
 
 			let extend = peniko_extend(gradient_spread);
@@ -2754,12 +2765,24 @@ mod tests {
 	fn spread_adjusted_samples_wraps_clear_in_transparent_guards() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
-		let (samples, span) = spread_adjusted_samples(&gradient, GradientSpread::Repeat, GradientForm::Linear, ClearGuardPlacement::SvgStopOrder);
+		let (samples, span) = spread_adjusted_samples(
+			&gradient,
+			GradientSpread::Repeat,
+			GradientForm::Linear,
+			GradientInterpolation::SrgbGamma,
+			ClearGuardPlacement::SvgStopOrder,
+		);
 		assert_eq!(span, (0., 1.));
-		assert_eq!(samples, gradient.interpolated_samples());
+		assert_eq!(samples, gradient.interpolated_samples(GradientInterpolation::SrgbGamma));
 
 		// SVG guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
-		let (samples, span) = spread_adjusted_samples(&gradient, GradientSpread::Clear, GradientForm::Linear, ClearGuardPlacement::SvgStopOrder);
+		let (samples, span) = spread_adjusted_samples(
+			&gradient,
+			GradientSpread::Clear,
+			GradientForm::Linear,
+			GradientInterpolation::SrgbGamma,
+			ClearGuardPlacement::SvgStopOrder,
+		);
 		assert_eq!(span, (0., 1.));
 		assert_eq!(
 			samples,
@@ -2768,7 +2791,13 @@ mod tests {
 
 		// Vello guards own the outermost ramp texels, with the visible range compressed inward to make room
 		let texel = 1. / (VELLO_GRADIENT_RAMP_TEXELS - 1.);
-		let (samples, span) = spread_adjusted_samples(&gradient, GradientSpread::Clear, GradientForm::Linear, ClearGuardPlacement::VelloRampTexels);
+		let (samples, span) = spread_adjusted_samples(
+			&gradient,
+			GradientSpread::Clear,
+			GradientForm::Linear,
+			GradientInterpolation::SrgbGamma,
+			ClearGuardPlacement::VelloRampTexels,
+		);
 		assert_eq!(
 			samples,
 			vec![
@@ -2781,7 +2810,13 @@ mod tests {
 		assert!(span.0 < 0. && span.1 > 1., "the geometry must stretch to compensate for the compressed stops: {span:?}");
 
 		// A radial keeps its stops and span anchored at zero, with no guard below the center
-		let (samples, span) = spread_adjusted_samples(&gradient, GradientSpread::Clear, GradientForm::Radial, ClearGuardPlacement::VelloRampTexels);
+		let (samples, span) = spread_adjusted_samples(
+			&gradient,
+			GradientSpread::Clear,
+			GradientForm::Radial,
+			GradientInterpolation::SrgbGamma,
+			ClearGuardPlacement::VelloRampTexels,
+		);
 		assert_eq!(span.0, 0.);
 		assert_eq!(samples.first().unwrap(), &(0., Color::BLACK, None));
 		assert_eq!(samples.last().unwrap(), &(1., Color::TRANSPARENT, None));
@@ -2789,7 +2824,13 @@ mod tests {
 
 	#[test]
 	fn spread_adjusted_samples_keeps_a_stopless_clear_gradient_black_inside_the_range() {
-		let (samples, _) = spread_adjusted_samples(&Gradient::from(Vec::new()), GradientSpread::Clear, GradientForm::Linear, ClearGuardPlacement::SvgStopOrder);
+		let (samples, _) = spread_adjusted_samples(
+			&Gradient::from(Vec::new()),
+			GradientSpread::Clear,
+			GradientForm::Linear,
+			GradientInterpolation::SrgbGamma,
+			ClearGuardPlacement::SvgStopOrder,
+		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();
 		assert_eq!(colors, vec![Color::TRANSPARENT, Color::BLACK, Color::BLACK, Color::TRANSPARENT]);
 	}
