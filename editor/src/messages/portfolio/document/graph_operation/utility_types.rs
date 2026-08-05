@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	blank_paint_chain_attachment_input, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain_nodes,
+	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
 };
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -234,33 +234,33 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 	}
 
-	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) -> NodeId {
+	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier, attachment_input: InputConnector) -> NodeId {
 		let color_value = resolve_proto_node_type(graphene_std::math_nodes::color_value::IDENTIFIER)
 			.expect("Color Value node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Color(color), false))]);
 
 		let color_value_id = NodeId::new();
 		self.network_interface.insert_node(color_value_id, color_value, &[]);
-		self.start_paint_chain(&color_value_id, layer);
+		self.start_paint_chain(&color_value_id, layer, attachment_input);
 
 		color_value_id
 	}
 
 	/// Clear the whole-expanse paint one tool left on a layer so the other can start its own chain there.
-	/// Deletion reconnects the chain, so the layer's 'Transform' nodes stay wired to it.
-	fn clear_paint_chain(&mut self, replaced_nodes: Vec<NodeId>) {
-		if replaced_nodes.is_empty() {
-			return;
-		}
+	/// Severing at the attachment detaches the layer from whatever the walk stopped at, which is the only part a node
+	/// the rest of the graph also draws from is subjected to, since such a node is never among those deleted.
+	fn clear_paint_chain(&mut self, paint_chain: &ReplaceablePaintChain) {
+		self.network_interface.disconnect_input(&paint_chain.attachment_input, &[]);
 
-		self.network_interface.delete_nodes(replaced_nodes, false, &[]);
+		if !paint_chain.nodes.is_empty() {
+			self.network_interface.delete_nodes(paint_chain.nodes.clone(), false, &[]);
+		}
 	}
 
 	/// Wire a node that paints the layer's whole expanse into the start of its chain,
 	/// or past the 'Transform' nodes a blank layer already carries so those go on applying to the paint.
-	fn start_paint_chain(&mut self, node_id: &NodeId, layer: LayerNodeIdentifier) {
+	fn start_paint_chain(&mut self, node_id: &NodeId, layer: LayerNodeIdentifier, attachment_input: InputConnector) {
 		let layer_content_input = InputConnector::layer_secondary_input(layer.to_node());
-		let attachment_input = blank_paint_chain_attachment_input(layer, self.network_interface).unwrap_or(layer_content_input);
 
 		if attachment_input == layer_content_input {
 			self.network_interface.move_node_to_chain_start(node_id, layer, &[], self.import);
@@ -544,12 +544,12 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// The 'Color Value' node discards its primary input, so only a blank 'Merge' layer may start a chain with one,
 		// which any whole-expanse paint the other tool left behind is cleared off to become
-		let Some(replaced_nodes) = replaceable_paint_chain_nodes(output_layer, self.network_interface) else {
+		let Some(paint_chain) = replaceable_paint_chain(output_layer, self.network_interface) else {
 			return;
 		};
-		self.clear_paint_chain(replaced_nodes);
+		self.clear_paint_chain(&paint_chain);
 
-		let color_value_id = self.insert_color_value(color, output_layer);
+		let color_value_id = self.insert_color_value(color, output_layer, paint_chain.attachment_input);
 		let input_connector = InputConnector::node(color_value_id, graphene_std::math_nodes::color_value::ColorInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
@@ -566,13 +566,17 @@ impl<'a> ModifyInputsContext<'a> {
 
 				// The 'Gradient Value' node discards its primary input, so only a blank 'Merge' layer may start a chain
 				// with one, which any whole-expanse paint the other tool left behind is cleared off to become
-				if starts_layer_chain {
-					let Some(replaced_nodes) = replaceable_paint_chain_nodes(output_layer, self.network_interface) else {
+				let paint_chain = if starts_layer_chain {
+					let Some(paint_chain) = replaceable_paint_chain(output_layer, self.network_interface) else {
 						log::error!("Refusing to start a gradient chain on anything but a blank 'Merge' layer");
 						return;
 					};
-					self.clear_paint_chain(replaced_nodes);
-				}
+					self.clear_paint_chain(&paint_chain);
+
+					Some(paint_chain)
+				} else {
+					None
+				};
 
 				let Some(node_definition) = resolve_proto_node_type(graphene_std::math_nodes::gradient_value::IDENTIFIER) else {
 					return;
@@ -580,9 +584,9 @@ impl<'a> ModifyInputsContext<'a> {
 				let node_id = NodeId::new();
 				self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
 
-				if starts_layer_chain {
+				if let Some(paint_chain) = paint_chain {
 					// No Fill node: the new node starts the layer's chain
-					self.start_paint_chain(&node_id, output_layer);
+					self.start_paint_chain(&node_id, output_layer, paint_chain.attachment_input);
 				} else {
 					// Feeding a Fill node's paint input: wire it up and place it one chain-width left and a step below the Fill
 					self.network_interface.set_input(&target, NodeInput::node(node_id, 0), &[]);

@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, DefinitionIdentifier};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::ProtoNodeIdentifier;
@@ -285,41 +285,36 @@ pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface
 	}
 }
 
-/// Try to find a "Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
-pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+/// Try to find the paint value node feeding a 'Fill' node, or a layer directly.
+fn get_upstream_paint_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 	let target_input = gradient_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
+	let reference = DefinitionIdentifier::ProtoNode(identifier);
 
 	network_interface
 		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
 		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
-		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
+		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&reference))
 }
 
-/// Where a fresh whole-expanse paint chain attaches on a blank 'Merge' layer, or `None` if the layer isn't one.
-pub fn blank_paint_chain_attachment_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<InputConnector> {
-	if !network_interface.is_merge(&layer.to_node(), &[]) {
-		return None;
-	}
-
-	let mut attachment_input = InputConnector::layer_secondary_input(layer.to_node());
-
-	while let Some(upstream) = network_interface.upstream_output_connector(&attachment_input, &[]) {
-		let node_id = upstream.node_id()?;
-		if network_interface.reference(&node_id, &[]).as_ref() != Some(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER)) {
-			return None;
-		}
-
-		attachment_input = InputConnector::primary_input(node_id);
-	}
-
-	Some(attachment_input)
+/// Try to find a 'Gradient Value' node that is connected to a 'Fill' node, or to a layer directly.
+pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	get_upstream_paint_value_node_id(layer, network_interface, graphene_std::math_nodes::gradient_value::IDENTIFIER)
 }
 
-/// The whole-expanse paint nodes to clear off a 'Merge' layer so a paint tool can start its own chain there, which is
-/// empty when the layer is already blank and `None` when the layer holds anything the tools didn't put there.
-/// 'Transform' nodes are left out since they carry the layer's placement, so a swap keeps it.
-pub fn replaceable_paint_chain_nodes(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Vec<NodeId>> {
+/// A whole-expanse paint to clear off a 'Merge' layer so a paint tool can start its own chain there.
+pub struct ReplaceablePaintChain {
+	/// Where the fresh paint attaches, which is also the link severed to reach it.
+	pub attachment_input: InputConnector,
+	/// The paint's nodes, ordered downstream to upstream, empty when there is nothing to clear away.
+	pub nodes: Vec<NodeId>,
+}
+
+/// The whole-expanse paint on a 'Merge' layer that a paint tool may take over, or `None`
+/// when the layer isn't one or its chain holds anything the tools didn't put there.
+/// The walk stops at the first node the rest of the graph also draws from, since repainting through it would change
+/// what those other consumers see, and it passes through 'Transform' nodes so a swap keeps the layer's placement.
+pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<ReplaceablePaintChain> {
 	if !network_interface.is_merge(&layer.to_node(), &[]) {
 		return None;
 	}
@@ -333,45 +328,54 @@ pub fn replaceable_paint_chain_nodes(layer: LayerNodeIdentifier, network_interfa
 		graphene_std::math_nodes::gradient_midpoints::IDENTIFIER,
 	];
 
-	let mut replaced_nodes = Vec::new();
+	let mut nodes = Vec::new();
 	let mut input = InputConnector::layer_secondary_input(layer.to_node());
+	// Trails the walk over the 'Transform' nodes that survive, then holds still once the paint to clear away begins
+	let mut attachment_input = input;
 
 	while let Some(upstream) = network_interface.upstream_output_connector(&input, &[]) {
 		let node_id = upstream.node_id()?;
+
+		// Arriving here means this layer consumes the node, so a further consumer makes it shared
+		let shared = network_interface
+			.with_outward_wires(&[], |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id)).is_some_and(|inputs| inputs.len() > 1))
+			.unwrap_or(true);
+		if shared {
+			break;
+		}
+
 		let Some(DefinitionIdentifier::ProtoNode(identifier)) = network_interface.reference(&node_id, &[]) else {
 			return None;
 		};
 
 		if identifier == graphene_std::transform_nodes::transform::IDENTIFIER {
 			input = InputConnector::primary_input(node_id);
+			if nodes.is_empty() {
+				attachment_input = input;
+			}
 			continue;
 		}
 
-		if generators.contains(&identifier) {
-			replaced_nodes.push(node_id);
-			break;
-		}
-
-		if !setters.contains(&identifier) {
+		let generator = generators.contains(&identifier);
+		if !generator && !setters.contains(&identifier) {
 			return None;
 		}
 
-		replaced_nodes.push(node_id);
+		nodes.push(node_id);
+
+		if generator {
+			break;
+		}
+
 		input = InputConnector::primary_input(node_id);
 	}
 
-	Some(replaced_nodes)
+	Some(ReplaceablePaintChain { attachment_input, nodes })
 }
 
 /// Try to find a 'Color Value' node that is connected to a 'Fill' node, or to a layer directly.
 pub fn get_upstream_color_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	let target_input = gradient_chain_target_input(layer, network_interface);
-	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
-
-	network_interface
-		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
-		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
-		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::color_value::IDENTIFIER)))
+	get_upstream_paint_value_node_id(layer, network_interface, graphene_std::math_nodes::color_value::IDENTIFIER)
 }
 
 /// Get the node connected to Fill's fill input, if any.

@@ -328,7 +328,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::NewColorFillLayer { node_id, color, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(node_id);
-				modify_inputs.insert_color_value(color, layer);
+				modify_inputs.insert_color_value(color, layer, InputConnector::layer_secondary_input(layer.to_node()));
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}

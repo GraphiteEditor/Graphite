@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain_nodes,
+	self, NodeGraphLayer, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
 	reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
@@ -1445,7 +1445,7 @@ impl Fsm for GradientToolFsmState {
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || replaceable_paint_chain_nodes(layer, &document.network_interface).is_some())
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || replaceable_paint_chain(layer, &document.network_interface).is_some())
 					});
 
 					// Apply the gradient to the selected layer
@@ -1487,7 +1487,7 @@ impl Fsm for GradientToolFsmState {
 									gradient_spread: tool_options.gradient_spread,
 								},
 								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
-								if replaceable_paint_chain_nodes(layer, &document.network_interface).is_some() {
+								if replaceable_paint_chain(layer, &document.network_interface).is_some() {
 									GradientSource::Chain
 								} else {
 									GradientSource::Direct
