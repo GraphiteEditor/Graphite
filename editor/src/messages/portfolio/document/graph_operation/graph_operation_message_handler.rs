@@ -549,6 +549,17 @@ fn extract_gradient_interpolations(svg: &str) -> HashMap<String, GradientInterpo
 		Err(_) => return result,
 	};
 
+	// The document's `<style>` blocks apply to every element, so parse them once up front
+	let mut stylesheet = simplecss::StyleSheet::new();
+	for style_element in doc.descendants().filter(|node| node.tag_name().name() == "style") {
+		if !matches!(style_element.attribute("type"), None | Some("") | Some("text/css")) {
+			continue;
+		}
+		for text in style_element.children().filter(|child| child.is_text()).filter_map(|child| child.text()) {
+			stylesheet.parse_more(text);
+		}
+	}
+
 	for node in doc.descendants() {
 		match node.tag_name().name() {
 			"linearGradient" | "radialGradient" => {}
@@ -556,7 +567,7 @@ fn extract_gradient_interpolations(svg: &str) -> HashMap<String, GradientInterpo
 		}
 
 		if let Some(gradient_id) = node.attribute("id")
-			&& let Some(gradient_interpolation) = resolve_color_interpolation(node)
+			&& let Some(gradient_interpolation) = resolve_color_interpolation(node, &stylesheet)
 		{
 			result.insert(gradient_id.to_string(), gradient_interpolation);
 		}
@@ -565,20 +576,13 @@ fn extract_gradient_interpolations(svg: &str) -> HashMap<String, GradientInterpo
 	result
 }
 
-/// The `color-interpolation` declared for an element: the nearest self-or-ancestor declaration, with the inline
-/// `style` beating the presentation attribute on the same element per the CSS cascade.
-fn resolve_color_interpolation(element: usvg::roxmltree::Node) -> Option<GradientInterpolation> {
+/// The `color-interpolation` in effect for an element: the nearest self-or-ancestor declaration, taking each
+/// element's own winning declaration per [`declared_color_interpolation`]'s cascade order.
+fn resolve_color_interpolation(element: usvg::roxmltree::Node, stylesheet: &simplecss::StyleSheet) -> Option<GradientInterpolation> {
 	let mut next = Some(element);
 
 	while let Some(element) = next {
-		let from_style = element.attribute("style").and_then(|style| {
-			style.split(';').find_map(|declaration| {
-				let (property, value) = declaration.split_once(':')?;
-				(property.trim() == "color-interpolation").then(|| value.trim())
-			})
-		});
-
-		match from_style.or_else(|| element.attribute("color-interpolation").map(str::trim)) {
+		match declared_color_interpolation(element, stylesheet) {
 			Some("linearRGB") => return Some(GradientInterpolation::SrgbLinear),
 			// `inherit` defers to the ancestors like an undeclared element
 			Some("inherit") | None => {}
@@ -589,6 +593,61 @@ fn resolve_color_interpolation(element: usvg::roxmltree::Node) -> Option<Gradien
 	}
 
 	None
+}
+
+/// The winning `color-interpolation` declaration on a single element per the CSS cascade: `!important` declarations
+/// beat normal ones, the inline `style` beats the `<style>` rules (already specificity-sorted, so their last match
+/// wins), and the presentation attribute yields to them all. Later declarations win priority ties.
+fn declared_color_interpolation<'a>(element: usvg::roxmltree::Node<'a, '_>, stylesheet: &simplecss::StyleSheet<'a>) -> Option<&'a str> {
+	let mut winner: Option<(u8, &'a str)> = None;
+	let mut consider = |priority: u8, value: &'a str| {
+		if winner.is_none_or(|(existing, _)| priority >= existing) {
+			winner = Some((priority, value));
+		}
+	};
+
+	if let Some(value) = element.attribute("color-interpolation") {
+		consider(0, value.trim());
+	}
+
+	for rule in stylesheet.rules.iter().filter(|rule| rule.selector.matches(&CssElement(element))) {
+		for declaration in rule.declarations.iter().filter(|declaration| declaration.name == "color-interpolation") {
+			consider(if declaration.important { 3 } else { 1 }, declaration.value);
+		}
+	}
+
+	if let Some(style) = element.attribute("style") {
+		for declaration in simplecss::DeclarationTokenizer::from(style).filter(|declaration| declaration.name == "color-interpolation") {
+			consider(if declaration.important { 4 } else { 2 }, declaration.value);
+		}
+	}
+
+	winner.map(|(_, value)| value)
+}
+
+/// Adapts a roxmltree element to simplecss's selector-matching interface.
+struct CssElement<'a, 'input>(usvg::roxmltree::Node<'a, 'input>);
+
+impl simplecss::Element for CssElement<'_, '_> {
+	fn parent_element(&self) -> Option<Self> {
+		self.0.parent_element().map(CssElement)
+	}
+
+	fn prev_sibling_element(&self) -> Option<Self> {
+		self.0.prev_sibling_element().map(CssElement)
+	}
+
+	fn has_local_name(&self, local_name: &str) -> bool {
+		self.0.tag_name().name() == local_name
+	}
+
+	fn attribute_matches(&self, local_name: &str, operator: simplecss::AttributeOperator) -> bool {
+		self.0.attribute(local_name).is_some_and(|value| operator.matches(value))
+	}
+
+	fn pseudo_class_matches(&self, class: simplecss::PseudoClass) -> bool {
+		matches!(class, simplecss::PseudoClass::FirstChild) && self.0.prev_sibling_element().is_none()
+	}
 }
 
 /// Pre-parses the raw SVG XML to extract gradient stops that have `graphite:midpoint` attributes.
@@ -979,6 +1038,74 @@ mod tests {
 			interpolations.get("auto"),
 			Some(&GradientInterpolation::SrgbGamma),
 			"auto should mean gamma like browsers treat it, not defer to ancestors"
+		);
+	}
+
+	#[test]
+	fn color_interpolation_reads_style_blocks_with_selector_specificity() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>
+				linearGradient { color-interpolation: linearRGB }
+				.classy { color-interpolation: sRGB }
+				#exact { color-interpolation: linearRGB }
+			</style>
+			<defs>
+				<linearGradient id="from-type-rule"/>
+				<linearGradient id="from-class-rule" class="classy"/>
+				<linearGradient id="exact" class="classy"/>
+				<linearGradient id="inline-beats-rules" class="classy" style="color-interpolation: linearRGB"/>
+				<linearGradient id="rule-beats-attribute" class="classy" color-interpolation="linearRGB"/>
+			</defs>
+		</svg>"##;
+
+		let interpolations = extract_gradient_interpolations(svg);
+		assert_eq!(
+			interpolations.get("from-type-rule"),
+			Some(&GradientInterpolation::SrgbLinear),
+			"a type rule in a style block should reach the gradient"
+		);
+		assert_eq!(
+			interpolations.get("from-class-rule"),
+			Some(&GradientInterpolation::SrgbGamma),
+			"the class rule should outrank the type rule by specificity"
+		);
+		assert_eq!(interpolations.get("exact"), Some(&GradientInterpolation::SrgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(
+			interpolations.get("inline-beats-rules"),
+			Some(&GradientInterpolation::SrgbLinear),
+			"the inline style should beat every style block rule"
+		);
+		assert_eq!(
+			interpolations.get("rule-beats-attribute"),
+			Some(&GradientInterpolation::SrgbGamma),
+			"a style block rule should beat the presentation attribute"
+		);
+	}
+
+	#[test]
+	fn repeated_and_important_declarations_resolve_by_cascade_order() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+			<style>.forced { color-interpolation: linearRGB !important }</style>
+			<linearGradient id="last-declaration-wins" style="color-interpolation: sRGB; color-interpolation: linearRGB"/>
+			<linearGradient id="important-beats-later" style="color-interpolation: linearRGB !important; color-interpolation: sRGB"/>
+			<linearGradient id="important-rule-beats-inline" class="forced" style="color-interpolation: sRGB"/>
+		</svg>"##;
+
+		let interpolations = extract_gradient_interpolations(svg);
+		assert_eq!(
+			interpolations.get("last-declaration-wins"),
+			Some(&GradientInterpolation::SrgbLinear),
+			"the last of repeated inline declarations should win"
+		);
+		assert_eq!(
+			interpolations.get("important-beats-later"),
+			Some(&GradientInterpolation::SrgbLinear),
+			"an `!important` declaration should beat a later normal one"
+		);
+		assert_eq!(
+			interpolations.get("important-rule-beats-inline"),
+			Some(&GradientInterpolation::SrgbLinear),
+			"an `!important` style block rule should beat the inline style"
 		);
 	}
 
