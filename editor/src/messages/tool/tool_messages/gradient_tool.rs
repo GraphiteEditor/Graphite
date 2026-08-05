@@ -231,22 +231,13 @@ impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let mut widgets: Vec<WidgetInstance> = Vec::new();
 
-		let gradient_form = RadioInput::new(vec![
-			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::Form(GradientForm::Linear),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::Form(GradientForm::Radial),
-				}
-				.into()
-			}),
-		])
-		.selected_index(Some((self.options.gradient_form == GradientForm::Radial) as u32))
-		.widget_instance();
+		let gradient_form_entries = RadioEntryData::list_from_choice_type(|gradient_form| {
+			GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::Form(gradient_form),
+			}
+			.into()
+		});
+		let gradient_form = RadioInput::new(gradient_form_entries).selected_index(Some(self.options.gradient_form as u32)).widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
 		let stops_value = self.data.current_gradient_stops.clone().or_else(|| self.data.default_gradient_stops.clone()).unwrap_or_else(|| {
