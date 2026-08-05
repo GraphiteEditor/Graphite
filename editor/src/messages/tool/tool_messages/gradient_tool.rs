@@ -9,15 +9,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_chain_source_gradient_spread, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
-	replaceable_paint_chain, reverse_direction_tooltip_description,
+	self, NodeGraphLayer, get_chain_source_gradient_interpolation, get_chain_source_gradient_spread, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id,
+	gradient_chain_target_input, replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientRamp, GradientSpread, GradientStop, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSpread, GradientStop, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -30,6 +30,7 @@ pub struct GradientTool {
 pub struct GradientOptions {
 	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
+	gradient_interpolation: GradientInterpolation,
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
@@ -138,7 +139,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
 				let ramp = GradientRamp::from(&ramp);
 				self.options.gradient_spread = ramp.gradient_spread;
-				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), ramp.gradient_spread);
+				self.options.gradient_interpolation = ramp.gradient_interpolation;
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), ramp.gradient_spread, ramp.gradient_interpolation);
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -174,6 +176,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					}
 					if self.options.gradient_spread != appearance.gradient_spread {
 						self.options.gradient_spread = appearance.gradient_spread;
+						needs_refresh = true;
+					}
+					if self.options.gradient_interpolation != appearance.gradient_interpolation {
+						self.options.gradient_interpolation = appearance.gradient_interpolation;
 						needs_refresh = true;
 					}
 				}
@@ -256,6 +262,7 @@ impl LayoutHolder for GradientTool {
 		});
 		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp {
 			gradient_spread: self.options.gradient_spread,
+			gradient_interpolation: self.options.gradient_interpolation,
 			..GradientRamp::from(&stops_value)
 		}))
 		.allow_none(false)
@@ -356,6 +363,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 				GradientAppearance {
 					gradient_form: gradient.gradient_form,
 					gradient_spread: gradient.gradient_spread,
+					gradient_interpolation: gradient.gradient_interpolation,
 					transform: gradient.transform,
 				},
 				GradientSource::Direct,
@@ -375,6 +383,7 @@ struct GradientAppearance {
 	transform: DAffine2,
 	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
+	gradient_interpolation: GradientInterpolation,
 }
 
 /// Resolve the gradient transform, form, and spread by walking the chain feeding the layer.
@@ -415,6 +424,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		transform: composed_transform,
 		gradient_form: gradient_form.unwrap_or_default(),
 		gradient_spread: get_chain_source_gradient_spread(layer, network_interface).unwrap_or_default(),
+		gradient_interpolation: get_chain_source_gradient_interpolation(layer, network_interface).unwrap_or_default(),
 	}
 }
 
@@ -751,6 +761,7 @@ impl SelectedGradient {
 					gradient: self.gradient.clone(),
 					gradient_form: self.appearance.gradient_form,
 					gradient_spread: self.appearance.gradient_spread,
+					gradient_interpolation: self.appearance.gradient_interpolation,
 					transform: self.appearance.transform,
 				});
 			}
@@ -788,6 +799,10 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	responses.add(GraphOperationMessage::GradientSpreadSet {
 		layer,
 		gradient_spread: appearance.gradient_spread,
+	});
+	responses.add(GraphOperationMessage::GradientInterpolationSet {
+		layer,
+		gradient_interpolation: appearance.gradient_interpolation,
 	});
 }
 
@@ -1468,6 +1483,7 @@ impl Fsm for GradientToolFsmState {
 									transform: DAffine2::IDENTITY,
 									gradient_form: tool_options.gradient_form,
 									gradient_spread: tool_options.gradient_spread,
+									gradient_interpolation: tool_options.gradient_interpolation,
 								},
 								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
 								if replaceable_paint_chain(layer, &document.network_interface).is_some() {
@@ -1826,6 +1842,7 @@ fn apply_gradient_update(
 					gradient,
 					gradient_form: appearance.gradient_form,
 					gradient_spread: appearance.gradient_spread,
+					gradient_interpolation: appearance.gradient_interpolation,
 					transform: appearance.transform,
 				});
 			}
@@ -1849,7 +1866,14 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, gradient_spread: GradientSpread) {
+fn apply_stops_update(
+	data: &mut GradientToolData,
+	context: &mut ToolActionMessageContext,
+	responses: &mut VecDeque<Message>,
+	new_gradient: Gradient,
+	gradient_spread: GradientSpread,
+	gradient_interpolation: GradientInterpolation,
+) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -1866,6 +1890,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 		if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
 			responses.add(GraphOperationMessage::GradientSpreadSet { layer, gradient_spread });
+			responses.add(GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation });
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {
@@ -1873,6 +1898,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 				gradient: new_gradient.clone(),
 				gradient_form: appearance.gradient_form,
 				gradient_spread,
+				gradient_interpolation,
 				transform: appearance.transform,
 			});
 			updated_any_layer = true;
@@ -1882,6 +1908,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 	if let Some(selected_gradient) = &mut data.selected_gradient {
 		selected_gradient.gradient = new_gradient.clone();
 		selected_gradient.appearance.gradient_spread = gradient_spread;
+		selected_gradient.appearance.gradient_interpolation = gradient_interpolation;
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.

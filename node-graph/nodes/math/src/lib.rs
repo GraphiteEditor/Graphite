@@ -12,7 +12,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
-use vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
+use vector_types::markers::{GradientForm as GradientFormAttr, GradientInterpolation as GradientInterpolationAttr, GradientSpread as GradientSpreadAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1215,6 +1215,12 @@ fn gradient_spread(_: impl Ctx, gradient: Gradient, gradient_spread: vector_type
 	(gradient, Attr(gradient_spread))
 }
 
+/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+#[node_macro::node(category("Gradient"))]
+fn gradient_interpolation(_: impl Ctx, gradient: Gradient, gradient_interpolation: vector_types::GradientInterpolation) -> (Gradient, Attr<GradientInterpolationAttr>) {
+	(gradient, Attr(gradient_interpolation))
+}
+
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
@@ -1239,12 +1245,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>)
 
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear.
 #[node_macro::node(category("Color"))]
-fn sample_gradient(
-	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
-	_primary: (),
-	#[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>,
-	position: Fraction,
-) -> Result<IList<Color>, Interrupt> {
+fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>, position: Fraction) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
 	if gradient.is_empty() || ctx.index() != 0 {
 		return Err(GraphError::past_end().into());
@@ -1447,7 +1448,16 @@ mod test {
 
 	#[test]
 	pub fn lerp_endpoints_are_exact() {
-		let lerp_between = |factor, clamped| lerp(&(), 3., 7., factor, clamped);
+		let lerp_between = |factor, clamped| {
+			lerp(
+				&(),
+				3.,
+				7.,
+				factor,
+				clamped,
+			)
+			
+		};
 		assert_eq!(lerp_between(0., true), 3.);
 		assert_eq!(lerp_between(1., true), 7.);
 		assert_eq!(lerp_between(0.5, true), 5.);
@@ -1455,14 +1465,32 @@ mod test {
 
 	#[test]
 	pub fn lerp_clamped_and_extrapolated() {
-		let lerp_between = |factor, clamped| lerp(&(), 0., 10., factor, clamped);
+		let lerp_between = |factor, clamped| {
+			lerp(
+				&(),
+				0.,
+				10.,
+				factor,
+				clamped,
+			)
+			
+		};
 		assert_eq!(lerp_between(2., true), 10.);
 		assert_eq!(lerp_between(2., false), 20.);
 	}
 
 	#[test]
 	pub fn lerp_endpoint_factors_pass_endpoints_through() {
-		let lerp_between = |start: f64, end: f64, factor| lerp(&(), start, end, factor, true);
+		let lerp_between = |start: f64, end: f64, factor| {
+			lerp(
+				&(),
+				start,
+				end,
+				factor,
+				true,
+			)
+			
+		};
 		assert_eq!(lerp_between(3., f64::INFINITY, 0.), 3.);
 		assert_eq!(lerp_between(f64::NAN, 7., 1.), 7.);
 		assert_eq!(lerp_between(3., f64::INFINITY, 1.), f64::INFINITY);
@@ -1518,8 +1546,14 @@ mod test {
 
 	#[test]
 	pub fn logarithm_f32_base_e_and_near_e() {
-		assert_eq!(logarithm(&(), 8_f32, std::f32::consts::E), 8_f64.ln() as f32);
-		assert_eq!(logarithm(&(), 8_f32, 2.7_f32), 8_f64.log(2.7_f32 as f64) as f32);
+		assert_eq!(
+			logarithm(&(), 8_f32, std::f32::consts::E),
+			8_f64.ln() as f32
+		);
+		assert_eq!(
+			logarithm(&(), 8_f32, 2.7_f32),
+			8_f64.log(2.7_f32 as f64) as f32
+		);
 	}
 
 	#[test]
