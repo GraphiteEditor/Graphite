@@ -3067,6 +3067,46 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn chain_started_past_a_transform_sits_beside_it() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer_id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: layer_id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = LayerNodeIdentifier::new_unchecked(layer_id);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_id] }).await;
+		// Sitting away from where fresh nodes are dropped, so the chain's placement can't coincide with it
+		editor.active_document_mut().network_interface.shift_node(&layer_id, IVec2::new(20, 4), &[]);
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		let transform_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&InputConnector::layer_secondary_input(layer_id), &[])
+			.and_then(|output| output.node_id())
+			.expect("the drag's placement should leave a Transform node feeding the layer");
+
+		// Each chain node sits one chain width left of the one it feeds, so the new value node lands beside the Transform
+		let network_interface = &editor.active_document().network_interface;
+		let gradient_value_id = get_upstream_gradient_value_node_id(layer, network_interface).expect("the drag should start a gradient chain");
+		let layer_position = network_interface.position(&layer_id, &[]).expect("the layer should have a position");
+		assert_eq!(network_interface.position(&transform_id, &[]), Some(layer_position - IVec2::new(crate::consts::NODE_CHAIN_WIDTH, 0)));
+		assert_eq!(
+			network_interface.position(&gradient_value_id, &[]),
+			Some(layer_position - IVec2::new(2 * crate::consts::NODE_CHAIN_WIDTH, 0))
+		);
+		assert!(network_interface.is_chain(&gradient_value_id, &[]), "the value node should stay part of the layer's chain");
+	}
+
+	#[tokio::test]
 	async fn drag_on_nudged_blank_layer_reuses_its_transform() {
 		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
 		use graph_craft::document::NodeId;
