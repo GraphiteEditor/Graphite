@@ -7,9 +7,9 @@ declare their attribute reads and writes in their signatures, and the
 compiler resolves every access to a byte offset during wiring, so there is
 no name lookup at runtime. Storage and batch results are per-attribute
 columns. The contiguous record only exists as a per-lane view, assembled
-into buffers the compiler assigns. All of the machinery that could
-corrupt a layout is generated code, so getting it wrong is a type error or
-a graph compile error rather than undefined behavior.
+into activation frames on a per-thread record stack. All of the machinery
+that could corrupt a layout is generated code, so getting it wrong is a
+type error or a graph compile error rather than undefined behavior.
 
 # Motivation
 
@@ -484,9 +484,9 @@ make semantic mistakes (evaluating an input it did not need to) but
 cannot misalign an offset. Kernels see contexts only as an opaque
 `impl Ctx + ...` they cannot construct, and lifetimes keep them from
 stashing handles in node state. The one remaining discipline lives
-inside generated code (a result buffer must not be borrowed across a
-sibling evaluation it could alias), and debug assertions guard it at
-wiring boundaries, following the existing precedent for TypeId checks.
+inside generated code (a borrow of a released frame must not survive the
+next claim), and debug assertions guard it at wiring boundaries,
+following the existing precedent for TypeId checks.
 
 # Drawbacks
 
@@ -515,8 +515,8 @@ wiring boundaries, following the existing precedent for TypeId checks.
   per value, and no compile-time name checking. Interning the keys
   improves the constant (about 1.9ns per access vs. 0.43 for a resolved
   offset) but keeps a per-access search and rules out the structural
-  optimizations that need static layouts: bypass, uniform columns, slot
-  coalescing.
+  optimizations that need static layouts: bypass, uniform columns,
+  stack-allocated activation frames.
 - Attributes as separate graph edges, one channel per attribute: bypass
   and per-channel caching become graph structure. We prototyped and
   measured this. Without caching at fan-outs, every channel re-evaluates
