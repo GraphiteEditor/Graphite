@@ -14,7 +14,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientForm, GradientSpread, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSpread, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
@@ -388,13 +388,23 @@ pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &No
 	Some(*node_id)
 }
 
-/// The spread baked into the 'Gradient Value' node feeding a layer's chain.
-pub fn get_chain_source_gradient_spread(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSpread> {
+/// The ramp held by the 'Gradient Value' node feeding a layer's chain, which carries the whole-ramp settings.
+fn get_chain_source_gradient_ramp<'a>(layer: LayerNodeIdentifier, network_interface: &'a NodeNetworkInterface) -> Option<&'a GradientRamp> {
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
 	let TaggedValue::GradientRamp(ramp) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
 		return None;
 	};
-	Some(ramp.gradient_spread)
+	Some(ramp)
+}
+
+/// The spread baked into the 'Gradient Value' node feeding a layer's chain.
+pub fn get_chain_source_gradient_spread(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSpread> {
+	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_spread)
+}
+
+/// The interpolation baked into the 'Gradient Value' node feeding a layer's chain.
+pub fn get_chain_source_gradient_interpolation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientInterpolation> {
+	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_interpolation)
 }
 
 /// Get the gradient stops of a layer, if any.
@@ -752,6 +762,7 @@ pub struct FillNodeGradient {
 	pub stops: Gradient,
 	pub gradient_form: GradientForm,
 	pub gradient_spread: GradientSpread,
+	pub gradient_interpolation: GradientInterpolation,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
@@ -765,6 +776,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		return None;
 	};
 	let gradient_spread = ramp.gradient_spread;
+	let gradient_interpolation = ramp.gradient_interpolation;
 	let stops = Gradient::from(ramp);
 	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientForm(value)) => value,
@@ -782,6 +794,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		stops,
 		gradient_form,
 		gradient_spread,
+		gradient_interpolation,
 		transform,
 		transform_is_value: transform_input.is_some(),
 	})
@@ -931,6 +944,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					gradient: Gradient::from(ramp),
 					gradient_form,
 					gradient_spread: ramp.gradient_spread,
+					gradient_interpolation: ramp.gradient_interpolation,
 					transform,
 				});
 			}

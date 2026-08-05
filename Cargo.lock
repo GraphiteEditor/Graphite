@@ -2386,6 +2386,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "simplecss",
  "spin",
  "thiserror 2.0.18",
  "tokio",
