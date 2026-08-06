@@ -1015,31 +1015,32 @@ impl GradientSpread {
 pub enum GradientSpace {
 	/// Blends stops in the OkLab perceptual color space, keeping transitions visually even.
 	#[default]
-	#[label("OkLab")]
+	#[label("Perceptual (OkLab)")]
 	OkLab,
 	/// Blends stops in the polar form of OkLab, arcing through hue instead of fading through gray.
-	#[label("OkLCh")]
+	#[label("Perceptual (OkLCh)")]
 	OkLCh,
-	/// Blends stops in the CIE Lab color space, the classic perceptual standard.
+	/// Blends stops in the CIE Lab color space, the longtime perceptual standard.
+	#[label("Perceptual (Lab)")]
 	Lab,
 	/// Blends stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
-	#[label("LCh")]
+	#[label("Perceptual (LCh)")]
 	LCh,
-	/// Blends stops in the classic hue, saturation, and lightness cylinder.
-	#[menu_separator]
-	#[label("HSL")]
-	Hsl,
-	/// Blends stops in the classic hue, saturation, and value cylinder, keeping tints at full brightness.
-	#[label("HSV")]
-	Hsv,
 	/// Blends stops in linear light, keeping transitions evenly bright.
+	#[menu_separator]
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbLinear"))]
-	#[label("RGB Linear")]
+	#[label("Linear (RGB)")]
 	RgbLinear,
 	/// Blends stops in gamma-encoded RGB, the classic SVG and CSS look.
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbGamma"))]
-	#[label("RGB Gamma")]
+	#[label("Classic (RGB)")]
 	RgbGamma,
+	/// Blends stops in the hue, saturation, and value cylinder, keeping tints at full brightness.
+	#[label("Classic Hue (HSV)")]
+	Hsv,
+	/// Blends stops in the hue, saturation, and lightness cylinder.
+	#[label("Classic Hue (HSL)")]
+	Hsl,
 }
 
 impl GradientSpace {
