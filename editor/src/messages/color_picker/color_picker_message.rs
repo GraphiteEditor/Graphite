@@ -49,9 +49,9 @@ pub enum ColorPickerMessage {
 	GradientUpdate { update: SpectrumInputUpdate },
 	/// Gradient spread choice from the gradient "Ends" selection.
 	SetGradientSpread { gradient_spread: GradientSpread },
-	/// Gradient space choice: the color space the stops blend in, from the "Space" dropdown.
+	/// Gradient space choice: the color space the stops interpolate in, from the "Space" dropdown.
 	SetGradientSpace { gradient_space: GradientSpace },
-	/// Gradient hue direction choice: which way around the hue wheel the stops blend in a polar space, from the "Hue Direction" dropdown.
+	/// Gradient hue direction choice: which way around the hue wheel the stops interpolate in a polar space, from the "Arc" dropdown.
 	SetGradientHueDirection { gradient_hue_direction: GradientHueDirection },
 
 	/// Tell the frontend to start an undo transaction (forwarded as a `FrontendMessage` it bridges out to the picker's parent).

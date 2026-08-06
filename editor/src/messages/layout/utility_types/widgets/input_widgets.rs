@@ -586,10 +586,10 @@ pub struct SpectrumInput {
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
 	pub track: GradientStops<SRGBA8>,
-	/// The color space the track's stops blend in, used to compute `track_css`. Not sent to the frontend.
+	/// The color space the track's stops interpolate in, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_space: GradientSpace,
-	/// The hue direction the track's stops blend with in a polar space, used to compute `track_css`. Not sent to the frontend.
+	/// The hue direction the track's stops interpolate with in a polar space, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_hue_direction: GradientHueDirection,
 	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.

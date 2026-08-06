@@ -760,8 +760,8 @@ const SATURATION_DESCRIPTION: &str = "The vividness from grayscale to full color
 const VALUE_DESCRIPTION: &str = "The brightness from black to full color.";
 const ALPHA_DESCRIPTION: &str = "The level of translucency, from transparent (0%) to opaque (100%).";
 const ENDS_DESCRIPTION: &str = "The method for how the gradient continues beyond its ends.";
-const SPACE_DESCRIPTION: &str = "The color space where stops blend into their neighbors.";
-const HUE_DIRECTION_DESCRIPTION: &str = "Which way around the hue wheel the stops blend.";
+const SPACE_DESCRIPTION: &str = "The color space where stops interpolate toward their neighbors.";
+const HUE_DIRECTION_DESCRIPTION: &str = "Which way around the hue wheel the stops interpolate.";
 
 /// The popover's background color as sRGB gamma-encoded channels (the `--color-2-mildblack` design token, `#222`).
 /// Used by the comparison swatch's outline computation to brighten the inset border for colors close to this background.

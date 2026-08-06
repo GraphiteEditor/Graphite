@@ -299,7 +299,7 @@ pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_
 	}
 }
 
-/// Mix two colors in the color space `CS`, with alpha blending linearly like the sRGB spaces.
+/// Mix two colors in the color space `CS`, with alpha interpolating linearly like the sRGB spaces.
 /// Polar spaces arc through hue per the direction, with an achromatic endpoint's powerless hue adopting the other's per CSS.
 /// The mix can land slightly outside the sRGB gamut; it stays unclamped here and clips at render encoding.
 fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, gradient_hue_direction: GradientHueDirection) -> Color {
@@ -1013,32 +1013,32 @@ impl GradientSpread {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum GradientSpace {
-	/// Blends stops in the OkLab perceptual color space, keeping transitions visually even.
+	/// Interpolates between stops in the OkLab perceptual color space, keeping transitions visually even.
 	#[default]
 	#[label("Perceptual (OkLab)")]
 	OkLab,
-	/// Blends stops in the polar form of OkLab, arcing through hue instead of fading through gray.
+	/// Interpolates between stops in the polar form of OkLab, arcing through hue instead of fading through gray.
 	#[label("Perceptual (OkLCh)")]
 	OkLCh,
-	/// Blends stops in the CIE Lab color space, the longtime perceptual standard.
+	/// Interpolates between stops in the CIE Lab color space, the longtime perceptual standard.
 	#[label("Perceptual (Lab)")]
 	Lab,
-	/// Blends stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
+	/// Interpolates between stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
 	#[label("Perceptual (LCh)")]
 	LCh,
-	/// Blends stops in linear light, keeping transitions evenly bright.
+	/// Interpolates between stops in linear light, keeping transitions evenly bright.
 	#[menu_separator]
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbLinear"))]
 	#[label("Linear (RGB)")]
 	RgbLinear,
-	/// Blends stops in gamma-encoded RGB, the classic SVG and CSS look.
+	/// Interpolates between stops in gamma-encoded RGB, the classic SVG and CSS look.
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbGamma"))]
 	#[label("Classic (RGB)")]
 	RgbGamma,
-	/// Blends stops in the hue, saturation, and value cylinder, keeping tints at full brightness.
+	/// Interpolates between stops in the hue, saturation, and value cylinder, keeping tints at full brightness.
 	#[label("Classic Hue (HSV)")]
 	Hsv,
-	/// Blends stops in the hue, saturation, and lightness cylinder.
+	/// Interpolates between stops in the hue, saturation, and lightness cylinder.
 	#[label("Classic Hue (HSL)")]
 	Hsl,
 }
@@ -1065,14 +1065,14 @@ impl GradientSpace {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum GradientHueDirection {
-	/// Blends across the shorter arc around the hue wheel.
+	/// Interpolates across the shorter arc around the hue wheel.
 	#[default]
 	Shorter,
-	/// Blends across the longer arc around the hue wheel.
+	/// Interpolates across the longer arc around the hue wheel.
 	Longer,
-	/// Blends with the hue angle always increasing.
+	/// Interpolates with the hue angle always increasing.
 	Increasing,
-	/// Blends with the hue angle always decreasing.
+	/// Interpolates with the hue angle always decreasing.
 	Decreasing,
 }
 
@@ -1403,7 +1403,7 @@ mod tests {
 			assert!((channel - expected).abs() < 1e-3, "the HSL mid color of red and blue should be magenta, got {magenta:?}");
 		}
 
-		// White's hue is powerless, so an OkLCh blend toward it keeps red's hue instead of drifting toward white's arbitrary hue
+		// White's hue is powerless, so an OkLCh interpolation toward it keeps red's hue instead of drifting toward white's arbitrary hue
 		let red_to_white = Gradient::from(vec![Color::RED, Color::WHITE]);
 		let pink = red_to_white.evaluate(0.5, Default::default(), GradientSpace::OkLCh, Default::default());
 		let [_, _, red_hue] = color::Oklch::from_linear_srgb([Color::RED.r(), Color::RED.g(), Color::RED.b()]);

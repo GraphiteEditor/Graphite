@@ -60,10 +60,10 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
-/// Gradient's `GradientSpace`, the color space its stops blend in.
+/// Gradient's `GradientSpace`, the color space its stops interpolate in.
 pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
 /// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
-/// hue wheel the stops blend when the interpolation space is polar.
+/// hue wheel the stops interpolate when the gradient space is polar.
 pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";
 /// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
 /// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
