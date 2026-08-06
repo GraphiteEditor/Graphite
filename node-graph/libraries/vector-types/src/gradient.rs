@@ -1017,21 +1017,21 @@ pub enum GradientSpace {
 	#[default]
 	#[label("Perceptual (OkLab)")]
 	OkLab,
-	/// Interpolates between stops in the polar form of OkLab, arcing through hue instead of fading through gray.
-	#[label("Perceptual (OkLCh)")]
-	OkLCh,
 	/// Interpolates between stops in the CIE Lab color space, the longtime perceptual standard.
 	#[label("Perceptual (Lab)")]
 	Lab,
+	/// Interpolates between stops in the polar form of OkLab, arcing through hue instead of fading through gray.
+	#[label("Perceptual Hue (OkLCh)")]
+	OkLCh,
 	/// Interpolates between stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
-	#[label("Perceptual (LCh)")]
+	#[label("Perceptual Hue (LCh)")]
 	LCh,
 	/// Interpolates between stops in linear light, keeping transitions evenly bright.
 	#[menu_separator]
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbLinear"))]
 	#[label("Linear (RGB)")]
 	RgbLinear,
-	/// Interpolates between stops in gamma-encoded RGB, the classic SVG and CSS look.
+	/// Interpolates between stops in gamma-encoded RGB, matching classic SVG and CSS gradients.
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbGamma"))]
 	#[label("Classic (RGB)")]
 	RgbGamma,
