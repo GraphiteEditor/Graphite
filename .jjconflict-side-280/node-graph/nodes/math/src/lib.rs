@@ -13,7 +13,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::GradientStops;
-use vector_types::markers::{GradientForm as GradientFormAttr, GradientSpread as GradientSpreadAttr};
+use vector_types::markers::{GradientForm as GradientFormAttr, GradientInterpolation as GradientInterpolationAttr, GradientSpread as GradientSpreadAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1349,7 +1349,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: GradientStops, midpoints: List<
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: IList<GradientStops>, position: Fraction) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
@@ -1359,7 +1359,8 @@ fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: 
 
 	// Master reads the gradient spread off the item; ours rides the gradient's own lane.
 	let gradient_spread = gradient.lane(0).attr::<GradientSpreadAttr>();
-	Ok(gradient.element_ref(0).evaluate(position, gradient_spread))
+	let gradient_interpolation = gradient.lane(0).attr::<GradientInterpolationAttr>();
+	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_interpolation))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.

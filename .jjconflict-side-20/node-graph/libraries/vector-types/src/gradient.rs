@@ -549,8 +549,8 @@ impl Gradient {
 	/// Insert a new stop at the given position, sampling the gradient at that position to determine the new stop's color.
 	/// The new stop's midpoint is inherited from the interval it splits (or `0.5` if inserting at the very start).
 	/// Returns the index where the new stop was inserted.
-	pub fn insert_stop(&mut self, position: f64) -> usize {
-		let color = self.evaluate(position, Default::default());
+	pub fn insert_stop(&mut self, position: f64, gradient_interpolation: GradientInterpolation) -> usize {
+		let color = self.evaluate(position, Default::default(), gradient_interpolation);
 		let index = (0..self.len()).position(|i| self.position(i) > position).unwrap_or(self.len());
 		let midpoint = if index > 0 { self.midpoint(index - 1) } else { 0.5 };
 		self.insert_stop_values(position, midpoint, color)
@@ -631,7 +631,7 @@ impl Gradient {
 	}
 
 	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the `gradient_spread` determines how the gradient extends.
-	pub fn evaluate(&self, t: f64, gradient_spread: GradientSpread) -> Color {
+	pub fn evaluate(&self, t: f64, gradient_spread: GradientSpread, gradient_interpolation: GradientInterpolation) -> Color {
 		let t = match gradient_spread {
 			GradientSpread::Pad => t.clamp(0., 1.),
 			GradientSpread::Repeat => t.rem_euclid(1.),
@@ -661,8 +661,7 @@ impl Gradient {
 			if t >= a.position && t <= b.position {
 				let normalized_t = (t - a.position) / (b.position - a.position);
 				let adjusted_t = apply_midpoint(normalized_t, a.midpoint);
-				// Sampling deliberately stays in linear light; the ramp's interpolation space attribute only shapes what the renderers draw
-				return a.color.lerp(&b.color, adjusted_t as f32);
+				return interpolate_stop_colors(a.color, b.color, adjusted_t as f32, gradient_interpolation);
 			}
 		}
 
@@ -966,7 +965,7 @@ mod tests {
 	fn default_is_empty_and_black_to_white_is_the_artist_starting_gradient() {
 		assert!(Gradient::default().is_empty());
 		assert_eq!(Gradient::black_to_white().positions(), vec![0., 1.]);
-		assert_eq!(Gradient::default().evaluate(0.5, Default::default()), Color::BLACK);
+		assert_eq!(Gradient::default().evaluate(0.5, Default::default(), Default::default()), Color::BLACK);
 	}
 
 	#[test]
@@ -1156,16 +1155,28 @@ mod tests {
 	fn clear_spread_evaluates_to_transparency_outside_the_unit_range() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
-		assert_eq!(gradient.evaluate(-0.25, GradientSpread::Clear), Color::TRANSPARENT);
-		assert_eq!(gradient.evaluate(1.25, GradientSpread::Clear), Color::TRANSPARENT);
+		assert_eq!(gradient.evaluate(-0.25, GradientSpread::Clear, Default::default()), Color::TRANSPARENT);
+		assert_eq!(gradient.evaluate(1.25, GradientSpread::Clear, Default::default()), Color::TRANSPARENT);
 
 		for t in [0., 0.25, 1.] {
 			assert_eq!(
-				gradient.evaluate(t, GradientSpread::Clear),
-				gradient.evaluate(t, GradientSpread::Pad),
+				gradient.evaluate(t, GradientSpread::Clear, Default::default()),
+				gradient.evaluate(t, GradientSpread::Pad, Default::default()),
 				"inside the range Clear must match Pad at t = {t}"
 			);
 		}
+	}
+
+	#[test]
+	fn evaluate_follows_the_interpolation_space() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		let linear = gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbLinear);
+		let gamma = gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbGamma);
+
+		assert_eq!(linear, Color::BLACK.lerp(&Color::WHITE, 0.5));
+		assert_eq!(gamma, Color::BLACK.lerp_gamma_srgb(&Color::WHITE, 0.5));
+		assert_ne!(linear, gamma, "the two spaces must produce different mid colors between black and white");
 	}
 
 	#[test]
@@ -1208,8 +1219,8 @@ mod tests {
 		assert_eq!(sample_positions.first(), Some(&0.));
 		assert_eq!(sample_positions.last(), Some(&1.));
 
-		assert_eq!(gradient.evaluate(0., Default::default()), Color::RED);
-		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
+		assert_eq!(gradient.evaluate(0., Default::default(), Default::default()), Color::RED);
+		assert_eq!(gradient.evaluate(1., Default::default(), Default::default()), Color::WHITE);
 	}
 
 	#[test]
@@ -1219,8 +1230,8 @@ mod tests {
 
 		let sample_positions: Vec<f64> = gradient.interpolated_samples(GradientInterpolation::SrgbGamma).iter().map(|(position, ..)| *position).collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
-		assert_eq!(gradient.evaluate(0., Default::default()), Color::BLACK);
-		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
+		assert_eq!(gradient.evaluate(0., Default::default(), Default::default()), Color::BLACK);
+		assert_eq!(gradient.evaluate(1., Default::default(), Default::default()), Color::WHITE);
 	}
 
 	#[test]
@@ -1230,7 +1241,7 @@ mod tests {
 
 		let sample_positions: Vec<f64> = gradient.interpolated_samples(GradientInterpolation::SrgbGamma).iter().map(|(position, ..)| *position).collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
-		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::WHITE.lerp(&Color::RED, 0.5));
+		assert_eq!(gradient.evaluate(0.5, Default::default(), Default::default()), Color::WHITE.lerp(&Color::RED, 0.5));
 
 		// A non-finite position is preserved as nondefault so write-back elision cannot resurrect the dropped stop
 		assert!(gradient.nondefault_positions().is_some());
@@ -1239,7 +1250,7 @@ mod tests {
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::RED]);
 		gradient.set_positions(&[f64::NAN, f64::NAN]);
 		assert!(gradient.interpolated_samples(GradientInterpolation::SrgbGamma).is_empty());
-		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::BLACK);
+		assert_eq!(gradient.evaluate(0.5, Default::default(), Default::default()), Color::BLACK);
 	}
 
 	#[test]
@@ -1254,10 +1265,10 @@ mod tests {
 	#[test]
 	fn nan_midpoints_read_as_linear() {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
-		let linear_result = gradient.evaluate(0.25, Default::default());
+		let linear_result = gradient.evaluate(0.25, Default::default(), Default::default());
 
 		gradient.set_midpoints(&[f64::NAN, f64::NAN]);
-		assert_eq!(gradient.evaluate(0.25, Default::default()), linear_result);
+		assert_eq!(gradient.evaluate(0.25, Default::default(), Default::default()), linear_result);
 		let no_nan_annotations = gradient
 			.interpolated_samples(GradientInterpolation::SrgbGamma)
 			.iter()
