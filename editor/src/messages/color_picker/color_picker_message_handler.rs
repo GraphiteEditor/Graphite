@@ -698,7 +698,7 @@ impl ColorPickerMessageHandler {
 				.widget_instance(),
 		]));
 
-		// Gradient spread (only present when the picker is in gradient mode)
+		// Gradient spread, trailed by the cyclic wrap toggle (only present when the picker is in gradient mode)
 		if self.gradient.is_some() {
 			let entries = RadioEntryData::list_from_choice_type(|gradient_spread| ColorPickerMessage::SetGradientSpread { gradient_spread }.into());
 
@@ -706,16 +706,12 @@ impl ColorPickerMessageHandler {
 				TextLabel::new("Ends").tooltip_label("Gradient Spread").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				RadioInput::new(entries).selected_index(Some(self.gradient_spread as u32)).disabled(self.disabled).widget_instance(),
-			]));
-		}
-
-		// Gradient cyclic wrap (only present when the picker is in gradient mode)
-		if self.gradient.is_some() {
-			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Cyclic").tooltip_label("Gradient Cyclic").tooltip_description(CYCLIC_DESCRIPTION).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				CheckboxInput::new(self.gradient_cyclic)
+					.icon("Link")
 					.disabled(self.disabled)
+					.tooltip_label("Gradient Cyclic")
+					.tooltip_description(CYCLIC_DESCRIPTION)
 					.on_update(|checkbox_input: &CheckboxInput| {
 						ColorPickerMessage::SetGradientCyclic {
 							gradient_cyclic: checkbox_input.checked,
