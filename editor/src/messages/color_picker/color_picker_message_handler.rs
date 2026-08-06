@@ -368,7 +368,7 @@ impl ColorPickerMessageHandler {
 				gradient.set_midpoint(index as usize, position.clamp(MIN_MIDPOINT, MAX_MIDPOINT));
 			}
 			SpectrumInputUpdate::InsertMarker { position } => {
-				let new_index = gradient.insert_stop(position);
+				let new_index = gradient.insert_stop(position, self.gradient_interpolation);
 				self.active_marker_index = Some(new_index as u32);
 				self.active_marker_is_midpoint = false;
 				if let Some(color) = gradient.color(new_index) {
