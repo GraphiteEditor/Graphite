@@ -531,9 +531,17 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
-				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient(spectrum_input.track_space, spectrum_input.track_hue_direction);
-				spectrum_input.track_start_css = spectrum_input.track.color.first().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
-				spectrum_input.track_end_css = spectrum_input.track.color.last().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_css = spectrum_input
+					.track
+					.to_css_linear_gradient(spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrap segment's boundary-crossing color rather than the outermost stops'
+				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
+				let cap = |t: f64| {
+					let color = track_gradient.evaluate(t, Default::default(), spectrum_input.track_cyclic, spectrum_input.track_space, spectrum_input.track_hue_direction);
+					SRGBA8::from(color).to_css_hex()
+				};
+				spectrum_input.track_start_css = cap(0.);
+				spectrum_input.track_end_css = cap(1.);
 			}
 			Widget::ColorComparisonInput(comparison) => {
 				let contrasting = |color: Option<SRGBA8>| color.map_or(SRGBA8::BLACK, |color| color.contrasting_text_color()).to_css_hex();

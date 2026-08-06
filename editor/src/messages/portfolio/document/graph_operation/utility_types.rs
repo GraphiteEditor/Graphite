@@ -432,12 +432,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn fill_gradient_set(
 		&mut self,
 		gradient: Gradient,
 		gradient_form: GradientForm,
 		gradient_spread: GradientSpread,
 		gradient_space: GradientSpace,
+		gradient_cyclic: bool,
 		gradient_hue_direction: GradientHueDirection,
 		transform: DAffine2,
 	) {
@@ -450,6 +452,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let ramp = GradientRamp {
 			gradient_spread,
 			gradient_space,
+			gradient_cyclic,
 			gradient_hue_direction,
 			..ramp
 		};
@@ -787,6 +790,19 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
 
 		let ramp = GradientRamp { gradient_space, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Set the cyclic wrap flag on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_cyclic_set(&mut self, gradient_cyclic: bool) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_cyclic, ..ramp };
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}

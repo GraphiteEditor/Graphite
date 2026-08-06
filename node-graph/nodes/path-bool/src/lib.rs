@@ -1,7 +1,7 @@
 use core_types::list::{ATTR_FILL, Item, ItemAttributeValues, List};
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY,
-	ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE,
+	ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, Ctx,
 };
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
@@ -292,6 +292,9 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						}
 						if let Some(gradient_space) = attributes.remove::<GradientSpace>(ATTR_GRADIENT_SPACE) {
 							gradient_paint.set_attribute(ATTR_GRADIENT_SPACE, 0, gradient_space);
+						}
+						if let Some(gradient_cyclic) = attributes.remove::<bool>(ATTR_GRADIENT_CYCLIC) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_CYCLIC, 0, gradient_cyclic);
 						}
 						if let Some(gradient_hue_direction) = attributes.remove::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION) {
 							gradient_paint.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, 0, gradient_hue_direction);

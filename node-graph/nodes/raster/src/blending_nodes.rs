@@ -42,21 +42,21 @@ mod blend_std {
 	}
 	impl Blend<Color> for Gradient {
 		// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
-		// it evaluates both sources with the default spread and space rather than their own attributes (which this
-		// element-level impl cannot read); and the output keeps over's attributes despite being sampled in the default space
+		// it evaluates both sources with default whole-ramp attributes rather than their own (which this
+		// element-level impl cannot read); and the output keeps over's attributes despite being sampled with defaults
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut combined_stops = self.positions().into_iter().chain(under.positions()).collect::<Vec<_>>();
+			let mut combined_stops = self.positions(false).into_iter().chain(under.positions(false)).collect::<Vec<_>>();
 			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 			let stops = combined_stops.into_iter().map(|position| {
-				let over_color = self.evaluate(position, Default::default(), Default::default(), Default::default());
-				let under_color = under.evaluate(position, Default::default(), Default::default(), Default::default());
+				let over_color = self.evaluate(position, Default::default(), false, Default::default(), Default::default());
+				let under_color = under.evaluate(position, Default::default(), false, Default::default(), Default::default());
 				let color = blend_fn(over_color, under_color);
 				GradientStop { position, midpoint: 0.5, color }
 			});
 
 			let mut gradient = Gradient::new(stops);
-			gradient.elide_default_attributes();
+			gradient.elide_default_attributes(false);
 			gradient
 		}
 	}
