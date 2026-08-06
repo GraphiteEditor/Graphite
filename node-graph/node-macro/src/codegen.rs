@@ -2149,54 +2149,24 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 		return quote!();
 	}
 
-	let ref_output_inner = match slot_value_type(&parsed.output_type) {
-		Type::Reference(reference) => Some((*reference.elem).clone()),
-		_ => None,
-	};
-	if let Some(inner) = &ref_output_inner {
-		let ctx_ident = context_param(parsed).map(|ctx| ctx.ident.clone());
-		let open_generics = parsed.fn_generics.iter().filter_map(|param| match param {
-			GenericParam::Type(type_param) if Some(&type_param.ident) != ctx_ident.as_ref() => Some(&type_param.ident),
-			_ => None,
-		});
-		if open_generics.into_iter().any(|generic| type_contains_ident(inner, generic)) {
-			return quote!();
-		}
+	if matches!(slot_value_type(&parsed.output_type), Type::Reference(_)) {
+		return quote!();
 	}
 
 	let fn_name = &parsed.fn_name;
 	let entries_name = format_ident!("{}_entries", fn_name);
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
-	let lend_flags: Vec<bool> = regular_fields
-		.iter()
-		.map(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })))
-		.collect();
 
 	let entries = rows.iter().map(|row| {
-		let input_types = row.iter().zip(&lend_flags).map(|(ty, lend)| match lend {
-			true => quote!(gcore::registry::lend_edge_type::<#ty>()),
-			false => quote!(gcore::registry::edge_type::<#ty>()),
-		});
-		let edge_types = row.iter().zip(&lend_flags).map(|(ty, lend)| match lend {
-			true => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedLendNode<#ty>>),
-			false => quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>),
-		});
+		let input_types = row.iter().map(|ty| quote!(gcore::registry::edge_type::<#ty>()));
+		let edge_types = row.iter().map(|ty| quote!(gcore::registry::SharedEdge<gcore::registry::ErasedNode<#ty>>));
 		let output = quote!(<#struct_name<#(#edge_types),*> as gcore::node::Node<gcore::context::ContextImpl<'static>>>::Output);
-		let (io_output, construct) = match &ref_output_inner {
-			Some(inner) => (
-				quote!(gcore::registry::ref_type::<#inner>()),
-				quote!(Ok(gcore::registry::EdgeHandle::new_ref(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedLendNode<#inner>>))),
-			),
-			None => (
-				quote!(gcore::concrete!(#output)),
-				quote!(Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedNode<#output>>))),
-			),
-		};
-		let downcasts = names.iter().zip(row.iter()).zip(&lend_flags).map(|((name, ty), lend)| match lend {
-			true => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
-			false => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
-		});
+		let (io_output, construct) = (
+			quote!(gcore::concrete!(#output)),
+			quote!(Ok(gcore::registry::EdgeHandle::new(::std::sync::Arc::new(#struct_name::new(#(#names),*)) as ::std::sync::Arc<gcore::registry::ErasedNode<#output>>))),
+		);
+		let downcasts = names.iter().zip(row.iter()).map(|(name, ty)| quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;));
 		quote! {
 			gcore::registry::RegistryEntry {
 				io: gcore::registry::NodeIOTypes::new(
@@ -2417,7 +2387,7 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 			return quote!(gcore::registry::generic_record_edge_type(#token_name));
 		}
 		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::edge_type::<#ty>()),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::edge_type::<#ty>()),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
 		}
@@ -2444,7 +2414,7 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 			};
 		}
 		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
 		}
@@ -2511,7 +2481,7 @@ fn record_opaque_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regu
 			return quote!(gcore::registry::generic_record_edge_type("T"));
 		}
 		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::edge_type::<#ty>()),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::edge_type::<#ty>()),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
 		}
@@ -2532,7 +2502,7 @@ fn record_opaque_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regu
 			};
 		}
 		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
 		}

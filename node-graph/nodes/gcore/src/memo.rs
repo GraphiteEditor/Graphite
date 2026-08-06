@@ -130,7 +130,7 @@ mod tests {
 	use core_types::SourceId;
 	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope};
-	use core_types::registry::{EdgeHandle, ErasedLendNode, ErasedNode, ErasedRecordNode};
+	use core_types::registry::{EdgeHandle, ErasedNode, ErasedRecordNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	struct CountingNode(AtomicU32);

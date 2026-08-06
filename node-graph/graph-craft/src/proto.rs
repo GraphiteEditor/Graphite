@@ -906,7 +906,6 @@ fn valid_type(from: &Type, to: &Type) -> bool {
 		// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
 		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
 		// A lend edge is substitutable exactly when the lent values are.
-		(Type::Ref(in1), Type::Ref(in2)) => valid_type(in1, in2),
 		// A record edge is substitutable exactly when the elements are.
 		(Type::Record(in1), Type::Record(in2)) => valid_type(in1, in2),
 		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).

@@ -74,10 +74,6 @@ pub use crate::NodeIOTypes;
 pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T> + Send + Sync;
 #[cfg(target_family = "wasm")]
 pub type ErasedNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = T>;
-#[cfg(not(target_family = "wasm"))]
-pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T> + Send + Sync;
-#[cfg(target_family = "wasm")]
-pub type ErasedLendNode<T> = dyn for<'c> Node<ContextImpl<'c>, Output = &'c T>;
 
 /// Element-independent by erasure; the wire's `Type::Record(El)` keeps element reads proven at wiring.
 #[cfg(not(target_family = "wasm"))]
@@ -94,14 +90,6 @@ pub fn edge_type<T: 'static>() -> Type {
 	Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(T)))
 }
 
-pub fn ref_type<T: 'static>() -> Type {
-	Type::Ref(Box::new(concrete!(T)))
-}
-
-pub fn lend_edge_type<T: 'static>() -> Type {
-	Type::Fn(Box::new(concrete!(Context)), Box::new(ref_type::<T>()))
-}
-
 pub fn record_type<T: 'static>() -> Type {
 	Type::Record(Box::new(concrete!(T)))
 }
@@ -112,10 +100,7 @@ pub fn record_edge_type<T: 'static>() -> Type {
 
 /// The record edge type of a token row, generic over the element.
 pub fn generic_record_edge_type(name: &'static str) -> Type {
-	Type::Fn(
-		Box::new(concrete!(Context)),
-		Box::new(Type::Record(Box::new(Type::Generic(std::borrow::Cow::Borrowed(name))))),
-	)
+	Type::Fn(Box::new(concrete!(Context)), Box::new(Type::Record(Box::new(Type::Generic(std::borrow::Cow::Borrowed(name))))))
 }
 
 pub fn cache_key<C: CacheHash + ?Sized>(ctx: &C) -> u64 {
@@ -217,10 +202,6 @@ impl EdgeHandle {
 		Self::new_erased(node, edge_type::<T>())
 	}
 
-	pub fn new_ref<T: 'static>(node: std::sync::Arc<ErasedLendNode<T>>) -> Self {
-		Self::new_erased(node, lend_edge_type::<T>())
-	}
-
 	pub fn new_record<T: 'static>(node: std::sync::Arc<ErasedRecordNode>) -> Self {
 		Self::new_erased(node, record_edge_type::<T>())
 	}
@@ -263,10 +244,6 @@ impl EdgeHandle {
 
 	pub fn downcast<T: 'static>(self) -> Result<SharedEdge<ErasedNode<T>>, ConstructionError> {
 		self.downcast_erased(edge_type::<T>())
-	}
-
-	pub fn downcast_lend<T: 'static>(self) -> Result<SharedEdge<ErasedLendNode<T>>, ConstructionError> {
-		self.downcast_erased(lend_edge_type::<T>())
 	}
 
 	pub fn downcast_record<T: 'static>(self) -> Result<SharedEdge<ErasedRecordNode>, ConstructionError> {
@@ -430,9 +407,9 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let lending = EdgeHandle::new_ref(Arc::new(LendNode("held".to_string())) as Arc<ErasedLendNode<String>>);
-		let upstream = lending.downcast_lend::<String>().unwrap();
-		let node: Arc<ErasedSplitEdge> = Arc::new(SplitNode { content: upstream });
+		let node: Arc<ErasedSplitEdge> = Arc::new(SplitNode {
+			content: LendNode("held".to_string()),
+		});
 		let handle = EdgeHandle::new_erased(node, concrete!(SplitBorrow<'static>));
 		assert_eq!(*handle.ty(), concrete!(SplitBorrow<'static>));
 
@@ -570,15 +547,6 @@ mod tests {
 			ConstructionError::Type {
 				expected: Box::new(edge_type::<String>()),
 				found: Box::new(edge_type::<f64>()),
-			}
-		);
-
-		let lent = EdgeHandle::new_ref(Arc::new(LendNode("typed".to_string())) as Arc<ErasedLendNode<String>>);
-		assert_eq!(
-			construct(&entry, vec![lent]).unwrap_err(),
-			ConstructionError::Type {
-				expected: Box::new(edge_type::<String>()),
-				found: Box::new(lend_edge_type::<String>()),
 			}
 		);
 	}

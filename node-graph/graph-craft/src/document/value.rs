@@ -434,7 +434,6 @@ macro_rules! tagged_value {
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
-					Type::Ref(inner) => Self::from_type(inner),
 					Type::Record(inner) => Self::from_type(inner),
 					Type::Concrete(concrete_type) => {
 						let name = concrete_type.name.as_ref();
@@ -696,7 +695,6 @@ impl TaggedValue {
 
 		match ty {
 			Type::Generic(_) => None,
-			Type::Ref(_) => None,
 			Type::Record(_) => None,
 			Type::Concrete(concrete_type) => {
 				let ty = concrete_type.id?;
