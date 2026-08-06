@@ -109,8 +109,8 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpread::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_spread: GradientSpread,
-	// TODO: Elide the default again (removing `legacy_gamma`) when switching to the new document format and Ctrl-C node serialization format
-	#[cfg_attr(feature = "serde", serde(default = "GradientSpace::legacy_gamma"))]
+	// TODO: Elide the default again (removing `legacy_gamma` and the serde aliases) when switching to the new document format and Ctrl-C node serialization format
+	#[cfg_attr(feature = "serde", serde(default = "GradientSpace::legacy_gamma", alias = "gradient_interpolation"))]
 	pub gradient_space: GradientSpace,
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientHueDirection::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
@@ -1033,9 +1033,11 @@ pub enum GradientSpace {
 	#[label("HSV")]
 	Hsv,
 	/// Blends stops in linear light, keeping transitions evenly bright.
+	#[cfg_attr(feature = "serde", serde(alias = "SrgbLinear"))]
 	#[label("RGB Linear")]
 	RgbLinear,
 	/// Blends stops in gamma-encoded RGB, the classic SVG and CSS look.
+	#[cfg_attr(feature = "serde", serde(alias = "SrgbGamma"))]
 	#[label("RGB Gamma")]
 	RgbGamma,
 }
@@ -1221,6 +1223,11 @@ mod tests {
 			"the space must serialize even at its default, marking the ramp as post-legacy: {json}"
 		);
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_space);
+
+		// The pre-rename field key and variant names from the interim format alias to the current ones
+		let renamed_away = json.replace(r#""gradient_space""#, r#""gradient_interpolation""#).replace(r#""OkLab""#, r#""SrgbLinear""#);
+		let recovered = serde_json::from_str::<GradientRamp>(&renamed_away).unwrap();
+		assert_eq!(recovered.gradient_space, GradientSpace::RgbLinear, "the old key and variant names should decode via their aliases");
 
 		let gamma = GradientRamp {
 			gradient_space: GradientSpace::RgbGamma,

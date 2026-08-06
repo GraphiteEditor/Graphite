@@ -275,6 +275,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["math_nodes::GradientTypeNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_space::IDENTIFIER,
+		aliases: &["math_nodes::GradientInterpolationNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
 		aliases: &["math_nodes::SpreadMethodNode"],
 	},
