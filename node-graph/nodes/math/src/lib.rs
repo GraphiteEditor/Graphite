@@ -1401,6 +1401,14 @@ fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_type
 	gradient
 }
 
+/// Sets which way around the hue wheel each gradient in the input list blends, for polar color spaces.
+#[node_macro::node(category("Gradient"))]
+fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
+	let mut gradient = gradient;
+	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
+	gradient
+}
+
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.

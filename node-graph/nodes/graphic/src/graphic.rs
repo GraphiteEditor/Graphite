@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientForm, GradientSpace, GradientSpread};
+use vector_types::gradient::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
@@ -759,6 +759,23 @@ fn read_attribute_gradient_space(
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpace>(&name, index) else { continue };
+		result.push(Item::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_hue_direction(
+	_: impl Ctx,
+	content: ListDyn,
+	/// The attribute name (key) to read.
+	name: Item<String>,
+) -> List<GradientHueDirection> {
+	let name = name.into_element();
+	let mut result = List::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientHueDirection>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result
