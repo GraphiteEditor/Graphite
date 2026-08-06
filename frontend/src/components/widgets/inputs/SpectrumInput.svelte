@@ -55,11 +55,11 @@
 		emit({ ActiveMarker: { activeMarkerIndex: index, activeMarkerIsMidpoint: isMidpoint } });
 	}
 
-	function pointerPosition(e: MouseEvent): number | undefined {
+	function pointerPosition(e: MouseEvent, clamp = true): number | undefined {
 		const rect = markerTrackElement?.div()?.getBoundingClientRect();
 		if (!rect) return undefined;
 		const ratio = (e.clientX - rect.left) / rect.width;
-		return Math.max(0, Math.min(1, ratio));
+		return clamp ? Math.max(0, Math.min(1, ratio)) : ratio;
 	}
 
 	function clampToNeighbors(index: number, position: number): number {
@@ -238,19 +238,28 @@
 			return;
 		}
 
-		const absolute = pointerPosition(e);
+		// The wrap segment's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first.
+		// Its pointer ratio stays unclamped so overdragging past the strip's right edge keeps tracking, the diamond wrapped a full strip width behind the pointer.
+		const isWrapSegment = trackCyclic && activeMarkerIndex === markers.length - 1;
+		const absolute = pointerPosition(e, !isWrapSegment);
 		if (absolute === undefined) return;
 
-		// The wrap segment's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first
-		const isWrapSegment = trackCyclic && activeMarkerIndex === markers.length - 1;
 		const left = markers[activeMarkerIndex]?.position;
 		const right = isWrapSegment ? markers[0].position + 1 : markers[activeMarkerIndex + 1]?.position;
 		if (left === undefined || right === undefined) return;
 		const range = right - left;
 		if (range <= 0) return;
 
-		// A pointer left of the wrap segment's start reads as wrapped past the boundary
-		const local = isWrapSegment && absolute < left ? absolute + 1 - left : absolute - left;
+		// The dead zone between the first and last stops splits so each half saturates against the wrap segment's
+		// nearer end, except when an outermost stop leaves no room on its side of the boundary, where the one-sided
+		// segment skips the split and saturates like an ordinary interval
+		let deadZoneSplit = Number.NEGATIVE_INFINITY;
+		if (isWrapSegment) {
+			const first = markers[0].position;
+			if (left >= 1) deadZoneSplit = Number.POSITIVE_INFINITY;
+			else if (first > 0) deadZoneSplit = (first + left) / 2;
+		}
+		const local = absolute < deadZoneSplit ? absolute + 1 - left : absolute - left;
 
 		midpointDragged = true;
 		dispatch("dragging", true);
