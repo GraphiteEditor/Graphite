@@ -24,12 +24,13 @@ fn gradient_map<T: Adjust<Color> + Clone + Send + Sync + core_types::CacheHash +
 		return image;
 	}
 	let gradient_spread = gradient.lane(0).attr::<vector_types::markers::GradientSpread>();
+	let gradient_interpolation = gradient.lane(0).attr::<vector_types::markers::GradientInterpolation>();
 	let gradient = gradient.element_ref(0);
 
 	image.adjust(|color| {
 		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64, gradient_spread)
+		gradient.evaluate(intensity as f64, gradient_spread, gradient_interpolation)
 	});
 
 	image
