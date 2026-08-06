@@ -1,4 +1,4 @@
-use core_types::arena::{Arena, ArenaCell};
+use core_types::arena::ArenaCell;
 use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractArena};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Extent, Finality, GPoll};
@@ -102,34 +102,6 @@ where
 	node.content.extent(ctx)
 }
 
-pub fn park<T: Send + Sync>(arena: &Arena, result: GPoll<T>) -> GPoll<&T> {
-	match result {
-		GPoll::Final(value) => match arena.alloc(value) {
-			Some((parked, _)) => GPoll::Final(parked),
-			None => GPoll::arena_exhausted(),
-		},
-		GPoll::Partial(value) => match arena.alloc(value) {
-			Some((parked, _)) => GPoll::Partial(parked),
-			None => GPoll::arena_exhausted(),
-		},
-		GPoll::Fallback(boxed) => {
-			let (value, error) = *boxed;
-			match arena.alloc(value) {
-				Some((parked, _)) => GPoll::Fallback(Box::new((parked, error))),
-				None => GPoll::arena_exhausted(),
-			}
-		}
-		GPoll::Pending => GPoll::Pending,
-		GPoll::Error(error) => GPoll::Error(error),
-	}
-}
-
-/// Adapts an owned edge to a lending one by parking each result in the eval arena.
-#[node_macro::node(category(""), path(graphene_core::memo), skip_impl)]
-fn lend<'e, T: Send + Sync>(ctx: impl Ctx + ExtractArena<'e>, value: T) -> GPoll<&'e T> {
-	park(ctx.arena(), GPoll::Final(value))
-}
-
 type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
@@ -156,6 +128,7 @@ fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send +
 mod tests {
 	use super::*;
 	use core_types::SourceId;
+	use core_types::arena::Arena;
 	use core_types::context::{ContextImpl, EvalScope};
 	use core_types::registry::{EdgeHandle, ErasedLendNode, ErasedNode, ErasedRecordNode};
 	use std::sync::atomic::{AtomicU32, Ordering};

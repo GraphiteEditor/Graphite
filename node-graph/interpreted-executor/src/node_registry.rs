@@ -1,8 +1,6 @@
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::DocumentNode;
 use graph_craft::document::value::RenderOutput;
-use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::gradient::GradientStops;
 use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 #[cfg(target_family = "wasm")]
@@ -12,14 +10,14 @@ use graphene_std::raster::GPU;
 use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::registry::{ConstructionError, EdgeHandle, ErasedLendNode, ErasedNode, NodeIOTypes, RegistryEntry, lend_edge_type, ref_type};
+use graphene_std::registry::{ConstructionError, EdgeHandle, ErasedNode, NodeIOTypes, RegistryEntry};
 use graphene_std::render_node::RenderIntermediate;
 use graphene_std::runtime::RuntimeHandle;
 use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, SourceId, concrete, fn_type};
-use node_registry_macros::{clone_node, convert_node, into_node, lend_node, record_extract_node, record_lift_node};
+use node_registry_macros::{convert_node, into_node, record_extract_node, record_lift_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutorHandle;
@@ -114,58 +112,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		// ============
 		// REF ADAPTERS
 		// ============
-		lend_node!(()),
-		clone_node!(()),
-		lend_node!(RuntimeHandle),
-		clone_node!(RuntimeHandle),
-		lend_node!(SourceId),
-		clone_node!(SourceId),
-		lend_node!(bool),
-		clone_node!(bool),
-		lend_node!(List<Artboard>),
-		clone_node!(List<Artboard>),
-		lend_node!(List<Graphic>),
-		clone_node!(List<Graphic>),
-		lend_node!(List<Vector>),
-		clone_node!(List<Vector>),
-		lend_node!(List<Raster<CPU>>),
-		clone_node!(List<Raster<CPU>>),
-		lend_node!(List<Color>),
-		clone_node!(List<Color>),
-		lend_node!(Image<Color>),
-		clone_node!(Image<Color>),
-		lend_node!(List<GradientStops>),
-		clone_node!(List<GradientStops>),
-		lend_node!(List<String>),
-		clone_node!(List<String>),
-		lend_node!(List<NodeId>),
-		clone_node!(List<NodeId>),
-		lend_node!(List<f64>),
-		clone_node!(List<f64>),
-		lend_node!(List<u8>),
-		clone_node!(List<u8>),
-		lend_node!(List<bool>),
-		clone_node!(List<bool>),
-		lend_node!(List<DAffine2>),
-		clone_node!(List<DAffine2>),
-		lend_node!(List<BlendMode>),
-		clone_node!(List<BlendMode>),
-		lend_node!(List<graphene_std::vector::style::GradientType>),
-		clone_node!(List<graphene_std::vector::style::GradientType>),
-		lend_node!(List<graphene_std::vector::style::GradientSpreadMethod>),
-		clone_node!(List<graphene_std::vector::style::GradientSpreadMethod>),
-		lend_node!(AttributeDyn),
-		clone_node!(AttributeDyn),
-		lend_node!(AttributeValueDyn),
-		clone_node!(AttributeValueDyn),
-		lend_node!(ListDyn),
-		clone_node!(ListDyn),
 		#[cfg(target_family = "wasm")]
-		lend_node!(CanvasHandle),
 		#[cfg(target_family = "wasm")]
-		clone_node!(CanvasHandle),
 		#[cfg(target_family = "wasm")]
-		lend_node!(f64),
 		record_lift_node!(f64),
 		record_extract_node!(f64),
 		record_lift_node!(()),
@@ -252,129 +201,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		record_lift_node!(wgpu_executor::WgpuPipelineCache),
 		#[cfg(feature = "gpu")]
 		record_extract_node!(wgpu_executor::WgpuPipelineCache),
-		lend_node!(f32),
-		clone_node!(f32),
-		lend_node!(u32),
-		clone_node!(u32),
-		lend_node!(u64),
-		clone_node!(u64),
-		lend_node!(DVec2),
-		clone_node!(DVec2),
-		lend_node!(String),
-		clone_node!(String),
-		lend_node!(DAffine2),
-		clone_node!(DAffine2),
-		lend_node!(Footprint),
-		clone_node!(Footprint),
-		lend_node!(RenderOutput),
-		clone_node!(RenderOutput),
-		lend_node!(std::sync::Arc<PlatformEditorApi>),
-		clone_node!(std::sync::Arc<PlatformEditorApi>),
-		#[cfg(feature = "gpu")]
-		lend_node!(List<Raster<GPU>>),
-		#[cfg(feature = "gpu")]
-		clone_node!(List<Raster<GPU>>),
-		#[cfg(feature = "gpu")]
-		lend_node!(Option<f64>),
-		clone_node!(Option<f64>),
-		lend_node!(Option<Color>),
-		clone_node!(Option<Color>),
-		lend_node!(Graphic),
-		clone_node!(Graphic),
-		lend_node!(glam::f32::Vec2),
-		clone_node!(glam::f32::Vec2),
-		lend_node!(glam::f32::Affine2),
-		clone_node!(glam::f32::Affine2),
-		lend_node!(graphene_std::vector::style::Stroke),
-		clone_node!(graphene_std::vector::style::Stroke),
-		lend_node!(graphene_std::text::Font),
-		clone_node!(graphene_std::text::Font),
-		lend_node!(List<BrushStroke>),
-		clone_node!(List<BrushStroke>),
-		lend_node!(DocumentNode),
-		clone_node!(DocumentNode),
-		lend_node!(graphene_std::ContextModification),
-		clone_node!(graphene_std::ContextModification),
-		lend_node!(graphene_std::transform::Footprint),
-		clone_node!(graphene_std::transform::Footprint),
-		lend_node!(Box<graphene_std::vector::VectorModification>),
-		clone_node!(Box<graphene_std::vector::VectorModification>),
-		lend_node!(graphene_std::blending::BlendMode),
-		clone_node!(graphene_std::blending::BlendMode),
-		lend_node!(graphene_std::raster::LuminanceCalculation),
-		clone_node!(graphene_std::raster::LuminanceCalculation),
-		lend_node!(graphene_std::vector::QRCodeErrorCorrectionLevel),
-		clone_node!(graphene_std::vector::QRCodeErrorCorrectionLevel),
-		lend_node!(graphene_std::extract_xy::XY),
-		clone_node!(graphene_std::extract_xy::XY),
-		lend_node!(graphene_std::text_nodes::StringCapitalization),
-		clone_node!(graphene_std::text_nodes::StringCapitalization),
-		lend_node!(graphene_std::raster::RedGreenBlue),
-		clone_node!(graphene_std::raster::RedGreenBlue),
-		lend_node!(graphene_std::raster::RedGreenBlueAlpha),
-		clone_node!(graphene_std::raster::RedGreenBlueAlpha),
-		lend_node!(graphene_std::animation::RealTimeMode),
-		clone_node!(graphene_std::animation::RealTimeMode),
-		lend_node!(graphene_std::raster::NoiseType),
-		clone_node!(graphene_std::raster::NoiseType),
-		lend_node!(graphene_std::raster::FractalType),
-		clone_node!(graphene_std::raster::FractalType),
-		lend_node!(graphene_std::raster::CellularDistanceFunction),
-		clone_node!(graphene_std::raster::CellularDistanceFunction),
-		lend_node!(graphene_std::raster::CellularReturnType),
-		clone_node!(graphene_std::raster::CellularReturnType),
-		lend_node!(graphene_std::raster::DomainWarpType),
-		clone_node!(graphene_std::raster::DomainWarpType),
-		lend_node!(graphene_std::raster::RelativeAbsolute),
-		clone_node!(graphene_std::raster::RelativeAbsolute),
-		lend_node!(graphene_std::raster::SelectiveColorChoice),
-		clone_node!(graphene_std::raster::SelectiveColorChoice),
-		lend_node!(graphene_std::vector::misc::GridType),
-		clone_node!(graphene_std::vector::misc::GridType),
-		lend_node!(graphene_std::vector::misc::ArcType),
-		clone_node!(graphene_std::vector::misc::ArcType),
-		lend_node!(graphene_std::vector::misc::RowsOrColumns),
-		clone_node!(graphene_std::vector::misc::RowsOrColumns),
-		lend_node!(graphene_std::vector::misc::MergeByDistanceAlgorithm),
-		clone_node!(graphene_std::vector::misc::MergeByDistanceAlgorithm),
-		lend_node!(graphene_std::vector::misc::ExtrudeJoiningAlgorithm),
-		clone_node!(graphene_std::vector::misc::ExtrudeJoiningAlgorithm),
-		lend_node!(graphene_std::vector::misc::PointSpacingType),
-		clone_node!(graphene_std::vector::misc::PointSpacingType),
-		lend_node!(graphene_std::vector::style::StrokeCap),
-		clone_node!(graphene_std::vector::style::StrokeCap),
-		lend_node!(graphene_std::vector::style::StrokeJoin),
-		clone_node!(graphene_std::vector::style::StrokeJoin),
-		lend_node!(graphene_std::vector::style::StrokeAlign),
-		clone_node!(graphene_std::vector::style::StrokeAlign),
-		lend_node!(graphene_std::vector::style::PaintOrder),
-		clone_node!(graphene_std::vector::style::PaintOrder),
-		lend_node!(graphene_std::vector::style::GradientType),
-		clone_node!(graphene_std::vector::style::GradientType),
-		lend_node!(graphene_std::vector::style::GradientSpreadMethod),
-		clone_node!(graphene_std::vector::style::GradientSpreadMethod),
-		lend_node!(Option<DAffine2>),
-		clone_node!(Option<DAffine2>),
-		lend_node!(graphene_std::transform::ReferencePoint),
-		clone_node!(graphene_std::transform::ReferencePoint),
-		lend_node!(graphene_std::vector::misc::CentroidType),
-		clone_node!(graphene_std::vector::misc::CentroidType),
-		lend_node!(graphene_std::vector::misc::BooleanOperation),
-		clone_node!(graphene_std::vector::misc::BooleanOperation),
-		lend_node!(graphene_std::text::TextAlign),
-		clone_node!(graphene_std::text::TextAlign),
-		lend_node!(graphene_std::transform::ScaleType),
-		clone_node!(graphene_std::transform::ScaleType),
-		lend_node!(graphene_std::vector::misc::InterpolationDistribution),
-		clone_node!(graphene_std::vector::misc::InterpolationDistribution),
-		lend_node!(RenderIntermediate),
-		clone_node!(RenderIntermediate),
-		lend_node!(wgpu_executor::WgpuExecutorHandle),
-		clone_node!(wgpu_executor::WgpuExecutorHandle),
-		lend_node!(Option<wgpu_executor::WgpuExecutorHandle>),
-		clone_node!(Option<wgpu_executor::WgpuExecutorHandle>),
-		lend_node!(wgpu_executor::WgpuPipelineCache),
-		clone_node!(wgpu_executor::WgpuPipelineCache),
 	];
 	// =============
 	// CONVERT NODES
@@ -545,25 +371,6 @@ mod node_registry_macros {
 		};
 	}
 
-	macro_rules! lend_node {
-		($type:ty) => {
-			(
-				ProtoNodeIdentifier::new("graphene_core::memo::LendNode"),
-				RegistryEntry {
-					io: NodeIOTypes::new(concrete!(Context), ref_type::<$type>(), vec![fn_type!(Context, $type)]),
-					constructor: |inputs| {
-						if inputs.len() != 1 {
-							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-						}
-						let mut inputs = inputs.into_iter();
-						let node = graphene_core::memo::LendNode::new(inputs.next().unwrap().downcast::<$type>()?);
-						Ok(EdgeHandle::new_ref(std::sync::Arc::new(node) as std::sync::Arc<ErasedLendNode<$type>>))
-					},
-				},
-			)
-		};
-	}
-
 	macro_rules! record_lift_node {
 		($type:ty) => {
 			(
@@ -604,29 +411,8 @@ mod node_registry_macros {
 		};
 	}
 
-	macro_rules! clone_node {
-		($type:ty) => {
-			(
-				ProtoNodeIdentifier::new("graphene_core::debug::CloneNode"),
-				RegistryEntry {
-					io: NodeIOTypes::new(concrete!(Context), concrete!($type), vec![lend_edge_type::<$type>()]),
-					constructor: |inputs| {
-						if inputs.len() != 1 {
-							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-						}
-						let mut inputs = inputs.into_iter();
-						let node = graphene_core::debug::CloneNode::new(inputs.next().unwrap().downcast_lend::<$type>()?);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
-					},
-				},
-			)
-		};
-	}
-
-	pub(crate) use clone_node;
 	pub(crate) use convert_node;
 	pub(crate) use into_node;
-	pub(crate) use lend_node;
 	pub(crate) use record_extract_node;
 	pub(crate) use record_lift_node;
 }

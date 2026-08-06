@@ -930,12 +930,8 @@ fn ref_adapter(proposed: &Type, wanted: &Type) -> Option<ProtoNodeIdentifier> {
 		return None;
 	};
 	match (proposed_output.as_ref(), wanted_output.as_ref()) {
-		(Type::Ref(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("graphene_core::debug::CloneNode")),
-		(proposed_output @ Type::Concrete(_), Type::Ref(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("graphene_core::memo::LendNode")),
 		(Type::Record(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("core_types::record::RecordExtractNode")),
 		(proposed_output @ Type::Concrete(_), Type::Record(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordLiftNode")),
-		(Type::Ref(inner), Type::Record(wanted_inner)) if valid_type(inner, wanted_inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordLiftLendNode")),
-		(Type::Record(inner), Type::Ref(wanted_inner)) if valid_type(inner, wanted_inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordExtractLendNode")),
 		_ => None,
 	}
 }
@@ -1299,7 +1295,7 @@ mod test {
 }
 
 #[cfg(test)]
-mod ref_adapter_test {
+mod adapter_splice_test {
 	use super::*;
 
 	fn adapter_lookup() -> &'static HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
@@ -1307,29 +1303,29 @@ mod ref_adapter_test {
 			let unused: NodeConstructor = |_| Err(ConstructionError::Arity { expected: 0, got: 0 });
 			[
 				(
-					ProtoNodeIdentifier::new("wants_ref"),
+					ProtoNodeIdentifier::new("wants_owned"),
 					vec![RegistryEntry {
-						io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![lend_edge_type::<String>()]),
+						io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![edge_type::<String>()]),
 						constructor: unused,
 					}],
 				),
 				(
-					ProtoNodeIdentifier::new("wants_ref_ambiguously"),
+					ProtoNodeIdentifier::new("wants_owned_ambiguously"),
 					vec![
 						RegistryEntry {
-							io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![lend_edge_type::<String>()]),
+							io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![edge_type::<String>()]),
 							constructor: unused,
 						},
 						RegistryEntry {
-							io: NodeIOTypes::new(concrete!(Context), concrete!(f64), vec![lend_edge_type::<String>()]),
+							io: NodeIOTypes::new(concrete!(Context), concrete!(f64), vec![edge_type::<String>()]),
 							constructor: unused,
 						},
 					],
 				),
 				(
-					ProtoNodeIdentifier::new("core_types::record::RecordExtractLendNode"),
+					ProtoNodeIdentifier::new("core_types::record::RecordExtractNode"),
 					vec![RegistryEntry {
-						io: NodeIOTypes::new(concrete!(Context), ref_type::<String>(), vec![record_edge_type::<String>()]),
+						io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![record_edge_type::<String>()]),
 						constructor: unused,
 					}],
 				),
@@ -1341,7 +1337,7 @@ mod ref_adapter_test {
 	}
 
 	fn string_value() -> ProtoNode {
-		ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("lent".to_string()).into()), vec![])
+		ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("landed".to_string()).into()), vec![])
 	}
 
 	fn consumer(identifier: &str, producer: NodeId) -> ProtoNode {
@@ -1354,11 +1350,11 @@ mod ref_adapter_test {
 	}
 
 	#[test]
-	fn a_ref_only_mismatch_splices_the_lend_adapter() {
+	fn a_record_only_mismatch_splices_the_extract_adapter() {
 		let mut network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(1),
-			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_ref", NodeId(0)))],
+			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_owned", NodeId(0)))],
 		};
 
 		let mut typing = TypingContext::new(adapter_lookup());
@@ -1366,10 +1362,10 @@ mod ref_adapter_test {
 
 		assert_eq!(network.nodes.len(), 3);
 		let (adapter_id, adapter) = &network.nodes[1];
-		assert_eq!(adapter.identifier.as_str(), "core_types::record::RecordExtractLendNode");
+		assert_eq!(adapter.identifier.as_str(), "core_types::record::RecordExtractNode");
 		assert_eq!(adapter.unwrap_construction_nodes(), vec![NodeId(0)]);
 		assert_eq!(network.nodes[2].1.unwrap_construction_nodes(), vec![*adapter_id]);
-		assert_eq!(typing.type_of(*adapter_id).unwrap().return_value, ref_type::<String>());
+		assert_eq!(typing.type_of(*adapter_id).unwrap().return_value, concrete!(String));
 		assert_eq!(typing.type_of(NodeId(1)).unwrap().return_value, concrete!(String));
 	}
 
@@ -1380,8 +1376,8 @@ mod ref_adapter_test {
 			output: NodeId(2),
 			nodes: vec![
 				(NodeId(0), string_value()),
-				(NodeId(1), consumer("wants_ref", NodeId(0))),
-				(NodeId(2), consumer("wants_ref", NodeId(0))),
+				(NodeId(1), consumer("wants_owned", NodeId(0))),
+				(NodeId(2), consumer("wants_owned", NodeId(0))),
 			],
 		};
 
@@ -1392,7 +1388,7 @@ mod ref_adapter_test {
 		let adapters: Vec<NodeId> = network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier.as_str() == "core_types::record::RecordExtractLendNode")
+			.filter(|(_, node)| node.identifier.as_str() == "core_types::record::RecordExtractNode")
 			.map(|(id, _)| *id)
 			.collect();
 		let [adapter_id] = adapters.as_slice() else {
@@ -1401,18 +1397,18 @@ mod ref_adapter_test {
 		let consumers: Vec<Vec<NodeId>> = network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier.as_str() == "wants_ref")
+			.filter(|(_, node)| node.identifier.as_str() == "wants_owned")
 			.map(|(_, node)| node.unwrap_construction_nodes())
 			.collect();
 		assert_eq!(consumers, vec![vec![*adapter_id], vec![*adapter_id]]);
 	}
 
 	#[test]
-	fn an_ambiguous_ref_mismatch_stays_an_error() {
+	fn an_ambiguous_record_mismatch_stays_an_error() {
 		let mut network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(1),
-			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_ref_ambiguously", NodeId(0)))],
+			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_owned_ambiguously", NodeId(0)))],
 		};
 
 		let mut typing = TypingContext::new(adapter_lookup());

@@ -780,27 +780,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		]);
 	}
 
-	let has_lend = parsed.fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. })));
-	let declared_arena_lifetime = ctx_param.and_then(|ctx_param| {
-		ctx_param.bounds.iter().find_map(|bound| {
-			let TypeParamBound::Trait(trait_bound) = bound else { return None };
-			let segment = trait_bound.path.segments.last()?;
-			if segment.ident != "ExtractArena" {
-				return None;
-			}
-			let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
-			match args.args.first() {
-				Some(GenericArgument::Lifetime(lifetime)) => Some(lifetime.clone()),
-				_ => None,
-			}
-		})
-	});
-	let introduced_lend_lifetime = (has_lend && !flip && declared_arena_lifetime.is_none()).then(|| Lifetime::new("'__lend", proc_macro2::Span::call_site()));
-	let lend_lifetime = declared_arena_lifetime.or_else(|| introduced_lend_lifetime.clone());
-	if let Some(lifetime) = &introduced_lend_lifetime {
-		ctx_bounds.push(quote!(#core_types::context::ExtractArena<ArenaRef = &#lifetime #core_types::arena::Arena>));
-	}
-
 	let derives = ctx_param.is_some_and(|ctx_param| {
 		ctx_param.bounds.iter().any(|bound| match bound {
 			TypeParamBound::Trait(trait_bound) => trait_bound.path.segments.last().is_some_and(|segment| segment.ident == "DeriveCtx"),
@@ -849,10 +828,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	if ctx_param.is_none() {
 		generics.push(ctx_generic.clone());
 		impl_generics.push(ctx_generic);
-	}
-	if let Some(lifetime) = &introduced_lend_lifetime {
-		generics.insert(0, quote!(#lifetime));
-		impl_generics.insert(0, quote!(#lifetime));
 	}
 	if routing.is_some() || record.is_some() || flip {
 		impl_generics.insert(0, quote!('__record));
@@ -1024,10 +999,6 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 			false => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>),
 		},
-		ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
-			let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
-			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = &#lifetime #ty>)
-		}
 		ParsedFieldType::Regular(_) if record.is_some() && !skips_carrier && index == 0 => {
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
 		}
@@ -1051,16 +1022,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
-	let mut lend_outlives: Vec<TokenStream2> = regular_fields
-		.iter()
-		.filter_map(|field| match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) if !flip => {
-				let lifetime = lend_lifetime.as_ref().expect("lend fields imply the lend lifetime");
-				Some(quote!(#ty: #lifetime))
-			}
-			_ => None,
-		})
-		.collect();
+	let mut lend_outlives: Vec<TokenStream2> = Vec::new();
 	if let Type::Reference(reference) = &trait_output
 		&& let Some(lifetime) = &reference.lifetime
 	{
@@ -1175,6 +1137,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			ParsedFieldType::Node(_) if flip && raw_lazy => quote!(&#name),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => quote!(&#name),
 			ParsedFieldType::Node(_) if raw_lazy => quote!(&self.#name),
+			// A lend param binds an owned edge; the kernel borrows the
+			// evaluated value.
+			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) if !flip => quote!(&#name),
 			_ => quote!(#name),
 		}
 	});
@@ -1367,7 +1332,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.into_iter();
 		let value_args = regular_fields.iter().skip(if shape.skips_carrier() { 0 } else { 1 }).map(|field| {
 			let name = &field.pat_ident.ident;
-			quote!(#name)
+			match &field.ty {
+				// A lend param binds an owned edge; the kernel borrows the
+				// evaluated value.
+				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
+				_ => quote!(#name),
+			}
 		});
 		let attr_args = parsed.attribute_reads.iter().map(|read| {
 			let pat = &read.pat_ident.ident;
@@ -2615,7 +2585,7 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
 
 	let input_types = regular_fields.iter().enumerate().map(|(index, field)| {
-		let ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) = &field.ty else {
+		let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
 			unreachable!("record nodes take no lazy inputs")
 		};
 		if carrier_in_fields && index == 0 {
@@ -2628,14 +2598,11 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 				RecordCarrier::None => unreachable!(),
 			};
 		}
-		match lend.is_some() {
-			true => quote!(gcore::registry::lend_edge_type::<#ty>()),
-			false => quote!(gcore::registry::edge_type::<#ty>()),
-		}
+		quote!(gcore::registry::edge_type::<#ty>())
 	});
 	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
 		let name = &field.pat_ident.ident;
-		let ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) = &field.ty else {
+		let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
 			unreachable!("record nodes take no lazy inputs")
 		};
 		if carrier_in_fields && index == 0 {
@@ -2648,10 +2615,7 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 				let #name = __carrier_handle.downcast_erased::<gcore::registry::ErasedRecordNode>(__carrier_ty.clone())?;
 			};
 		}
-		match lend.is_some() {
-			true => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
-			false => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
-		}
+		quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;)
 	});
 	let wire_layout_arg = carrier_in_fields.then(|| quote!(&__carrier_layout,)).into_iter();
 	let (io_output, construct_output) = match (&shape.carrier, &shape.element_write) {

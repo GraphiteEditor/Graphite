@@ -29,9 +29,8 @@ fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<
 	input.unwrap_or_default()
 }
 
-/// Clones the value borrowed from a lending edge. Doubles as the checker-inserted clone-out
-/// adapter, so it keeps the plain lowering while the record transition runs.
-#[node_macro::node(category("Debug"), plain)]
+/// Clones the element out of its record wire.
+#[node_macro::node(category("Debug"))]
 fn clone<T: Clone>(_: impl Ctx, #[implementations(List<Raster<CPU>>)] value: &T) -> T {
 	value.clone()
 }

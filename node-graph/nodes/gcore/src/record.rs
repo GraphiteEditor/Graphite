@@ -81,7 +81,6 @@ fn forward_record<T>(_: impl Ctx, element: T) -> T {
 	element
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -180,11 +179,7 @@ mod tests {
 		let stacked = multiply_opacity_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &stacked]);
 
-		let chain = MultiplyOpacityNode::new(
-			MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
-			ValueNode(0.5),
-			&modified,
-		);
+		let chain = MultiplyOpacityNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), ValueNode(0.5), &modified);
 		assert_eq!(chain.layout(), Some(&stacked));
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
@@ -372,18 +367,6 @@ mod tests {
 		assert!(error.kind == "negative factor");
 	}
 
-	static FACTOR: f64 = 3.;
-
-	struct StaticLendNode(&'static f64);
-
-	impl<'e> Node<ContextImpl<'e>> for StaticLendNode {
-		type Output = &'e f64;
-
-		fn eval(&self, _input: &ContextImpl<'e>) -> GPoll<&'e f64> {
-			GPoll::Final(self.0)
-		}
-	}
-
 	#[test]
 	fn lend_value_params_wire_into_record_kernels() {
 		let arena = Arena::new(1024).unwrap();
@@ -396,11 +379,7 @@ mod tests {
 		let scaled = scale_layout(&modified);
 		reserve_for(&[&source_layout, &modified, &scaled]);
 
-		let chain = ScaleNode::new(
-			MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout),
-			StaticLendNode(&FACTOR),
-			&modified,
-		);
+		let chain = ScaleNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 2.), ValueNode(0.5), &source_layout), ValueNode(3.), &modified);
 		let GPoll::Final(value) = chain.eval(&ctx) else {
 			panic!("expected a final record");
 		};
@@ -585,11 +564,7 @@ mod tests {
 		reserve_for(&[&layout]);
 
 		let probed = |features: ContextFeatures| {
-			let node = crate::context_modification::ContextModificationNode::new(
-				RealTimeProbe { layout: layout.clone() },
-				ValueNode(ContextModification::from_sources(features, &[])),
-				&layout,
-			);
+			let node = crate::context_modification::ContextModificationNode::new(RealTimeProbe { layout: layout.clone() }, ValueNode(ContextModification::from_sources(features, &[])), &layout);
 			assert_eq!(Node::<ContextImpl>::layout(&node), Some(&layout));
 			let GPoll::Final(value) = node.eval(&ctx) else {
 				panic!("expected a final record");

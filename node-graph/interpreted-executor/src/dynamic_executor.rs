@@ -582,18 +582,25 @@ mod test {
 	}
 
 	#[test]
-	fn a_lend_adapter_is_spliced_between_a_value_and_a_ref_consumer() {
+	fn the_clone_node_clones_the_element_out_of_its_record_wire() {
+		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(1),
+			output: NodeId(2),
 			nodes: vec![
-				(NodeId(0), string_value("lent")),
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
 				(NodeId(1), proto_node("graphene_core::debug::CloneNode", vec![NodeId(0)])),
+				(NodeId(2), proto_node("core_types::record::RecordExtractNode", vec![NodeId(1)])),
 			],
 		};
 
 		let executor = DynamicExecutor::new(network).unwrap();
-		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String("lent".to_string())));
+		let arena = Arena::new(1 << 20).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>>> = executor.tree().eval(NodeId(2), &ctx);
+		assert!(matches!(result, Some(GPoll::Final(_))), "the flipped clone must evaluate over record wires, got {result:?}");
 	}
 
 	#[test]
@@ -756,7 +763,7 @@ mod test {
 	}
 
 	#[test]
-	fn a_clone_out_adapter_is_spliced_between_a_lending_producer_and_an_owned_consumer() {
+	fn stacked_frame_memos_replay_over_record_wires() {
 		let network = ProtoNetwork {
 			inputs: vec![],
 			output: NodeId(3),
@@ -764,7 +771,7 @@ mod test {
 				(NodeId(0), string_value("memoized")),
 				(NodeId(1), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(0)])),
 				(NodeId(2), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(1)])),
-				(NodeId(3), proto_node("graphene_core::debug::CloneNode", vec![NodeId(2)])),
+				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
 			],
 		};
 
@@ -773,7 +780,7 @@ mod test {
 		assert_eq!(
 			(&executor).execute(()).unwrap(),
 			GPoll::Final(TaggedValue::String("memoized".to_string())),
-			"the frame memo lend path must replay across evaluations"
+			"the frame memo must replay across evaluations"
 		);
 	}
 }

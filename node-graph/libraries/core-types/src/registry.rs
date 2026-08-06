@@ -290,15 +290,13 @@ pub struct RegistryEntry {
 	pub constructor: NodeConstructor,
 }
 
-/// The four bridge rows of `T`: plain and lend producers onto record wires,
-/// record wires into plain and lend consumers. One set exists per wire type
-/// while the worlds coexist.
-pub fn record_bridge_rows<T: Clone + Send + Sync + 'static>() -> [(crate::ProtoNodeIdentifier, RegistryEntry); 4] {
+/// The bridge rows of `T`: a plain producer onto a record wire and a record
+/// wire into a plain consumer. One pair exists per wire type while the
+/// deferred plain classes (shader, batch) coexist with record wires.
+pub fn record_bridge_rows<T: Clone + Send + Sync + 'static>() -> [(crate::ProtoNodeIdentifier, RegistryEntry); 2] {
 	[
 		(crate::ProtoNodeIdentifier::new("core_types::record::RecordLiftNode"), record_lift_entry::<T>()),
 		(crate::ProtoNodeIdentifier::new("core_types::record::RecordExtractNode"), record_extract_entry::<T>()),
-		(crate::ProtoNodeIdentifier::new("core_types::record::RecordLiftLendNode"), record_lift_lend_entry::<T>()),
-		(crate::ProtoNodeIdentifier::new("core_types::record::RecordExtractLendNode"), record_extract_lend_entry::<T>()),
 	]
 }
 
@@ -331,38 +329,6 @@ pub fn record_extract_entry<T: Clone + Send + Sync + 'static>() -> RegistryEntry
 			let layout = edge.layout().ok_or(ConstructionError::MissingLayout)?.clone();
 			let node = crate::record::RecordExtract::<T, _>::new(edge.downcast_record::<T>()?, &layout);
 			Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<T>>))
-		},
-	}
-}
-
-/// The lend-lift bridge row for `T`: a lending producer onto a record wire.
-pub fn record_lift_lend_entry<T: Clone + Send + Sync + 'static>() -> RegistryEntry {
-	RegistryEntry {
-		io: NodeIOTypes::new(concrete!(Context), record_type::<T>(), vec![lend_edge_type::<T>()]),
-		constructor: |inputs| {
-			if inputs.len() != 1 {
-				return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-			}
-			let mut inputs = inputs.into_iter();
-			let node = crate::record::RecordLiftLend::<T, _>::new(inputs.next().unwrap().downcast_lend::<T>()?);
-			Ok(EdgeHandle::new_record::<T>(std::sync::Arc::new(node) as std::sync::Arc<ErasedRecordNode>))
-		},
-	}
-}
-
-/// The lend-extract bridge row for `T`: a record wire into a lend consumer.
-pub fn record_extract_lend_entry<T: Clone + Send + Sync + 'static>() -> RegistryEntry {
-	RegistryEntry {
-		io: NodeIOTypes::new(concrete!(Context), ref_type::<T>(), vec![record_edge_type::<T>()]),
-		constructor: |inputs| {
-			if inputs.len() != 1 {
-				return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-			}
-			let mut inputs = inputs.into_iter();
-			let edge = inputs.next().unwrap();
-			let layout = edge.layout().ok_or(ConstructionError::MissingLayout)?.clone();
-			let node = crate::record::RecordExtractLend::<T, _>::new(edge.downcast_record::<T>()?, &layout);
-			Ok(EdgeHandle::new_ref(std::sync::Arc::new(node) as std::sync::Arc<ErasedLendNode<T>>))
 		},
 	}
 }
