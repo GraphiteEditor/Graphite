@@ -24,7 +24,7 @@ use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{DashPattern, GradientForm, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, GradientForm, GradientHueDirection, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::async_node;
@@ -77,6 +77,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientForm>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpread>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientSpace>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<GradientHueDirection>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ListDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BrushTrace>]),
@@ -112,6 +113,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientForm>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientSpread>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientSpace>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<GradientHueDirection>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Artboard>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Graphic>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Vector>]),
@@ -336,6 +338,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				GradientForm,
 				GradientSpread,
 				GradientSpace,
+				GradientHueDirection,
 				DashPattern,
 				BoxCorners,
 				MergeByDistanceAlgorithm,
@@ -425,7 +428,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		BlendMode,
 		GradientForm,
 		GradientSpread,
-		GradientSpace
+		GradientSpace,
+		GradientHueDirection
 	));
 	#[cfg(feature = "gpu")]
 	node_types.extend(list_dyn_rows!(Raster<GPU>));
@@ -542,6 +546,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		attribute_value_node!(Item<GradientForm>),
 		attribute_value_node!(Item<GradientSpread>),
 		attribute_value_node!(Item<GradientSpace>),
+		attribute_value_node!(Item<GradientHueDirection>),
 		attribute_value_node!(Item<NodeIdPath>),
 		attribute_value_node!(List<String>),
 		attribute_value_node!(List<Color>),
