@@ -374,40 +374,6 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	/// Splices the selected `Ref` adapters between the consumer at `consumer_index` and its
-	/// producers, keeping the node vec topologically sorted and ids stable. `materialized` carries
-	/// the adapter ids already spliced during this update so shared producers get one adapter.
-	fn insert_ref_adapters(&mut self, consumer_index: usize, adapters: &[RefAdapter], materialized: &mut HashSet<NodeId>) {
-		let mut consumer_index = consumer_index;
-		for adapter in adapters {
-			let (_, consumer) = &self.nodes[consumer_index];
-			let producer = consumer.unwrap_construction_nodes()[adapter.input_index];
-			let mut path = consumer.original_location.path.clone();
-
-			// A path extension with a placeholder value which should not conflict with existing paths
-			if let Some(path) = path.as_mut() {
-				path.push(NodeId(11));
-			}
-
-			let node = ProtoNode {
-				construction_args: ConstructionArgs::Nodes(vec![producer]),
-				call_argument: concrete!(Context),
-				identifier: adapter.identifier.clone(),
-				original_location: OriginalLocation { path, ..Default::default() },
-				..Default::default()
-			};
-			let id = node.stable_node_id().expect("adapter nodes always produce a stable id");
-			if materialized.insert(id) {
-				self.nodes.insert(consumer_index, (id, node));
-				consumer_index += 1;
-			}
-			let (_, consumer) = &mut self.nodes[consumer_index];
-			if let ConstructionArgs::Nodes(args) = &mut consumer.construction_args {
-				args[adapter.input_index] = id;
-			}
-		}
-	}
-
 	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextModification::default();
@@ -696,37 +662,13 @@ impl TypingContext {
 
 	/// Updates the `TypingContext` with a given proto network. This will infer the types of the nodes
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
-	/// and contain fully resolved stable node ids. When a node's inputs disagree with every
-	/// implementation only on `Ref`-ness, the matching lend/clone_out adapter is spliced into the
-	/// network and inference resumes with the adapter in place.
+	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &mut ProtoNetwork) -> Result<(), GraphErrors> {
-		let mut materialized_adapters = HashSet::new();
-		let mut index = 0;
-		while index < network.nodes.len() {
-			let (id, node) = &network.nodes[index];
-			match self.infer(*id, node) {
-				Ok(_) => index += 1,
-				Err(errors) => match self.select_ref_adapters(node) {
-					Some(adapters) => network.insert_ref_adapters(index, &adapters, &mut materialized_adapters),
-					None => return Err(errors),
-				},
-			}
+		for (id, node) in &network.nodes {
+			self.infer(*id, node)?;
 		}
 
 		Ok(())
-	}
-
-	fn select_ref_adapters(&self, node: &ProtoNode) -> Option<Vec<RefAdapter>> {
-		let ConstructionArgs::Nodes(args) = &node.construction_args else { return None };
-		let inputs = args.iter().map(|id| self.inferred.get(id).map(NodeIOTypes::ty)).collect::<Option<Vec<_>>>()?;
-		let candidates: Vec<&NodeIOTypes> = self.lookup.get(&node.identifier)?.iter().map(|entry| &entry.io).collect();
-		let adapters = select_ref_adapters_over(&node.call_argument, &inputs, &candidates)?;
-		let constructible = adapters.iter().all(|adapter| {
-			self.lookup
-				.get(&adapter.identifier)
-				.is_some_and(|entries| entries.iter().any(|entry| entry.io.inputs.len() == 1 && valid_type(&inputs[adapter.input_index], &entry.io.inputs[0])))
-		});
-		constructible.then_some(adapters)
 	}
 
 	pub fn remove_inference(&mut self, node_id: NodeId) -> Option<NodeIOTypes> {
@@ -914,58 +856,6 @@ fn valid_type(from: &Type, to: &Type) -> bool {
 		// Reject unknown type relationships.
 		_ => false,
 	}
-}
-
-#[derive(Clone, Debug)]
-struct RefAdapter {
-	input_index: usize,
-	identifier: ProtoNodeIdentifier,
-}
-
-/// Picks the lend or clone_out adapter that reconciles a proposed edge with a wanted edge when they
-/// differ only by one `Ref` layer around a concrete output.
-fn ref_adapter(proposed: &Type, wanted: &Type) -> Option<ProtoNodeIdentifier> {
-	let (Type::Fn(_, proposed_output), Type::Fn(_, wanted_output)) = (proposed, wanted) else {
-		return None;
-	};
-	match (proposed_output.as_ref(), wanted_output.as_ref()) {
-		(Type::Record(inner), wanted_output @ Type::Concrete(_)) if valid_type(inner, wanted_output) => Some(ProtoNodeIdentifier::new("core_types::record::RecordExtractNode")),
-		(proposed_output @ Type::Concrete(_), Type::Record(inner)) if valid_type(proposed_output, inner) => Some(ProtoNodeIdentifier::new("core_types::record::RecordLiftNode")),
-		_ => None,
-	}
-}
-
-/// Selects adapters for the single implementation the inputs match modulo `Ref`-ness, or `None`
-/// when no or several implementations do.
-fn select_ref_adapters_over(call_argument: &Type, inputs: &[Type], candidates: &[&NodeIOTypes]) -> Option<Vec<RefAdapter>> {
-	let mut selected = None;
-	for candidate in candidates {
-		if !valid_type(&candidate.call_argument, call_argument) || candidate.inputs.len() != inputs.len() {
-			continue;
-		}
-		let mut adapters = Vec::new();
-		let mut fits = true;
-		for (input_index, (proposed, wanted)) in inputs.iter().zip(&candidate.inputs).enumerate() {
-			if valid_type(proposed, wanted) {
-				continue;
-			}
-			match ref_adapter(proposed, wanted) {
-				Some(identifier) => adapters.push(RefAdapter { input_index, identifier }),
-				None => {
-					fits = false;
-					break;
-				}
-			}
-		}
-		if !fits || adapters.is_empty() {
-			continue;
-		}
-		if selected.is_some() {
-			return None;
-		}
-		selected = Some(adapters);
-	}
-	selected
 }
 
 /// Returns a list of all generic types used in the node
@@ -1290,128 +1180,5 @@ mod test {
 			.into_iter()
 			.collect(),
 		}
-	}
-}
-
-#[cfg(test)]
-mod adapter_splice_test {
-	use super::*;
-
-	fn adapter_lookup() -> &'static HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
-		static LOOKUP: std::sync::LazyLock<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>> = std::sync::LazyLock::new(|| {
-			let unused: NodeConstructor = |_| Err(ConstructionError::Arity { expected: 0, got: 0 });
-			[
-				(
-					ProtoNodeIdentifier::new("wants_owned"),
-					vec![RegistryEntry {
-						io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![edge_type::<String>()]),
-						constructor: unused,
-					}],
-				),
-				(
-					ProtoNodeIdentifier::new("wants_owned_ambiguously"),
-					vec![
-						RegistryEntry {
-							io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![edge_type::<String>()]),
-							constructor: unused,
-						},
-						RegistryEntry {
-							io: NodeIOTypes::new(concrete!(Context), concrete!(f64), vec![edge_type::<String>()]),
-							constructor: unused,
-						},
-					],
-				),
-				(
-					ProtoNodeIdentifier::new("core_types::record::RecordExtractNode"),
-					vec![RegistryEntry {
-						io: NodeIOTypes::new(concrete!(Context), concrete!(String), vec![record_edge_type::<String>()]),
-						constructor: unused,
-					}],
-				),
-			]
-			.into_iter()
-			.collect()
-		});
-		&LOOKUP
-	}
-
-	fn string_value() -> ProtoNode {
-		ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("landed".to_string()).into()), vec![])
-	}
-
-	fn consumer(identifier: &str, producer: NodeId) -> ProtoNode {
-		ProtoNode {
-			identifier: ProtoNodeIdentifier::with_owned_string(identifier.to_string()),
-			call_argument: concrete!(Context),
-			construction_args: ConstructionArgs::Nodes(vec![producer]),
-			..Default::default()
-		}
-	}
-
-	#[test]
-	fn a_record_only_mismatch_splices_the_extract_adapter() {
-		let mut network = ProtoNetwork {
-			inputs: vec![],
-			output: NodeId(1),
-			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_owned", NodeId(0)))],
-		};
-
-		let mut typing = TypingContext::new(adapter_lookup());
-		typing.update(&mut network).unwrap();
-
-		assert_eq!(network.nodes.len(), 3);
-		let (adapter_id, adapter) = &network.nodes[1];
-		assert_eq!(adapter.identifier.as_str(), "core_types::record::RecordExtractNode");
-		assert_eq!(adapter.unwrap_construction_nodes(), vec![NodeId(0)]);
-		assert_eq!(network.nodes[2].1.unwrap_construction_nodes(), vec![*adapter_id]);
-		assert_eq!(typing.type_of(*adapter_id).unwrap().return_value, concrete!(String));
-		assert_eq!(typing.type_of(NodeId(1)).unwrap().return_value, concrete!(String));
-	}
-
-	#[test]
-	fn consumers_sharing_a_producer_share_one_adapter() {
-		let mut network = ProtoNetwork {
-			inputs: vec![],
-			output: NodeId(2),
-			nodes: vec![
-				(NodeId(0), string_value()),
-				(NodeId(1), consumer("wants_owned", NodeId(0))),
-				(NodeId(2), consumer("wants_owned", NodeId(0))),
-			],
-		};
-
-		let mut typing = TypingContext::new(adapter_lookup());
-		typing.update(&mut network).unwrap();
-
-		assert_eq!(network.nodes.len(), 4);
-		let adapters: Vec<NodeId> = network
-			.nodes
-			.iter()
-			.filter(|(_, node)| node.identifier.as_str() == "core_types::record::RecordExtractNode")
-			.map(|(id, _)| *id)
-			.collect();
-		let [adapter_id] = adapters.as_slice() else {
-			panic!("expected exactly one shared adapter, got {adapters:?}");
-		};
-		let consumers: Vec<Vec<NodeId>> = network
-			.nodes
-			.iter()
-			.filter(|(_, node)| node.identifier.as_str() == "wants_owned")
-			.map(|(_, node)| node.unwrap_construction_nodes())
-			.collect();
-		assert_eq!(consumers, vec![vec![*adapter_id], vec![*adapter_id]]);
-	}
-
-	#[test]
-	fn an_ambiguous_record_mismatch_stays_an_error() {
-		let mut network = ProtoNetwork {
-			inputs: vec![],
-			output: NodeId(1),
-			nodes: vec![(NodeId(0), string_value()), (NodeId(1), consumer("wants_owned_ambiguously", NodeId(0)))],
-		};
-
-		let mut typing = TypingContext::new(adapter_lookup());
-		assert!(typing.update(&mut network).is_err());
-		assert_eq!(network.nodes.len(), 2, "an ambiguous mismatch must not materialize adapters");
 	}
 }

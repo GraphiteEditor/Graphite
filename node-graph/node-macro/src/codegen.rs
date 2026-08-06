@@ -162,7 +162,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
 			}
 			state.push(quote!(pub(super) __frame_bytes: usize));
-			state.extend((0..parsed.attribute_reads.len()).map(|index| {
+			state.extend(reading_secondary_indices(&struct_regular_fields, shape).into_iter().map(|index| {
+				let slot = format_ident!("__in_{index}");
+				quote!(pub(super) #slot: gcore::record::Layout)
+			}));
+			let total_reads: usize = struct_regular_fields.iter().map(|field| field.attribute_reads.len()).sum();
+			state.extend((0..total_reads).map(|index| {
 				let slot = format_ident!("__read_{index}");
 				quote!(pub(super) #slot: Option<usize>)
 			}));
@@ -172,12 +177,28 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}));
 			state
 		}
-		None if routing.is_some() || opaque => vec![quote!(pub(super) __layout: gcore::record::Layout)],
+		None if routing.is_some() => {
+			let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout)];
+			state.extend(routing_value_indices(&struct_regular_fields, routing.as_ref().expect("guarded by the arm")).into_iter().map(|index| {
+				let slot = format_ident!("__in_{index}");
+				quote!(pub(super) #slot: gcore::record::Layout)
+			}));
+			state
+		}
+		None if opaque => vec![quote!(pub(super) __layout: gcore::record::Layout)],
 		None if flip => {
 			let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __frame_bytes: usize)];
+			if flip_carrier(parsed) {
+				state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
+			}
 			state.extend((0..struct_regular_fields.len()).map(|index| {
 				let slot = format_ident!("__in_{index}");
 				quote!(pub(super) #slot: gcore::record::Layout)
+			}));
+			state.extend(lazy_read_fields(&struct_regular_fields).into_iter().map(|(index, field)| {
+				let slot = format_ident!("__reads_{index}");
+				let arity = field.attribute_reads.len();
+				quote!(pub(super) #slot: [Option<usize>; #arity])
 			}));
 			if !flip_generic_idents.is_empty() {
 				state.push(quote!(pub(super) __marker: ::core::marker::PhantomData<fn() -> (#(#flip_generic_idents,)*)>));
@@ -334,6 +355,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// offsets from the carrier layout; `new` cannot fill that state.
 	let routing_layout_param = (routing.is_some() || opaque).then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
 	let routing_layout_init = (routing.is_some() || opaque).then(|| quote!(__layout: __layout.clone(),)).into_iter();
+	let routing_value_layouts: Vec<usize> = routing
+		.as_ref()
+		.map(|routing| routing_value_indices(&struct_regular_fields, routing))
+		.unwrap_or_default();
+	let routing_in_params = routing_value_layouts.iter().map(|index| {
+		let slot = format_ident!("__in_{index}");
+		quote!(#slot: &gcore::record::Layout,)
+	});
+	let routing_in_inits = routing_value_layouts.iter().map(|index| {
+		let slot = format_ident!("__in_{index}");
+		quote!(#slot: #slot.clone(),)
+	});
 	let flip_layout_params = flip
 		.then(|| {
 			(0..struct_regular_fields.len()).map(|index| {
@@ -353,17 +386,48 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.into_iter()
 		.flatten();
 	let flip_prelude = flip
-		.then(|| {
-			quote! {
+		.then(|| match flip_carrier(parsed) {
+			true => quote! {
+				let __layout = __in_0.with_writes(__in_0.depth, gcore::record::element_write::<#slot_value_type>(), &[]);
+				let __plan = gcore::record::copy_plan(__in_0, &__layout, false, &[]);
+				let __frame_bytes = __layout.frame_bytes();
+			},
+			false => quote! {
 				let __layout = gcore::record::Layout::default().with_writes(0, gcore::record::element_write::<#slot_value_type>(), &[]);
 				let __frame_bytes = __layout.frame_bytes();
-			}
+			},
 		})
 		.into_iter();
+	let flip_read_bindings = flip
+		.then(|| {
+			lazy_read_fields(&struct_regular_fields).into_iter().map(|(index, field)| {
+				let arr = format_ident!("__reads_{index}");
+				let slot = format_ident!("__in_{index}");
+				let offsets = field.attribute_reads.iter().map(|read| {
+					let marker = &read.marker;
+					quote!(#slot.offset_of(<#marker as gcore::attribute::Attribute>::NAME, 0))
+				});
+				quote!(let #arr = [#(#offsets),*];)
+			})
+		})
+		.into_iter()
+		.flatten();
+	let flip_read_inits = flip
+		.then(|| {
+			lazy_read_fields(&struct_regular_fields).into_iter().map(|(index, _)| {
+				let arr = format_ident!("__reads_{index}");
+				quote!(#arr,)
+			})
+		})
+		.into_iter()
+		.flatten();
 	let flip_output_inits = flip
-		.then(|| match flip_generic_idents.is_empty() {
-			true => quote!(__layout, __frame_bytes,),
-			false => quote!(__layout, __frame_bytes, __marker: ::core::marker::PhantomData,),
+		.then(|| {
+			let plan = flip_carrier(parsed).then(|| quote!(__plan,));
+			match flip_generic_idents.is_empty() {
+				true => quote!(__layout, __frame_bytes, #plan),
+				false => quote!(__layout, __frame_bytes, #plan __marker: ::core::marker::PhantomData,),
+			}
 		})
 		.into_iter();
 	// The flip prelude's `element_write` instantiates the erased glue at the
@@ -380,12 +444,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			impl<'n, #(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*> #(#new_where)*
 			{
 				#[allow(clippy::too_many_arguments)]
-				pub fn new(#(#new_args,)* #(#routing_layout_param)* #(#flip_layout_params)*) -> Self {
+				pub fn new(#(#new_args,)* #(#routing_layout_param)* #(#routing_in_params)* #(#flip_layout_params)*) -> Self {
 					#(#flip_prelude)*
+					#(#flip_read_bindings)*
 					Self {
 						#(#all_field_inits,)*
 						#(#routing_layout_init)*
+						#(#routing_in_inits)*
 						#(#flip_layout_inits)*
+						#(#flip_read_inits)*
 						#(#flip_output_inits)*
 					}
 				}
@@ -751,6 +818,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	let routing = routing_io(parsed);
 	let flip = record_flip(parsed);
+	let carrier_flip = flip_carrier(parsed);
 	let opaque = record_opaque(parsed);
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
@@ -958,11 +1026,24 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let routing_source = |ty: &Type| matches!((&routing, ty), (Some(routing), Type::Path(path)) if path.path.get_ident() == Some(&routing.generic));
 
-	let attr_kernel_params = parsed.attribute_reads.iter().map(|read| {
-		let pat = &read.pat_ident;
-		let marker = &read.marker;
-		quote!(#pat: #core_types::attribute::Attr<#marker>)
-	});
+	let lazy_read_out = |field: &ParsedField, output_type: &Type| {
+		let attr_tys = field.attribute_reads.iter().map(|read| {
+			let marker = &read.marker;
+			quote!(#core_types::attribute::Attr<#marker>)
+		});
+		match field.attribute_reads.is_empty() {
+			true => quote!(#output_type),
+			false => quote!((#output_type #(, #attr_tys)*)),
+		}
+	};
+	let read_tuple_param = |field: &ParsedField, value_param: TokenStream2, value_ty: TokenStream2| {
+		let read_pats = field.attribute_reads.iter().map(|read| &read.pat_ident);
+		let read_tys = field.attribute_reads.iter().map(|read| {
+			let marker = &read.marker;
+			quote!(#core_types::attribute::Attr<#marker>)
+		});
+		quote!((#value_param #(, #read_pats)*): (#value_ty #(, #read_tys)*))
+	};
 	let kernel_params = regular_fields
 		.iter()
 		.enumerate()
@@ -971,6 +1052,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let pat = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => {
 					let source_generic = format_ident!("__Source{index}");
@@ -982,11 +1064,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip && raw_lazy => {
 					let source_generic = format_ident!("__Source{index}");
-					quote!(#pat: &#core_types::record::ElementEdge<'_, #output_type, #source_generic>)
+					let out = lazy_read_out(field, output_type);
+					quote!(#pat: &#core_types::record::ElementEdge<'_, #out, #source_generic>)
 				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip => {
 					let source_generic = format_ident!("__Source{index}");
-					quote!(#pat: #core_types::record::ElementLazyInput<'_, #output_type, #source_generic>)
+					let out = lazy_read_out(field, output_type);
+					quote!(#pat: #core_types::record::ElementLazyInput<'_, #out, #source_generic>)
 				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if raw_lazy => {
 					let bound = lazy_bound(output_type);
@@ -997,8 +1081,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote!(#pat: #core_types::node::LazyInput<'_, impl #bound>)
 				}
 			}
-		})
-		.chain(attr_kernel_params);
+		});
 
 	let record_value_ty: Type = syn::parse_quote!(#core_types::record::RecordValue<'__record>);
 	let node_bounds = regular_fields.iter().enumerate().zip(&node_generics).map(|((index, field), node_generic)| match &field.ty {
@@ -1013,7 +1096,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		ParsedFieldType::Regular(_) if record.is_some() && !skips_carrier && index == 0 => {
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
 		}
+		ParsedFieldType::Regular(_) if record.is_some() && !field.attribute_reads.is_empty() => {
+			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
+		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => {
+			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
+		}
+		ParsedFieldType::Regular(_) if routing.is_some() => {
 			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #record_value_ty>)
 		}
 		ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #ty>),
@@ -1041,11 +1130,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		lend_outlives.push(quote!(#inner: #lifetime));
 	}
 
+	// The slot persists the plain value even on record wires, so the Clone
+	// bound targets the slot type, not the (possibly lifted) trait output.
+	let slot_ty = slot_value_type(&parsed.output_type);
 	let mut async_bounds = match (async_fn, future_kernel) {
 		(false, false) => Vec::new(),
-		(false, true) => vec![quote!(#trait_output: Clone)],
+		(false, true) => vec![quote!(#slot_ty: Clone)],
 		(true, _) => {
-			let output_clone = std::iter::once(quote!(#trait_output: Clone));
+			let output_clone = std::iter::once(quote!(#slot_ty: Clone));
 			let value_clones = regular_fields.iter().filter_map(|field| match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: Clone)),
 				_ => None,
@@ -1071,10 +1163,54 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(number_hard_min.is_some() || number_hard_max.is_some()).then(|| quote!(#ty: #core_types::misc::Clampable))
 	});
 
+	let flat_reads = field_reads(&regular_fields);
+	let read_binding = |slot: usize, read: &AttributeRead, rec: TokenStream2| {
+		let pat = &read.pat_ident;
+		let marker = &read.marker;
+		let slot = format_ident!("__read_{slot}");
+		quote! {
+			let #pat = #core_types::attribute::Attr::<#marker>(match self.#slot {
+				Some(__offset) => unsafe { #rec.read(__offset) },
+				None => <#marker as #core_types::attribute::Attribute>::default(),
+			});
+		}
+	};
+	let reads_of = |field_index: usize| {
+		flat_reads
+			.iter()
+			.enumerate()
+			.filter(move |(_, (owner, _))| *owner == field_index)
+			.map(|(slot, (_, read))| (slot, *read))
+			.collect::<Vec<(usize, &AttributeRead)>>()
+	};
+
 	let eval_values = regular_fields.iter().enumerate().map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			ParsedFieldType::Regular(_) if record.is_some() && !skips_carrier && index == 0 => quote!(),
+			// A carrier primary evaluates beyond the node's own frame in the
+			// flip tail, so its fields survive until the carry.
+			ParsedFieldType::Regular(_) if carrier_flip && index == 0 => quote!(),
+			// A reading secondary input claims a record edge: the element and
+			// the declared reads copy out right after its eval, before any
+			// later sibling eval can reuse the record stack.
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if record.is_some() && !field.attribute_reads.is_empty() => {
+				let slot = format_ident!("__in_{index}");
+				let rec_local = format_ident!("__rec_{index}");
+				let bindings: Vec<TokenStream2> = reads_of(index).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(#rec_local))).collect();
+				quote! {
+					let #name = match __cell.eval_input(#index, &self.#name, __input) {
+						Ok(value) => value,
+						Err(interrupt) => return interrupt.into(),
+					};
+					let #rec_local = self.#slot.rec(&#name);
+					#(#bindings)*
+					let #name: #ty = unsafe { #core_types::record::read_element(#rec_local) };
+				}
+			}
+			// A borrow taken before the node's own frame push parks a
+			// byte-carried spilled element into the arena; parked and inline
+			// elements borrow directly.
 			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) if flip => {
 				let slot = format_ident!("__in_{index}");
 				let record_local = format_ident!("__record_{index}");
@@ -1083,10 +1219,30 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						Ok(value) => value,
 						Err(interrupt) => return interrupt.into(),
 					};
-					let #name: &#ty = unsafe { #core_types::record::borrow_element(self.#slot.rec(&#record_local)) };
+					let Some(#name) = (unsafe {
+						#core_types::record::borrow_or_park::<#ty>(self.#slot.rec(&#record_local), &self.#slot, #core_types::context::ExtractArena::arena(__input))
+					}) else {
+						return #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError {
+							kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
+							trace: ::std::vec::Vec::new(),
+						}));
+					};
 				}
 			}
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if flip => {
+				let slot = format_ident!("__in_{index}");
+				quote! {
+					let #name = match __cell.eval_input(#index, &self.#name, __input) {
+						Ok(value) => value,
+						Err(interrupt) => return interrupt.into(),
+					};
+					let #name: #ty = unsafe { #core_types::record::read_element(self.#slot.rec(&#name)) };
+				}
+			}
+			// A routing node's value input rides a record edge; the element
+			// copies out right after its eval, before any source evaluation
+			// can reuse the record stack.
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing.is_some() && !routing_source(ty) => {
 				let slot = format_ident!("__in_{index}");
 				quote! {
 					let #name = match __cell.eval_input(#index, &self.#name, __input) {
@@ -1107,14 +1263,32 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip && raw_lazy => {
 				let slot = format_ident!("__in_{index}");
-				quote! {
-					let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot);
+				match field.attribute_reads.is_empty() {
+					true => quote! {
+						let #name = #core_types::record::ElementEdge::<#output_type, _>::new(&self.#name, &self.#slot);
+					},
+					false => {
+						let arr = format_ident!("__reads_{index}");
+						let read_fn = format_ident!("__{}_read_{}", fn_name, index);
+						quote! {
+							let #name = #core_types::record::ElementEdge::with_reads(&self.#name, &self.#slot, &self.#arr, self::#read_fn);
+						}
+					}
 				}
 			}
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip => {
 				let slot = format_ident!("__in_{index}");
-				quote! {
-					let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot);
+				match field.attribute_reads.is_empty() {
+					true => quote! {
+						let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot);
+					},
+					false => {
+						let arr = format_ident!("__reads_{index}");
+						let read_fn = format_ident!("__{}_read_{}", fn_name, index);
+						quote! {
+							let #name = #core_types::record::ElementLazyInput::with_reads(&self.#name, &__cell, #index, &self.#slot, &self.#arr, self::#read_fn);
+						}
+					}
 				}
 			}
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => quote! {
@@ -1127,7 +1301,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	});
 
-	let clamps = regular_fields.iter().filter_map(|field| {
+	let clamp_tokens = |field: &ParsedField| {
 		let ParsedFieldType::Regular(RegularParsedField { number_hard_min, number_hard_max, .. }) = &field.ty else {
 			return None;
 		};
@@ -1140,7 +1314,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			tokens.extend(quote!(let #name = #core_types::misc::Clampable::clamp_hard_max(#name, #max);));
 		}
 		(!tokens.is_empty()).then_some(tokens)
-	});
+	};
+	// A carrier primary binds in the flip tail; its clamp runs there too.
+	let clamps = regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(index, _)| !(carrier_flip && *index == 0))
+		.filter_map(|(_, field)| clamp_tokens(field));
 
 	let call_args = regular_fields.iter().filter(|field| !injected_name(&field.pat_ident.ident)).map(|field| {
 		let name = &field.pat_ident.ident;
@@ -1282,15 +1462,55 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.filter(|field| matches!(field.ty, ParsedFieldType::Regular(_)))
 		.map(|field| &field.pat_ident.ident)
 		.collect();
+	// A carried tail claims the node's frame first, evaluates the carrier
+	// beyond it, and carries its fields; every exit closes the frame through
+	// `lift_poll_into`.
+	let carried_prelude = carrier_flip.then(|| {
+		let field = regular_fields[0];
+		let name = &field.pat_ident.ident;
+		let read = match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
+				quote!(let #name: &#ty = unsafe { #core_types::record::borrow_element(__src_rec) };)
+			}
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name: #ty = unsafe { #core_types::record::read_element(__src_rec) };),
+			_ => unreachable!("a flip carrier is a regular value input"),
+		};
+		let clamp = clamp_tokens(field);
+		quote! {
+			let mut __carried = #core_types::record::RecordValue::zeroed();
+			let __dst = match self.__frame_bytes {
+				0 => __carried.as_mut_ptr(),
+				__bytes => #core_types::record::stack::push(__bytes),
+			};
+			let __src = match __cell.eval_input(0, &self.#name, __input) {
+				Ok(value) => value,
+				Err(interrupt) => return interrupt.into(),
+			};
+			let __src_rec = self.__in_0.rec(&__src);
+			unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };
+			#read
+			#clamp
+		}
+	});
 	// Async slots persist plain values across evaluations; a flipped source
-	// lifts the slot value onto its record wire at every merge point.
-	let merge_lifted = |poll: TokenStream2| match flip {
-		true => quote!(__cell.merge(#core_types::record::lift_poll(#poll, &self.__layout, #core_types::context::ExtractArena::arena(__input)))),
-		false => quote!(__cell.merge(#poll)),
+	// lifts the slot value onto its record wire at every merge point, into
+	// the carried frame when the node has a carrier.
+	let merge_lifted = |poll: TokenStream2| match (flip, carrier_flip) {
+		(true, true) => {
+			quote!(__cell.merge(unsafe { #core_types::record::lift_poll_into(#poll, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) }))
+		}
+		(true, false) => quote!(__cell.merge(#core_types::record::lift_poll(#poll, &self.__layout, #core_types::context::ExtractArena::arena(__input)))),
+		(false, _) => quote!(__cell.merge(#poll)),
+	};
+	let pending_return = match flip && carrier_flip {
+		true => quote! {
+			unsafe { #core_types::record::lift_poll_into::<#slot_ty>(#core_types::gpoll::GPoll::Pending, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) }
+		},
+		false => quote!(#core_types::gpoll::GPoll::Pending),
 	};
 	let inflight = match &parsed.attributes.placeholder {
 		Some(path) => merge_lifted(quote!(#core_types::gpoll::GPoll::Partial(#path(#(&#placeholder_value_names),*)))),
-		None => quote!(#core_types::gpoll::GPoll::Pending),
+		None => pending_return.clone(),
 	};
 	let slot_hit = merge_lifted(quote!(value.clone()));
 	let slot_check = quote! {
@@ -1335,10 +1555,17 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 	let record_tail = record.as_ref().map(|shape| {
+		let tuple_arg = |field: &ParsedField, value: TokenStream2| match field.attribute_reads.is_empty() {
+			true => value,
+			false => {
+				let read_pats = field.attribute_reads.iter().map(|read| &read.pat_ident.ident);
+				quote!((#value #(, #read_pats)*))
+			}
+		};
 		let carrier_arg = match &shape.carrier {
 			RecordCarrier::None => None,
-			RecordCarrier::Token(_) => Some(quote!(#core_types::record::ElToken)),
-			RecordCarrier::Read(ty) => Some(quote!(unsafe { __src_rec.element::<#ty>() })),
+			RecordCarrier::Token(_) => Some(tuple_arg(regular_fields[0], quote!(#core_types::record::ElToken))),
+			RecordCarrier::Read(ty) => Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) }))),
 		}
 		.into_iter();
 		let value_args = regular_fields.iter().skip(if shape.skips_carrier() { 0 } else { 1 }).map(|field| {
@@ -1347,14 +1574,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				// A lend param binds an owned edge; the kernel borrows the
 				// evaluated value.
 				ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => quote!(&#name),
-				_ => quote!(#name),
+				_ => tuple_arg(field, quote!(#name)),
 			}
 		});
-		let attr_args = parsed.attribute_reads.iter().map(|read| {
-			let pat = &read.pat_ident.ident;
-			quote!(#pat)
-		});
-		let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #carrier_arg)* #(, #value_args)* #(, #attr_args)*));
+		let record_kernel_call = quote!(self::#fn_name(__input #(, &self.#data_names)* #(, #carrier_arg)* #(, #value_args)*));
 		let carrier_eval = (!shape.skips_carrier()).then(|| {
 			let name = &regular_fields[0].pat_ident.ident;
 			quote! {
@@ -1366,17 +1589,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 		});
 		let carry = (!shape.skips_carrier()).then(|| quote!(unsafe { #core_types::record::apply_plan(__src_rec, __dst, &self.__plan) };));
-		let read_bindings = parsed.attribute_reads.iter().enumerate().map(|(index, read)| {
-			let pat = &read.pat_ident;
-			let marker = &read.marker;
-			let slot = format_ident!("__read_{index}");
-			quote! {
-				let #pat = #core_types::attribute::Attr::<#marker>(match self.#slot {
-					Some(__offset) => unsafe { __src_rec.read(__offset) },
-					None => <#marker as #core_types::attribute::Attribute>::default(),
-				});
-			}
-		});
+		let carrier_read_bindings: Vec<TokenStream2> = match shape.skips_carrier() {
+			true => Vec::new(),
+			false => reads_of(0).into_iter().map(|(slot, read)| read_binding(slot, read, quote!(__src_rec))).collect(),
+		};
 		let kernel_value = match shape.dialect {
 			RecordDialect::Plain => quote!(#record_kernel_call),
 			RecordDialect::Interrupt => quote! {
@@ -1391,9 +1607,29 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			Some(_) => quote!(__element),
 			None => quote!(_),
 		};
-		let destructure = match attr_binders.is_empty() {
+		// Slot binders in the return tuple's own order: an `Attr` binds the
+		// next write binder, a `RemoveAttr` binds nothing.
+		let slot_binders: Vec<TokenStream2> = {
+			let mut binders = attr_binders.iter();
+			match slot_value_type(&parsed.output_type) {
+				Type::Tuple(tuple) => tuple
+					.elems
+					.iter()
+					.skip(1)
+					.map(|slot| match attr_marker(slot) {
+						Some(_) => {
+							let binder = binders.next().expect("write binders match the Attr slots");
+							quote!(#core_types::attribute::Attr(#binder))
+						}
+						None => quote!(_),
+					})
+					.collect(),
+				_ => Vec::new(),
+			}
+		};
+		let destructure = match slot_binders.is_empty() {
 			true => quote!(let #element_binder = __kernel_value;),
-			false => quote!(let (#element_binder #(, #core_types::attribute::Attr(#attr_binders))*) = __kernel_value;),
+			false => quote!(let (#element_binder #(, #slot_binders)*) = __kernel_value;),
 		};
 		let element_store = shape.element_write.as_ref().map(|ty| quote!(unsafe { #core_types::record::write_field::<#ty>(__dst, 0, __element) };));
 		let attr_stores = attr_binders.iter().enumerate().map(|(index, binder)| {
@@ -1408,7 +1644,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 			#carrier_eval
 			#carry
-			#(#read_bindings)*
+			#(#carrier_read_bindings)*
 			let __kernel_value = #kernel_value;
 			#destructure
 			#element_store
@@ -1422,8 +1658,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	});
 	let flip_tail = flip.then(|| {
 		if matches!(kernel_kind(&parsed.output_type), KernelKind::Poll(_)) {
-			return quote! {
-				__cell.merge(#core_types::record::lift_poll(#kernel_call, &self.__layout, #core_types::context::ExtractArena::arena(__input)))
+			return match &carried_prelude {
+				Some(prelude) => quote! {
+					#prelude
+					__cell.merge(unsafe { #core_types::record::lift_poll_into(#kernel_call, __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input)) })
+				},
+				None => quote! {
+					__cell.merge(#core_types::record::lift_poll(#kernel_call, &self.__layout, #core_types::context::ExtractArena::arena(__input)))
+				},
 			};
 		}
 		let kernel_value = match kernel_kind(&parsed.output_type) {
@@ -1435,25 +1677,20 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 			_ => quote!(#kernel_call),
 		};
-		quote! {
-			let __kernel_value = #kernel_value;
-			let mut __value = #core_types::record::RecordValue::zeroed();
-			let __dst = match self.__frame_bytes {
-				0 => __value.as_mut_ptr(),
-				__bytes => #core_types::record::stack::push(__bytes),
-			};
-			let __written = unsafe { #core_types::record::write_element(__dst, __kernel_value, #core_types::context::ExtractArena::arena(__input)) };
-			if self.__frame_bytes != 0 {
-				#core_types::record::stack::pop(__dst);
-				__value = #core_types::record::RecordValue::spilled(unsafe { #core_types::record::Rec::new(__dst.cast_const()) });
-			}
-			match __written {
-				Some(()) => __cell.finish(__value),
-				None => #core_types::gpoll::GPoll::Error(::std::boxed::Box::new(#core_types::gpoll::GraphError {
-					kind: #core_types::gpoll::ErrorKind::ArenaExhausted,
-					trace: ::std::vec::Vec::new(),
-				})),
-			}
+		match &carried_prelude {
+			// The carrier evaluates beyond the claimed frame, so the kernel
+			// runs after the push.
+			Some(prelude) => quote! {
+				#prelude
+				let __kernel_value = #kernel_value;
+				__cell.merge(unsafe {
+					#core_types::record::lift_poll_into(#core_types::gpoll::GPoll::Final(__kernel_value), __dst, self.__frame_bytes, #core_types::context::ExtractArena::arena(__input))
+				})
+			},
+			None => quote! {
+				let __kernel_value = #kernel_value;
+				__cell.merge(#core_types::record::lift_poll(#core_types::gpoll::GPoll::Final(__kernel_value), &self.__layout, #core_types::context::ExtractArena::arena(__input)))
+			},
 		}
 	});
 	let eval_tail = match (async_fn, future_kernel) {
@@ -1470,7 +1707,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.chain(kernel_value_names.iter().map(|name| quote!(#name.clone())));
 			let completion = future_completion(&parsed.output_type);
 			let tail = spawn_tail(completion, inflight.clone());
+			let prelude = carried_prelude.iter();
 			quote! {
+				#(#prelude)*
 				#slot_check
 				#(#snapshot_binding)*
 				let __future = self::#fn_name(#(#future_args),*);
@@ -1483,7 +1722,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote!(let __placeholder = #path(#(&#placeholder_value_names),*);),
 					merge_lifted(quote!(#core_types::gpoll::GPoll::Partial(__placeholder))),
 				),
-				None => (quote!(), quote!(#core_types::gpoll::GPoll::Pending)),
+				None => (quote!(), pending_return.clone()),
 			};
 			let acquire = match kernel_kind(&parsed.output_type) {
 				KernelKind::FutureInterrupt(_) => quote! {
@@ -1500,7 +1739,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 			let completion = future_completion(&payload);
 			let tail = spawn_tail(completion, spawn_return);
+			let prelude = carried_prelude.iter();
 			quote! {
+				#(#prelude)*
 				#slot_check
 				#placeholder_binding
 				#acquire
@@ -1509,14 +1750,35 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
-	let record_bounds: Vec<TokenStream2> = match &record {
-		Some(shape) if shape.skips_carrier() => {
-			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
+	let record_bounds: Vec<TokenStream2> = {
+		let mut bounds = match &record {
+			Some(shape) if shape.skips_carrier() => {
+				vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
+			}
+			None if derive_routing || flip => {
+				vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
+			}
+			_ => Vec::new(),
+		};
+		// A reading secondary input's element copies out of its record, as
+		// does a concrete carrier read.
+		if let Some(shape) = &record {
+			bounds.extend(reading_secondary_indices(&regular_fields, shape).into_iter().filter_map(|index| match &regular_fields[index].ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
+				_ => None,
+			}));
+			if let RecordCarrier::Read(ty) = &shape.carrier {
+				bounds.push(quote!(#ty: ::core::clone::Clone));
+			}
 		}
-		None if derive_routing || flip => {
-			vec![quote!(#ctx_ident: #core_types::context::ExtractArena<ArenaRef = &'__record #core_types::arena::Arena>)]
+		// A routing node's value elements copy out of their records.
+		if let Some(routing) = &routing {
+			bounds.extend(routing_value_indices(&regular_fields, routing).into_iter().filter_map(|index| match &regular_fields[index].ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
+				_ => None,
+			}));
 		}
-		_ => Vec::new(),
+		bounds
 	};
 
 	let flip_bounds: Vec<TokenStream2> = match flip {
@@ -1524,7 +1786,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let mut bounds: Vec<TokenStream2> = regular_fields
 				.iter()
 				.filter_map(|field| match &field.ty {
-					ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => None,
+					// The conditional arena-park moves a lend element once.
+					ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => Some(quote!(#ty: ::core::marker::Send + ::core::marker::Sync + 'static)),
 					ParsedFieldType::Regular(RegularParsedField { ty, .. }) => Some(quote!(#ty: ::core::clone::Clone)),
 					ParsedFieldType::Node(NodeParsedField { output_type, .. }) => Some(quote!(#output_type: ::core::clone::Clone)),
 				})
@@ -1555,6 +1818,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.iter()
 			.map(|marker| quote!(#core_types::record::FieldWrite::of::<#marker>(0)))
 			.collect();
+		let remove_pairs: Vec<TokenStream2> = shape
+			.removes
+			.iter()
+			.map(|marker| quote!((<#marker as #core_types::attribute::Attribute>::NAME, 0)))
+			.collect();
+		let subtraction = (!remove_pairs.is_empty()).then(|| quote!(.without(&[#(#remove_pairs),*])));
 		let element = match &shape.element_write {
 			Some(ty) => quote!(#core_types::record::element_write::<#ty>()),
 			None => quote!(__carrier.element),
@@ -1567,25 +1836,35 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			},
 			false => quote! {
 				#vis fn #layout_fn(__carrier: &#core_types::record::Layout) -> #core_types::record::Layout {
-					__carrier.with_writes(__carrier.depth, #element, &[#(#write_descs),*])
+					__carrier #subtraction.with_writes(__carrier.depth, #element, &[#(#write_descs),*])
 				}
 			},
 		};
+		let reading_secondaries = reading_secondary_indices(&regular_fields, shape);
 		let edge_args = regular_fields.iter().zip(&node_generics).map(|(field, generic)| {
 			let name = &field.pat_ident.ident;
 			quote!(#name: #generic)
 		});
 		let carrier_layout_param = (!shape.skips_carrier()).then(|| quote!(__carrier_layout: &#core_types::record::Layout,)).into_iter();
+		let input_layout_params = reading_secondaries.iter().map(|index| {
+			let slot = format_ident!("__in_{index}");
+			quote!(#slot: &#core_types::record::Layout,)
+		});
 		let layout_binding = match shape.skips_carrier() {
 			true => quote!(let __layout = self::#layout_fn();),
 			false => quote!(let __layout = self::#layout_fn(__carrier_layout);),
 		};
 		let carry_element = shape.carries_element();
-		let plan_binding = (!shape.skips_carrier()).then(|| quote!(let __plan = #core_types::record::copy_plan(__carrier_layout, &__layout, #carry_element);));
-		let read_inits = parsed.attribute_reads.iter().enumerate().map(|(index, read)| {
+		let plan_binding =
+			(!shape.skips_carrier()).then(|| quote!(let __plan = #core_types::record::copy_plan(__carrier_layout, &__layout, #carry_element, &[#(#remove_pairs),*]);));
+		let read_inits = flat_reads.iter().enumerate().map(|(slot, (owner, read))| {
 			let marker = &read.marker;
-			let slot = format_ident!("__read_{index}");
-			quote!(let #slot = __carrier_layout.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0);)
+			let slot = format_ident!("__read_{slot}");
+			let source = match !shape.skips_carrier() && *owner == 0 {
+				true => quote!(__carrier_layout),
+				false => format_ident!("__in_{owner}").to_token_stream(),
+			};
+			quote!(let #slot = #source.offset_of(<#marker as #core_types::attribute::Attribute>::NAME, 0);)
 		});
 		let write_inits = shape.write_markers.iter().enumerate().map(|(index, marker)| {
 			let slot = format_ident!("__write_{index}");
@@ -1601,8 +1880,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(#name,)
 		});
 		let carrier_init = (!shape.skips_carrier()).then(|| quote!(__carrier: __carrier_layout.clone(),)).into_iter();
+		let input_layout_inits = reading_secondaries.iter().map(|index| {
+			let slot = format_ident!("__in_{index}");
+			quote!(#slot: #slot.clone(),)
+		});
 		let plan_init = (!shape.skips_carrier()).then(|| quote!(__plan,)).into_iter();
-		let read_names = (0..parsed.attribute_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
+		let read_names = (0..flat_reads.len()).map(|index| format_ident!("__read_{index}")).map(|slot| quote!(#slot,));
 		let write_names = (0..shape.write_markers.len()).map(|index| format_ident!("__write_{index}")).map(|slot| quote!(#slot,));
 		quote! {
 			#layout_def
@@ -1610,7 +1893,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#[automatically_derived]
 			impl<#(#data_field_generic_idents,)* #(#node_generics,)*> #mod_name::#struct_name<#(#struct_type_params,)*> {
 				#[allow(clippy::too_many_arguments)]
-				#vis fn new(#(#edge_args,)* #(#carrier_layout_param)*) -> Self {
+				#vis fn new(#(#edge_args,)* #(#carrier_layout_param)* #(#input_layout_params)*) -> Self {
 					#layout_binding
 					#plan_binding
 					#(#read_inits)*
@@ -1620,6 +1903,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#data_inits)*
 						#(#edge_inits)*
 						#(#carrier_init)*
+						#(#input_layout_inits)*
 						__layout,
 						#(#plan_init)*
 						__frame_bytes,
@@ -1663,10 +1947,54 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
+	let lazy_read_fns: Vec<TokenStream2> = lazy_read_fields(&regular_fields)
+		.into_iter()
+		.map(|(index, field)| {
+			let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty else {
+				unreachable!("lazy read fields are Node fields");
+			};
+			let read_fn = format_ident!("__{}_read_{}", fn_name, index);
+			let generics: Vec<&Ident> = parsed
+				.fn_generics
+				.iter()
+				.filter_map(|param| match param {
+					GenericParam::Type(type_param) if type_contains_ident(output_type, &type_param.ident) => Some(&type_param.ident),
+					_ => None,
+				})
+				.collect();
+			let attr_slots = field.attribute_reads.iter().enumerate().map(|(slot, read)| {
+				let marker = &read.marker;
+				quote! {
+					#core_types::attribute::Attr::<#marker>(match __reads[#slot] {
+						Some(__offset) => unsafe { __rec.read(__offset) },
+						None => <#marker as #core_types::attribute::Attribute>::default(),
+					})
+				}
+			});
+			let attr_tys = field.attribute_reads.iter().map(|read| {
+				let marker = &read.marker;
+				quote!(#core_types::attribute::Attr<'__read, #marker>)
+			});
+			quote! {
+				/// # Safety
+				/// `__rec` must be a record whose element is the declared output
+				/// type, of the layout `__reads` was resolved against.
+				unsafe fn #read_fn<'__read #(, #generics)*>(__rec: #core_types::record::Rec, __reads: &[Option<usize>]) -> (#output_type #(, #attr_tys)*)
+				where
+					#output_type: ::core::clone::Clone,
+				{
+					(unsafe { #core_types::record::read_element::<#output_type>(__rec) } #(, #attr_slots)*)
+				}
+			}
+		})
+		.collect();
+
 	Ok(NodeImplTokens {
 		in_mod: entries,
 		top_level: quote! {
 			#kernel
+
+			#(#lazy_read_fns)*
 
 			#record_wiring
 
@@ -1693,13 +2021,14 @@ pub(crate) enum RecordCarrier {
 }
 
 /// The record io of a node fn: how the carrier lowers, the element write,
-/// and the written markers. Present exactly when the signature declares
-/// attribute reads or writes in a shape the record tier supports; malformed
-/// record io is reported by validation and generates no node impl.
+/// and the markers written and removed. Present exactly when the signature
+/// declares attribute reads or writes in a shape the record tier supports;
+/// malformed record io is reported by validation and generates no node impl.
 pub(crate) struct RecordShape {
 	pub(crate) carrier: RecordCarrier,
 	pub(crate) element_write: Option<Type>,
 	pub(crate) write_markers: Vec<Type>,
+	pub(crate) removes: Vec<Type>,
 	pub(crate) dialect: RecordDialect,
 }
 
@@ -1713,8 +2042,68 @@ impl RecordShape {
 	}
 }
 
+/// Whether the signature declares record-tier attribute io: value-input reads
+/// or return-tuple writes. Reads on lazy inputs belong to the record lowering
+/// of the flip class instead.
 pub(crate) fn has_record_io(parsed: &ParsedNodeFn) -> bool {
-	!parsed.attribute_reads.is_empty() || record_writes(&slot_value_type(&parsed.output_type)).is_some()
+	let value_reads = parsed
+		.fields
+		.iter()
+		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
+	value_reads || record_writes(&slot_value_type(&parsed.output_type)).is_some()
+}
+
+pub(crate) fn has_lazy_reads(parsed: &ParsedNodeFn) -> bool {
+	parsed
+		.fields
+		.iter()
+		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Node(_)))
+}
+
+/// The value inputs of a routing node (every regular field that is not a
+/// routing source), with their indices into the regular fields.
+pub(crate) fn routing_value_indices(regular_fields: &[&ParsedField], routing: &RoutingIo) -> Vec<usize> {
+	regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(_, field)| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => !matches!(ty, Type::Path(path) if path.path.get_ident() == Some(&routing.generic)),
+			ParsedFieldType::Node(_) => false,
+		})
+		.map(|(index, _)| index)
+		.collect()
+}
+
+/// The lazy inputs declaring attribute reads, with their indices into the
+/// unit-skipped regular fields.
+pub(crate) fn lazy_read_fields<'a>(regular_fields: &[&'a ParsedField]) -> Vec<(usize, &'a ParsedField)> {
+	regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(_, field)| matches!(field.ty, ParsedFieldType::Node(_)) && !field.attribute_reads.is_empty())
+		.map(|(index, field)| (index, *field))
+		.collect()
+}
+
+/// The indices (into the unit-skipped regular fields) of value inputs whose
+/// reads resolve against their own wire rather than the carrier's.
+pub(crate) fn reading_secondary_indices(regular_fields: &[&ParsedField], shape: &RecordShape) -> Vec<usize> {
+	regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(index, field)| !field.attribute_reads.is_empty() && (shape.skips_carrier() || *index != 0))
+		.map(|(index, _)| index)
+		.collect()
+}
+
+/// Every attribute read in field order with the owning field's index, flat so
+/// read slots are numbered across inputs.
+pub(crate) fn field_reads<'a>(regular_fields: &[&'a ParsedField]) -> Vec<(usize, &'a AttributeRead)> {
+	regular_fields
+		.iter()
+		.enumerate()
+		.flat_map(|(index, field)| field.attribute_reads.iter().map(move |read| (index, read)))
+		.collect()
 }
 
 /// Substitutes bare generic idents with their row-assigned types.
@@ -1826,10 +2215,20 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 		_ => return None,
 	};
 	let writes = record_writes(&value);
-	if parsed.attribute_reads.is_empty() && writes.is_none() {
+	let has_reads = parsed
+		.fields
+		.iter()
+		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
+	if !has_reads && writes.is_none() {
 		return None;
 	}
 	if parsed.is_async || parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		return None;
+	}
+	let reads_well_placed = parsed.fields.iter().all(|field| {
+		field.attribute_reads.is_empty() || (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
+	});
+	if !reads_well_placed {
 		return None;
 	}
 	let carrier_field = parsed.fields.first()?;
@@ -1851,9 +2250,9 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 			}
 		},
 	};
-	let (element, write_markers) = match writes {
-		Some(RecordWrites { element, markers }) => (element, markers),
-		None => (value, Vec::new()),
+	let (element, write_markers, removes) = match writes {
+		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
+		None => (value, Vec::new(), Vec::new()),
 	};
 	let element_write = match &carrier {
 		RecordCarrier::Token(token) => match bare_ident(&element) {
@@ -1867,13 +2266,14 @@ pub(crate) fn record_shape(parsed: &ParsedNodeFn) -> Option<RecordShape> {
 			Some(element)
 		}
 	};
-	if matches!(carrier, RecordCarrier::None) && !parsed.attribute_reads.is_empty() {
+	if matches!(carrier, RecordCarrier::None) && !removes.is_empty() {
 		return None;
 	}
 	Some(RecordShape {
 		carrier,
 		element_write,
 		write_markers,
+		removes,
 		dialect,
 	})
 }
@@ -1891,6 +2291,31 @@ pub(crate) struct RoutingIo {
 	pub(crate) generic: Ident,
 }
 
+/// Whether a flipped node's primary input is a carrier: the first parameter
+/// after the context, when it is an owned or lent value input. A carrier's
+/// fields pass through to the output; every production layout is element-only
+/// until attribute adoption, so the copy plan is empty and behavior is
+/// unchanged. Async kernels carry fields per eval around the slot (only the
+/// element crosses the future boundary), so their carrier must be owned: the
+/// future captures the element by value.
+pub(crate) fn flip_carrier(parsed: &ParsedNodeFn) -> bool {
+	if !record_flip(parsed) {
+		return false;
+	}
+	let Some(first) = parsed.fields.first() else { return false };
+	if first.is_data_field {
+		return false;
+	}
+	let ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) = &first.ty else {
+		return false;
+	};
+	if matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()) {
+		return false;
+	}
+	let async_kernel = parsed.is_async || matches!(kernel_kind(&parsed.output_type), KernelKind::Future(_) | KernelKind::FutureInterrupt(_));
+	!(async_kernel && lend.is_some())
+}
+
 /// Whether a plain node's lowering flips onto record wires: sync,
 /// fully-concrete value-input nodes in this cut; batch, shader, async, lend,
 /// lazy, and generic nodes keep the plain lowering until their record forms
@@ -1899,7 +2324,10 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	if record_shape(parsed).is_some() || has_record_io(parsed) || routing_io(parsed).is_some() {
 		return false;
 	}
-	if parsed.attributes.batch.is_some() || parsed.attributes.shader_node.is_some() || parsed.attributes.plain {
+	// Shader nodes flip like any value node: the kernel doubles as the
+	// shader body on the spirv target, but the struct and Node impl are
+	// std-gated, so the record machinery never reaches the shader build.
+	if parsed.attributes.batch.is_some() || parsed.attributes.plain {
 		return false;
 	}
 	if type_disqualifies(&slot_value_type(&parsed.output_type)) {
@@ -1911,7 +2339,8 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 			GenericParam::Type(type_param) if Some(&type_param.ident) == ctx_ident.as_ref() => {}
 			// Registry rows assign a generic by unifying a field's type with
 			// the row's, so a generic without an extractable position keeps
-			// the plain lowering.
+			// the plain lowering. A `skip_impl` node's rows are hand-written
+			// with explicit types, so no extractable position is needed.
 			GenericParam::Type(type_param) => {
 				let extractable = parsed.fields.iter().filter(|field| !field.is_data_field).any(|field| {
 					let ty = match &field.ty {
@@ -1920,7 +2349,7 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 					};
 					generic_extractable(ty, &type_param.ident)
 				});
-				if !extractable {
+				if !extractable && !parsed.attributes.skip_impl {
 					return false;
 				}
 			}
@@ -2007,7 +2436,9 @@ pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
 				implementations,
 			}) => {
 				if bare_ident(output_type) == Some(&ident) {
-					if !implementations.is_empty() || type_contains_ident(input_type, &ident) {
+					// A source forwards its whole record opaquely; declared
+					// reads contradict that and are rejected by validation.
+					if !implementations.is_empty() || type_contains_ident(input_type, &ident) || !field.attribute_reads.is_empty() {
 						return None;
 					}
 					sources += 1;
@@ -2437,8 +2868,7 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 			return quote!(gcore::registry::generic_record_edge_type(#token_name));
 		}
 		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::edge_type::<#ty>()),
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::edge_type::<#ty>()),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::record_edge_type::<#ty>()),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
 		}
 	});
@@ -2464,11 +2894,28 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 			};
 		}
 		match &field.ty {
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
-			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => {
+				let handle = format_ident!("__handle_{index}");
+				let layout = format_ident!("__in_layout_{index}");
+				quote! {
+					let #handle = inputs.next().unwrap();
+					let Some(#layout) = #handle.layout().cloned() else {
+						return Err(gcore::registry::ConstructionError::MissingLayout);
+					};
+					let #name = #handle.downcast_record::<#ty>()?;
+				}
+			}
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
 		}
 	});
+	let value_layout_args = regular_fields
+		.iter()
+		.enumerate()
+		.filter(|(_, field)| !is_source(field) && matches!(field.ty, ParsedFieldType::Regular(_)))
+		.map(|(index, _)| {
+			let layout = format_ident!("__in_layout_{index}");
+			quote!(&#layout,)
+		});
 	let source_wraps = regular_fields.iter().enumerate().filter(|(_, field)| is_source(field)).map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		let layout = format_ident!("__layout_{index}");
@@ -2497,7 +2944,7 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 					#(#downcasts)*
 					let __union = gcore::record::Layout::union(&[#(&#source_layouts),*]);
 					#(#source_wraps)*
-					let __node = #struct_name::new(#(#names,)* &__union);
+					let __node = #struct_name::new(#(#names,)* &__union, #(#value_layout_args)*);
 					Ok(gcore::registry::EdgeHandle::new_erased(
 						::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
 						#first_source_ty,
@@ -2603,6 +3050,7 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 	let entries_name = format_ident!("{}_entries", fn_name);
 	let arity = regular_fields.len();
 	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+	let reading_secondaries = reading_secondary_indices(regular_fields, &shape);
 
 	let input_types = regular_fields.iter().enumerate().map(|(index, field)| {
 		let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
@@ -2618,7 +3066,10 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 				RecordCarrier::None => unreachable!(),
 			};
 		}
-		quote!(gcore::registry::edge_type::<#ty>())
+		match field.attribute_reads.is_empty() {
+			true => quote!(gcore::registry::edge_type::<#ty>()),
+			false => quote!(gcore::registry::record_edge_type::<#ty>()),
+		}
 	});
 	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
 		let name = &field.pat_ident.ident;
@@ -2635,9 +3086,24 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 				let #name = __carrier_handle.downcast_erased::<gcore::registry::ErasedRecordNode>(__carrier_ty.clone())?;
 			};
 		}
+		if !field.attribute_reads.is_empty() {
+			let layout_local = format_ident!("__in_layout_{index}");
+			return quote! {
+				let __in_handle = inputs.next().unwrap();
+				let __in_ty = __in_handle.ty().clone();
+				let Some(#layout_local) = __in_handle.layout().cloned() else {
+					return Err(gcore::registry::ConstructionError::MissingLayout);
+				};
+				let #name = __in_handle.downcast_erased::<gcore::registry::ErasedRecordNode>(__in_ty)?;
+			};
+		}
 		quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;)
 	});
 	let wire_layout_arg = carrier_in_fields.then(|| quote!(&__carrier_layout,)).into_iter();
+	let input_layout_args = reading_secondaries.iter().map(|index| {
+		let layout_local = format_ident!("__in_layout_{index}");
+		quote!(&#layout_local,)
+	});
 	let (io_output, construct_output) = match (&shape.carrier, &shape.element_write) {
 		(RecordCarrier::Token(token), _) => {
 			let name = token.to_string();
@@ -2670,7 +3136,7 @@ fn record_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fie
 					}
 					let mut inputs = inputs.into_iter();
 					#(#downcasts)*
-					let __node = #struct_name::new(#(#names,)* #(#wire_layout_arg)*);
+					let __node = #struct_name::new(#(#names,)* #(#wire_layout_arg)* #(#input_layout_args)*);
 					#construct_output
 				},
 			}]

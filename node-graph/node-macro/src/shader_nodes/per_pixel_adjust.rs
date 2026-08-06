@@ -247,6 +247,7 @@ impl PerPixelAdjustCodegen<'_> {
 			number_step: None,
 			unit: None,
 			is_data_field: false,
+			attribute_reads: Vec::new(),
 		});
 
 		// find exactly one gpu_image field, runtime doesn't support more than 1 atm
@@ -317,7 +318,6 @@ impl PerPixelAdjustCodegen<'_> {
 			output_type: raster_gpu,
 			is_async: false,
 			fields,
-			attribute_reads: Vec::new(),
 			body,
 			description: self.parsed.description.clone(),
 		};

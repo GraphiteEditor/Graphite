@@ -1,10 +1,11 @@
 //! Pilot record nodes exercising the macro's record-tier attribute io:
-//! offset reads and writes against record edges, the ElToken byte-carry for
-//! passthrough elements, and the `_: ()` no-carrier form. These are the
-//! flat-wave law tests; the node forms are the production authoring surface,
-//! and the wiring is by hand until the compiler pass constructs layouts.
+//! per-input tuple reads resolved against each input's wire, offset writes,
+//! `RemoveAttr` layout subtraction, the ElToken byte-carry for passthrough
+//! elements, and the `_: ()` no-carrier form. These are the flat-wave law
+//! tests; the node forms are the production authoring surface, and the
+//! wiring is by hand until the compiler pass constructs layouts.
 
-use core_types::attribute::{Attr, Opacity};
+use core_types::attribute::{Attr, Opacity, RemoveAttr};
 use core_types::context::ExtractArena;
 use core_types::gpoll::{ErrorKind, GraphError, Interrupt};
 use core_types::{Context, Ctx};
@@ -17,7 +18,7 @@ core_types::attribute! {
 }
 
 #[node_macro::node(category("Test"))]
-fn multiply_opacity(_: impl Ctx, element: f64, factor: f64, opacity: Attr<Opacity>) -> (f64, Attr<Opacity>) {
+fn multiply_opacity(_: impl Ctx, (element, opacity): (f64, Attr<Opacity>), factor: f64) -> (f64, Attr<Opacity>) {
 	(element, Attr(*opacity * factor))
 }
 
@@ -27,12 +28,12 @@ fn measure(_: impl Ctx, element: f64) -> (f64, Attr<Length>) {
 }
 
 #[node_macro::node(category("Test"))]
-fn shade(_: impl Ctx, element: f64, opacity: Attr<Opacity>) -> f64 {
+fn shade(_: impl Ctx, (element, opacity): (f64, Attr<Opacity>)) -> f64 {
 	element * *opacity
 }
 
 #[node_macro::node(category("Test"))]
-fn checked_multiply_opacity(_: impl Ctx, element: f64, factor: f64, opacity: Attr<Opacity>) -> Result<(f64, Attr<Opacity>), Interrupt> {
+fn checked_multiply_opacity(_: impl Ctx, (element, opacity): (f64, Attr<Opacity>), factor: f64) -> Result<(f64, Attr<Opacity>), Interrupt> {
 	if factor < 0. {
 		return Err(GraphError::new("negative factor").into());
 	}
@@ -40,12 +41,12 @@ fn checked_multiply_opacity(_: impl Ctx, element: f64, factor: f64, opacity: Att
 }
 
 #[node_macro::node(category("Test"))]
-fn scale(_: impl Ctx, element: f64, factor: &f64, opacity: Attr<Opacity>) -> (f64, Attr<Opacity>) {
+fn scale(_: impl Ctx, (element, opacity): (f64, Attr<Opacity>), factor: &f64) -> (f64, Attr<Opacity>) {
 	(element * *factor, Attr(*opacity))
 }
 
 #[node_macro::node(category("Test"))]
-fn fade<T>(_: impl Ctx, element: T, factor: f64, opacity: Attr<Opacity>) -> (T, Attr<Opacity>) {
+fn fade<T>(_: impl Ctx, (element, opacity): (T, Attr<Opacity>), factor: f64) -> (T, Attr<Opacity>) {
 	(element, Attr(*opacity * factor))
 }
 
@@ -55,13 +56,59 @@ fn source_opacity(_: impl Ctx, _: (), element: f64, opacity: f64) -> (f64, Attr<
 }
 
 #[node_macro::node(category("Test"))]
-fn label<'e>(ctx: impl Ctx + ExtractArena<'e>, element: f64, text: String, label: Attr<Label>) -> Result<(f64, Attr<'e, Label>), Interrupt> {
+fn label<'e>(ctx: impl Ctx + ExtractArena<'e>, (element, label): (f64, Attr<Label>), text: String) -> Result<(f64, Attr<'e, Label>), Interrupt> {
 	let joined = format!("{}{text}", *label);
 	let (parked, _) = ctx.arena().alloc(joined).ok_or(GraphError {
 		kind: ErrorKind::ArenaExhausted,
 		trace: Vec::new(),
 	})?;
 	Ok((element, Attr(parked.as_str())))
+}
+
+#[node_macro::node(category("Test"))]
+fn transfer_opacity(_: impl Ctx, (element, opacity): (f64, Attr<Opacity>), (other, other_opacity): (f64, Attr<Opacity>)) -> (f64, Attr<Opacity>) {
+	(element + other, Attr(*opacity * *other_opacity))
+}
+
+#[node_macro::node(category("Test"))]
+fn strip_opacity<T>(_: impl Ctx, element: T) -> (T, RemoveAttr<Opacity>) {
+	(element, RemoveAttr::new())
+}
+
+#[node_macro::node(category("Test"))]
+fn relength(_: impl Ctx, element: f64) -> (f64, RemoveAttr<Opacity>, Attr<Length>) {
+	(element, RemoveAttr::new(), Attr(element * 2.))
+}
+
+#[node_macro::node(category("Test"))]
+fn boost(_: impl Ctx, element: f64, factor: f64) -> f64 {
+	element * factor
+}
+
+#[node_macro::node(category("Test"))]
+fn boost_poll(_: impl Ctx, element: f64, factor: f64) -> core_types::gpoll::GPoll<f64> {
+	core_types::gpoll::GPoll::Final(element * factor)
+}
+
+#[node_macro::node(category("Test"))]
+fn offset(_: impl Ctx, element: f64, by: &f64) -> f64 {
+	element + *by
+}
+
+#[node_macro::node(category("Test"))]
+async fn double_async(_: impl Ctx, element: f64) -> f64 {
+	element * 2.
+}
+
+#[node_macro::node(category("Test"))]
+fn fallback(
+	ctx: impl Ctx,
+	_: (),
+	#[expose] content: impl Node<Context<'_>, Output = (f64, Attr<Opacity>)>,
+	#[expose] alternate: impl Node<Context<'_>, Output = f64>,
+) -> Result<f64, Interrupt> {
+	let (element, opacity) = content.eval(ctx)?;
+	Ok(if *opacity > 0. { element } else { alternate.eval(ctx)? })
 }
 
 #[node_macro::node(category("Test"))]
@@ -156,6 +203,12 @@ mod tests {
 
 	fn reserve_for(layouts: &[&Layout]) {
 		stack::reserve(layouts.iter().map(|layout| layout.frame_bytes()).sum());
+	}
+
+	fn lifted_value<T: Clone + Send + Sync + 'static>(value: T) -> (core_types::record::RecordLift<T, ValueNode<T>>, Layout) {
+		let lift = core_types::record::RecordLift::<T, _>::new(ValueNode(value));
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		(lift, layout)
 	}
 
 	fn bare_source(layout: &Layout, element: f64) -> RecordSourceNode<f64> {
@@ -389,6 +442,267 @@ mod tests {
 	}
 
 	#[test]
+	fn secondary_input_reads_bind_to_their_own_wire() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let carrier_layout = f64_layout(&["opacity"]);
+		let secondary_layout = f64_layout(&["opacity"]);
+		let transferred = transfer_opacity_layout(&carrier_layout);
+		reserve_for(&[&carrier_layout, &secondary_layout, &transferred]);
+
+		let chain = TransferOpacityNode::new(
+			f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
+			f64_record_source(&secondary_layout, 3., vec![(secondary_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+			&carrier_layout,
+			&secondary_layout,
+		);
+		let GPoll::Final(value) = chain.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = transferred.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 5.);
+		assert_eq!(unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) }, 0.125);
+
+		let bare_secondary = f64_layout(&[]);
+		let defaulted = TransferOpacityNode::new(
+			f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.5)]),
+			bare_source(&bare_secondary, 3.),
+			&carrier_layout,
+			&bare_secondary,
+		);
+		let GPoll::Final(value) = defaulted.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = transferred.rec(&value);
+		assert_eq!(unsafe { rec.read::<f64>(transferred.offset_of(Opacity::NAME, 0).unwrap()) }, 0.5, "an absent secondary attribute reads its default");
+	}
+
+	#[test]
+	fn a_flipped_node_carries_its_primary_inputs_fields() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = f64_layout(&["opacity"]);
+		let factor = core_types::record::RecordLift::<f64, _>::new(ValueNode(3.));
+		let factor_layout = Node::<ContextImpl>::layout(&factor).unwrap().clone();
+		reserve_for(&[&source_layout]);
+
+		let node = BoostNode::new(
+			f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+			factor,
+			&source_layout,
+			&factor_layout,
+		);
+		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through to the output");
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = out_layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
+		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25);
+	}
+
+	#[test]
+	fn a_poll_kernel_carries_its_primary_inputs_fields() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = f64_layout(&["opacity"]);
+		let (factor, factor_layout) = lifted_value(3.);
+		reserve_for(&[&source_layout]);
+
+		let node = BoostPollNode::new(
+			f64_record_source(&source_layout, 2., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+			factor,
+			&source_layout,
+			&factor_layout,
+		);
+		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the primary input's fields pass through the poll kernel");
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = out_layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
+		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25);
+	}
+
+	#[test]
+	fn a_byte_carried_spilled_borrow_parks_and_survives_the_carrier_eval() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let carrier_layout = f64_layout(&["opacity"]);
+		let by_layout = f64_layout(&["opacity", "length"]);
+		assert!(!by_layout.is_inline(), "the borrow must point into a spilled frame to exercise the park");
+		reserve_for(&[&carrier_layout, &by_layout]);
+
+		let node = OffsetNode::new(
+			f64_record_source(&carrier_layout, 2., vec![(carrier_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+			f64_record_source(&by_layout, 40., vec![]),
+			&carrier_layout,
+			&by_layout,
+		);
+		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = out_layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 42., "the parked borrow survives the carrier evaluation reusing its frame");
+		assert_eq!(unsafe { rec.read::<f64>(out_layout.offset_of(Opacity::NAME, 0).unwrap()) }, 0.25);
+	}
+
+	struct InlineRuntime;
+
+	impl core_types::runtime::Runtime for InlineRuntime {
+		fn spawn(&self, _source: SourceId, mut future: core_types::runtime::SourceFuture) -> bool {
+			let mut task_ctx = std::task::Context::from_waker(std::task::Waker::noop());
+			assert!(future.as_mut().poll(&mut task_ctx).is_ready(), "the inline runtime completes tasks at spawn");
+			true
+		}
+	}
+
+	#[test]
+	fn an_async_source_carries_its_primary_inputs_fields_around_the_slot() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = f64_layout(&["opacity"]);
+		let (runtime, runtime_layout) = lifted_value(core_types::runtime::RuntimeHandle(std::sync::Arc::new(InlineRuntime)));
+		let (source_id, source_id_layout) = lifted_value(7 as SourceId);
+		reserve_for(&[&source_layout]);
+
+		let node = DoubleAsyncNode::new(
+			f64_record_source(&source_layout, 3., vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25)]),
+			runtime,
+			source_id,
+			&source_layout,
+			&runtime_layout,
+			&source_id_layout,
+		);
+		let out_layout = Node::<ContextImpl>::layout(&node).unwrap().clone();
+		let opacity_offset = out_layout.offset_of(Opacity::NAME, 0).expect("the carrier's fields pass through the async source");
+
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("an inline completion is final on the spawning eval");
+		};
+		let rec = out_layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 6.);
+		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25);
+
+		let GPoll::Final(value) = node.eval(&ctx) else {
+			panic!("a slot hit is final");
+		};
+		let rec = out_layout.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 6., "the slot hit replays the element");
+		assert_eq!(unsafe { rec.read::<f64>(opacity_offset) }, 0.25, "the fields re-carry on every eval");
+	}
+
+	#[test]
+	fn lazy_reads_bind_to_their_edge_and_leave_the_untaken_branch_unevaluated() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let unit = core_types::record::RecordLift::<(), _>::new(ValueNode(()));
+		let unit_layout = Node::<ContextImpl>::layout(&unit).unwrap().clone();
+		let content_layout = f64_layout(&["opacity"]);
+		reserve_for(&[&content_layout]);
+
+		let run = |opacity: Option<f64>| {
+			let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+			let alternate = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
+			let alternate_layout = Node::<ContextImpl>::layout(&alternate).unwrap().clone();
+			let (content_layout, fields) = match opacity {
+				Some(value) => (content_layout.clone(), vec![(content_layout.offset_of("opacity", 0).unwrap(), value)]),
+				None => (f64_layout(&[]), vec![]),
+			};
+			let node = FallbackNode::new(
+				core_types::record::RecordLift::<(), _>::new(ValueNode(())),
+				f64_record_source(&content_layout, 7., fields),
+				alternate,
+				&unit_layout,
+				&content_layout,
+				&alternate_layout,
+			);
+			let GPoll::Final(value) = node.eval(&ctx) else {
+				panic!("expected a final record");
+			};
+			let element = unsafe { Node::<ContextImpl>::layout(&node).unwrap().rec(&value).element::<f64>() };
+			(element, evals.load(std::sync::atomic::Ordering::Relaxed))
+		};
+
+		assert_eq!(run(Some(0.5)), (7., 0), "a visible content skips the alternate branch entirely");
+		assert_eq!(run(Some(0.)), (21., 1), "a transparent content evaluates the alternate branch");
+		assert_eq!(run(None), (7., 0), "an absent attribute reads its declared default");
+	}
+
+	#[test]
+	fn remove_attr_leaves_the_layout_and_downstream_reads_the_default() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = f64_layout(&[]);
+		let modified = multiply_opacity_layout(&source_layout);
+		let stripped = strip_opacity_layout(&modified);
+		assert!(stripped.offset_of(Opacity::NAME, 0).is_none(), "the removed name leaves the output layout");
+		let shaded = shade_layout(&stripped);
+		reserve_for(&[&source_layout, &modified, &stripped, &shaded]);
+
+		let chain = ShadeNode::new(
+			StripOpacityNode::new(MultiplyOpacityNode::new(bare_source(&source_layout, 4.), ValueNode(0.5), &source_layout), &modified),
+			&stripped,
+		);
+		let GPoll::Final(value) = chain.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { shaded.rec(&value).element::<f64>() }, 4., "a read after the removal yields the declared default");
+	}
+
+	#[test]
+	fn mixed_writes_and_removes_destructure_in_tuple_order() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let source_layout = f64_layout(&["opacity", "length"]);
+		let relengthed = relength_layout(&source_layout);
+		assert!(relengthed.offset_of(Opacity::NAME, 0).is_none());
+		reserve_for(&[&source_layout, &relengthed]);
+
+		let chain = RelengthNode::new(
+			f64_record_source(
+				&source_layout,
+				3.,
+				vec![(source_layout.offset_of("opacity", 0).unwrap(), 0.25), (source_layout.offset_of("length", 0).unwrap(), 9.)],
+			),
+			&source_layout,
+		);
+		let GPoll::Final(value) = chain.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = relengthed.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 3.);
+		assert_eq!(unsafe { rec.read::<f64>(relengthed.offset_of(Length::NAME, 0).unwrap()) }, 6.);
+	}
+
+	#[test]
 	fn parked_reference_attributes_write_and_carry() {
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
@@ -479,11 +793,13 @@ mod tests {
 		reserve_for(&[&layout_a, &layout_b, &union, &union]);
 
 		let taken = |second: bool| {
+			let (condition, condition_layout) = lifted_value(second);
 			PickNode::new(
-				ValueNode(second),
+				condition,
 				RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
 				RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
 				&union,
+				&condition_layout,
 			)
 		};
 
@@ -516,11 +832,13 @@ mod tests {
 		let union = Layout::union(&[&layout_a, &layout_b]);
 		reserve_for(&[&layout_a, &layout_b, &union, &union]);
 
+		let (condition, condition_layout) = lifted_value(false);
 		let chain = HoldFirstNode::new(
-			ValueNode(false),
+			condition,
 			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
 			RecordSource::new(f64_record_source(&layout_b, 3., vec![(layout_b.offset_of("length", 0).unwrap(), 3.)]), &layout_b, &union),
 			&union,
+			&condition_layout,
 		);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {
@@ -564,7 +882,8 @@ mod tests {
 		reserve_for(&[&layout]);
 
 		let probed = |features: ContextFeatures| {
-			let node = crate::context_modification::ContextModificationNode::new(RealTimeProbe { layout: layout.clone() }, ValueNode(ContextModification::from_sources(features, &[])), &layout);
+			let (modification, modification_layout) = lifted_value(ContextModification::from_sources(features, &[]));
+			let node = crate::context_modification::ContextModificationNode::new(RealTimeProbe { layout: layout.clone() }, modification, &layout, &modification_layout);
 			assert_eq!(Node::<ContextImpl>::layout(&node), Some(&layout));
 			let GPoll::Final(value) = node.eval(&ctx) else {
 				panic!("expected a final record");
@@ -588,6 +907,7 @@ mod tests {
 		let layout = f64_layout(&["opacity"]);
 		reserve_for(&[&layout]);
 
+		let (modification, modification_layout) = lifted_value(ContextModification::from_sources(ContextFeatures::all(), &[]));
 		let node = crate::context_modification::ContextModificationNode::new(
 			RecordSourceNode {
 				layout: layout.clone(),
@@ -595,8 +915,9 @@ mod tests {
 				fields: vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)],
 				partial: true,
 			},
-			ValueNode(ContextModification::from_sources(ContextFeatures::all(), &[])),
+			modification,
 			&layout,
+			&modification_layout,
 		);
 
 		let GPoll::Partial(value) = node.eval(&ctx) else {
@@ -637,11 +958,13 @@ mod tests {
 		assert!(union.is_inline());
 		reserve_for(&[&layout_a, &layout_b, &union, &union]);
 
+		let (condition, condition_layout) = lifted_value(false);
 		let chain = HoldFirstNode::new(
-			ValueNode(false),
+			condition,
 			RecordSource::new(f64_record_source(&layout_a, 1., vec![(layout_a.offset_of("opacity", 0).unwrap(), 0.5)]), &layout_a, &union),
 			RecordSource::new(f64_record_source(&layout_b, 3., vec![]), &layout_b, &union),
 			&union,
+			&condition_layout,
 		);
 
 		let GPoll::Final(value) = chain.eval(&ctx) else {

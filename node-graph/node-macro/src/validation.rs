@@ -1,4 +1,4 @@
-use crate::parsing::{Implementation, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, attr_marker, record_writes};
+use crate::parsing::{Implementation, NodeParsedField, ParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, attr_marker, record_writes, remove_attr_marker};
 use proc_macro_error2::emit_error;
 use quote::{ToTokens, quote};
 use syn::spanned::Spanned;
@@ -14,6 +14,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_async_source,
 		validate_lend_fields,
 		validate_record_io,
+		validate_lazy_reads,
 	];
 
 	for validator in validators {
@@ -26,19 +27,23 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 fn validate_record_io(parsed: &ParsedNodeFn) {
 	let value = crate::codegen::slot_value_type(&parsed.output_type);
 	if let Type::Tuple(tuple) = &value {
-		let has_attr_slot = tuple.elems.iter().any(|slot| attr_marker(slot).is_some());
-		if has_attr_slot && record_writes(&value).is_none() {
+		let has_marker_slot = tuple.elems.iter().any(|slot| attr_marker(slot).is_some() || remove_attr_marker(slot).is_some());
+		if has_marker_slot && record_writes(&value).is_none() {
 			emit_error!(
 				parsed.output_type.span(),
-				"a record return tuple is the element first, then only `Attr<..>` writes"
+				"a record return tuple is the element first, then only `Attr<..>` writes and `RemoveAttr<..>` deletions"
 			);
 		}
-	} else if attr_marker(&value).is_some() {
-		emit_error!(parsed.output_type.span(), "an `Attr<..>` write needs an element in the first tuple slot, e.g. `(T, Attr<..>)`");
+	} else if attr_marker(&value).is_some() || remove_attr_marker(&value).is_some() {
+		emit_error!(parsed.output_type.span(), "an attribute write needs an element in the first tuple slot, e.g. `(T, Attr<..>)`");
 	}
 
 	let writes = record_writes(&value);
-	if parsed.attribute_reads.is_empty() && writes.is_none() {
+	let has_reads = parsed
+		.fields
+		.iter()
+		.any(|field| !field.attribute_reads.is_empty() && matches!(field.ty, ParsedFieldType::Regular(_)));
+	if !has_reads && writes.is_none() {
 		return;
 	}
 
@@ -52,6 +57,35 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	for field in parsed.fields.iter().skip(1) {
 		if matches!(field.ty, ParsedFieldType::Node(_)) {
 			emit_error!(field.pat_ident.span(), "record nodes take no lazy inputs yet");
+		}
+	}
+	for (index, field) in parsed.fields.iter().enumerate() {
+		if field.attribute_reads.is_empty() {
+			continue;
+		}
+		if field.is_data_field {
+			emit_error!(field.pat_ident.span(), "a `#[data]` field has no wire to read attributes from");
+			continue;
+		}
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => {
+				emit_error!(field.pat_ident.span(), "attribute reads need an owned value; take `T` instead of `&T`");
+			}
+			ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {
+				if matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()) {
+					emit_error!(field.pat_ident.span(), "attribute-only inputs are not supported yet; the value component cannot be `()`");
+				}
+				let is_token_carrier = index == 0 && implementations.is_empty() && crate::codegen::unbounded_generic(parsed, ty).is_some();
+				if !is_token_carrier && crate::codegen::contains_open_generic(parsed, ty) {
+					emit_error!(
+						field.pat_ident.span(),
+						"a reading input's value is monomorphic for now; use a concrete type or an unbounded passthrough generic in the primary input"
+					);
+				}
+			}
+			// Lazy-input reads are validated by `validate_lazy_reads`; a
+			// record-io node already rejects lazy inputs above.
+			ParsedFieldType::Node(_) => {}
 		}
 	}
 
@@ -75,9 +109,6 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	};
 
 	let no_carrier = matches!(carrier_ty, Type::Tuple(tuple) if tuple.elems.is_empty());
-	if no_carrier && !parsed.attribute_reads.is_empty() {
-		emit_error!(carrier.pat_ident.span(), "a node without a primary input has no attributes to read");
-	}
 	let token = match (no_carrier, &carrier.ty) {
 		(false, ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. })) if implementations.is_empty() => crate::codegen::unbounded_generic(parsed, ty),
 		_ => None,
@@ -107,13 +138,15 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 		}
 	}
 
-	let mut seen_reads: Vec<String> = Vec::new();
-	for read in &parsed.attribute_reads {
-		let marker = read.marker.to_token_stream().to_string();
-		if seen_reads.contains(&marker) {
-			emit_error!(read.pat_ident.span(), "attribute `{}` is read twice", marker);
+	for field in &parsed.fields {
+		let mut seen_reads: Vec<String> = Vec::new();
+		for read in &field.attribute_reads {
+			let marker = read.marker.to_token_stream().to_string();
+			if seen_reads.contains(&marker) {
+				emit_error!(read.pat_ident.span(), "attribute `{}` is read twice from `{}`", marker, field.pat_ident.ident);
+			}
+			seen_reads.push(marker);
 		}
-		seen_reads.push(marker);
 	}
 	if let Some(writes) = &writes {
 		let mut seen_writes: Vec<String> = Vec::new();
@@ -123,6 +156,54 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 				emit_error!(parsed.output_type.span(), "attribute `{}` is written twice", written);
 			}
 			seen_writes.push(written);
+		}
+		let mut seen_removes: Vec<String> = Vec::new();
+		for marker in &writes.removes {
+			let removed = marker.to_token_stream().to_string();
+			if seen_removes.contains(&removed) {
+				emit_error!(parsed.output_type.span(), "attribute `{}` is removed twice", removed);
+			}
+			if seen_writes.contains(&removed) {
+				emit_error!(parsed.output_type.span(), "attribute `{}` is both written and removed", removed);
+			}
+			seen_removes.push(removed);
+		}
+		if no_carrier && !writes.removes.is_empty() {
+			emit_error!(parsed.output_type.span(), "a node without a primary input writes a fresh record; there is nothing to remove");
+		}
+	}
+}
+
+fn validate_lazy_reads(parsed: &ParsedNodeFn) {
+	if !crate::codegen::has_lazy_reads(parsed) {
+		return;
+	}
+	if !crate::codegen::record_flip(parsed) {
+		emit_error!(
+			parsed.fn_name.span(),
+			"attribute reads on a lazy input need the record lowering; routing, `plain`, shader, batch, and non-row-assignable generic nodes keep the plain one"
+		);
+	}
+	for field in &parsed.fields {
+		let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty else {
+			continue;
+		};
+		if field.attribute_reads.is_empty() {
+			continue;
+		}
+		if crate::codegen::unbounded_generic(parsed, output_type).is_some() {
+			emit_error!(
+				field.pat_ident.span(),
+				"an unbounded generic source forwards its whole record; attribute reads need a concrete output type"
+			);
+		}
+		let mut seen: Vec<String> = Vec::new();
+		for read in &field.attribute_reads {
+			let marker = read.marker.to_token_stream().to_string();
+			if seen.contains(&marker) {
+				emit_error!(read.marker.span(), "attribute `{}` is read twice from `{}`", marker, field.pat_ident.ident);
+			}
+			seen.push(marker);
 		}
 	}
 }

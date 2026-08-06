@@ -35,13 +35,12 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) output_type: Type,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
-	pub(crate) attribute_reads: Vec<AttributeRead>,
 	pub(crate) body: TokenStream2,
 	pub(crate) description: String,
 }
 
-/// An `Attr<Marker>` parameter: a declared attribute read on the carrier's
-/// items, not a wired input.
+/// An `Attr<Marker>` slot in a parameter's read tuple: a declared attribute
+/// read on that input's wire, not a wired input of its own.
 #[derive(Clone, Debug)]
 pub(crate) struct AttributeRead {
 	pub(crate) pat_ident: PatIdent,
@@ -49,34 +48,54 @@ pub(crate) struct AttributeRead {
 }
 
 /// The write half of a record kernel's return: the element type in the first
-/// tuple slot and the attribute markers written after it. `None` unless the
-/// value is a well-formed write tuple (a non-`Attr` element first, then only
-/// `Attr` slots, at least one).
+/// tuple slot, then the attribute markers written and the ones removed. `None`
+/// unless the value is a well-formed write tuple (a non-marker element first,
+/// then only `Attr` and `RemoveAttr` slots, at least one).
 pub(crate) struct RecordWrites {
 	pub(crate) element: Type,
 	pub(crate) markers: Vec<Type>,
+	pub(crate) removes: Vec<Type>,
 }
 
 pub(crate) fn record_writes(value: &Type) -> Option<RecordWrites> {
 	let Type::Tuple(tuple) = value else { return None };
 	let mut slots = tuple.elems.iter();
 	let element = slots.next()?;
-	if attr_marker(element).is_some() {
+	if attr_marker(element).is_some() || remove_attr_marker(element).is_some() {
 		return None;
 	}
-	let markers: Option<Vec<Type>> = slots.map(attr_marker).collect();
-	let markers = markers?;
-	(!markers.is_empty()).then(|| RecordWrites {
+	let mut markers = Vec::new();
+	let mut removes = Vec::new();
+	for slot in slots {
+		if let Some(marker) = attr_marker(slot) {
+			markers.push(marker);
+		} else if let Some(marker) = remove_attr_marker(slot) {
+			removes.push(marker);
+		} else {
+			return None;
+		}
+	}
+	(!markers.is_empty() || !removes.is_empty()).then(|| RecordWrites {
 		element: element.clone(),
 		markers,
+		removes,
 	})
 }
 
 /// Returns the marker type of an `Attr<Marker>` type, if `ty` is one.
 pub(crate) fn attr_marker(ty: &Type) -> Option<Type> {
+	marker_of(ty, "Attr")
+}
+
+/// Returns the marker type of a `RemoveAttr<Marker>` type, if `ty` is one.
+pub(crate) fn remove_attr_marker(ty: &Type) -> Option<Type> {
+	marker_of(ty, "RemoveAttr")
+}
+
+fn marker_of(ty: &Type, wrapper: &str) -> Option<Type> {
 	let Type::Path(path) = ty else { return None };
 	let segment = path.path.segments.last()?;
-	if segment.ident != "Attr" {
+	if segment.ident != wrapper {
 		return None;
 	}
 	let PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
@@ -178,6 +197,9 @@ pub struct ParsedField {
 	pub number_step: Option<LitFloat>,
 	pub unit: Option<LitStr>,
 	pub is_data_field: bool,
+	/// The attribute reads destructured from this input's tuple, resolved
+	/// against this input's wire.
+	pub(crate) attribute_reads: Vec<AttributeRead>,
 }
 
 #[derive(Clone, Debug)]
@@ -637,7 +659,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, fields, attribute_reads) = parse_inputs(&input_fn.sig.inputs)?;
+	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
@@ -669,16 +691,14 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		output_type,
 		is_async,
 		fields,
-		attribute_reads,
 		where_clause,
 		body,
 		description,
 	})
 }
 
-fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>, Vec<AttributeRead>)> {
+fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>)> {
 	let mut fields = Vec::new();
-	let mut attribute_reads = Vec::new();
 	let mut input = None;
 
 	for (index, arg) in inputs.iter().enumerate() {
@@ -715,18 +735,14 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					context_features,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
-				if let Some(marker) = attr_marker(ty) {
-					if !attrs.iter().all(|attr| attr.path().is_ident("doc")) {
-						return Err(Error::new_spanned(pat_ident, "attribute parameters take no field attributes"));
-					}
-					attribute_reads.push(AttributeRead {
-						pat_ident: pat_ident.clone(),
-						marker,
-					});
-				} else {
-					let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
-					fields.push(field);
+				if attr_marker(ty).is_some() {
+					return Err(Error::new_spanned(pat_ident, "an attribute read binds to an input: destructure it as `(value, Attr<..>)`"));
 				}
+				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
+				fields.push(field);
+			} else if let Pat::Tuple(pat_tuple) = &**pat {
+				let field = parse_read_tuple(pat_tuple, ty, attrs, index)?;
+				fields.push(field);
 			} else if let Pat::Wild(wild) = &**pat {
 				let pat_ident = PatIdent {
 					attrs: wild.attrs.clone(),
@@ -746,7 +762,86 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 	}
 
 	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
-	Ok((input, fields, attribute_reads))
+	Ok((input, fields))
+}
+
+/// Splits a lazy input's `Output = (T, Attr<..>..)` tuple into the element
+/// type (the wire type) and the declared reads on that edge. A tuple without
+/// `Attr` slots is an ordinary tuple output and passes through untouched.
+fn split_lazy_reads(output_type: Type) -> syn::Result<(Type, Vec<AttributeRead>)> {
+	let Type::Tuple(tuple) = &output_type else {
+		return Ok((output_type, Vec::new()));
+	};
+	if !tuple.elems.iter().any(|slot| attr_marker(slot).is_some()) {
+		return Ok((output_type, Vec::new()));
+	}
+	let spelling = "a lazy input with attribute reads declares `Output = (T, Attr<..>)`";
+	let mut slots = tuple.elems.iter();
+	let element = slots.next().ok_or_else(|| Error::new_spanned(tuple, spelling))?;
+	if attr_marker(element).is_some() {
+		return Err(Error::new_spanned(element, spelling));
+	}
+	let attribute_reads: Vec<AttributeRead> = slots
+		.enumerate()
+		.map(|(index, slot)| {
+			let marker = attr_marker(slot).ok_or_else(|| Error::new_spanned(slot, spelling))?;
+			Ok(AttributeRead {
+				pat_ident: PatIdent {
+					attrs: Vec::new(),
+					by_ref: None,
+					mutability: None,
+					ident: format_ident!("__lazy_read_{}", index, span = slot.span()),
+					subpat: None,
+				},
+				marker,
+			})
+		})
+		.collect::<syn::Result<_>>()?;
+	Ok((element.clone(), attribute_reads))
+}
+
+/// Parses a `(value, reads..): (T, Attr<..>..)` parameter: the value component
+/// is an ordinary field of the value type, each `Attr` component a read bound
+/// to this input's wire.
+fn parse_read_tuple(pat_tuple: &syn::PatTuple, ty: &Type, attrs: &[Attribute], index: usize) -> syn::Result<ParsedField> {
+	let spelling = "an input with attribute reads destructures as `(value, Attr<..>)` over `(T, Attr<..>)`";
+	let Type::Tuple(ty_tuple) = ty else {
+		return Err(Error::new_spanned(ty, spelling));
+	};
+	if pat_tuple.elems.len() != ty_tuple.elems.len() || ty_tuple.elems.len() < 2 {
+		return Err(Error::new_spanned(pat_tuple, spelling));
+	}
+	let mut slots = pat_tuple.elems.iter().zip(ty_tuple.elems.iter());
+	let (value_pat, value_ty) = slots.next().expect("length checked above");
+	if attr_marker(value_ty).is_some() {
+		return Err(Error::new_spanned(value_ty, spelling));
+	}
+	let value_ident = match value_pat {
+		Pat::Ident(pat_ident) => pat_ident.clone(),
+		Pat::Wild(wild) => PatIdent {
+			attrs: wild.attrs.clone(),
+			by_ref: None,
+			mutability: None,
+			ident: format_ident!("_value{}", index, span = wild.underscore_token.span),
+			subpat: None,
+		},
+		_ => return Err(Error::new_spanned(value_pat, "Expected a simple identifier for the value component")),
+	};
+	let attribute_reads: Vec<AttributeRead> = slots
+		.map(|(pat, ty)| {
+			let marker = attr_marker(ty).ok_or_else(|| Error::new_spanned(ty, spelling))?;
+			let Pat::Ident(pat_ident) = pat else {
+				return Err(Error::new_spanned(pat, "Expected a simple identifier for the attribute read"));
+			};
+			Ok(AttributeRead {
+				pat_ident: pat_ident.clone(),
+				marker,
+			})
+		})
+		.collect::<syn::Result<_>>()?;
+	let mut field = parse_field(value_ident.clone(), value_ty.clone(), attrs).map_err(|e| Error::new_spanned(&value_ident, format!("Failed to parse argument '{}': {}", value_ident.ident, e)))?;
+	field.attribute_reads = attribute_reads;
+	Ok(field)
 }
 
 /// Parse context feature identifiers from the trait bounds of a context parameter.
@@ -967,6 +1062,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
+		let (output_type, attribute_reads) = split_lazy_reads(output_type)?;
 		Ok(ParsedField {
 			pat_ident,
 			ty: ParsedFieldType::Node(NodeParsedField {
@@ -981,6 +1077,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_step,
 			unit,
 			is_data_field,
+			attribute_reads,
 		})
 	} else {
 		let implementations = extract_attribute(attrs, "implementations")
@@ -1037,6 +1134,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_step,
 			unit,
 			is_data_field,
+			attribute_reads: Vec::new(),
 		})
 	}
 }
@@ -1153,6 +1251,7 @@ impl ParsedNodeFn {
 			number_step: None,
 			unit: None,
 			is_data_field: false,
+			attribute_reads: Vec::new(),
 		};
 		self.fields.push(hidden_field(
 			"_runtime",
@@ -1304,7 +1403,6 @@ mod tests {
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
-			attribute_reads: vec![],
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
@@ -1327,6 +1425,7 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
+				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::from("Multi\nLine\n"),
@@ -1381,7 +1480,6 @@ mod tests {
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
-			attribute_reads: vec![],
 			fields: vec![
 				ParsedField {
 					pat_ident: pat_ident("transform_target"),
@@ -1397,6 +1495,7 @@ mod tests {
 					number_step: None,
 					unit: None,
 					is_data_field: false,
+					attribute_reads: Vec::new(),
 				},
 				ParsedField {
 					pat_ident: pat_ident("translate"),
@@ -1420,6 +1519,7 @@ mod tests {
 					number_step: None,
 					unit: None,
 					is_data_field: false,
+					attribute_reads: Vec::new(),
 				},
 			],
 			body: TokenStream2::new(),
@@ -1472,7 +1572,6 @@ mod tests {
 			},
 			output_type: parse_quote!(Vector),
 			is_async: false,
-			attribute_reads: vec![],
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("radius"),
 				name: None,
@@ -1495,6 +1594,7 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
+				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: "Test\n".into(),
@@ -1545,7 +1645,6 @@ mod tests {
 			},
 			output_type: parse_quote!(List<Raster<P>>),
 			is_async: false,
-			attribute_reads: vec![],
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
 				name: None,
@@ -1573,6 +1672,7 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
+				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1630,7 +1730,6 @@ mod tests {
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
-			attribute_reads: vec![],
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("b"),
 				name: None,
@@ -1653,6 +1752,7 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
+				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1718,7 +1818,6 @@ mod tests {
 			},
 			output_type: parse_quote!(List<Raster<CPU>>),
 			is_async: true,
-			attribute_reads: vec![],
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
 				name: None,
@@ -1741,6 +1840,7 @@ mod tests {
 				number_step: None,
 				unit: None,
 				is_data_field: false,
+				attribute_reads: Vec::new(),
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1791,7 +1891,6 @@ mod tests {
 			},
 			output_type: parse_quote!(i32),
 			is_async: false,
-			attribute_reads: vec![],
 			fields: vec![],
 			body: TokenStream2::new(),
 			description: String::new(),

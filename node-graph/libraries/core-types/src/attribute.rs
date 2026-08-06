@@ -14,6 +14,7 @@ use glam::{DAffine2, DVec2};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{LazyLock, Mutex};
 
@@ -68,6 +69,23 @@ impl<'e, A: Attribute> Copy for Attr<'e, A> {}
 impl<'e, A: Attribute> std::fmt::Debug for Attr<'e, A> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_tuple(A::NAME).field(&self.0).finish()
+	}
+}
+
+/// A deletion of `A` in a node's return tuple: the name leaves the output
+/// layout, so downstream reads yield the declared default again. Functionally
+/// a write of the default; the value carries nothing.
+pub struct RemoveAttr<A: Attribute>(PhantomData<A>);
+
+impl<A: Attribute> RemoveAttr<A> {
+	pub const fn new() -> Self {
+		RemoveAttr(PhantomData)
+	}
+}
+
+impl<A: Attribute> Default for RemoveAttr<A> {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 

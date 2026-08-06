@@ -586,11 +586,10 @@ mod test {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(2),
+			output: NodeId(1),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
 				(NodeId(1), proto_node("graphene_core::debug::CloneNode", vec![NodeId(0)])),
-				(NodeId(2), proto_node("core_types::record::RecordExtractNode", vec![NodeId(1)])),
 			],
 		};
 
@@ -599,8 +598,14 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>>> = executor.tree().eval(NodeId(2), &ctx);
-		assert!(matches!(result, Some(GPoll::Final(_))), "the flipped clone must evaluate over record wires, got {result:?}");
+		let edge = executor
+			.tree()
+			.get(NodeId(1))
+			.unwrap()
+			.downcast_record::<graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>>()
+			.unwrap();
+		let result = edge.eval(&ctx);
+		assert!(matches!(result, GPoll::Final(_)), "the flipped clone must evaluate over record wires, got a non-final poll");
 	}
 
 	#[test]
@@ -608,12 +613,11 @@ mod test {
 		let raster_list = TaggedValue::from_type(&core_types::concrete!(graphene_std::list::List<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>)).unwrap();
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(3),
+			output: NodeId(2),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(raster_list.into()), vec![])),
 				(NodeId(1), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(4).into()), vec![])),
 				(NodeId(2), proto_node("raster_nodes::image_color_palette::ImageColorPaletteNode", vec![NodeId(0), NodeId(1)])),
-				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
 			],
 		};
 
@@ -622,42 +626,39 @@ mod test {
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		let result: Option<GPoll<graphene_std::list::List<graphene_std::raster::color::Color>>> = executor.tree().eval(NodeId(3), &ctx);
-		assert!(matches!(result, Some(GPoll::Final(_))), "the palette must evaluate through its record wires, got {result:?}");
+		let edge = executor
+			.tree()
+			.get(NodeId(2))
+			.unwrap()
+			.downcast_record::<graphene_std::list::List<graphene_std::raster::color::Color>>()
+			.unwrap();
+		let result = edge.eval(&ctx);
+		assert!(matches!(result, GPoll::Final(_)), "the palette must evaluate through its record wires, got a non-final poll");
 	}
 
 	#[test]
-	fn a_record_wire_types_wires_and_evaluates_through_the_registry() {
+	fn a_value_edge_is_a_record_wire_end_to_end() {
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(2),
-			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
-				(NodeId(1), proto_node("core_types::record::RecordLiftNode", vec![NodeId(0)])),
-				(NodeId(2), proto_node("core_types::record::RecordExtractNode", vec![NodeId(1)])),
-			],
+			output: NodeId(0),
+			nodes: vec![(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![]))],
 		};
 
 		let executor = DynamicExecutor::new(network).unwrap();
-		let lift = executor.tree().get(NodeId(1)).unwrap();
-		assert_eq!(lift.ty(), &core_types::registry::record_edge_type::<f64>());
-		assert!(lift.layout().is_some());
+		let value = executor.tree().get(NodeId(0)).unwrap();
+		assert_eq!(value.ty(), &core_types::registry::record_edge_type::<f64>());
+		assert!(value.layout().is_some());
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
 	}
 
 	#[test]
 	fn a_record_monitor_row_forwards_and_introspects_through_the_executor() {
-		let mut monitor = proto_node("graphene_core::memo::MonitorNode", vec![NodeId(1)]);
+		let mut monitor = proto_node("graphene_core::memo::MonitorNode", vec![NodeId(0)]);
 		monitor.original_location.path = Some(vec![NodeId(9)]);
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(3),
-			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
-				(NodeId(1), proto_node("core_types::record::RecordLiftNode", vec![NodeId(0)])),
-				(NodeId(2), monitor),
-				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
-			],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])), (NodeId(1), monitor)],
 		};
 
 		let executor = DynamicExecutor::new(network).unwrap();
@@ -671,11 +672,10 @@ mod test {
 	fn a_memoize_row_wires_generically_and_replays_over_record_wires() {
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(2),
+			output: NodeId(1),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(String::from("cached")).into()), vec![])),
 				(NodeId(1), proto_node("graphene_core::memo::MemoizeNode", vec![NodeId(0)])),
-				(NodeId(2), proto_node("core_types::record::RecordExtractNode", vec![NodeId(1)])),
 			],
 		};
 
@@ -694,67 +694,32 @@ mod test {
 	}
 
 	#[test]
-	fn a_context_modification_row_wires_over_a_plain_value_wire() {
+	fn a_context_modification_row_wires_over_a_value_wire() {
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(3),
+			output: NodeId(2),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
 				(NodeId(1), modification_value()),
 				(NodeId(2), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(0), NodeId(1)])),
-				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
 			],
 		};
 
 		let executor = DynamicExecutor::new(network).unwrap();
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
-	}
-
-	#[test]
-	fn a_context_modification_over_a_wire_without_a_lift_row_reports_at_typing() {
-		let network = ProtoNetwork {
-			inputs: vec![],
-			output: NodeId(3),
-			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::BrushStrokes(vec![]).into()), vec![])),
-				(NodeId(1), modification_value()),
-				(NodeId(2), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(0), NodeId(1)])),
-				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
-			],
-		};
-
-		let result = DynamicExecutor::new(network);
-		let error = format!("{:?}", result.err());
-		assert!(!error.contains("MissingLayout"), "an absent lift row must be a typing error, not a construction failure: {error}");
 	}
 
 	#[test]
 	fn nested_context_modifications_forward_the_layout() {
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(5),
+			output: NodeId(4),
 			nodes: vec![
 				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
 				(NodeId(1), modification_value()),
 				(NodeId(2), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(0), NodeId(1)])),
 				(NodeId(3), modification_value()),
 				(NodeId(4), proto_node("graphene_core::context_modification::ContextModificationNode", vec![NodeId(2), NodeId(3)])),
-				(NodeId(5), proto_node("core_types::record::RecordExtractNode", vec![NodeId(4)])),
-			],
-		};
-
-		let executor = DynamicExecutor::new(network).unwrap();
-		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
-	}
-
-	#[test]
-	fn a_lift_adapter_is_spliced_between_a_plain_producer_and_a_record_consumer() {
-		let network = ProtoNetwork {
-			inputs: vec![],
-			output: NodeId(1),
-			nodes: vec![
-				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(7.).into()), vec![])),
-				(NodeId(1), proto_node("core_types::record::RecordExtractNode", vec![NodeId(0)])),
 			],
 		};
 
@@ -766,12 +731,11 @@ mod test {
 	fn stacked_frame_memos_replay_over_record_wires() {
 		let network = ProtoNetwork {
 			inputs: vec![],
-			output: NodeId(3),
+			output: NodeId(2),
 			nodes: vec![
 				(NodeId(0), string_value("memoized")),
 				(NodeId(1), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(0)])),
 				(NodeId(2), proto_node("graphene_core::memo::FrameMemoNode", vec![NodeId(1)])),
-				(NodeId(3), proto_node("core_types::record::RecordExtractNode", vec![NodeId(2)])),
 			],
 		};
 

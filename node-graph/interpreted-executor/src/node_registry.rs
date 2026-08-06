@@ -17,7 +17,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, SourceId, concrete, fn_type};
-use node_registry_macros::{convert_node, into_node, record_extract_node, record_lift_node};
+use node_registry_macros::{convert_node, into_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutorHandle;
@@ -109,98 +109,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		// ==========
 		// MEMO NODES
 		// ==========
-		// ============
-		// REF ADAPTERS
-		// ============
-		#[cfg(target_family = "wasm")]
-		#[cfg(target_family = "wasm")]
-		#[cfg(target_family = "wasm")]
-		record_lift_node!(f64),
-		record_extract_node!(f64),
-		record_lift_node!(()),
-		record_extract_node!(()),
-		record_lift_node!(bool),
-		record_extract_node!(bool),
-		record_lift_node!(u32),
-		record_extract_node!(u32),
-		record_lift_node!(u64),
-		record_extract_node!(u64),
-		record_lift_node!(f32),
-		record_extract_node!(f32),
-		record_lift_node!(DVec2),
-		record_extract_node!(DVec2),
-		record_lift_node!(IVec2),
-		record_extract_node!(IVec2),
-		record_lift_node!(DAffine2),
-		record_extract_node!(DAffine2),
-		record_lift_node!(Option<DAffine2>),
-		record_extract_node!(Option<DAffine2>),
-		record_lift_node!(Footprint),
-		record_extract_node!(Footprint),
-		record_lift_node!(SourceId),
-		record_extract_node!(SourceId),
-		record_lift_node!(BlendMode),
-		record_extract_node!(BlendMode),
-		record_lift_node!(graphene_std::vector::style::GradientType),
-		record_extract_node!(graphene_std::vector::style::GradientType),
-		record_lift_node!(graphene_std::vector::style::GradientSpreadMethod),
-		record_extract_node!(graphene_std::vector::style::GradientSpreadMethod),
-		record_lift_node!(String),
-		record_extract_node!(String),
-		record_lift_node!(List<String>),
-		record_extract_node!(List<String>),
-		record_lift_node!(List<NodeId>),
-		record_extract_node!(List<NodeId>),
-		record_lift_node!(List<f64>),
-		record_extract_node!(List<f64>),
-		record_lift_node!(List<u8>),
-		record_extract_node!(List<u8>),
-		record_lift_node!(List<Vector>),
-		record_extract_node!(List<Vector>),
-		record_lift_node!(List<Graphic>),
-		record_extract_node!(List<Graphic>),
-		record_lift_node!(List<Raster<CPU>>),
-		record_extract_node!(List<Raster<CPU>>),
-		#[cfg(feature = "gpu")]
-		record_lift_node!(List<Raster<GPU>>),
-		#[cfg(feature = "gpu")]
-		record_extract_node!(List<Raster<GPU>>),
-		record_lift_node!(List<Color>),
-		record_extract_node!(List<Color>),
-		record_lift_node!(List<Artboard>),
-		record_extract_node!(List<Artboard>),
-		record_lift_node!(List<GradientStops>),
-		record_extract_node!(List<GradientStops>),
-		record_lift_node!(AttributeDyn),
-		record_extract_node!(AttributeDyn),
-		record_lift_node!(AttributeValueDyn),
-		record_extract_node!(AttributeValueDyn),
-		record_lift_node!(ListDyn),
-		record_extract_node!(ListDyn),
-		record_lift_node!(std::sync::Arc<PlatformEditorApi>),
-		record_extract_node!(std::sync::Arc<PlatformEditorApi>),
-		record_lift_node!(RuntimeHandle),
-		record_extract_node!(RuntimeHandle),
-		record_lift_node!(RenderIntermediate),
-		record_extract_node!(RenderIntermediate),
-		record_lift_node!(RenderOutput),
-		record_extract_node!(RenderOutput),
-		#[cfg(target_family = "wasm")]
-		record_lift_node!(CanvasHandle),
-		#[cfg(target_family = "wasm")]
-		record_extract_node!(CanvasHandle),
-		#[cfg(feature = "gpu")]
-		record_lift_node!(WgpuExecutorHandle),
-		#[cfg(feature = "gpu")]
-		record_extract_node!(WgpuExecutorHandle),
-		#[cfg(feature = "gpu")]
-		record_lift_node!(Option<WgpuExecutorHandle>),
-		#[cfg(feature = "gpu")]
-		record_extract_node!(Option<WgpuExecutorHandle>),
-		#[cfg(feature = "gpu")]
-		record_lift_node!(wgpu_executor::WgpuPipelineCache),
-		#[cfg(feature = "gpu")]
-		record_extract_node!(wgpu_executor::WgpuPipelineCache),
 	];
 	// =============
 	// CONVERT NODES
@@ -228,8 +136,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		.flatten(),
 	);
 
-	node_types.extend(graph_craft::document::value::TaggedValue::record_bridge_entries());
-	node_types.extend(core_types::registry::record_bridge_rows::<graphene_std::application_io::resource::Resource>());
 
 	let mut map: HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> = HashMap::new();
 	let insert = |map: &mut HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>, id: ProtoNodeIdentifier, entry: RegistryEntry| {
@@ -273,14 +179,22 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
 				RegistryEntry {
-					io: NodeIOTypes::new(concrete!(Context), concrete!($to), vec![fn_type!(Context, $from)]),
+					io: NodeIOTypes::new(
+						concrete!(Context),
+						core_types::registry::record_type::<$to>(),
+						vec![core_types::registry::record_edge_type::<$from>()],
+					),
 					constructor: |inputs| {
 						if inputs.len() != 1 {
 							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
 						}
 						let mut inputs = inputs.into_iter();
-						let node = graphene_std::ops::IntoNode::<$to, _>::new(inputs.next().unwrap().downcast::<$from>()?);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$to>>))
+						let handle = inputs.next().unwrap();
+						let Some(layout) = handle.layout().cloned() else {
+							return Err(ConstructionError::MissingLayout);
+						};
+						let node = graphene_std::ops::IntoNode::<$to, _, $from>::new(handle.downcast_record::<$from>()?, &layout);
+						Ok(EdgeHandle::new_record::<$to>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
 					},
 				},
 			)
@@ -334,21 +248,41 @@ mod node_registry_macros {
 				RegistryEntry {
 					io: NodeIOTypes::new(
 						concrete!(Context),
-						concrete!($to),
-						vec![fn_type!(Context, $from), fn_type!(Context, $convert), fn_type!(Context, RuntimeHandle), fn_type!(Context, SourceId)],
+						core_types::registry::record_type::<$to>(),
+						vec![
+							core_types::registry::record_edge_type::<$from>(),
+							core_types::registry::record_edge_type::<$convert>(),
+							core_types::registry::record_edge_type::<RuntimeHandle>(),
+							core_types::registry::record_edge_type::<SourceId>(),
+						],
 					),
 					constructor: |inputs| {
 						if inputs.len() != 4 {
 							return Err(ConstructionError::Arity { expected: 4, got: inputs.len() });
 						}
 						let mut inputs = inputs.into_iter();
-						let node = graphene_std::ops::ConvertAsyncNode::<$to, _, _, _, _>::new(
-							inputs.next().unwrap().downcast::<$from>()?,
-							inputs.next().unwrap().downcast::<$convert>()?,
-							inputs.next().unwrap().downcast::<RuntimeHandle>()?,
-							inputs.next().unwrap().downcast::<SourceId>()?,
+						let mut claim = || {
+							let handle = inputs.next().unwrap();
+							let Some(layout) = handle.layout().cloned() else {
+								return Err(ConstructionError::MissingLayout);
+							};
+							Ok((handle, layout))
+						};
+						let (value, value_layout) = claim()?;
+						let (converter, converter_layout) = claim()?;
+						let (runtime, runtime_layout) = claim()?;
+						let (source, source_layout) = claim()?;
+						let node = graphene_std::ops::ConvertAsyncNode::<$to, _, _, _, _, $from, $convert>::new(
+							value.downcast_record::<$from>()?,
+							converter.downcast_record::<$convert>()?,
+							runtime.downcast_record::<RuntimeHandle>()?,
+							source.downcast_record::<SourceId>()?,
+							&value_layout,
+							&converter_layout,
+							&runtime_layout,
+							&source_layout,
 						);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$to>>))
+						Ok(EdgeHandle::new_record::<$to>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
 					},
 				},
 			)
@@ -357,62 +291,69 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				RegistryEntry {
-					io: NodeIOTypes::new(concrete!(Context), concrete!($to), vec![fn_type!(Context, $from), fn_type!(Context, $convert)]),
+					io: NodeIOTypes::new(
+						concrete!(Context),
+						core_types::registry::record_type::<$to>(),
+						vec![core_types::registry::record_edge_type::<$from>(), core_types::registry::record_edge_type::<$convert>()],
+					),
 					constructor: |inputs| {
 						if inputs.len() != 2 {
 							return Err(ConstructionError::Arity { expected: 2, got: inputs.len() });
 						}
 						let mut inputs = inputs.into_iter();
-						let node = graphene_std::ops::ConvertNode::<$to, _, _>::new(inputs.next().unwrap().downcast::<$from>()?, inputs.next().unwrap().downcast::<$convert>()?);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$to>>))
+						let value = inputs.next().unwrap();
+						let Some(value_layout) = value.layout().cloned() else {
+							return Err(ConstructionError::MissingLayout);
+						};
+						let converter = inputs.next().unwrap();
+						let Some(converter_layout) = converter.layout().cloned() else {
+							return Err(ConstructionError::MissingLayout);
+						};
+						let node = graphene_std::ops::ConvertNode::<$to, _, _, $from, $convert>::new(
+							value.downcast_record::<$from>()?,
+							converter.downcast_record::<$convert>()?,
+							&value_layout,
+							&converter_layout,
+						);
+						Ok(EdgeHandle::new_record::<$to>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
 					},
 				},
 			)
 		};
 	}
 
-	macro_rules! record_lift_node {
-		($type:ty) => {
-			(
-				ProtoNodeIdentifier::new("core_types::record::RecordLiftNode"),
-				RegistryEntry {
-					io: NodeIOTypes::new(concrete!(Context), core_types::registry::record_type::<$type>(), vec![fn_type!(Context, $type)]),
-					constructor: |inputs| {
-						if inputs.len() != 1 {
-							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-						}
-						let mut inputs = inputs.into_iter();
-						let node = core_types::record::RecordLift::<$type, _>::new(inputs.next().unwrap().downcast::<$type>()?);
-						Ok(EdgeHandle::new_record::<$type>(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>))
-					},
-				},
-			)
-		};
-	}
-
-	macro_rules! record_extract_node {
-		($type:ty) => {
-			(
-				ProtoNodeIdentifier::new("core_types::record::RecordExtractNode"),
-				RegistryEntry {
-					io: NodeIOTypes::new(concrete!(Context), concrete!($type), vec![core_types::registry::record_edge_type::<$type>()]),
-					constructor: |inputs| {
-						if inputs.len() != 1 {
-							return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-						}
-						let mut inputs = inputs.into_iter();
-						let edge = inputs.next().unwrap();
-						let layout = edge.layout().ok_or(ConstructionError::MissingLayout)?.clone();
-						let node = core_types::record::RecordExtract::<$type, _>::new(edge.downcast_record::<$type>()?, &layout);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$type>>))
-					},
-				},
-			)
-		};
-	}
 
 	pub(crate) use convert_node;
 	pub(crate) use into_node;
-	pub(crate) use record_extract_node;
-	pub(crate) use record_lift_node;
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graphene_std::Type;
+
+	fn is_record_edge(ty: &Type) -> bool {
+		match ty {
+			Type::Fn(_, output) => matches!(&**output, Type::Record(_)),
+			_ => false,
+		}
+	}
+
+	/// One wire kind: every row consumes and produces record wires. A plain
+	/// io type here would need a bridge adapter, and those are gone.
+	#[test]
+	fn every_registry_row_is_record_typed() {
+		let mut plain: Vec<String> = Vec::new();
+		for (id, entries) in NODE_REGISTRY.iter() {
+			for entry in entries {
+				let plain_output = !matches!(entry.io.return_value, Type::Record(_));
+				let plain_inputs: Vec<usize> = entry.io.inputs.iter().enumerate().filter(|(_, ty)| !is_record_edge(ty)).map(|(index, _)| index).collect();
+				if plain_output || !plain_inputs.is_empty() {
+					plain.push(format!("{} plain_output={plain_output} plain_inputs={plain_inputs:?}", id.as_str()));
+				}
+			}
+		}
+		plain.sort();
+		assert!(plain.is_empty(), "plain io remains in the registry:\n{}", plain.join("\n"));
+	}
 }

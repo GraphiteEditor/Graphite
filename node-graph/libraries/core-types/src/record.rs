@@ -186,6 +186,25 @@ impl Layout {
 		}
 	}
 
+	/// This layout minus the named fields, offsets recomputed. Removing an
+	/// absent name is a no-op: downstream reads yield the default either way.
+	pub fn without(&self, removes: &[(&str, u8)]) -> Layout {
+		let retained: Vec<FieldWrite> = self
+			.fields
+			.iter()
+			.filter(|field| !removes.contains(&(field.name, field.level)))
+			.map(|field| FieldWrite {
+				name: field.name,
+				level: field.level,
+				size: field.size,
+				align: field.align,
+				read_erased: field.read_erased,
+				repark: field.repark,
+			})
+			.collect();
+		Layout::default().with_writes(self.depth, self.element, &retained)
+	}
+
 	/// The union of several layouts over the same element and depth.
 	pub fn union(layouts: &[&Layout]) -> Layout {
 		let first = layouts.first().expect("a union needs at least one layout");
@@ -392,10 +411,18 @@ impl<'a, N> RecordEdgeInput<'a, N> {
 
 /// The raw lazy edge handed to a poll kernel whose wire rides records while
 /// the kernel consumes the plain element.
-pub struct ElementEdge<'a, El, N> {
+/// # Safety
+/// `rec` must be a record of the layout the offsets were resolved against
+/// and `El` its element type; both are proven at wiring.
+unsafe fn element_only<El: Clone>(rec: Rec, _reads: &[Option<usize>]) -> El {
+	unsafe { read_element::<El>(rec) }
+}
+
+pub struct ElementEdge<'a, Out, N> {
 	node: &'a N,
 	layout: &'a Layout,
-	_marker: std::marker::PhantomData<fn() -> El>,
+	reads: &'a [Option<usize>],
+	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
 }
 
 impl<'a, El: Clone, N> ElementEdge<'a, El, N> {
@@ -403,27 +430,38 @@ impl<'a, El: Clone, N> ElementEdge<'a, El, N> {
 		Self {
 			node,
 			layout,
-			_marker: std::marker::PhantomData,
+			reads: &[],
+			read: element_only::<El>,
 		}
 	}
+}
 
-	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<El>
+impl<'a, Out, N> ElementEdge<'a, Out, N> {
+	/// `read` must be sound against the layout the offsets in `reads` were
+	/// resolved from; the macro proves both at wiring.
+	pub fn with_reads(node: &'a N, layout: &'a Layout, reads: &'a [Option<usize>], read: unsafe fn(Rec, &[Option<usize>]) -> Out) -> Self {
+		Self { node, layout, reads, read }
+	}
+
+	pub fn eval<'d, C>(&self, ctx: &C) -> GPoll<Out>
 	where
 		N: Node<C, Output = RecordValue<'d>>,
 	{
-		self.node.eval(ctx).map(|value| unsafe { read_element::<El>(self.layout.rec(&value)) })
+		self.node.eval(ctx).map(|value| unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
 
 /// The lazy input handed to a kernel whose edge rides a record wire while
-/// the kernel consumes the plain element.
+/// the kernel consumes the plain element, or the element beside its declared
+/// attribute reads.
 #[derive(Clone, Copy)]
-pub struct ElementLazyInput<'a, El, N> {
+pub struct ElementLazyInput<'a, Out, N> {
 	node: &'a N,
 	cell: &'a crate::node::StatusCell,
 	input_index: usize,
 	layout: &'a Layout,
-	_marker: std::marker::PhantomData<fn() -> El>,
+	reads: &'a [Option<usize>],
+	read: unsafe fn(Rec, &[Option<usize>]) -> Out,
 }
 
 impl<'a, El: Clone, N> ElementLazyInput<'a, El, N> {
@@ -433,16 +471,39 @@ impl<'a, El: Clone, N> ElementLazyInput<'a, El, N> {
 			cell,
 			input_index,
 			layout,
-			_marker: std::marker::PhantomData,
+			reads: &[],
+			read: element_only::<El>,
+		}
+	}
+}
+
+impl<'a, Out, N> ElementLazyInput<'a, Out, N> {
+	/// `read` must be sound against the layout the offsets in `reads` were
+	/// resolved from; the macro proves both at wiring.
+	pub fn with_reads(
+		node: &'a N,
+		cell: &'a crate::node::StatusCell,
+		input_index: usize,
+		layout: &'a Layout,
+		reads: &'a [Option<usize>],
+		read: unsafe fn(Rec, &[Option<usize>]) -> Out,
+	) -> Self {
+		Self {
+			node,
+			cell,
+			input_index,
+			layout,
+			reads,
+			read,
 		}
 	}
 
-	pub fn eval<'d, C>(&self, ctx: &C) -> Result<El, crate::gpoll::Interrupt>
+	pub fn eval<'d, C>(&self, ctx: &C) -> Result<Out, crate::gpoll::Interrupt>
 	where
 		N: Node<C, Output = RecordValue<'d>>,
 	{
 		let value = self.cell.eval_input(self.input_index, self.node, ctx)?;
-		Ok(unsafe { read_element::<El>(self.layout.rec(&value)) })
+		Ok(unsafe { (self.read)(self.layout.rec(&value), self.reads) })
 	}
 }
 
@@ -563,8 +624,10 @@ pub mod stack {
 
 /// Field-by-field carry from `from`'s layout into `to`'s, computed at
 /// wiring. The element copy is included when `carry_element` holds, which is
-/// exactly when the node does not write a concrete element itself.
-pub fn copy_plan(from: &Layout, to: &Layout, carry_element: bool) -> Vec<(usize, usize, usize)> {
+/// exactly when the node does not write a concrete element itself. `removes`
+/// names the fields the node deletes, which are exactly the ones allowed to
+/// be absent from `to`.
+pub fn copy_plan(from: &Layout, to: &Layout, carry_element: bool, removes: &[(&str, u8)]) -> Vec<(usize, usize, usize)> {
 	let mut plan = Vec::new();
 	if carry_element {
 		assert_eq!(from.element.size, to.element.size, "a carried element must keep its size");
@@ -573,6 +636,9 @@ pub fn copy_plan(from: &Layout, to: &Layout, carry_element: bool) -> Vec<(usize,
 		}
 	}
 	for field in &from.fields {
+		if removes.contains(&(field.name, field.level)) {
+			continue;
+		}
 		let target = to.offset_of(field.name, field.level).expect("carried field missing from the output layout");
 		plan.push((field.offset, target, field.size));
 	}
@@ -584,6 +650,53 @@ pub fn copy_plan(from: &Layout, to: &Layout, carry_element: bool) -> Vec<(usize,
 /// construction at `dst` and `T` the field's type; both are proven at wiring.
 pub unsafe fn write_field<T>(dst: *mut u8, offset: usize, value: T) {
 	unsafe { dst.add(offset).cast::<T>().write(value) }
+}
+
+/// Finishes a carried record frame: the element lands beside the fields
+/// already carried into `dst`, inline frames copy out of the scratch bytes,
+/// and the frame releases in every branch, so the frame lifecycle closes
+/// here. Arena exhaustion of a parked element reports as an error poll.
+///
+/// # Safety
+/// `dst` must be the claimed frame (or inline scratch when `frame_bytes` is
+/// 0) of a record whose element is `T` and whose frame size is `frame_bytes`,
+/// with every carried field already written.
+pub unsafe fn lift_poll_into<'e, T: Send + Sync + 'static>(poll: GPoll<T>, dst: *mut u8, frame_bytes: usize, arena: &'e crate::arena::Arena) -> GPoll<RecordValue<'e>> {
+	let release = || {
+		if frame_bytes != 0 {
+			stack::pop(dst);
+		}
+	};
+	let build = |element: T| {
+		let written = unsafe { write_element(dst, element, arena) };
+		release();
+		written.map(|()| match frame_bytes {
+			0 => unsafe { dst.cast::<RecordValue>().read() },
+			_ => RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) }),
+		})
+	};
+	let exhausted = || {
+		GPoll::Error(Box::new(crate::gpoll::GraphError {
+			kind: crate::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		}))
+	};
+	match poll {
+		GPoll::Final(element) => build(element).map_or_else(exhausted, GPoll::Final),
+		GPoll::Partial(element) => build(element).map_or_else(exhausted, GPoll::Partial),
+		GPoll::Fallback(boxed) => {
+			let (element, error) = *boxed;
+			build(element).map_or_else(exhausted, |value| GPoll::Fallback(Box::new((value, error))))
+		}
+		GPoll::Pending => {
+			release();
+			GPoll::Pending
+		}
+		GPoll::Error(error) => {
+			release();
+			GPoll::Error(error)
+		}
+	}
 }
 
 /// Whether elements of `T` move once into the arena and ride as references:
@@ -635,6 +748,28 @@ pub unsafe fn borrow_element<'e, T>(rec: Rec) -> &'e T {
 /// The record's element must be a `T` in the form [`element_parked`] picks.
 pub unsafe fn read_element<T: Clone>(rec: Rec) -> T {
 	unsafe { borrow_element::<T>(rec) }.clone()
+}
+
+/// Borrows a record's element for the rest of the evaluation. Parked elements
+/// borrow the arena, inline elements borrow their record value in place, and
+/// a byte-carried spilled element copies into the arena first: its stack
+/// region dies with the next push, and a borrow taken before the consumer's
+/// own frame push always has one coming. `None` reports arena exhaustion.
+///
+/// # Safety
+/// The record's element must be a `T` in the form [`element_parked`] picks,
+/// and for inline layouts the record value must outlive the borrow.
+pub unsafe fn borrow_or_park<'e, T: Send + Sync + 'static>(rec: Rec, layout: &Layout, arena: &'e crate::arena::Arena) -> Option<&'e T> {
+	if element_parked::<T>() {
+		return Some(unsafe { rec.element::<&T>() });
+	}
+	if layout.is_inline() {
+		return Some(unsafe { &*rec.ptr().cast::<T>() });
+	}
+	// A bitwise read duplicates soundly: byte-carried elements have no drop
+	// glue.
+	let value = unsafe { rec.ptr().cast::<T>().read() };
+	arena.alloc(value).map(|(parked, _)| parked)
 }
 
 /// # Safety
@@ -692,7 +827,7 @@ impl SourcePlan {
 		if source == union {
 			return None;
 		}
-		let moves = copy_plan(source, union, true);
+		let moves = copy_plan(source, union, true, &[]);
 		let fills = union
 			.fields
 			.iter()
@@ -870,8 +1005,10 @@ impl OwnedRecord {
 	}
 }
 
-/// Lifts a plain producer onto a record wire: the element lands at offset 0
-/// of a fresh element-only record, parked when it carries drop glue.
+/// Law-test scaffolding: wraps an arbitrary plain node onto a record wire
+/// (the element lands at offset 0 of a fresh element-only record, parked when
+/// it carries drop glue). No production path constructs one; value edges are
+/// [`crate::value::ValueSource`].
 pub struct RecordLift<El, N> {
 	edge: N,
 	layout: Layout,
@@ -905,8 +1042,9 @@ where
 	}
 }
 
-/// Extracts the element from a record wire for a plain consumer, cloning out
-/// of the parked reference when the element carries drop glue.
+/// Law-test scaffolding: a plain probe over a record wire, cloning the
+/// element out of the parked reference when it carries drop glue. No
+/// production path constructs one.
 pub struct RecordExtract<El, N> {
 	edge: N,
 	layout: Layout,
