@@ -11,7 +11,7 @@ use core_types::node::Node;
 use core_types::registry::{EdgeHandle, edge_type};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::value::value_edge;
+use core_types::value::record_value_edge;
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -290,13 +290,13 @@ macro_rules! tagged_value {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
-					Self::None => Ok(value_edge(())),
+					Self::None => Ok(record_value_edge(())),
 					Self::TypeDefault(td) => {
 						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Ok(value_edge(<$type_default>::default())); }
+								if name == std::any::type_name::<$type_default>() { return Ok(record_value_edge(<$type_default>::default())); }
 							};
 						}
 						for_each_type_default!(check);
@@ -304,33 +304,33 @@ macro_rules! tagged_value {
 					}
 					Self::F64Array(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(value_edge(list))
+						Ok(record_value_edge(list))
 					}
 					Self::Color(color) => {
 						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(value_edge(list))
+						Ok(record_value_edge(list))
 					}
-					Self::Gradient(stops) => Ok(value_edge(List::<GradientStops>::new_from_element(stops))),
+					Self::Gradient(stops) => Ok(record_value_edge(List::<GradientStops>::new_from_element(stops))),
 					Self::BrushStrokes(strokes) => {
 						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(value_edge(list))
+						Ok(record_value_edge(list))
 					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Ok(value_edge(x)), )*
+					$( Self::$identifier(x) => Ok(record_value_edge(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Ok(value_edge(x)),
+					Self::RenderOutput(x) => Ok(record_value_edge(x)),
 					Self::NodeIdPath(path) => {
 						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Ok(value_edge(list))
+						Ok(record_value_edge(list))
 					}
-					Self::DocumentNode(node) => Ok(value_edge(node)),
-					Self::ContextModification(modification) => Ok(value_edge(modification)),
-					Self::EditorApi(x) => Ok(value_edge(x)),
-					Self::ResourceHash(x) => Ok(value_edge(x)),
+					Self::DocumentNode(node) => Ok(record_value_edge(node)),
+					Self::ContextModification(modification) => Ok(record_value_edge(modification)),
+					Self::EditorApi(x) => Ok(record_value_edge(x)),
+					Self::ResourceHash(x) => Ok(record_value_edge(x)),
 				}
 			}
 

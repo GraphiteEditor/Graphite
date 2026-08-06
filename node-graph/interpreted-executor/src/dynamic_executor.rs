@@ -555,14 +555,18 @@ mod test {
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
 		let context = TypingContext::default();
 		tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
-		let _node = tree.get(NodeId(0)).unwrap();
+		let handle = tree.get(NodeId(0)).unwrap();
+		let layout = handle.layout().unwrap().clone();
+		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
 
 		let arena = Arena::new(64).unwrap();
 		let generations = [];
 		let scope = EvalScope::new(None, None, None, &generations, &arena);
 		let ctx = ContextImpl::root(&scope);
-		let result: Option<GPoll<u32>> = tree.eval(NodeId(0), &ctx);
-		assert_eq!(result, Some(GPoll::Final(2)));
+		let GPoll::Final(value) = edge.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { core_types::record::read_element::<u32>(layout.rec(&value)) }, 2);
 	}
 
 	fn proto_node(identifier: &'static str, args: Vec<NodeId>) -> ProtoNode {

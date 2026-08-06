@@ -752,10 +752,10 @@ impl TypingContext {
 		}
 
 		let inputs = match node.construction_args {
-			// If the node has a value input we can infer the return type from it
+			// A value node is a native record source, so it types as a record
+			// of its value.
 			ConstructionArgs::Value(ref v) => {
-				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Record(Box::new(v.ty())), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -1327,9 +1327,9 @@ mod ref_adapter_test {
 					],
 				),
 				(
-					ProtoNodeIdentifier::new("graphene_core::memo::LendNode"),
+					ProtoNodeIdentifier::new("core_types::record::RecordExtractLendNode"),
 					vec![RegistryEntry {
-						io: NodeIOTypes::new(concrete!(Context), ref_type::<String>(), vec![edge_type::<String>()]),
+						io: NodeIOTypes::new(concrete!(Context), ref_type::<String>(), vec![record_edge_type::<String>()]),
 						constructor: unused,
 					}],
 				),
@@ -1366,7 +1366,7 @@ mod ref_adapter_test {
 
 		assert_eq!(network.nodes.len(), 3);
 		let (adapter_id, adapter) = &network.nodes[1];
-		assert_eq!(adapter.identifier.as_str(), "graphene_core::memo::LendNode");
+		assert_eq!(adapter.identifier.as_str(), "core_types::record::RecordExtractLendNode");
 		assert_eq!(adapter.unwrap_construction_nodes(), vec![NodeId(0)]);
 		assert_eq!(network.nodes[2].1.unwrap_construction_nodes(), vec![*adapter_id]);
 		assert_eq!(typing.type_of(*adapter_id).unwrap().return_value, ref_type::<String>());
@@ -1392,7 +1392,7 @@ mod ref_adapter_test {
 		let adapters: Vec<NodeId> = network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier.as_str() == "graphene_core::memo::LendNode")
+			.filter(|(_, node)| node.identifier.as_str() == "core_types::record::RecordExtractLendNode")
 			.map(|(id, _)| *id)
 			.collect();
 		let [adapter_id] = adapters.as_slice() else {
