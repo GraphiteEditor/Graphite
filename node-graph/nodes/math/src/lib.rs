@@ -12,7 +12,7 @@ use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
-use vector_types::markers::{GradientForm as GradientFormAttr, GradientInterpolation as GradientInterpolationAttr, GradientSpread as GradientSpreadAttr};
+use vector_types::markers::{GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -1215,10 +1215,16 @@ fn gradient_spread(_: impl Ctx, gradient: Gradient, gradient_spread: vector_type
 	(gradient, Attr(gradient_spread))
 }
 
-/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+/// Sets the color space in which each gradient in the input list interpolates between its stops.
 #[node_macro::node(category("Gradient"))]
-fn gradient_interpolation(_: impl Ctx, gradient: Gradient, gradient_interpolation: vector_types::GradientInterpolation) -> (Gradient, Attr<GradientInterpolationAttr>) {
-	(gradient, Attr(gradient_interpolation))
+fn gradient_space(_: impl Ctx, gradient: Gradient, gradient_space: vector_types::GradientSpace) -> (Gradient, Attr<GradientSpaceAttr>) {
+	(gradient, Attr(gradient_space))
+}
+
+/// Sets the hue path each gradient in the input list interpolates along in polar color spaces.
+#[node_macro::node(category("Gradient"))]
+fn gradient_hue_direction(_: impl Ctx, gradient: Gradient, gradient_hue_direction: vector_types::GradientHueDirection) -> (Gradient, Attr<GradientHueDirectionAttr>) {
+	(gradient, Attr(gradient_hue_direction))
 }
 
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
@@ -1243,7 +1249,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>)
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(
 	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
@@ -1257,8 +1263,9 @@ fn sample_gradient(
 	}
 
 	let gradient_spread = gradient.lane(0).attr::<GradientSpreadAttr>();
-	let gradient_interpolation = gradient.lane(0).attr::<GradientInterpolationAttr>();
-	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_interpolation))
+	let gradient_space = gradient.lane(0).attr::<GradientSpaceAttr>();
+	let gradient_hue_direction = gradient.lane(0).attr::<GradientHueDirectionAttr>();
+	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_space, gradient_hue_direction))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
