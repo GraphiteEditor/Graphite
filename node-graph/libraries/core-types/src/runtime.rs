@@ -171,6 +171,7 @@ mod tests {
 	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gpoll::GPoll;
 	use crate::node::Node;
+	use crate::record::{Layout, RecordExtract, RecordLift, element_dims};
 	use crate::transform::Footprint;
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -257,6 +258,18 @@ mod tests {
 		}
 	}
 
+	fn element_layout<T: 'static>() -> Layout {
+		Layout::default().with_writes(0, element_dims::<T>(), &[])
+	}
+
+	fn lifted<T: Send + Sync + 'static>(value: T) -> RecordLift<T, SourceNode<T>> {
+		RecordLift::new(SourceNode(value))
+	}
+
+	fn extract<El: Clone + 'static, N>(graph: N) -> RecordExtract<El, N> {
+		RecordExtract::new(graph, &element_layout::<El>())
+	}
+
 	static SLOW_DOUBLE_RUNS: AtomicU32 = AtomicU32::new(0);
 
 	#[node_macro::node(category(""))]
@@ -328,7 +341,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = SlowDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(7u64));
+		let graph = extract::<f64, _>(SlowDoubleNode::new(
+			lifted(21.0f64),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(7u64),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
@@ -348,7 +368,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = PreviewDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(1u64));
+		let graph = extract::<f64, _>(PreviewDoubleNode::new(
+			lifted(21.0f64),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(1u64),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Partial(-1.0));
 		runtime.drain();
@@ -363,7 +390,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = StrictDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(2u64));
+		let graph = extract::<f64, _>(StrictDoubleNode::new(
+			lifted(21.0f64),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(2u64),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
@@ -378,7 +412,14 @@ mod tests {
 		let ctx = ContextImpl::root(&scope);
 
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = StagedDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(8u64));
+		let graph = extract::<f64, _>(StagedDoubleNode::new(
+			lifted(21.0f64),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(8u64),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(STAGED_RUNS.load(Ordering::Relaxed), 1, "the prologue runs synchronously on the miss");
@@ -398,7 +439,16 @@ mod tests {
 
 		let gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = StagedSumNode::new(SourceNode(40.0f64), GatedSource(gate.clone(), 2.0), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(9u64));
+		let graph = extract::<f64, _>(StagedSumNode::new(
+			lifted(40.0f64),
+			RecordLift::<f64, _>::new(GatedSource(gate.clone(), 2.0)),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(9u64),
+			&element_layout::<f64>(),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		assert_eq!(runtime.drain(), Vec::<SourceId>::new(), "an interrupted prologue must not spawn or claim the slot");
@@ -422,7 +472,14 @@ mod tests {
 		let ctx = root.with_varargs(&link);
 
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = SnapshotVarargNode::new(SourceNode(()), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(5u64));
+		let graph = extract::<f64, _>(SnapshotVarargNode::new(
+			lifted(()),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(5u64),
+			&element_layout::<()>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
@@ -439,7 +496,14 @@ mod tests {
 		let ctx = root.with_footprint(&footprint);
 
 		let runtime = Arc::new(MockRuntime::default());
-		let graph = SnapshotResolutionNode::new(SourceNode(()), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(3u64));
+		let graph = extract::<u32, _>(SnapshotResolutionNode::new(
+			lifted(()),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(3u64),
+			&element_layout::<()>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		assert_eq!(Node::eval(&graph, &ctx), GPoll::Pending);
 		runtime.drain();
@@ -545,7 +609,14 @@ mod tests {
 		let arena = Arena::new(64).unwrap();
 		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
 		runtime.retain_sources(&[13]);
-		let graph = InlineDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(13u64));
+		let graph = extract::<f64, _>(InlineDoubleNode::new(
+			lifted(21.0f64),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(13u64),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
@@ -561,7 +632,14 @@ mod tests {
 		let arena = Arena::new(64).unwrap();
 		let runtime = Arc::new(GraphRuntime::new(CollectSpawner::default()));
 		runtime.retain_sources(&[11]);
-		let graph = EpilogueDoubleNode::new(SourceNode(21.0f64), SourceNode(RuntimeHandle(runtime.clone())), SourceNode(11u64));
+		let graph = extract::<f64, _>(EpilogueDoubleNode::new(
+			lifted(21.0f64),
+			lifted(RuntimeHandle(runtime.clone())),
+			lifted(11u64),
+			&element_layout::<f64>(),
+			&element_layout::<RuntimeHandle>(),
+			&element_layout::<u64>(),
+		));
 
 		let snapshot = runtime.snapshot();
 		let scope = EvalScope::new(None, None, None, &snapshot, &arena);
