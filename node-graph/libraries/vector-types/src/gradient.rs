@@ -293,6 +293,7 @@ pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_
 		GradientInterpolation::Lab => lerp_in_space::<color::Lab>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::LCh => lerp_in_space::<color::Lch>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::Hsl => lerp_in_space::<color::Hsl>(color_a, color_b, t, gradient_hue_direction),
+		GradientInterpolation::Hsv => lerp_in_space::<Hsv>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::SrgbLinear => color_a.lerp(&color_b, t),
 		GradientInterpolation::SrgbGamma => color_a.lerp_gamma_srgb(&color_b, t),
 	}
@@ -366,6 +367,50 @@ fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, 
 
 	let [red, green, blue] = CS::to_linear_srgb(mixed);
 	Color::from_rgbaf32_unchecked(red, green, blue, color_a.a() + (color_b.a() - color_a.a()) * t)
+}
+
+/// The classic HSV cylinder as `[hue in degrees, saturation 0-100, value 0-100]`, implemented locally
+/// since CSS Color 4 (and therefore the `color` crate) offers only its HWB reparameterization, which
+/// mixes along different paths through shades and tones.
+#[derive(Clone, Copy, Debug)]
+struct Hsv;
+
+impl color::ColorSpace for Hsv {
+	const LAYOUT: color::ColorSpaceLayout = color::ColorSpaceLayout::HueFirst;
+
+	const WHITE_COMPONENTS: [f32; 3] = [0., 0., 100.];
+
+	fn to_linear_srgb([hue, saturation, value]: [f32; 3]) -> [f32; 3] {
+		let (saturation, value) = (saturation / 100., value / 100.);
+		let channel = |n: f32| {
+			let k = (n + hue / 60.).rem_euclid(6.);
+			value - value * saturation * k.min(4. - k).clamp(0., 1.)
+		};
+		color::Srgb::to_linear_srgb([channel(5.), channel(3.), channel(1.)])
+	}
+
+	fn from_linear_srgb(src: [f32; 3]) -> [f32; 3] {
+		let [red, green, blue] = color::Srgb::from_linear_srgb(src);
+		let max = red.max(green).max(blue);
+		let delta = max - red.min(green).min(blue);
+
+		let hue = if delta <= 0. {
+			0.
+		} else if max == red {
+			60. * ((green - blue) / delta).rem_euclid(6.)
+		} else if max == green {
+			60. * ((blue - red) / delta + 2.)
+		} else {
+			60. * ((red - green) / delta + 4.)
+		};
+		let saturation = if max <= 0. { 0. } else { delta / max };
+
+		[hue, saturation * 100., max * 100.]
+	}
+
+	fn clip([hue, saturation, value]: [f32; 3]) -> [f32; 3] {
+		[hue, saturation.clamp(0., 100.), value.clamp(0., 100.)]
+	}
 }
 
 /// The largest difference between two colors across their gamma sRGB channels, the 8-bit-adjacent measure that rendered output quantizes to.
@@ -983,6 +1028,9 @@ pub enum GradientInterpolation {
 	/// Blends stops in the classic hue, saturation, and lightness cylinder.
 	#[label("HSL")]
 	Hsl,
+	/// Blends stops in the classic hue, saturation, and value cylinder, keeping tints at full brightness.
+	#[label("HSV")]
+	Hsv,
 	/// Blends stops in linear light, keeping transitions evenly bright.
 	#[label("sRGB Linear")]
 	SrgbLinear,
@@ -998,7 +1046,7 @@ impl GradientInterpolation {
 
 	/// Whether the space is polar (cylindrical), making the hue direction option meaningful.
 	pub fn is_polar(&self) -> bool {
-		matches!(self, Self::OkLch | Self::LCh | Self::Hsl)
+		matches!(self, Self::OkLch | Self::LCh | Self::Hsl | Self::Hsv)
 	}
 
 	// TODO: Remove when switching to the new document format and Ctrl-C node serialization format
@@ -1255,6 +1303,7 @@ mod tests {
 			(GradientInterpolation::LCh, GradientHueDirection::Shorter),
 			(GradientInterpolation::Hsl, GradientHueDirection::Shorter),
 			(GradientInterpolation::Hsl, GradientHueDirection::Longer),
+			(GradientInterpolation::Hsv, GradientHueDirection::Shorter),
 			(GradientInterpolation::SrgbLinear, GradientHueDirection::Shorter),
 			(GradientInterpolation::SrgbGamma, GradientHueDirection::Shorter),
 		] {
@@ -1352,6 +1401,19 @@ mod tests {
 		let [_, pink_chroma, pink_hue] = color::Oklch::from_linear_srgb([pink.r(), pink.g(), pink.b()]);
 		assert!(pink_chroma > 0.05, "the mid color should stay chromatic, got {pink:?}");
 		assert!((pink_hue - red_hue).abs() < 0.5, "the mid hue should hold red's {red_hue} degrees, got {pink_hue}");
+
+		// HSV rides the cube's top face toward white, keeping the mid tint at full brightness where HSL dips
+		let tint = red_to_white.evaluate(0.5, Default::default(), GradientInterpolation::Hsv, Default::default());
+		for (channel, target) in tint.to_gamma_srgb_channels().into_iter().zip([1., 0.5, 0.5, 1.]) {
+			assert!((channel - target).abs() < 1e-3, "the HSV mid tint of red and white should be gamma (1, 0.5, 0.5), got {tint:?}");
+		}
+
+		// Toward black both saturation and value halve, the classic HSV shade that neither HSL nor HWB produces
+		let red_to_black = Gradient::from(vec![Color::RED, Color::BLACK]);
+		let shade = red_to_black.evaluate(0.5, Default::default(), GradientInterpolation::Hsv, Default::default());
+		for (channel, target) in shade.to_gamma_srgb_channels().into_iter().zip([0.5, 0.25, 0.25, 1.]) {
+			assert!((channel - target).abs() < 1e-3, "the HSV mid shade of red and black should be gamma (0.5, 0.25, 0.25), got {shade:?}");
+		}
 	}
 
 	#[test]
