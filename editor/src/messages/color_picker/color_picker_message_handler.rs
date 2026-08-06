@@ -697,7 +697,7 @@ impl ColorPickerMessageHandler {
 			let entries = MenuListEntry::sections_from_choice_type(|gradient_hue_direction| ColorPickerMessage::SetGradientHueDirection { gradient_hue_direction }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Hue Direction")
+				TextLabel::new("Arc")
 					.tooltip_label("Gradient Hue Direction")
 					.tooltip_description(HUE_DIRECTION_DESCRIPTION)
 					.widget_instance(),
