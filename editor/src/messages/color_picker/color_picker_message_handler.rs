@@ -683,7 +683,10 @@ impl ColorPickerMessageHandler {
 			let entries = MenuListEntry::sections_from_choice_type(|gradient_interpolation| ColorPickerMessage::SetGradientInterpolation { gradient_interpolation }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Space").tooltip_label("Gradient Interpolation").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
+				TextLabel::new("Space")
+					.tooltip_label("Gradient Interpolation Space")
+					.tooltip_description(SPACE_DESCRIPTION)
+					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				DropdownInput::new(entries)
 					.selected_index(Some(self.gradient_interpolation as u32))

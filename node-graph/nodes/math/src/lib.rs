@@ -1393,11 +1393,11 @@ fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<
 	gradient
 }
 
-/// Sets the color space each gradient in the input list blends between its stops with: linear light or gamma-encoded sRGB.
+/// Sets the color space each gradient in the input list blends between its stops with.
 #[node_macro::node(category("Gradient"))]
-fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, gradient_interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *gradient_interpolation.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *space.element());
 	gradient
 }
 
