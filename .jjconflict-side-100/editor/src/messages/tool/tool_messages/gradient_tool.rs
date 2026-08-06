@@ -2978,6 +2978,53 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn whole_expanse_gradient_reports_control_geometry_outline_bounds() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// A gradient dragged across a blank layer paints its whole expanse via a 'Gradient Value' chain
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		assert!(get_upstream_gradient_value_node_id(layer, &editor.active_document().network_interface).is_some());
+
+		editor.eval_graph().await.expect("graph should evaluate");
+		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
+		assert_eq!(bounds, Some([DVec2::ZERO, DVec2::X]), "a linear expanse's local bounds should be its canonical gradient line");
+
+		// A linear's control line has no interior, so it registers as outline only
+		let click_targets = editor.active_document().metadata().click_targets(layer);
+		assert!(click_targets.is_none_or(|targets| targets.is_empty()), "a linear expanse should gain no click targets");
+
+		// Switching the form swaps the control geometry to the radial unit circle
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
+			})
+			.await;
+		editor.eval_graph().await.expect("graph should evaluate");
+		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
+		assert_eq!(bounds, Some([DVec2::splat(-1.), DVec2::splat(1.)]), "a radial expanse's local bounds should be its unit circle");
+
+		// A radial's main ellipse doubles as the layer's draggable handle regardless of spread
+		let click_targets = editor.active_document().metadata().click_targets(layer).expect("a radial expanse should be clickable");
+		assert!(
+			click_targets.iter().any(|target| target.intersect_point_no_stroke(DVec2::ZERO)),
+			"the ellipse interior should register a hit"
+		);
+	}
+
+	#[tokio::test]
 	async fn chain_stop_placement_composes_through_setter_nodes() {
 		use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient_stops;
 
