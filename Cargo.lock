@@ -6599,6 +6599,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
+ "color",
  "core-types",
  "dyn-any",
  "fixedbitset",

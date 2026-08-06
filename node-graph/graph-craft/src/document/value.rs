@@ -1057,7 +1057,7 @@ mod gradient_shape_migration {
 		assert!(json.get("GradientRamp").and_then(|payload| payload.get("stops")).is_some(), "the payload should nest its stops: {json}");
 		assert_eq!(
 			json.get("GradientRamp").and_then(|payload| payload.get("gradient_interpolation")),
-			Some(&serde_json::json!("SrgbLinear")),
+			Some(&serde_json::json!("OkLab")),
 			"the interpolation should serialize even at its default, marking the ramp as post-legacy: {json}"
 		);
 		assert_eq!(load(json), value);

@@ -276,9 +276,23 @@ fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
 /// Interpolates between two adjacent stops' colors at `t` across their interval, in the gradient's interpolation color space.
 pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_interpolation: GradientInterpolation) -> Color {
 	match gradient_interpolation {
+		GradientInterpolation::OkLab => lerp_oklab(color_a, color_b, t),
 		GradientInterpolation::SrgbLinear => color_a.lerp(&color_b, t),
 		GradientInterpolation::SrgbGamma => color_a.lerp_gamma_srgb(&color_b, t),
 	}
+}
+
+/// Mix two colors in the OkLab perceptual space, with alpha blending linearly like the other spaces.
+/// The mix can land slightly outside the sRGB gamut; it stays unclamped here and clips at render encoding.
+fn lerp_oklab(color_a: Color, color_b: Color, t: f32) -> Color {
+	use color::ColorSpace;
+
+	let a = color::Oklab::from_linear_srgb([color_a.r(), color_a.g(), color_a.b()]);
+	let b = color::Oklab::from_linear_srgb([color_b.r(), color_b.g(), color_b.b()]);
+	let mixed = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+	let [red, green, blue] = color::Oklab::to_linear_srgb(mixed);
+	Color::from_rgbaf32_unchecked(red, green, blue, color_a.a() + (color_b.a() - color_a.a()) * t)
 }
 
 /// The largest difference between two colors across their gamma sRGB channels, the 8-bit-adjacent measure that rendered output quantizes to.
@@ -875,8 +889,11 @@ impl GradientSpread {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum GradientInterpolation {
-	/// Blends stops in linear light, keeping transitions evenly bright.
+	/// Blends stops in the OkLab perceptual color space, keeping transitions visually even.
 	#[default]
+	#[label("OkLab")]
+	OkLab,
+	/// Blends stops in linear light, keeping transitions evenly bright.
 	#[label("sRGB Linear")]
 	SrgbLinear,
 	/// Blends stops in gamma-encoded sRGB, the classic SVG and CSS look.
@@ -1033,7 +1050,7 @@ mod tests {
 		let default_interpolation = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
 		let json = serde_json::to_string(&default_interpolation).unwrap();
 		assert!(
-			json.contains(r#""gradient_interpolation":"SrgbLinear""#),
+			json.contains(r#""gradient_interpolation":"OkLab""#),
 			"the interpolation must serialize even at its default, marking the ramp as post-legacy: {json}"
 		);
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_interpolation);
@@ -1112,7 +1129,7 @@ mod tests {
 
 		// Sweep the midpoint against each space so its bias and the space's curvature also oppose each other,
 		// asserting the emitted samples' gamma playback tracks the composed midpoint-then-space theoretical curve
-		for gradient_interpolation in [GradientInterpolation::SrgbLinear, GradientInterpolation::SrgbGamma] {
+		for gradient_interpolation in [GradientInterpolation::OkLab, GradientInterpolation::SrgbLinear, GradientInterpolation::SrgbGamma] {
 			for &(color_a, color_b) in &color_pairs {
 				for midpoint_step in 1..40 {
 					let midpoint = midpoint_step as f64 / 40.;
@@ -1171,12 +1188,22 @@ mod tests {
 	fn evaluate_follows_the_interpolation_space() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
+		let oklab = gradient.evaluate(0.5, Default::default(), GradientInterpolation::OkLab);
 		let linear = gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbLinear);
 		let gamma = gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbGamma);
 
 		assert_eq!(linear, Color::BLACK.lerp(&Color::WHITE, 0.5));
 		assert_eq!(gamma, Color::BLACK.lerp_gamma_srgb(&Color::WHITE, 0.5));
-		assert_ne!(linear, gamma, "the two spaces must produce different mid colors between black and white");
+
+		// Halfway in OkLab between black and white is lightness 0.5, which cubes to 1/8 linear light in every channel
+		for channel in [oklab.r(), oklab.g(), oklab.b()] {
+			assert!((channel - 0.125).abs() < 1e-3, "the OkLab mid color of black and white should be 1/8 linear light, got {channel}");
+		}
+		assert_eq!(oklab.a(), 1.);
+
+		assert_ne!(linear, gamma, "each space must produce a different mid color between black and white");
+		assert_ne!(oklab, linear, "each space must produce a different mid color between black and white");
+		assert_ne!(oklab, gamma, "each space must produce a different mid color between black and white");
 	}
 
 	#[test]
@@ -1241,7 +1268,7 @@ mod tests {
 
 		let sample_positions: Vec<f64> = gradient.interpolated_samples(GradientInterpolation::SrgbGamma).iter().map(|(position, ..)| *position).collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
-		assert_eq!(gradient.evaluate(0.5, Default::default(), Default::default()), Color::WHITE.lerp(&Color::RED, 0.5));
+		assert_eq!(gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbLinear), Color::WHITE.lerp(&Color::RED, 0.5));
 
 		// A non-finite position is preserved as nondefault so write-back elision cannot resurrect the dropped stop
 		assert!(gradient.nondefault_positions().is_some());
