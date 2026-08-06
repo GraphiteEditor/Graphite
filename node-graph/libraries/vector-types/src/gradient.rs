@@ -276,22 +276,49 @@ fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
 /// Interpolates between two adjacent stops' colors at `t` across their interval, in the gradient's interpolation color space.
 pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_interpolation: GradientInterpolation) -> Color {
 	match gradient_interpolation {
-		GradientInterpolation::OkLab => lerp_oklab(color_a, color_b, t),
+		GradientInterpolation::OkLab => lerp_in_space::<color::Oklab>(color_a, color_b, t),
+		GradientInterpolation::OkLch => lerp_in_space::<color::Oklch>(color_a, color_b, t),
+		GradientInterpolation::Lab => lerp_in_space::<color::Lab>(color_a, color_b, t),
+		GradientInterpolation::LCh => lerp_in_space::<color::Lch>(color_a, color_b, t),
+		GradientInterpolation::Hsl => lerp_in_space::<color::Hsl>(color_a, color_b, t),
 		GradientInterpolation::SrgbLinear => color_a.lerp(&color_b, t),
 		GradientInterpolation::SrgbGamma => color_a.lerp_gamma_srgb(&color_b, t),
 	}
 }
 
-/// Mix two colors in the OkLab perceptual space, with alpha blending linearly like the other spaces.
+/// Mix two colors in the color space `CS`, with alpha blending linearly like the sRGB spaces.
+/// Polar spaces take the shorter hue arc, with an achromatic endpoint's powerless hue adopting the other's per CSS.
 /// The mix can land slightly outside the sRGB gamut; it stays unclamped here and clips at render encoding.
-fn lerp_oklab(color_a: Color, color_b: Color, t: f32) -> Color {
-	use color::ColorSpace;
+fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32) -> Color {
+	use color::ColorSpaceLayout;
 
-	let a = color::Oklab::from_linear_srgb([color_a.r(), color_a.g(), color_a.b()]);
-	let b = color::Oklab::from_linear_srgb([color_b.r(), color_b.g(), color_b.b()]);
+	let mut a = CS::from_linear_srgb([color_a.r(), color_a.g(), color_a.b()]);
+	let mut b = CS::from_linear_srgb([color_b.r(), color_b.g(), color_b.b()]);
+
+	let hue_index = match CS::LAYOUT {
+		ColorSpaceLayout::HueFirst => Some(0),
+		ColorSpaceLayout::HueThird => Some(2),
+		_ => None,
+	};
+	if let Some(hue_index) = hue_index {
+		// Chroma (or saturation) is channel 1 in both polar layouts; the threshold scales to the space's
+		// lightness range so conversion noise on achromatic colors stays below it
+		let achromatic = 1e-4 * CS::WHITE_COMPONENTS.iter().fold(0_f32, |max, &component| max.max(component));
+		if a[1] < achromatic && b[1] >= achromatic {
+			a[hue_index] = b[hue_index];
+		}
+		if b[1] < achromatic && a[1] >= achromatic {
+			b[hue_index] = a[hue_index];
+		}
+
+		// Take the shorter arc around the hue wheel
+		let delta = (b[hue_index] - a[hue_index]).rem_euclid(360.);
+		b[hue_index] = a[hue_index] + if delta > 180. { delta - 360. } else { delta };
+	}
+
 	let mixed = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
-	let [red, green, blue] = color::Oklab::to_linear_srgb(mixed);
+	let [red, green, blue] = CS::to_linear_srgb(mixed);
 	Color::from_rgbaf32_unchecked(red, green, blue, color_a.a() + (color_b.a() - color_a.a()) * t)
 }
 
@@ -774,13 +801,18 @@ impl Gradient {
 			let y_linear = (y_left + y_right) / 2.;
 
 			// A sample is needed wherever the renderer's gamma segment between the flanking samples would stray
-			// from the ramp's true curve: from the midpoint bias, or from a non-gamma space's own curvature
+			// from the ramp's true curve: from the midpoint bias, or from a non-gamma space's own curvature.
+			// The space check probes the quarter points as well as the center, since spaces with a steep toe
+			// (like CIE Lab near black) peak their deviation off-center
 			let midpoint_deviates = (y_actual - y_linear).abs() > THRESHOLD;
 			let space_deviates = gradient_interpolation != GradientInterpolation::SrgbGamma && {
-				let color_target = interpolate_stop_colors(color_a, color_b, y_actual as f32, gradient_interpolation);
 				let color_left = interpolate_stop_colors(color_a, color_b, y_left as f32, gradient_interpolation);
 				let color_right = interpolate_stop_colors(color_a, color_b, y_right as f32, gradient_interpolation);
-				max_gamma_channel_deviation(color_target, color_left.lerp_gamma_srgb(&color_right, 0.5)) > THRESHOLD
+				[0.25, 0.5, 0.75].into_iter().any(|fraction| {
+					let y_probe = apply_midpoint(left + (right - left) * fraction, midpoint);
+					let color_target = interpolate_stop_colors(color_a, color_b, y_probe as f32, gradient_interpolation);
+					max_gamma_channel_deviation(color_target, color_left.lerp_gamma_srgb(&color_right, fraction as f32)) > THRESHOLD
+				})
 			};
 
 			if midpoint_deviates || space_deviates {
@@ -893,6 +925,17 @@ pub enum GradientInterpolation {
 	#[default]
 	#[label("OkLab")]
 	OkLab,
+	/// Blends stops in the polar form of OkLab, arcing through hue instead of fading through gray.
+	#[label("OkLch")]
+	OkLch,
+	/// Blends stops in the CIE Lab color space, the classic perceptual standard.
+	Lab,
+	/// Blends stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
+	#[label("LCh")]
+	LCh,
+	/// Blends stops in the classic hue, saturation, and lightness cylinder.
+	#[label("HSL")]
+	Hsl,
 	/// Blends stops in linear light, keeping transitions evenly bright.
 	#[label("sRGB Linear")]
 	SrgbLinear,
@@ -1129,7 +1172,15 @@ mod tests {
 
 		// Sweep the midpoint against each space so its bias and the space's curvature also oppose each other,
 		// asserting the emitted samples' gamma playback tracks the composed midpoint-then-space theoretical curve
-		for gradient_interpolation in [GradientInterpolation::OkLab, GradientInterpolation::SrgbLinear, GradientInterpolation::SrgbGamma] {
+		for gradient_interpolation in [
+			GradientInterpolation::OkLab,
+			GradientInterpolation::OkLch,
+			GradientInterpolation::Lab,
+			GradientInterpolation::LCh,
+			GradientInterpolation::Hsl,
+			GradientInterpolation::SrgbLinear,
+			GradientInterpolation::SrgbGamma,
+		] {
 			for &(color_a, color_b) in &color_pairs {
 				for midpoint_step in 1..40 {
 					let midpoint = midpoint_step as f64 / 40.;
@@ -1204,6 +1255,26 @@ mod tests {
 		assert_ne!(linear, gamma, "each space must produce a different mid color between black and white");
 		assert_ne!(oklab, linear, "each space must produce a different mid color between black and white");
 		assert_ne!(oklab, gamma, "each space must produce a different mid color between black and white");
+	}
+
+	#[test]
+	fn polar_spaces_take_the_shorter_hue_arc_and_ignore_powerless_hues() {
+		use color::ColorSpace;
+
+		// Red to blue in HSL crosses through magenta on the shorter arc (300 degrees), not through green (120 degrees)
+		let red_to_blue = Gradient::from(vec![Color::RED, Color::BLUE]);
+		let magenta = red_to_blue.evaluate(0.5, Default::default(), GradientInterpolation::Hsl);
+		for (channel, expected) in [(magenta.r(), 1.), (magenta.g(), 0.), (magenta.b(), 1.)] {
+			assert!((channel - expected).abs() < 1e-3, "the HSL mid color of red and blue should be magenta, got {magenta:?}");
+		}
+
+		// White's hue is powerless, so an OkLch blend toward it keeps red's hue instead of drifting toward white's arbitrary hue
+		let red_to_white = Gradient::from(vec![Color::RED, Color::WHITE]);
+		let pink = red_to_white.evaluate(0.5, Default::default(), GradientInterpolation::OkLch);
+		let [_, _, red_hue] = color::Oklch::from_linear_srgb([Color::RED.r(), Color::RED.g(), Color::RED.b()]);
+		let [_, pink_chroma, pink_hue] = color::Oklch::from_linear_srgb([pink.r(), pink.g(), pink.b()]);
+		assert!(pink_chroma > 0.05, "the mid color should stay chromatic, got {pink:?}");
+		assert!((pink_hue - red_hue).abs() < 0.5, "the mid hue should hold red's {red_hue} degrees, got {pink_hue}");
 	}
 
 	#[test]

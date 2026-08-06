@@ -60,7 +60,7 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
-/// Gradient's `GradientInterpolation` (`OkLab`, `SrgbLinear`, or `SrgbGamma`), the color space its stops blend in.
+/// Gradient's `GradientInterpolation`, the color space its stops blend in.
 pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
 /// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
 /// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
