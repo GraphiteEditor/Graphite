@@ -289,7 +289,7 @@ fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
 pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_interpolation: GradientInterpolation, gradient_hue_direction: GradientHueDirection) -> Color {
 	match gradient_interpolation {
 		GradientInterpolation::OkLab => lerp_in_space::<color::Oklab>(color_a, color_b, t, gradient_hue_direction),
-		GradientInterpolation::OkLch => lerp_in_space::<color::Oklch>(color_a, color_b, t, gradient_hue_direction),
+		GradientInterpolation::OkLCh => lerp_in_space::<color::Oklch>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::Lab => lerp_in_space::<color::Lab>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::LCh => lerp_in_space::<color::Lch>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::Hsl => lerp_in_space::<color::Hsl>(color_a, color_b, t, gradient_hue_direction),
@@ -1018,8 +1018,8 @@ pub enum GradientInterpolation {
 	#[label("OkLab")]
 	OkLab,
 	/// Blends stops in the polar form of OkLab, arcing through hue instead of fading through gray.
-	#[label("OkLch")]
-	OkLch,
+	#[label("OkLCh")]
+	OkLCh,
 	/// Blends stops in the CIE Lab color space, the classic perceptual standard.
 	Lab,
 	/// Blends stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
@@ -1047,7 +1047,7 @@ impl GradientInterpolation {
 
 	/// Whether the space is polar (cylindrical), making the hue direction option meaningful.
 	pub fn is_polar(&self) -> bool {
-		matches!(self, Self::OkLch | Self::LCh | Self::Hsl | Self::Hsv)
+		matches!(self, Self::OkLCh | Self::LCh | Self::Hsl | Self::Hsv)
 	}
 
 	// TODO: Remove when switching to the new document format and Ctrl-C node serialization format
@@ -1298,8 +1298,8 @@ mod tests {
 		// asserting the emitted samples' gamma playback tracks the composed midpoint-then-space theoretical curve
 		for (gradient_interpolation, gradient_hue_direction) in [
 			(GradientInterpolation::OkLab, GradientHueDirection::Shorter),
-			(GradientInterpolation::OkLch, GradientHueDirection::Shorter),
-			(GradientInterpolation::OkLch, GradientHueDirection::Longer),
+			(GradientInterpolation::OkLCh, GradientHueDirection::Shorter),
+			(GradientInterpolation::OkLCh, GradientHueDirection::Longer),
 			(GradientInterpolation::Lab, GradientHueDirection::Shorter),
 			(GradientInterpolation::LCh, GradientHueDirection::Shorter),
 			(GradientInterpolation::Hsl, GradientHueDirection::Shorter),
@@ -1395,9 +1395,9 @@ mod tests {
 			assert!((channel - expected).abs() < 1e-3, "the HSL mid color of red and blue should be magenta, got {magenta:?}");
 		}
 
-		// White's hue is powerless, so an OkLch blend toward it keeps red's hue instead of drifting toward white's arbitrary hue
+		// White's hue is powerless, so an OkLCh blend toward it keeps red's hue instead of drifting toward white's arbitrary hue
 		let red_to_white = Gradient::from(vec![Color::RED, Color::WHITE]);
-		let pink = red_to_white.evaluate(0.5, Default::default(), GradientInterpolation::OkLch, Default::default());
+		let pink = red_to_white.evaluate(0.5, Default::default(), GradientInterpolation::OkLCh, Default::default());
 		let [_, _, red_hue] = color::Oklch::from_linear_srgb([Color::RED.r(), Color::RED.g(), Color::RED.b()]);
 		let [_, pink_chroma, pink_hue] = color::Oklch::from_linear_srgb([pink.r(), pink.g(), pink.b()]);
 		assert!(pink_chroma > 0.05, "the mid color should stay chromatic, got {pink:?}");
