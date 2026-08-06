@@ -1026,6 +1026,7 @@ pub enum GradientInterpolation {
 	#[label("LCh")]
 	LCh,
 	/// Blends stops in the classic hue, saturation, and lightness cylinder.
+	#[menu_separator]
 	#[label("HSL")]
 	Hsl,
 	/// Blends stops in the classic hue, saturation, and value cylinder, keeping tints at full brightness.
