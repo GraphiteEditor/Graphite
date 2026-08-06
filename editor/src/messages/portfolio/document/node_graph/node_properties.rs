@@ -2405,6 +2405,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient: Gradient,
 			gradient_form: GradientForm,
 			gradient_spread: GradientSpread,
+			gradient_interpolation: GradientInterpolation,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
@@ -2435,6 +2436,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						gradient: gradient.stops,
 						gradient_form: gradient.gradient_form,
 						gradient_spread: gradient.gradient_spread,
+						gradient_interpolation: gradient.gradient_interpolation,
 						transform: gradient.transform,
 						transform_is_value: gradient.transform_is_value,
 					},
@@ -2462,9 +2464,15 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	match &fill {
-		ResolvedFill::Gradient { gradient: stops, gradient_spread, .. } => {
+		ResolvedFill::Gradient {
+			gradient: stops,
+			gradient_spread,
+			gradient_interpolation,
+			..
+		} => {
 			let stops = stops.clone();
 			let gradient_spread = *gradient_spread;
+			let gradient_interpolation = *gradient_interpolation;
 
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
@@ -2473,6 +2481,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					move |_| {
 						TaggedValue::GradientRamp(GradientRamp {
 							gradient_spread,
+							gradient_interpolation,
 							..GradientRamp::from(stops.reversed())
 						})
 					},
@@ -2494,8 +2503,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoice::<SRGBA8>::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, gradient_spread, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp {
+		ResolvedFill::Gradient {
+			gradient: stops,
+			gradient_spread,
+			gradient_interpolation,
+			..
+		} => FillChoice::<SRGBA8>::Gradient(GradientRamp {
 			gradient_spread: *gradient_spread,
+			gradient_interpolation: *gradient_interpolation,
 			..GradientRamp::from(stops)
 		}),
 		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
