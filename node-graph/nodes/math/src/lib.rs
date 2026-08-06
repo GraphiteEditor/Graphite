@@ -1243,7 +1243,7 @@ fn gradient_midpoints(_: impl Ctx, mut gradient: Gradient, midpoints: List<f64>)
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: IList<Gradient>, position: Fraction) -> Result<IList<Color>, Interrupt> {
 	// An unwired gradient serves an empty level: no color
@@ -1251,8 +1251,9 @@ fn sample_gradient(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, _primary: 
 		return Err(GraphError::past_end().into());
 	}
 
-	let spread_method = gradient.lane(0).attr::<GradientSpreadAttr>();
-	Ok(gradient.element_ref(0).evaluate(position, spread_method))
+	let gradient_spread = gradient.lane(0).attr::<GradientSpreadAttr>();
+	let gradient_interpolation = gradient.lane(0).attr::<GradientInterpolationAttr>();
+	Ok(gradient.element_ref(0).evaluate(position, gradient_spread, gradient_interpolation))
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
