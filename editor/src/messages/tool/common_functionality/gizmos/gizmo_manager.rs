@@ -3,12 +3,12 @@ use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
+use crate::messages::tool::common_functionality::gizmos::generic_gizmos::GenericGizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
-use crate::messages::tool::common_functionality::shapes::circle_shape::CircleGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::grid_shape::GridGizmoHandler;
-use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::heart_shape::HeartGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::spiral_shape::SpiralGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
@@ -27,11 +27,13 @@ pub enum ShapeGizmoHandlers {
 	#[default]
 	None,
 	Star(StarGizmoHandler),
-	Polygon(PolygonGizmoHandler),
 	Arc(ArcGizmoHandler),
-	Circle(CircleGizmoHandler),
 	Grid(GridGizmoHandler),
 	Spiral(SpiralGizmoHandler),
+	Heart(HeartGizmoHandler),
+	/// Registry-driven generic handler. Used for nodes that declare their gizmos in the
+	/// [gizmo registry](super::gizmo_registry) rather than via a hand-written handler.
+	Generic(GenericGizmoManager),
 }
 
 impl ShapeGizmoHandlers {
@@ -40,11 +42,11 @@ impl ShapeGizmoHandlers {
 	pub fn kind(&self) -> &'static str {
 		match self {
 			Self::Star(_) => "star",
-			Self::Polygon(_) => "polygon",
 			Self::Arc(_) => "arc",
-			Self::Circle(_) => "circle",
 			Self::Grid(_) => "grid",
 			Self::Spiral(_) => "spiral",
+			Self::Heart(_) => "heart",
+			Self::Generic(_) => "generic",
 			Self::None => "none",
 		}
 	}
@@ -53,11 +55,11 @@ impl ShapeGizmoHandlers {
 	pub fn handle_state(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
 			Self::Star(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Polygon(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Circle(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Heart(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Generic(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
 	}
@@ -66,11 +68,11 @@ impl ShapeGizmoHandlers {
 	pub fn is_any_gizmo_hovered(&self) -> bool {
 		match self {
 			Self::Star(h) => h.is_any_gizmo_hovered(),
-			Self::Polygon(h) => h.is_any_gizmo_hovered(),
 			Self::Arc(h) => h.is_any_gizmo_hovered(),
-			Self::Circle(h) => h.is_any_gizmo_hovered(),
 			Self::Grid(h) => h.is_any_gizmo_hovered(),
 			Self::Spiral(h) => h.is_any_gizmo_hovered(),
+			Self::Heart(h) => h.is_any_gizmo_hovered(),
+			Self::Generic(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
 	}
@@ -79,11 +81,11 @@ impl ShapeGizmoHandlers {
 	pub fn handle_click(&mut self) {
 		match self {
 			Self::Star(h) => h.handle_click(),
-			Self::Polygon(h) => h.handle_click(),
 			Self::Arc(h) => h.handle_click(),
-			Self::Circle(h) => h.handle_click(),
 			Self::Grid(h) => h.handle_click(),
 			Self::Spiral(h) => h.handle_click(),
+			Self::Heart(h) => h.handle_click(),
+			Self::Generic(h) => h.handle_click(),
 			Self::None => {}
 		}
 	}
@@ -92,11 +94,11 @@ impl ShapeGizmoHandlers {
 	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		match self {
 			Self::Star(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Polygon(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Circle(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Heart(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Generic(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -105,11 +107,11 @@ impl ShapeGizmoHandlers {
 	pub fn cleanup(&mut self) {
 		match self {
 			Self::Star(h) => h.cleanup(),
-			Self::Polygon(h) => h.cleanup(),
 			Self::Arc(h) => h.cleanup(),
-			Self::Circle(h) => h.cleanup(),
 			Self::Grid(h) => h.cleanup(),
 			Self::Spiral(h) => h.cleanup(),
+			Self::Heart(h) => h.cleanup(),
+			Self::Generic(h) => h.cleanup(),
 			Self::None => {}
 		}
 	}
@@ -126,11 +128,11 @@ impl ShapeGizmoHandlers {
 	) {
 		match self {
 			Self::Star(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
-			Self::Polygon(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
-			Self::Circle(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Spiral(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Heart(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Generic(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -146,11 +148,11 @@ impl ShapeGizmoHandlers {
 	) {
 		match self {
 			Self::Star(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
-			Self::Polygon(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
-			Self::Circle(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Spiral(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Heart(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Generic(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -158,11 +160,11 @@ impl ShapeGizmoHandlers {
 	pub fn gizmo_cursor_icon(&self) -> Option<MouseCursorIcon> {
 		match self {
 			Self::Star(h) => h.mouse_cursor_icon(),
-			Self::Polygon(h) => h.mouse_cursor_icon(),
 			Self::Arc(h) => h.mouse_cursor_icon(),
-			Self::Circle(h) => h.mouse_cursor_icon(),
 			Self::Grid(h) => h.mouse_cursor_icon(),
 			Self::Spiral(h) => h.mouse_cursor_icon(),
+			Self::Heart(h) => h.mouse_cursor_icon(),
+			Self::Generic(h) => h.mouse_cursor_icon(),
 			Self::None => None,
 		}
 	}
@@ -194,17 +196,17 @@ impl GizmoManager {
 		if graph_modification_utils::get_star_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Star(StarGizmoHandler::default()));
 		}
-		// Polygon
+		// Polygon — migrated to the generic, registry-driven gizmo system (sides dial).
 		if graph_modification_utils::get_polygon_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Polygon(PolygonGizmoHandler::default()));
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Arc
 		if graph_modification_utils::get_arc_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Arc(ArcGizmoHandler::new()));
 		}
-		// Circle
+		// Circle — migrated to the generic, registry-driven gizmo system (radius slider).
 		if graph_modification_utils::get_circle_id(layer, &document.network_interface).is_some() {
-			return Some(ShapeGizmoHandlers::Circle(CircleGizmoHandler::default()));
+			return GenericGizmoManager::detect_gizmos(layer, document).map(ShapeGizmoHandlers::Generic);
 		}
 		// Grid
 		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {
@@ -213,6 +215,10 @@ impl GizmoManager {
 		// Spiral
 		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Spiral(SpiralGizmoHandler::default()));
+		}
+		// Heart
+		if graph_modification_utils::get_heart_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Heart(HeartGizmoHandler::default()));
 		}
 
 		None
