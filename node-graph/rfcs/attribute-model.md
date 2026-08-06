@@ -7,9 +7,9 @@ declare their attribute reads and writes in their signatures, and the
 compiler resolves every access to a byte offset during wiring, so there is
 no name lookup at runtime. Storage and batch results are per-attribute
 columns. The contiguous record only exists as a per-lane view, assembled
-into activation frames on a per-thread record stack. All of the machinery
-that could corrupt a layout is generated code, so getting it wrong is a
-type error or a graph compile error rather than undefined behavior.
+into buffers the compiler assigns. All of the machinery that could
+corrupt a layout is generated code, so getting it wrong is a type error or
+a graph compile error rather than undefined behavior.
 
 # Motivation
 
@@ -86,31 +86,83 @@ table at graph compile time, which is where every resolution happens
 anyway, and two user-supplied names colliding at different value types
 is a graph compile error naming both nodes.
 
+A write can also be generic over both the name and the value type. The
+attribute then arrives on its own wire, as an input whose element is
+`()`:
+
+```rs
+/// Attaches the attribute to the content.
+#[node_macro::node(category("Attributes"))]
+fn set_attribute<T, A, Y>(
+	_: impl Ctx,
+	element: T,
+	(_, attr): ((), Attr<Custom<A, Y>>),
+) -> (T, Attr<Custom<A, Y>>) {
+	(element, attr)
+}
+```
+
+A unit value component means the edge exists and carries only its
+attributes (`_: ()` still means no edge at all). The name enters the
+graph at a source node holding the constant text input, whose output
+type is filled at graph compile time, where user-supplied names join
+the name table anyway; the compiler pairs `A` and `Y` through the wire
+types, so the write set is derived from types alone, and the
+one-name-one-type check covers the binding, making a declared name
+targeted at a different type a graph compile error. A generic read
+resolves only when the input wire's type determines the binding
+uniquely, and anything else is a validation error. The node is one
+compiled instance: `A` and `Y` instantiate with tokens and the value
+rides the copy plan as a byte move, parked in the arena when its type
+has drop glue, so no implementations list exists. A kernel that
+computes on the value uses a bound and monomorphizes per its
+implementations list as usual.
+
 ## Reading and writing attributes
 
-A node declares its attribute io in its signature. The opacity node
-becomes:
+A node declares its attribute io in its signature. A parameter that
+reads attributes destructures its input into the wired value and the
+reads taken from that input's wire. The opacity node becomes:
 
 ```rs
 /// Modifies the opacity of the input by multiplying the existing value by this percentage.
 #[node_macro::node(category("Blending"))]
 fn opacity<T>(
 	_: impl Ctx,
-	element: T,
+	(element, opacity): (T, Attr<Opacity>),
 	/// How visible the content should be, from 100% (fully opaque) to 0% (fully transparent).
 	#[default(100.)]
 	factor: Percentage,
-	opacity: Attr<Opacity>,
 ) -> (T, Attr<Opacity>) {
 	(element, Attr(*opacity * factor / 100.))
 }
 ```
 
-`Attr<Opacity>` as a parameter is a read (it yields the declared default
-if nothing upstream wrote the attribute), in the return tuple it is a
-write, and the same marker on both sides is a modify. The first
-parameter after the context is the primary input, and an unbounded
-generic `element: T` that is returned in the first tuple position means
+An `Attr<A>` inside a parameter tuple is a read from that parameter's
+wire (it yields the declared default if nothing upstream wrote the
+attribute), an `Attr<A>` in the return tuple is a write, and the same
+marker on both sides is a modify. A `RemoveAttr<A>` in the return
+tuple is a delete: the name leaves the output layout, downstream reads
+yield the default again, and the column leaves the Data panel. A read
+binds to the input it is destructured from, so which wire an attribute
+comes from is always explicit in the signature, and secondary inputs
+declare reads the same way:
+
+```rs
+	(factor, out_of_100): (Percentage, Attr<OutOf100>),
+```
+
+There is no implicit attribute flow between inputs. The primary
+input's attributes pass through to the output, overwritten where the
+node writes; a secondary input contributes exactly the reads its tuple
+names. An input without reads stays a plain parameter. Parameter
+attributes (`#[default]`, `#[implementations]`, doc comments) apply to
+the value component; attribute markers are concrete types and never
+enter monomorphization.
+
+The first parameter after the context is the primary input, with or
+without a read tuple, and an unbounded generic `element: T` in its
+value position that is returned in the first tuple position means
 "I pass the element through unchanged". The compiler lowers this to a
 byte copy (often to nothing, see below), and a single compiled instance
 covers every element type, with no trait bounds and no implementations
@@ -140,13 +192,12 @@ per-copy values:
 #[node_macro::node(category("Repeat"), level_extent = count)]
 fn repeat<T>(
 	ctx: impl Ctx + ExtractIndex,
-	element: T,
+	(element, transform): (T, Attr<Transform>),
 	#[default(1)]
 	#[hard(1..)]
 	count: u32,
 	#[default(100., 100.)]
 	direction: DVec2,
-	transform: Attr<Transform>,
 ) -> List<(T, Attr<Transform>)> {
 	let offset = direction * ctx.innermost_index() as f64;
 	emit(element, Attr(DAffine2::from_translation(offset) * *transform))
@@ -171,8 +222,10 @@ inputs', and an attribute missing on one side is filled with its declared
 default for that side's items, so the result is rectangular in every
 attribute. A scalar input contributes one item. When lists are combined,
 each input's own top-level attributes are pushed down onto that input's
-items (composing by the attribute's declared rule where one exists,
-otherwise the inner value wins), and the merged list starts with an empty
+items (composing by the attribute's declared rule where one exists;
+otherwise the pushed value fills the items that never wrote the name
+and the inner value wins where they did, resolved from the write sets
+at graph compile time), and the merged list starts with an empty
 top level. If the user wants to keep the groups as groups, they wrap
 explicitly instead.
 
@@ -225,13 +278,15 @@ consumers are wired without adaptation, the wire keeps the element's type
 and colour, and the registry stays keyed on element types.
 
 A wire's layout is the set of all attributes written in its upstream
-cone, in a canonical order (descending alignment, then size, then name
-and level), computed at graph compile time. Some consequences:
+cone and not removed since, in a canonical order (descending alignment,
+then size, then name and level), computed at graph compile time. Some
+consequences:
 
 - Layout identity is captured by stable node ids, because the write set
   is part of the hashed upstream cone. An instance that survives an
   incremental recompile cannot meet a changed layout.
-- Reads resolve to `Option<offset>` at wiring. Present means a field
+- Reads resolve to `Option<offset>` at wiring, each against the layout
+  of the input wire its tuple destructures. Present means a field
   access, and absent means the macro emits the default constant. Writes
   always resolve. The runtime does no name lookup, no hashing, and no
   downcasting. A resolved read costs the same as a native struct field
@@ -242,6 +297,18 @@ and level), computed at graph compile time. Some consequences:
 - Layouts are derived data. The document stores only user-visible
   structure, no attribute data is serialized, and representation changes
   never require a document migration.
+- Semantically a wire value has every attribute at all times: a read of
+  a name nobody wrote yields the declared default, so a written default
+  and an absent name are indistinguishable at runtime. Presence
+  (membership in the layout) is representation, consulted only by merge
+  push-down's fallback and the Data panel, which presents the layout:
+  column presence is a pure function of the graph, stable across frames
+  and across the branches a selector takes.
+- Writes are unconditional: presence never depends on a value, so a
+  conditionally relevant attribute is written at its default, and a
+  runtime `Option` around a value buys nothing (`None` could only mean
+  the default). A name that wants a distinguished unset declares an
+  `Option` value type on its marker.
 
 Fields are `Copy`, and larger payloads go behind a pointer-sized field.
 Runtime-shaped data (CSV columns, arbitrary JSON) is a single dynamic
@@ -252,7 +319,10 @@ A name's type is unique by construction. For declared markers the census
 admits one marker per name, checked when the registry is built. For
 user-supplied names the binding forms at graph compile time, carrying the
 marker's declared value type, and two names colliding at different types
-is a graph compile error that names both nodes. We do not attempt
+is a graph compile error that names both nodes. Generic-typed writes
+join the same table, carrying the name and value type their bindings
+resolve to, so the check runs over declared markers, user-supplied
+names, and generic instantiations together. We do not attempt
 coercion.
 
 ## Levels and residency
@@ -261,8 +331,9 @@ Levels are numbered from the innermost out. This keeps layout keys
 stable when a structure node pushes a level (nothing renumbers) and
 matches how indices are already numbered. The binding rules are:
 
-- A read or write binds to the top level of the wire at the node's chain
-  position.
+- A read binds to the top level of the input wire it is destructured
+  from at the node's chain position; a write binds to the top level of
+  the output wire.
 - A structure node pushes a level and then writes its per-copy
   attributes into the former top row, and the new top row starts empty.
 - A node that reads the element (concrete type or bound) is pinned to
@@ -330,10 +401,12 @@ that decomposition is hoisted per run.
 | `_: ()` | no primary input | no carrier edge |
 | `element: T` (unbounded, returned first) | explicit passthrough | erased byte carry, where `T` is instantiated with a zero-sized token, so the routing is checked by the type system and costs nothing |
 | `element: Concrete` / bound | element read | field read at offset 0, monomorphized per implementations list, binds level 0 |
-| `x: Attr<A>` | attribute read | offset read, or the default constant |
+| `(x, a): (X, Attr<A>)` | input with attribute reads | the value as its ordinary lowering; each `Attr` an offset read into that input's record, or the default constant |
+| `(_, a): ((), Attr<A>)` | attribute-only input | wired record edge with unit element; the attribute is the payload |
 | `Attr<A>` in the return tuple | attribute write | offset write into the output record |
+| `RemoveAttr<A>` in the return tuple | attribute delete | the name leaves the output layout; functionally a write of the default |
 | `keys: List<K>` | whole-extent input | wired edge, evaluated over its extent into a view |
-| plain parameters | wired value inputs | ordinary wired edges |
+| plain parameters | wired value inputs | ordinary wired edges; attributes on their wires do not flow |
 | `impl Node<Context<'_>, Output = Concrete>` | lazy value input | the value flows, attributes do not |
 | `impl Node<Context<'_>, Output = T>` (unbounded) | source of an opaque record family | routing, see below |
 | `-> List<W>` with `level_extent =` | per-lane level production | structural skeleton emitted by the macro |
@@ -368,7 +441,8 @@ decomposition, and both come from one declaration:
   Each input's top row is pushed down one level onto that input's items
   via entries in the translation plan (a level remap computed at wiring;
   no values are needed at compile time), composing by the declared
-  combine rule with inner-wins as the fallback. The merged top row
+  combine rule; the fallback is inner wins iff the inner level wrote
+  the name, resolved from the write sets at wiring. The merged top row
   starts empty. An explicit Wrap node is how the user nests instead. An
   input with unbounded (Free) extent contributes exactly one item, so
   merge is an extent-forcing boundary, which is the scalar base case.
@@ -484,9 +558,9 @@ make semantic mistakes (evaluating an input it did not need to) but
 cannot misalign an offset. Kernels see contexts only as an opaque
 `impl Ctx + ...` they cannot construct, and lifetimes keep them from
 stashing handles in node state. The one remaining discipline lives
-inside generated code (a borrow of a released frame must not survive the
-next claim), and debug assertions guard it at wiring boundaries,
-following the existing precedent for TypeId checks.
+inside generated code (a result buffer must not be borrowed across a
+sibling evaluation it could alias), and debug assertions guard it at
+wiring boundaries, following the existing precedent for TypeId checks.
 
 # Drawbacks
 
@@ -515,8 +589,8 @@ following the existing precedent for TypeId checks.
   per value, and no compile-time name checking. Interning the keys
   improves the constant (about 1.9ns per access vs. 0.43 for a resolved
   offset) but keeps a per-access search and rules out the structural
-  optimizations that need static layouts: bypass, uniform columns,
-  stack-allocated activation frames.
+  optimizations that need static layouts: bypass, uniform columns, slot
+  coalescing.
 - Attributes as separate graph edges, one channel per attribute: bypass
   and per-channel caching become graph structure. We prototyped and
   measured this. Without caching at fan-outs, every channel re-evaluates
@@ -565,10 +639,15 @@ from shading languages for residency.
   currently a hand-written reference lowering, and it has no domain
   logic of its own, so it is not clear what a kernel for it would even
   contain.
-- The graph UX of the map/enter construct, and whether attribute-typed
-  parameters can ever be ordinary exposed inputs.
+- The graph UX of the map/enter construct.
 - Naming: `Attribute` trait vs. `Attr` wrapper, and whether the
   authoring `List` sharing the wire type's name helps or confuses.
+- Generic-typed writes: where the default for a generically written
+  name comes from (a `Default` bound on the value vs. an input on the
+  name source), what `A` instantiates to at the Rust level, whether
+  attribute-only wires carry exactly one attribute by construction or
+  uniqueness is checked per read, and the graph UX of the name source
+  node.
 - Whether evaluating at a lane outside the input's extent is clamped,
   wrapped, or a debug assertion.
 - `List<List<W>>` outputs, i.e. one node pushing two levels.
