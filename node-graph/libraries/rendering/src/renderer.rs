@@ -2383,6 +2383,19 @@ fn render_color_vello<S: LaneSource<Element = Color>>(source: &S, scene: &mut Sc
 	}
 }
 
+/// A gradient's control geometry in its local space: the unit circle a radial gradient's transform carries to its drawn ellipse, or the (0,0) to (1,0) gradient line for a linear one.
+fn gradient_control_outline(gradient_form: GradientForm) -> Subpath<graphic_types::vector_types::vector::PointId> {
+	match gradient_form {
+		GradientForm::Linear => Subpath::new_line(DVec2::ZERO, DVec2::X),
+		GradientForm::Radial => Subpath::new_ellipse(DVec2::splat(-1.), DVec2::splat(1.)),
+	}
+}
+
+/// Whether the control geometry's interior is a draggable click area: a radial's main ellipse acts as the layer's handle regardless of spread, while a linear's control line has no interior.
+fn gradient_control_interior_is_clickable(gradient_form: GradientForm) -> bool {
+	gradient_form == GradientForm::Radial
+}
+
 impl Render for List<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_color_svg(self, render, render_params)
@@ -2571,6 +2584,67 @@ impl Render for List<Gradient> {
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		render_gradient_vello(self, scene, parent_transform, render_params)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>) {
+		let Some(element_id) = element_id else { return };
+		if self.is_empty() {
+			return;
+		}
+
+		// Targets are baked relative to item 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`
+		let item_zero_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
+			item_zero_transform.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		let mut outline_targets = Vec::new();
+		let mut click_targets = Vec::new();
+		for index in 0..self.len() {
+			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+
+			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+			target.apply_transform(item_zero_inverse * item_transform);
+			let target = Arc::new(target);
+
+			if gradient_control_interior_is_clickable(gradient_form) {
+				click_targets.push(target.clone());
+			}
+			outline_targets.push(target);
+		}
+
+		metadata.outlines.insert(element_id, outline_targets);
+		if !click_targets.is_empty() {
+			metadata.click_targets.insert(element_id, click_targets);
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		for index in 0..self.len() {
+			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
+			if !gradient_control_interior_is_clickable(gradient_form) {
+				continue;
+			}
+
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+			target.apply_transform(transform);
+			click_targets.push(target);
+		}
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		for index in 0..self.len() {
+			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+
+			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+			target.apply_transform(transform);
+			outlines.push(target);
+		}
 	}
 }
 
