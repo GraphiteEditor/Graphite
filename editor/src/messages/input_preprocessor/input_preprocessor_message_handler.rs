@@ -1,4 +1,5 @@
 use crate::application::Editor;
+use crate::consts::DOUBLE_CLICK_MILLISECONDS;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, ModifierKeys};
 use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
@@ -16,6 +17,10 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
+	/// The most recent non-repeated key press and the timestamp of when it occurred, used as the first tap in double-tap detection.
+	pub last_key_down: Option<(Key, u64)>,
+	/// Set when a second tap of the same key occurs within the double-tap threshold. Cleared by any interrupting input (mouse button, scroll, or different key). The `DoubleTap` event is emitted on `KeyUp` if this is still set.
+	pub double_tap_key: Option<(Key, u64)>,
 }
 
 #[message_handler_data]
@@ -25,6 +30,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 		match message {
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
+				self.clear_double_tap_state();
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
@@ -44,7 +50,22 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
+
 				if !key_repeat {
+					let no_mouse_buttons_held = self.mouse.mouse_keys.is_empty();
+					let no_modifier_keys_held = modifier_keys.is_empty();
+					let same_key_within_threshold = self
+						.last_key_down
+						.is_some_and(|(last_key, last_time)| last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS);
+
+					if no_mouse_buttons_held && no_modifier_keys_held && same_key_within_threshold {
+						self.double_tap_key = Some((key, self.time));
+						self.last_key_down = None;
+					} else {
+						self.last_key_down = Some((key, self.time));
+						self.double_tap_key = None;
+					}
+
 					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
 				}
 				responses.add(InputMapperMessage::KeyDown(key));
@@ -55,9 +76,15 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
 				}
+				if let Some((dt_key, dt_time)) = self.double_tap_key.take() {
+					if dt_key == key && self.mouse.mouse_keys.is_empty() && self.time.saturating_sub(dt_time) < DOUBLE_CLICK_MILLISECONDS {
+						responses.add(InputMapperMessage::DoubleTap(key));
+					}
+				}
 				responses.add(InputMapperMessage::KeyUp(key));
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
+				self.clear_double_tap_state();
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
@@ -77,6 +104,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
+				self.clear_double_tap_state();
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
@@ -98,6 +126,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
+				self.clear_double_tap_state();
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
@@ -116,6 +145,11 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
+	fn clear_double_tap_state(&mut self) {
+		self.last_key_down = None;
+		self.double_tap_key = None;
+	}
+
 	fn translate_mouse_event(&mut self, mut new_state: MouseState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		let click_mappings = [
 			(MouseKeys::LEFT, Key::MouseLeft),
