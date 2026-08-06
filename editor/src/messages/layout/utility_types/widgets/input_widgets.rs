@@ -644,7 +644,8 @@ pub struct SpectrumInput {
 pub struct SpectrumMarker {
 	/// Position (0..1) of the marker along the spectrum track.
 	position: f64,
-	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
+	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
+	/// The last marker's value controls the wrap segment when `track_cyclic` is set, and is otherwise ignored.
 	midpoint: f64,
 	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
 	#[serde(rename = "handleColorCSS")]
