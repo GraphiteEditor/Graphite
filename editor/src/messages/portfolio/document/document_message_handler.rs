@@ -555,12 +555,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::Escape => {
-				// Abort dragging nodes
-				if self.node_graph_handler.drag_start.is_some() {
-					responses.add(DocumentMessage::AbortTransaction);
-					self.node_graph_handler.drag_start = None;
-					self.node_graph_handler.select_if_not_dragged = None;
-				}
+			// Abort dragging nodes
+			if self.node_graph_handler.drag_start.is_some() {
+				responses.add(DocumentMessage::AbortTransaction);
+				self.node_graph_handler.drag_start = None;
+				self.node_graph_handler.select_if_not_dragged = None;
+			}
 				// Abort box selection
 				else if self.node_graph_handler.box_selection_start.is_some() {
 					self.node_graph_handler.box_selection_start = None;
