@@ -496,6 +496,70 @@ fn midpoint_hidden_by_proximity(left_stop_pos: f64, right_stop_pos: f64, viewpor
 	(right_stop_pos - left_stop_pos) * viewport_line_length < GRADIENT_STOP_MIN_VIEWPORT_GAP * 2.
 }
 
+/// A cyclic gradient's wrap segment as `(start, end)` along the gradient line, where `end` runs past 1 by however far
+/// the segment continues beyond the boundary to reach the first stop.
+fn wrap_segment_span(gradient: &Gradient) -> (f64, f64) {
+	(gradient.position(gradient.len() - 1, true), gradient.position(0, true) + 1.)
+}
+
+/// The gradient's visible midpoint diamonds as `(owning stop index, position along the gradient line)`, omitting
+/// intervals whose stops are too closely packed. A cyclic gradient's wrap segment adds a final diamond owned by the last stop.
+fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_length: f64) -> Vec<(usize, f64)> {
+	let mut diamonds = Vec::with_capacity(gradient.len());
+
+	for index in 0..gradient.len().saturating_sub(1) {
+		let left = gradient.position(index, gradient_cyclic);
+		let right = gradient.position(index + 1, gradient_cyclic);
+		if midpoint_hidden_by_proximity(left, right, viewport_line_length) {
+			continue;
+		}
+
+		diamonds.push((index, left + gradient.midpoint(index) * (right - left)));
+	}
+
+	if gradient_cyclic && gradient.len() >= 2 {
+		let last = gradient.len() - 1;
+		let (left, right) = wrap_segment_span(gradient);
+		if !midpoint_hidden_by_proximity(left, right, viewport_line_length) {
+			diamonds.push((last, (left + gradient.midpoint(last) * (right - left)).rem_euclid(1.)));
+		}
+	}
+
+	diamonds
+}
+
+/// Maps a pointer's unclamped position along the gradient line to a midpoint ratio within the interval owned by the stop
+/// at `index`, or `None` when that interval has no width. The wrap segment continues past the line's end, so overdragging
+/// keeps tracking with the line's length as an offset.
+fn midpoint_ratio_at(gradient: &Gradient, index: usize, gradient_cyclic: bool, position_along_line: f64) -> Option<f64> {
+	let is_wrap_segment = gradient_cyclic && index + 1 == gradient.len();
+	let (left, right) = if is_wrap_segment {
+		wrap_segment_span(gradient)
+	} else {
+		(gradient.position(index, gradient_cyclic), gradient.position(index + 1, gradient_cyclic))
+	};
+
+	let span = right - left;
+	if span <= 0. {
+		return None;
+	}
+
+	let first = gradient.position(0, gradient_cyclic);
+	let dead_zone_split = match (is_wrap_segment, left >= 1., first > 0.) {
+		(true, true, _) => f64::INFINITY,
+		(true, false, true) => (first + left) / 2.,
+		_ => f64::NEG_INFINITY,
+	};
+
+	let local = if position_along_line < dead_zone_split {
+		position_along_line + 1. - left
+	} else {
+		position_along_line - left
+	};
+
+	Some((local / span).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX))
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum GradientDragTarget {
 	Start,
@@ -538,16 +602,8 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, gradient_cycl
 
 		// Don't insert when clicking near a (currently visible) midpoint diamond
 		let line_length = start.distance(end);
-		for i in 0..stops.len().saturating_sub(1) {
-			let left = stops.position(i, gradient_cyclic);
-			let right = stops.position(i + 1, gradient_cyclic);
-
-			if midpoint_hidden_by_proximity(left, right, line_length) {
-				continue;
-			}
-
-			let midpoint_pos = left + stops.midpoint(i) * (right - left);
-			let midpoint_viewport = start.lerp(end, midpoint_pos);
+		for (_, midpoint_position) in midpoint_diamonds(stops, gradient_cyclic, line_length) {
+			let midpoint_viewport = start.lerp(end, midpoint_position);
 			if midpoint_viewport.distance_squared(mouse) < GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2) {
 				return None;
 			}
@@ -773,12 +829,8 @@ impl SelectedGradient {
 					return;
 				}
 
-				// Convert to a midpoint ratio within the interval between the two surrounding stops
-				let left_stop = self.gradient.position(midpoint_index, self.appearance.gradient_cyclic);
-				let right_stop = self.gradient.position(midpoint_index + 1, self.appearance.gradient_cyclic);
-				let range = right_stop - left_stop;
-				if range > 0. {
-					let midpoint_ratio = ((full_pos - left_stop) / range).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX);
+				// Convert to a midpoint ratio within the interval owned by the dragged diamond's stop
+				if let Some(midpoint_ratio) = midpoint_ratio_at(&self.gradient, midpoint_index, self.appearance.gradient_cyclic, full_pos) {
 					self.gradient.set_midpoint(midpoint_index, midpoint_ratio);
 				}
 			}
@@ -1048,18 +1100,10 @@ impl Fsm for GradientToolFsmState {
 					let line_angle = (end - start).to_angle();
 					let line_length = start.distance(end);
 					let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
-					for i in 0..gradient.len().saturating_sub(1) {
-						let left = gradient.position(i, gradient_cyclic);
-						let right = gradient.position(i + 1, gradient_cyclic);
+					for (index, midpoint_position) in midpoint_diamonds(gradient, gradient_cyclic, line_length) {
+						let midpoint_viewport = start.lerp(end, midpoint_position);
 
-						if midpoint_hidden_by_proximity(left, right, line_length) {
-							continue;
-						}
-
-						let midpoint_pos = left + gradient.midpoint(i) * (right - left);
-						let midpoint_viewport = start.lerp(end, midpoint_pos);
-
-						let emphasis = if dragging == Some(GradientDragTarget::Midpoint(i)) {
+						let emphasis = if dragging == Some(GradientDragTarget::Midpoint(index)) {
 							GizmoEmphasis::Active
 						} else if !matches!(self, GradientToolFsmState::Drawing { .. }) && midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
 							GizmoEmphasis::Hovered
@@ -1366,19 +1410,11 @@ impl Fsm for GradientToolFsmState {
 					if drag_hint.is_none() {
 						let line_length = start.distance(end);
 						let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
-						for i in 0..gradient.len().saturating_sub(1) {
-							let left = gradient.position(i, appearance.gradient_cyclic);
-							let right = gradient.position(i + 1, appearance.gradient_cyclic);
-
-							if midpoint_hidden_by_proximity(left, right, line_length) {
-								continue;
-							}
-
-							let midpoint_pos = left + gradient.midpoint(i) * (right - left);
-							let midpoint_viewport = start.lerp(end, midpoint_pos);
+						for (index, midpoint_position) in midpoint_diamonds(&gradient, appearance.gradient_cyclic, line_length) {
+							let midpoint_viewport = start.lerp(end, midpoint_position);
 
 							if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
-								let resettable = midpoint_is_resettable(gradient.midpoint(i));
+								let resettable = midpoint_is_resettable(gradient.midpoint(index));
 								drag_hint = Some(GradientDragHintState::Midpoint { resettable });
 
 								tool_data.selected_gradient = Some(SelectedGradient {
@@ -1387,7 +1423,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									appearance,
 									initial_gradient_transform: appearance.transform,
-									dragging: GradientDragTarget::Midpoint(i),
+									dragging: GradientDragTarget::Midpoint(index),
 									initial_gradient: gradient.clone(),
 									is_gradient_chain,
 								});
@@ -1822,18 +1858,11 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		let line_length = start.distance(end);
 
 		// Check midpoint diamonds first (smaller hit area, higher priority)
-		for i in 0..gradient.len().saturating_sub(1) {
-			let left = gradient.position(i, appearance.gradient_cyclic);
-			let right = gradient.position(i + 1, appearance.gradient_cyclic);
-			if midpoint_hidden_by_proximity(left, right, line_length) {
-				continue;
-			}
-
-			let midpoint_position = left + gradient.midpoint(i) * (right - left);
+		for (index, midpoint_position) in midpoint_diamonds(&gradient, appearance.gradient_cyclic, line_length) {
 			let midpoint_viewport = start.lerp(end, midpoint_position);
 
 			if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
-				let resettable = midpoint_is_resettable(gradient.midpoint(i));
+				let resettable = midpoint_is_resettable(gradient.midpoint(index));
 				return GradientHoverTarget::Midpoint { resettable };
 			}
 		}
@@ -2096,7 +2125,60 @@ mod test_gradient {
 	use graphene_std::vector::style::{GradientForm, GradientSpread, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
-	use super::gradient_to_viewport_transform;
+	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
+
+	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
+
+	/// A line long enough that no interval in these tests trips the closely-packed-stops hiding rule.
+	const UNCROWDED_LINE_LENGTH: f64 = 10_000.;
+
+	#[test]
+	fn cyclic_adds_a_wrap_diamond_owned_by_the_last_stop() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		// The elided cyclic stops sit at 0 and 0.5, so the wrap segment spans the other half and centers its diamond at 0.75
+		assert_eq!(midpoint_diamonds(&gradient, false, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
+		assert_eq!(midpoint_diamonds(&gradient, true, UNCROWDED_LINE_LENGTH), vec![(0, 0.25), (1, 0.75)]);
+
+		// A wrap segment crossing the boundary places its diamond on whichever side the midpoint lands
+		let mut offset = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		offset.set_positions(&[0.25, 0.5]);
+		offset.set_midpoints(&[0.5, 0.9]);
+		let diamonds = midpoint_diamonds(&offset, true, UNCROWDED_LINE_LENGTH);
+		assert_eq!(diamonds[1].0, 1);
+		assert!((diamonds[1].1 - 0.175).abs() < 1e-9, "the late wrap midpoint should land past the boundary, got {}", diamonds[1].1);
+
+		// Stops pinned to both ends leave the wrap segment no width, so it contributes no diamond
+		let mut spanning = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		spanning.set_positions(&[0., 1.]);
+		assert_eq!(midpoint_diamonds(&spanning, true, UNCROWDED_LINE_LENGTH), vec![(0, 0.5)]);
+	}
+
+	#[test]
+	fn wrap_midpoint_drag_tracks_past_the_ends_and_saturates_across_the_dead_zone() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		gradient.set_positions(&[0.25, 0.5]);
+
+		// Within the segment the ratio maps linearly, and overdragging past the line's end keeps tracking
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.875), Some(0.5));
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 1.0625), Some(0.75));
+
+		// The dead zone between the outermost stops splits at its midpoint (0.375), each half saturating against the nearer end
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.45), Some(GRADIENT_MIDPOINT_MIN));
+		assert_eq!(midpoint_ratio_at(&gradient, 1, true, 0.3), Some(GRADIENT_MIDPOINT_MAX));
+
+		// A first stop at 0 leaves no room before the boundary, so the one-sided segment saturates like an ordinary interval
+		let mut one_sided = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		one_sided.set_positions(&[0., 0.5]);
+		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.4), Some(GRADIENT_MIDPOINT_MIN));
+		assert_eq!(midpoint_ratio_at(&one_sided, 1, true, 0.75), Some(0.5));
+
+		// Ordinary intervals never wrap, and a zero-width interval has no ratio to give
+		assert_eq!(midpoint_ratio_at(&gradient, 0, true, 0.375), Some(0.5));
+		let mut degenerate = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		degenerate.set_positions(&[0.5, 0.5]);
+		assert_eq!(midpoint_ratio_at(&degenerate, 0, false, 0.5), None);
+	}
 
 	struct ResolvedGradient {
 		stops: Gradient,
