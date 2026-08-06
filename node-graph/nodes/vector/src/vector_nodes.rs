@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::list::{ATTR_FILL, ATTR_GRADIENT_INTERPOLATION, ATTR_STROKE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -32,7 +32,7 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{DashPattern, Gradient, GradientInterpolation, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 use vector_types::vector::{PointDomain, RegionDomain};
 
@@ -141,6 +141,7 @@ where
 
 	let mut content = content;
 	let length = content.vector_count();
+	let gradient_interpolation = gradient.attribute_cloned_or_default::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION);
 	let element = gradient.into_element();
 	let gradient = if reverse { element.reversed() } else { element };
 
@@ -158,7 +159,8 @@ where
 				},
 			};
 
-			let color = gradient.evaluate(factor, Default::default());
+			// The factor spans 0..=1 inclusively, so the spread deliberately stays Pad (Repeat would wrap the final element onto the first stop's color)
+			let color = gradient.evaluate(factor, Default::default(), gradient_interpolation);
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {

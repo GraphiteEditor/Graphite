@@ -1254,7 +1254,7 @@ impl Fsm for GradientToolFsmState {
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
 						// Try and insert the new stop
-						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport) {
+						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport, appearance.gradient_interpolation) {
 							responses.add(DocumentMessage::StartTransaction);
 
 							let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
@@ -1404,7 +1404,7 @@ impl Fsm for GradientToolFsmState {
 
 						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
-							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport) {
+							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport, appearance.gradient_interpolation) {
 								responses.add(DocumentMessage::StartTransaction);
 								transaction_started = true;
 
@@ -1715,10 +1715,10 @@ impl Fsm for GradientToolFsmState {
 	}
 }
 
-fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2) -> Option<usize> {
+fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2, gradient_interpolation: GradientInterpolation) -> Option<usize> {
 	let (start, end) = gradient_handle_positions(unit_to_viewport);
 	let t = ((end - start).angle_to(point - start)).cos() * start.distance(point) / start.distance(end);
-	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t))
+	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, gradient_interpolation))
 }
 
 fn dismiss_color_stop_color_picker(tool_data: &mut GradientToolData, responses: &mut VecDeque<Message>) {
