@@ -703,14 +703,18 @@ impl ColorPickerMessageHandler {
 			let entries = RadioEntryData::list_from_choice_type(|gradient_spread| ColorPickerMessage::SetGradientSpread { gradient_spread }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Ends").tooltip_label("Gradient Spread").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
+				TextLabel::new("Ends").tooltip_label("Gradient Spread / Cyclic").tooltip_description(ENDS_DESCRIPTION).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				RadioInput::new(entries).selected_index(Some(self.gradient_spread as u32)).disabled(self.disabled).widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
+				RadioInput::new(entries)
+					.narrow(true)
+					.selected_index(Some(self.gradient_spread as u32))
+					.disabled(self.disabled)
+					.widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				CheckboxInput::new(self.gradient_cyclic)
 					.icon("Link")
 					.disabled(self.disabled)
-					.tooltip_label("Gradient Cyclic")
+					.tooltip_label("Cyclic")
 					.tooltip_description(CYCLIC_DESCRIPTION)
 					.on_update(|checkbox_input: &CheckboxInput| {
 						ColorPickerMessage::SetGradientCyclic {
@@ -803,7 +807,7 @@ const HUE_DESCRIPTION: &str = "The shade along the spectrum of the rainbow.";
 const SATURATION_DESCRIPTION: &str = "The vividness from grayscale to full color.";
 const VALUE_DESCRIPTION: &str = "The brightness from black to full color.";
 const ALPHA_DESCRIPTION: &str = "The level of translucency, from transparent (0%) to opaque (100%).";
-const ENDS_DESCRIPTION: &str = "The method for how the gradient continues beyond its ends.";
+const ENDS_DESCRIPTION: &str = "The method for how the gradient continues beyond its ends, and whether its stops cycle back around from last to first.";
 const CYCLIC_DESCRIPTION: &str = "Treats the stops as a cycle, interpolating from the last stop back around to the first.";
 const SPACE_DESCRIPTION: &str = "The color space where stops interpolate toward their neighbors.";
 const HUE_DIRECTION_DESCRIPTION: &str = "Which way around the hue wheel the stops interpolate.";

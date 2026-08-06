@@ -1124,11 +1124,11 @@ impl GradientSpread {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum GradientSpace {
-	/// Interpolates between stops in the OkLab perceptual color space, keeping transitions visually even.
+	/// Interpolates between stops in the OkLab color space, the modern perceptual standard.
 	#[default]
 	#[label("Perceptual (OkLab)")]
 	OkLab,
-	/// Interpolates between stops in the CIE Lab color space, the longtime perceptual standard.
+	/// Interpolates between stops in the CIE Lab color space, the traditional perceptual standard.
 	#[label("Perceptual (Lab)")]
 	Lab,
 	/// Interpolates between stops in the polar form of OkLab, arcing through hue instead of fading through gray.
@@ -1137,7 +1137,7 @@ pub enum GradientSpace {
 	/// Interpolates between stops in the polar form of CIE Lab, arcing through hue instead of fading through gray.
 	#[label("Perceptual Hue (LCh)")]
 	LCh,
-	/// Interpolates between stops in linear light, keeping transitions evenly bright.
+	/// Interpolates between stops in linear light, keeping transitions uniformly bright.
 	#[menu_separator]
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbLinear"))]
 	#[label("Linear (RGB)")]
@@ -1146,10 +1146,10 @@ pub enum GradientSpace {
 	#[cfg_attr(feature = "serde", serde(alias = "SrgbGamma"))]
 	#[label("Classic (RGB)")]
 	RgbGamma,
-	/// Interpolates between stops in the hue, saturation, and value cylinder, keeping tints at full brightness.
+	/// Interpolates between stops in the hue/saturation/value cylinder, keeping tints at full brightness.
 	#[label("Classic Hue (HSV)")]
 	Hsv,
-	/// Interpolates between stops in the hue, saturation, and lightness cylinder.
+	/// Interpolates between stops in the hue/saturation/lightness cylinder.
 	#[label("Classic Hue (HSL)")]
 	Hsl,
 }
