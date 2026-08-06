@@ -9,15 +9,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_chain_source_gradient_interpolation, get_chain_source_gradient_spread, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id,
-	gradient_chain_target_input, replaceable_paint_chain, reverse_direction_tooltip_description,
+	self, NodeGraphLayer, get_chain_source_gradient_hue_direction, get_chain_source_gradient_interpolation, get_chain_source_gradient_spread, get_fill_node_id_with_direct_fill_input,
+	get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSpread, GradientStop, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSpread, GradientStop, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -31,6 +31,7 @@ pub struct GradientOptions {
 	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
 	gradient_interpolation: GradientInterpolation,
+	gradient_hue_direction: GradientHueDirection,
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
@@ -140,7 +141,16 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				let ramp = GradientRamp::from(&ramp);
 				self.options.gradient_spread = ramp.gradient_spread;
 				self.options.gradient_interpolation = ramp.gradient_interpolation;
-				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), ramp.gradient_spread, ramp.gradient_interpolation);
+				self.options.gradient_hue_direction = ramp.gradient_hue_direction;
+				apply_stops_update(
+					&mut self.data,
+					context,
+					responses,
+					Gradient::from(&ramp),
+					ramp.gradient_spread,
+					ramp.gradient_interpolation,
+					ramp.gradient_hue_direction,
+				);
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -180,6 +190,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					}
 					if self.options.gradient_interpolation != appearance.gradient_interpolation {
 						self.options.gradient_interpolation = appearance.gradient_interpolation;
+						needs_refresh = true;
+					}
+					if self.options.gradient_hue_direction != appearance.gradient_hue_direction {
+						self.options.gradient_hue_direction = appearance.gradient_hue_direction;
 						needs_refresh = true;
 					}
 				}
@@ -263,6 +277,7 @@ impl LayoutHolder for GradientTool {
 		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp {
 			gradient_spread: self.options.gradient_spread,
 			gradient_interpolation: self.options.gradient_interpolation,
+			gradient_hue_direction: self.options.gradient_hue_direction,
 			..GradientRamp::from(&stops_value)
 		}))
 		.allow_none(false)
@@ -364,6 +379,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 					gradient_form: gradient.gradient_form,
 					gradient_spread: gradient.gradient_spread,
 					gradient_interpolation: gradient.gradient_interpolation,
+					gradient_hue_direction: gradient.gradient_hue_direction,
 					transform: gradient.transform,
 				},
 				GradientSource::Direct,
@@ -384,6 +400,7 @@ struct GradientAppearance {
 	gradient_form: GradientForm,
 	gradient_spread: GradientSpread,
 	gradient_interpolation: GradientInterpolation,
+	gradient_hue_direction: GradientHueDirection,
 }
 
 /// Resolve the gradient transform, form, and spread by walking the chain feeding the layer.
@@ -425,6 +442,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		gradient_form: gradient_form.unwrap_or_default(),
 		gradient_spread: get_chain_source_gradient_spread(layer, network_interface).unwrap_or_default(),
 		gradient_interpolation: get_chain_source_gradient_interpolation(layer, network_interface).unwrap_or_default(),
+		gradient_hue_direction: get_chain_source_gradient_hue_direction(layer, network_interface).unwrap_or_default(),
 	}
 }
 
@@ -762,6 +780,7 @@ impl SelectedGradient {
 					gradient_form: self.appearance.gradient_form,
 					gradient_spread: self.appearance.gradient_spread,
 					gradient_interpolation: self.appearance.gradient_interpolation,
+					gradient_hue_direction: self.appearance.gradient_hue_direction,
 					transform: self.appearance.transform,
 				});
 			}
@@ -803,6 +822,10 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	responses.add(GraphOperationMessage::GradientInterpolationSet {
 		layer,
 		gradient_interpolation: appearance.gradient_interpolation,
+	});
+	responses.add(GraphOperationMessage::GradientHueDirectionSet {
+		layer,
+		gradient_hue_direction: appearance.gradient_hue_direction,
 	});
 }
 
@@ -1254,7 +1277,7 @@ impl Fsm for GradientToolFsmState {
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
 						// Try and insert the new stop
-						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport, appearance.gradient_interpolation) {
+						if let Some(index) = insert_stop_at_point(&mut gradient, mouse, unit_to_viewport, appearance.gradient_interpolation, appearance.gradient_hue_direction) {
 							responses.add(DocumentMessage::StartTransaction);
 
 							let mut selected_gradient = SelectedGradient::new(gradient, appearance, source, layer, document);
@@ -1404,7 +1427,7 @@ impl Fsm for GradientToolFsmState {
 
 						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
-							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport, appearance.gradient_interpolation) {
+							if let Some(index) = insert_stop_at_point(&mut new_gradient, mouse, unit_to_viewport, appearance.gradient_interpolation, appearance.gradient_hue_direction) {
 								responses.add(DocumentMessage::StartTransaction);
 								transaction_started = true;
 
@@ -1484,6 +1507,7 @@ impl Fsm for GradientToolFsmState {
 									gradient_form: tool_options.gradient_form,
 									gradient_spread: tool_options.gradient_spread,
 									gradient_interpolation: tool_options.gradient_interpolation,
+									gradient_hue_direction: tool_options.gradient_hue_direction,
 								},
 								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
 								if replaceable_paint_chain(layer, &document.network_interface).is_some() {
@@ -1715,10 +1739,16 @@ impl Fsm for GradientToolFsmState {
 	}
 }
 
-fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2, gradient_interpolation: GradientInterpolation) -> Option<usize> {
+fn insert_stop_at_point(
+	gradient: &mut Gradient,
+	point: DVec2,
+	unit_to_viewport: DAffine2,
+	gradient_interpolation: GradientInterpolation,
+	gradient_hue_direction: GradientHueDirection,
+) -> Option<usize> {
 	let (start, end) = gradient_handle_positions(unit_to_viewport);
 	let t = ((end - start).angle_to(point - start)).cos() * start.distance(point) / start.distance(end);
-	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, gradient_interpolation))
+	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, gradient_interpolation, gradient_hue_direction))
 }
 
 fn dismiss_color_stop_color_picker(tool_data: &mut GradientToolData, responses: &mut VecDeque<Message>) {
@@ -1843,6 +1873,7 @@ fn apply_gradient_update(
 					gradient_form: appearance.gradient_form,
 					gradient_spread: appearance.gradient_spread,
 					gradient_interpolation: appearance.gradient_interpolation,
+					gradient_hue_direction: appearance.gradient_hue_direction,
 					transform: appearance.transform,
 				});
 			}
@@ -1873,6 +1904,7 @@ fn apply_stops_update(
 	new_gradient: Gradient,
 	gradient_spread: GradientSpread,
 	gradient_interpolation: GradientInterpolation,
+	gradient_hue_direction: GradientHueDirection,
 ) {
 	let selected_layers: Vec<_> = context
 		.document
@@ -1891,6 +1923,7 @@ fn apply_stops_update(
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
 			responses.add(GraphOperationMessage::GradientSpreadSet { layer, gradient_spread });
 			responses.add(GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation });
+			responses.add(GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction });
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {
@@ -1899,6 +1932,7 @@ fn apply_stops_update(
 				gradient_form: appearance.gradient_form,
 				gradient_spread,
 				gradient_interpolation,
+				gradient_hue_direction,
 				transform: appearance.transform,
 			});
 			updated_any_layer = true;
@@ -1909,6 +1943,7 @@ fn apply_stops_update(
 		selected_gradient.gradient = new_gradient.clone();
 		selected_gradient.appearance.gradient_spread = gradient_spread;
 		selected_gradient.appearance.gradient_interpolation = gradient_interpolation;
+		selected_gradient.appearance.gradient_hue_direction = gradient_hue_direction;
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.

@@ -50,10 +50,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				gradient_form,
 				gradient_spread,
 				gradient_interpolation,
+				gradient_hue_direction,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, gradient_hue_direction, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -94,6 +95,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_interpolation_set(gradient_interpolation);
+				}
+			}
+			GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_hue_direction_set(gradient_hue_direction);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -971,7 +977,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let gradient_spread = convert_gradient_spread(linear.spread_method());
 			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
 			let gradient_interpolation = gradient_info.interpolations.get(linear.id()).copied().unwrap_or(GradientInterpolation::SrgbGamma);
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, Default::default(), transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -997,7 +1003,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			let gradient_spread = convert_gradient_spread(radial.spread_method());
 			let gradient_interpolation = gradient_info.interpolations.get(radial.id()).copied().unwrap_or(GradientInterpolation::SrgbGamma);
 
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, Default::default(), transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

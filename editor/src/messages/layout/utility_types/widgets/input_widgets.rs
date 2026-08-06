@@ -7,7 +7,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoice, GradientInterpolation, GradientStops};
+use graphene_std::vector::style::{FillChoice, GradientHueDirection, GradientInterpolation, GradientStops};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -589,6 +589,9 @@ pub struct SpectrumInput {
 	/// The interpolation color space the track's stops blend in, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_interpolation: GradientInterpolation,
+	/// The hue direction the track's stops blend with in a polar space, used to compute `track_css`. Not sent to the frontend.
+	#[serde(skip)]
+	pub track_hue_direction: GradientHueDirection,
 	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]

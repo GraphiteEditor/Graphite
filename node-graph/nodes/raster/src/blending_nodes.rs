@@ -49,8 +49,8 @@ mod blend_std {
 			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 			let stops = combined_stops.into_iter().map(|position| {
-				let over_color = self.evaluate(position, Default::default(), Default::default());
-				let under_color = under.evaluate(position, Default::default(), Default::default());
+				let over_color = self.evaluate(position, Default::default(), Default::default(), Default::default());
+				let under_color = under.evaluate(position, Default::default(), Default::default(), Default::default());
 				let color = blend_fn(over_color, under_color);
 				GradientStop { position, midpoint: 0.5, color }
 			});

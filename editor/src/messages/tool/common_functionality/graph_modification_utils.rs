@@ -14,7 +14,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSpread, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSpread, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
@@ -407,6 +407,11 @@ pub fn get_chain_source_gradient_interpolation(layer: LayerNodeIdentifier, netwo
 	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_interpolation)
 }
 
+/// The hue direction baked into the 'Gradient Value' node feeding a layer's chain.
+pub fn get_chain_source_gradient_hue_direction(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientHueDirection> {
+	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_hue_direction)
+}
+
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	// Try to find the gradient stops value that is created by a Fill node first
@@ -763,6 +768,7 @@ pub struct FillNodeGradient {
 	pub gradient_form: GradientForm,
 	pub gradient_spread: GradientSpread,
 	pub gradient_interpolation: GradientInterpolation,
+	pub gradient_hue_direction: GradientHueDirection,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
@@ -777,6 +783,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	};
 	let gradient_spread = ramp.gradient_spread;
 	let gradient_interpolation = ramp.gradient_interpolation;
+	let gradient_hue_direction = ramp.gradient_hue_direction;
 	let stops = Gradient::from(ramp);
 	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientForm(value)) => value,
@@ -795,6 +802,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		gradient_form,
 		gradient_spread,
 		gradient_interpolation,
+		gradient_hue_direction,
 		transform,
 		transform_is_value: transform_input.is_some(),
 	})
@@ -945,6 +953,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					gradient_form,
 					gradient_spread: ramp.gradient_spread,
 					gradient_interpolation: ramp.gradient_interpolation,
+					gradient_hue_direction: ramp.gradient_hue_direction,
 					transform,
 				});
 			}

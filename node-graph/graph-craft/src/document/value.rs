@@ -556,6 +556,7 @@ tagged_value! {
 	#[serde(alias = "GradientSpreadMethod")] // TODO: Eventually remove this document upgrade code
 	GradientSpread(vector::style::GradientSpread),
 	GradientInterpolation(vector::style::GradientInterpolation),
+	GradientHueDirection(vector::style::GradientHueDirection),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
