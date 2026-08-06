@@ -2392,7 +2392,7 @@ fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContex
 /// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
 fn gradient_orientation_in_fill_node(node_id: NodeId, gradient_transform: DAffine2, context: &mut NodePropertiesContext) -> Option<bool> {
 	let layer = root_layer_for_chain_node(node_id, context)?;
-	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
+	let transform = graph_modification_utils::gradient_to_viewport_transform(layer, context.network_interface);
 	Some(graph_modification_utils::gradient_orientation_rightward(transform * gradient_transform))
 }
 

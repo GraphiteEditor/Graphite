@@ -471,7 +471,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<Gradient>`
 /// layer this is the layer's incoming footprint transform; for a Fill-owned gradient value it composes the layer's viewport
 /// transform with the [0,1]² → bounding-box mapping.
-pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
+pub fn gradient_to_viewport_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
 	let metadata = network_interface.document_metadata();

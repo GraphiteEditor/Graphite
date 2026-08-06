@@ -212,7 +212,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 
 				let new_orientation = match (current_layer, &current_gradient) {
 					(Some(layer), Some((_gradient, appearance))) => {
-						let transform = gradient_space_transform(layer, context.document) * appearance.transform;
+						let transform = gradient_to_viewport_transform(layer, context.document) * appearance.transform;
 						graph_modification_utils::gradient_orientation_rightward(transform)
 					}
 					_ => true,
@@ -350,8 +350,8 @@ impl Default for GradientToolFsmState {
 }
 
 /// Computes the transform from gradient space to viewport space.
-fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	graph_modification_utils::gradient_space_transform(layer, &document.network_interface)
+fn gradient_to_viewport_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
+	graph_modification_utils::gradient_to_viewport_transform(layer, &document.network_interface)
 }
 
 /// Viewport positions of the gradient's start (unit param 0) and end (unit param 1) handles.
@@ -495,7 +495,7 @@ struct SelectedGradient {
 	layer: Option<LayerNodeIdentifier>,
 	dragging: GradientDragTarget,
 	/// Transform from the geometry's local gradient space to viewport space.
-	gradient_space_transform: DAffine2,
+	gradient_to_viewport_transform: DAffine2,
 	gradient: Gradient,
 	appearance: GradientAppearance,
 	initial_gradient: Gradient,
@@ -544,10 +544,10 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, mouse: DVec2)
 
 impl SelectedGradient {
 	pub fn new(gradient: Gradient, appearance: GradientAppearance, source: GradientSource, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
-		let gradient_space_transform = gradient_space_transform(layer, document);
+		let gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
 		Self {
 			layer: Some(layer),
-			gradient_space_transform,
+			gradient_to_viewport_transform,
 			gradient: gradient.clone(),
 			appearance,
 			dragging: GradientDragTarget::End,
@@ -633,7 +633,7 @@ impl SelectedGradient {
 			snap_manager.update_indicator(snapped);
 		}
 
-		let local_mouse = self.gradient_space_transform.inverse().transform_point2(mouse);
+		let local_mouse = self.gradient_to_viewport_transform.inverse().transform_point2(mouse);
 		let local_start = self.appearance.transform.transform_point2(DVec2::ZERO);
 		let local_end = self.appearance.transform.transform_point2(DVec2::X);
 
@@ -648,7 +648,7 @@ impl SelectedGradient {
 				self.appearance.transform = create_new_gradient_transform(local_start, local_mouse);
 			}
 			GradientDragTarget::New => {
-				self.appearance.transform = create_new_gradient_transform(self.gradient_space_transform.inverse().transform_point2(drag_start), local_mouse);
+				self.appearance.transform = create_new_gradient_transform(self.gradient_to_viewport_transform.inverse().transform_point2(drag_start), local_mouse);
 			}
 			GradientDragTarget::Stop(stop) => {
 				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
@@ -788,7 +788,7 @@ impl SelectedGradient {
 	}
 
 	fn unit_to_viewport_transform(&self) -> DAffine2 {
-		self.gradient_space_transform * self.appearance.transform
+		self.gradient_to_viewport_transform * self.appearance.transform
 	}
 
 	fn viewport_handle_positions(&self) -> (DVec2, DVec2) {
@@ -906,7 +906,7 @@ impl Fsm for GradientToolFsmState {
 					let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
-					let unit_to_viewport = gradient_space_transform(layer, document) * appearance.transform;
+					let unit_to_viewport = gradient_to_viewport_transform(layer, document) * appearance.transform;
 					let dragging = selected
 						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
@@ -1088,8 +1088,8 @@ impl Fsm for GradientToolFsmState {
 					&& let Some(selected_gradient) = tool_data.selected_gradient.as_ref()
 					&& let Some(layer) = selected_gradient.layer
 				{
-					// The gradient space transform has be recalculated as the saved transform in SelectedGradient may become stale by panning/zooming during the rendering of the overlay.
-					let transform = gradient_space_transform(layer, document) * selected_gradient.appearance.transform;
+					// The gradient-to-viewport transform has to be recalculated as the saved transform in SelectedGradient may become stale by panning/zooming during the rendering of the overlay.
+					let transform = gradient_to_viewport_transform(layer, document) * selected_gradient.appearance.transform;
 					let gradient = &selected_gradient.gradient;
 					if stop_index < gradient.len() {
 						let color = gradient.color(stop_index).unwrap_or(Color::BLACK);
@@ -1267,7 +1267,7 @@ impl Fsm for GradientToolFsmState {
 						continue;
 					};
 					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
-					let unit_to_viewport = gradient_space_transform(layer, document) * appearance.transform;
+					let unit_to_viewport = gradient_to_viewport_transform(layer, document) * appearance.transform;
 					let mouse = input.mouse.position;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
@@ -1321,8 +1321,8 @@ impl Fsm for GradientToolFsmState {
 					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
-					let gradient_space_transform = gradient_space_transform(layer, document);
-					let unit_to_viewport = gradient_space_transform * appearance.transform;
+					let gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+					let unit_to_viewport = gradient_to_viewport_transform * appearance.transform;
 					let is_gradient_chain = source == GradientSource::Chain;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
@@ -1347,7 +1347,7 @@ impl Fsm for GradientToolFsmState {
 
 								tool_data.selected_gradient = Some(SelectedGradient {
 									layer: Some(layer),
-									gradient_space_transform,
+									gradient_to_viewport_transform,
 									gradient: gradient.clone(),
 									appearance,
 									initial_gradient_transform: appearance.transform,
@@ -1391,7 +1391,7 @@ impl Fsm for GradientToolFsmState {
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer: Some(layer),
 								dragging: drag_target,
-								gradient_space_transform,
+								gradient_to_viewport_transform,
 								gradient: gradient.clone(),
 								appearance,
 								initial_gradient: gradient.clone(),
@@ -1409,7 +1409,7 @@ impl Fsm for GradientToolFsmState {
 								tool_data.selected_gradient = Some(SelectedGradient {
 									layer: Some(layer),
 									dragging: dragging_target,
-									gradient_space_transform,
+									gradient_to_viewport_transform,
 									gradient: gradient.clone(),
 									appearance,
 									initial_gradient: gradient.clone(),
@@ -1548,8 +1548,8 @@ impl Fsm for GradientToolFsmState {
 
 					// Recompute the gradient-to-viewport transform fresh each frame so zoom/pan mid-drag works correctly
 					if let Some(layer) = selected_gradient.layer {
-						selected_gradient.gradient_space_transform = gradient_space_transform(layer, document);
-						selected_gradient.gradient_space_transform.translation += tool_data.auto_pan_shift;
+						selected_gradient.gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+						selected_gradient.gradient_to_viewport_transform.translation += tool_data.auto_pan_shift;
 					}
 
 					// Convert drag_start from document space to effective viewport space
@@ -1763,8 +1763,8 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 			continue;
 		};
-		let gradient_space_transform = gradient_space_transform(layer, document);
-		let unit_to_viewport = gradient_space_transform * appearance.transform;
+		let gradient_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+		let unit_to_viewport = gradient_to_viewport_transform * appearance.transform;
 		let (start, end) = gradient_handle_positions(unit_to_viewport);
 		let line_length = start.distance(end);
 
@@ -2037,7 +2037,7 @@ mod test_gradient {
 	use graphene_std::vector::style::{GradientForm, GradientSpread, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
 
-	use super::gradient_space_transform;
+	use super::gradient_to_viewport_transform;
 
 	struct ResolvedGradient {
 		stops: Gradient,
@@ -2094,7 +2094,7 @@ mod test_gradient {
 					transform: local_transform,
 				};
 
-				let transform = gradient_space_transform(layer, document);
+				let transform = gradient_to_viewport_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
@@ -2111,7 +2111,7 @@ mod test_gradient {
 
 				let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface)?;
 				let gradient = ResolvedGradient::new(gradient, appearance);
-				let transform = gradient_space_transform(layer, document);
+				let transform = gradient_to_viewport_transform(layer, document);
 				Some((gradient, transform))
 			})
 			.collect()
@@ -2801,11 +2801,11 @@ mod test_gradient {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 
 		let document = editor.active_document();
-		let space_transform = gradient_space_transform(layer, document);
+		let to_viewport_transform = gradient_to_viewport_transform(layer, document);
 		let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface).unwrap();
 		let gradient = ResolvedGradient::new(gradient, appearance);
-		let viewport_start = space_transform.transform_point2(gradient.start());
-		let viewport_end = space_transform.transform_point2(gradient.end());
+		let viewport_start = to_viewport_transform.transform_point2(gradient.start());
+		let viewport_end = to_viewport_transform.transform_point2(gradient.end());
 
 		// Drag target of the end point, move 80px down
 		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
@@ -2828,9 +2828,9 @@ mod test_gradient {
 		let document = editor.active_document();
 		let (updated, appearance, _) = super::resolve_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
 		let updated = ResolvedGradient::new(updated, appearance);
-		let updated_space_transform = gradient_space_transform(layer, document);
-		let updated_viewport_start = updated_space_transform.transform_point2(updated.start());
-		let updated_viewport_end = updated_space_transform.transform_point2(updated.end());
+		let updated_to_viewport_transform = gradient_to_viewport_transform(layer, document);
+		let updated_viewport_start = updated_to_viewport_transform.transform_point2(updated.start());
+		let updated_viewport_end = updated_to_viewport_transform.transform_point2(updated.end());
 
 		assert!(
 			updated_viewport_start.abs_diff_eq(viewport_start, 1.),
@@ -2879,10 +2879,10 @@ mod test_gradient {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 
 		let document = editor.active_document();
-		let space_transform = gradient_space_transform(layer, document);
+		let to_viewport_transform = gradient_to_viewport_transform(layer, document);
 		let (gradient, appearance, _) = super::resolve_gradient(layer, &document.network_interface).unwrap();
 		let gradient = ResolvedGradient::new(gradient, appearance);
-		let viewport_end = space_transform.transform_point2(gradient.end());
+		let viewport_end = to_viewport_transform.transform_point2(gradient.end());
 
 		// Drag the end point 80px down
 		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
