@@ -655,6 +655,27 @@ mod test {
 		assert!(fields.is_empty(), "an element-only record has no attribute fields");
 	}
 
+	#[test]
+	fn a_memoize_row_wires_generically_and_replays_over_record_wires() {
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(2),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::String(String::from("cached")).into()), vec![])),
+				(NodeId(1), proto_node("graphene_core::memo::MemoizeNode", vec![NodeId(0)])),
+				(NodeId(2), proto_node("core_types::record::RecordExtractNode", vec![NodeId(1)])),
+			],
+		};
+
+		let executor = DynamicExecutor::new(network).unwrap();
+		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::String(String::from("cached"))));
+		assert_eq!(
+			(&executor).execute(()).unwrap(),
+			GPoll::Final(TaggedValue::String(String::from("cached"))),
+			"the second execution replays the deep copy against a reset arena"
+		);
+	}
+
 	fn modification_value() -> ProtoNode {
 		let modification = core_types::ContextModification::from_sources(core_types::context::ContextFeatures::all(), &[]);
 		ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextModification(modification).into()), vec![])

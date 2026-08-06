@@ -37,6 +37,10 @@ pub trait Attribute: 'static {
 	/// # Safety
 	/// `ptr` must point at a live field of this marker's value type.
 	unsafe fn read_erased(ptr: *const u8) -> Box<dyn AnyAttributeValue>;
+
+	/// Re-parks the owned clone [`Self::read_erased`] produced into fresh
+	/// field storage; `None` for plain values, which ride the byte copy.
+	const REPARK: Option<unsafe fn(&dyn AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>> = None;
 }
 
 /// A kernel-facing attribute value. A parameter `Attr<A>` is a read of `A`
@@ -162,6 +166,16 @@ macro_rules! attribute {
 			unsafe fn read_erased(ptr: *const u8) -> ::std::boxed::Box<dyn $crate::list::AnyAttributeValue> {
 				::std::boxed::Box::new(unsafe { ptr.cast::<&$value>().read() }.to_owned())
 			}
+
+			const REPARK: ::core::option::Option<unsafe fn(&dyn $crate::list::AnyAttributeValue, *mut u8, &$crate::arena::Arena) -> ::core::option::Option<()>> = {
+				unsafe fn repark(value: &dyn $crate::list::AnyAttributeValue, dst: *mut u8, arena: &$crate::arena::Arena) -> ::core::option::Option<()> {
+					let owned: &<$value as ::std::borrow::ToOwned>::Owned = value.as_any().downcast_ref().expect("a reference attribute replays its owned clone");
+					let (parked, _) = arena.alloc(<$value as ::std::borrow::ToOwned>::to_owned(::std::borrow::Borrow::borrow(owned)))?;
+					unsafe { dst.cast::<&$value>().write(::std::borrow::Borrow::borrow(parked)) };
+					::core::option::Option::Some(())
+				}
+				::core::option::Option::Some(repark)
+			};
 		}
 
 		$crate::attribute!(@register $marker);

@@ -354,7 +354,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let flip_prelude = flip
 		.then(|| {
 			quote! {
-				let __layout = gcore::record::Layout::default().with_writes(0, gcore::record::element_dims::<#slot_value_type>(), &[]);
+				let __layout = gcore::record::Layout::default().with_writes(0, gcore::record::element_write::<#slot_value_type>(), &[]);
 				let __frame_bytes = __layout.frame_bytes();
 			}
 		})
@@ -365,8 +365,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			false => quote!(__layout, __frame_bytes, __marker: ::core::marker::PhantomData,),
 		})
 		.into_iter();
-	let fn_where = &parsed.where_clause;
-	let new_where = flip.then(|| quote!(#fn_where)).into_iter();
+	// The flip prelude's `element_write` instantiates the erased glue at the
+	// output type, so `new` carries the bounds the glue needs.
+	let new_where = flip
+		.then(|| {
+			let existing = parsed.where_clause.iter().flat_map(|clause| clause.predicates.iter());
+			quote!(where #(#existing,)* #slot_value_type: ::core::clone::Clone + ::core::marker::Send + ::core::marker::Sync + 'static)
+		})
+		.into_iter();
 	let new_impl = match record.is_none() {
 		true => quote! {
 			#[automatically_derived]
@@ -1547,19 +1553,19 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.iter()
 			.map(|marker| quote!(#core_types::record::FieldWrite::of::<#marker>(0)))
 			.collect();
-		let element_dims = match &shape.element_write {
-			Some(ty) => quote!((::core::mem::size_of::<#ty>(), ::core::mem::align_of::<#ty>())),
-			None => quote!((__carrier.element_size, __carrier.element_align)),
+		let element = match &shape.element_write {
+			Some(ty) => quote!(#core_types::record::element_write::<#ty>()),
+			None => quote!(__carrier.element),
 		};
 		let layout_def = match shape.skips_carrier() {
 			true => quote! {
 				#vis fn #layout_fn() -> #core_types::record::Layout {
-					#core_types::record::Layout::default().with_writes(0, #element_dims, &[#(#write_descs),*])
+					#core_types::record::Layout::default().with_writes(0, #element, &[#(#write_descs),*])
 				}
 			},
 			false => quote! {
 				#vis fn #layout_fn(__carrier: &#core_types::record::Layout) -> #core_types::record::Layout {
-					__carrier.with_writes(__carrier.depth, #element_dims, &[#(#write_descs),*])
+					__carrier.with_writes(__carrier.depth, #element, &[#(#write_descs),*])
 				}
 			},
 		};
@@ -2302,7 +2308,7 @@ fn flip_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_field
 	let output_alias = format_ident!("__{}_output", fn_name);
 	let alias_def = match alias_param_tokens.is_empty() {
 		true => quote!(#[allow(non_camel_case_types)] type #output_alias = #output;),
-		false => quote!(#[allow(non_camel_case_types)] type #output_alias<#(#alias_param_tokens,)*> = #output;),
+		false => quote!(#[allow(non_camel_case_types, type_alias_bounds)] type #output_alias<#(#alias_param_tokens,)*> = #output;),
 	};
 
 	let entries = rows.iter().filter_map(|row| {

@@ -171,7 +171,7 @@ mod tests {
 	use crate::context::{ContextImpl, Ctx, CtxSnapshot, EvalScope, ExtractFootprint, ExtractVarArgs, VarArgLink, VarArgSlots};
 	use crate::gpoll::GPoll;
 	use crate::node::Node;
-	use crate::record::{Layout, RecordExtract, RecordLift, element_dims};
+	use crate::record::{Layout, RecordExtract, RecordLift, element_write};
 	use crate::transform::Footprint;
 	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicU32, Ordering};
@@ -258,15 +258,15 @@ mod tests {
 		}
 	}
 
-	fn element_layout<T: 'static>() -> Layout {
-		Layout::default().with_writes(0, element_dims::<T>(), &[])
+	fn element_layout<T: Clone + Send + Sync + 'static>() -> Layout {
+		Layout::default().with_writes(0, element_write::<T>(), &[])
 	}
 
-	fn lifted<T: Send + Sync + 'static>(value: T) -> RecordLift<T, SourceNode<T>> {
+	fn lifted<T: Clone + Send + Sync + 'static>(value: T) -> RecordLift<T, SourceNode<T>> {
 		RecordLift::new(SourceNode(value))
 	}
 
-	fn extract<El: Clone + 'static, N>(graph: N) -> RecordExtract<El, N> {
+	fn extract<El: Clone + Send + Sync + 'static, N>(graph: N) -> RecordExtract<El, N> {
 		RecordExtract::new(graph, &element_layout::<El>())
 	}
 

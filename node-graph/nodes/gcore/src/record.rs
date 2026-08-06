@@ -149,9 +149,10 @@ mod tests {
 				size: 8,
 				align: 8,
 				read_erased: <Opacity as AttributeMarker>::read_erased,
+				repark: None,
 			})
 			.collect();
-		Layout::default().with_writes(0, (8, 8), &writes)
+		Layout::default().with_writes(0, core_types::record::element_write::<f64>(), &writes)
 	}
 
 	fn reserve_for(layouts: &[&Layout]) {
@@ -270,7 +271,7 @@ mod tests {
 
 		let f64_source = f64_layout(&[]);
 		let f64_faded = fade_layout(&f64_source);
-		let u32_source = Layout::default().with_writes(0, (4, 4), &[]);
+		let u32_source = Layout::default().with_writes(0, core_types::record::element_write::<u32>(), &[]);
 		let u32_faded = fade_layout(&u32_source);
 		reserve_for(&[&f64_source, &f64_faded, &u32_source, &u32_faded]);
 
@@ -436,7 +437,7 @@ mod tests {
 	#[test]
 	fn census_fills_reference_defaults_from_static_data() {
 		let source = f64_layout(&[]);
-		let labeled = Layout::default().with_writes(0, (8, 8), &[core_types::record::FieldWrite::of::<Label>(0)]);
+		let labeled = Layout::default().with_writes(0, core_types::record::element_write::<f64>(), &[core_types::record::FieldWrite::of::<Label>(0)]);
 
 		let plan = core_types::record::SourcePlan::new(&source, &labeled).unwrap();
 		let record = [5f64];
@@ -728,5 +729,97 @@ mod tests {
 			panic!("expected a partial record");
 		};
 		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 4.);
+	}
+
+	struct CountingValue(std::sync::Arc<std::sync::atomic::AtomicU32>);
+
+	impl<Input> Node<Input> for CountingValue {
+		type Output = f64;
+
+		fn eval(&self, _input: &Input) -> GPoll<f64> {
+			self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			GPoll::Final(21.)
+		}
+	}
+
+	#[test]
+	fn record_memo_replays_the_deep_copy_on_a_context_hit() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+		let lift = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
+		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
+		let memo = core_types::record::RecordMemo::new(lift, &layout);
+
+		let GPoll::Final(value) = memo.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 21.);
+		let GPoll::Final(value) = memo.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 21.);
+		assert_eq!(evals.load(std::sync::atomic::Ordering::Relaxed), 1, "a context hit must not re-evaluate the edge");
+	}
+
+	#[test]
+	fn record_memo_caches_partial_finality() {
+		let arena = Arena::new(1024).unwrap();
+		let generations = [];
+		let scope = scope_fixture(&generations, &arena);
+		let ctx = ContextImpl::root(&scope);
+
+		let layout = f64_layout(&["opacity"]);
+		reserve_for(&[&layout, &layout]);
+
+		let source = RecordSourceNode {
+			layout: layout.clone(),
+			element: 4.,
+			fields: vec![(layout.offset_of("opacity", 0).unwrap(), 0.5)],
+			partial: true,
+		};
+		let memo = core_types::record::RecordMemo::new(source, &layout);
+
+		let GPoll::Partial(_) = memo.eval(&ctx) else {
+			panic!("expected a partial record");
+		};
+		let GPoll::Partial(value) = memo.eval(&ctx) else {
+			panic!("expected the replay to keep the partial finality");
+		};
+		assert_eq!(unsafe { layout.rec(&value).read::<f64>(layout.offset_of("opacity", 0).unwrap()) }, 0.5);
+	}
+
+	#[test]
+	fn record_memo_re_parks_droppable_payloads_on_replay() {
+		let generations = [];
+
+		let source_layout = f64_layout(&[]);
+		let labeled = label_layout(&source_layout);
+		reserve_for(&[&labeled, &labeled]);
+
+		let chain = LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout);
+		let memo = core_types::record::RecordMemo::new(chain, &labeled);
+
+		let first_arena = Arena::new(1024).unwrap();
+		{
+			let scope = scope_fixture(&generations, &first_arena);
+			let ctx = ContextImpl::root(&scope);
+			let GPoll::Final(_) = memo.eval(&ctx) else {
+				panic!("expected a final record");
+			};
+		}
+
+		let replay_arena = Arena::new(1024).unwrap();
+		let scope = scope_fixture(&generations, &replay_arena);
+		let ctx = ContextImpl::root(&scope);
+		let GPoll::Final(value) = memo.eval(&ctx) else {
+			panic!("expected a final record");
+		};
+		let rec = labeled.rec(&value);
+		assert_eq!(unsafe { rec.element::<f64>() }, 1.);
+		assert_eq!(unsafe { rec.read::<&str>(labeled.offset_of(Label::NAME, 0).unwrap()) }, "a");
 	}
 }

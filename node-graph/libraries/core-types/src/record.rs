@@ -20,6 +20,7 @@ pub struct FieldWrite {
 	pub size: usize,
 	pub align: usize,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
+	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
 }
 
 impl FieldWrite {
@@ -30,6 +31,7 @@ impl FieldWrite {
 			size: size_of::<A::Value<'static>>(),
 			align: align_of::<A::Value<'static>>(),
 			read_erased: A::read_erased,
+			repark: A::REPARK,
 		}
 	}
 }
@@ -47,6 +49,7 @@ pub struct FieldDesc {
 	pub size: usize,
 	pub align: usize,
 	pub read_erased: unsafe fn(*const u8) -> Box<dyn crate::list::AnyAttributeValue>,
+	pub repark: Option<unsafe fn(&dyn crate::list::AnyAttributeValue, *mut u8, &crate::arena::Arena) -> Option<()>>,
 }
 
 impl PartialEq for FieldDesc {
@@ -57,14 +60,52 @@ impl PartialEq for FieldDesc {
 
 impl Eq for FieldDesc {}
 
+/// The element slot of a layout: its dimensions plus erased glue bound where
+/// the element type is statically known, so generic consumers read or
+/// deep-copy the element without it. Equality is structural: glue pointers
+/// are excluded for the same reason as [`FieldDesc`]'s.
+#[derive(Clone, Copy, Debug)]
+pub struct ElementWrite {
+	pub size: usize,
+	pub align: usize,
+	pub parked: bool,
+	pub clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
+	pub repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
+}
+
+impl PartialEq for ElementWrite {
+	fn eq(&self, other: &Self) -> bool {
+		(self.size, self.align, self.parked) == (other.size, other.align, other.parked)
+	}
+}
+
+impl Eq for ElementWrite {}
+
+impl Default for ElementWrite {
+	fn default() -> Self {
+		unsafe fn clone_out(_ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+			Box::new(())
+		}
+		unsafe fn repark(_value: &(dyn std::any::Any + Send + Sync), _dst: *mut u8, _arena: &crate::arena::Arena) -> Option<()> {
+			Some(())
+		}
+		Self {
+			size: 0,
+			align: 0,
+			parked: false,
+			clone_out,
+			repark,
+		}
+	}
+}
+
 /// A record layout: the element at offset 0, then the written attributes in
 /// canonical order (descending alignment, then size, then name, then level).
 /// Layouts are derived data, a pure function of the upstream write set.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
 	pub depth: u8,
-	pub element_size: usize,
-	pub element_align: usize,
+	pub element: ElementWrite,
 	pub fields: Vec<FieldDesc>,
 	pub size: usize,
 	pub align: usize,
@@ -92,11 +133,11 @@ impl Layout {
 		}
 	}
 
-	/// The union of this layout's fields and `writes` over an element of
-	/// (size, align) at `depth`, in canonical order. A (name, level) written
-	/// at a different size is a type conflict and panics; the census keeps
-	/// declared names to one type, so this only fires on wiring bugs.
-	pub fn with_writes(&self, depth: u8, element: (usize, usize), writes: &[FieldWrite]) -> Layout {
+	/// The union of this layout's fields and `writes` over `element` at
+	/// `depth`, in canonical order. A (name, level) written at a different
+	/// size is a type conflict and panics; the census keeps declared names to
+	/// one type, so this only fires on wiring bugs.
+	pub fn with_writes(&self, depth: u8, element: ElementWrite, writes: &[FieldWrite]) -> Layout {
 		let mut merged: Vec<FieldWrite> = self
 			.fields
 			.iter()
@@ -106,6 +147,7 @@ impl Layout {
 				size: field.size,
 				align: field.align,
 				read_erased: field.read_erased,
+				repark: field.repark,
 			})
 			.collect();
 		for &write in writes {
@@ -115,9 +157,8 @@ impl Layout {
 			}
 		}
 		merged.sort_by(|a, b| b.align.cmp(&a.align).then(b.size.cmp(&a.size)).then(a.name.cmp(b.name)).then(a.level.cmp(&b.level)));
-		let (element_size, element_align) = element;
-		let mut offset = element_size;
-		let mut align = element_align.max(1);
+		let mut offset = element.size;
+		let mut align = element.align.max(1);
 		let fields = merged
 			.into_iter()
 			.map(|write| {
@@ -130,6 +171,7 @@ impl Layout {
 					size: write.size,
 					align: write.align,
 					read_erased: write.read_erased,
+					repark: write.repark,
 				};
 				offset += write.size;
 				desc
@@ -137,8 +179,7 @@ impl Layout {
 			.collect();
 		Layout {
 			depth,
-			element_size,
-			element_align,
+			element,
 			fields,
 			size: offset,
 			align,
@@ -148,10 +189,9 @@ impl Layout {
 	/// The union of several layouts over the same element and depth.
 	pub fn union(layouts: &[&Layout]) -> Layout {
 		let first = layouts.first().expect("a union needs at least one layout");
-		let mut union = Layout::default().with_writes(first.depth, (first.element_size, first.element_align), &[]);
+		let mut union = Layout::default().with_writes(first.depth, first.element, &[]);
 		for layout in layouts {
-			assert_eq!(union.element_size, layout.element_size, "union layouts must share the element size");
-			assert_eq!(union.element_align, layout.element_align, "union layouts must share the element alignment");
+			assert_eq!(union.element, layout.element, "union layouts must share the element");
 			assert_eq!(union.depth, layout.depth, "union layouts must share the depth");
 			let writes: Vec<FieldWrite> = layout
 				.fields
@@ -162,9 +202,10 @@ impl Layout {
 					size: field.size,
 					align: field.align,
 					read_erased: field.read_erased,
+					repark: field.repark,
 				})
 				.collect();
-			union = union.with_writes(union.depth, (union.element_size, union.element_align), &writes);
+			union = union.with_writes(union.depth, union.element, &writes);
 		}
 		union
 	}
@@ -500,9 +541,9 @@ pub mod stack {
 pub fn copy_plan(from: &Layout, to: &Layout, carry_element: bool) -> Vec<(usize, usize, usize)> {
 	let mut plan = Vec::new();
 	if carry_element {
-		assert_eq!(from.element_size, to.element_size, "a carried element must keep its size");
-		if from.element_size > 0 {
-			plan.push((0, 0, from.element_size));
+		assert_eq!(from.element.size, to.element.size, "a carried element must keep its size");
+		if from.element.size > 0 {
+			plan.push((0, 0, from.element.size));
 		}
 	}
 	for field in &from.fields {
@@ -531,6 +572,26 @@ pub fn element_dims<T>() -> (usize, usize) {
 	match element_parked::<T>() {
 		true => (size_of::<*const u8>(), align_of::<*const u8>()),
 		false => (size_of::<T>(), align_of::<T>()),
+	}
+}
+
+/// The element slot a record wire of `T` carries, its erased glue bound at
+/// the statically-known type.
+pub fn element_write<T: Clone + Send + Sync + 'static>() -> ElementWrite {
+	unsafe fn clone_out<T: Clone + Send + Sync + 'static>(ptr: *const u8) -> Box<dyn std::any::Any + Send + Sync> {
+		Box::new(unsafe { read_element::<T>(Rec::new(ptr)) })
+	}
+	unsafe fn repark<T: Clone + Send + Sync + 'static>(value: &(dyn std::any::Any + Send + Sync), dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+		let value = value.downcast_ref::<T>().expect("an element replays at its own type");
+		unsafe { write_element(dst, value.clone(), arena) }
+	}
+	let (size, align) = element_dims::<T>();
+	ElementWrite {
+		size,
+		align,
+		parked: element_parked::<T>(),
+		clone_out: clone_out::<T>,
+		repark: repark::<T>,
 	}
 }
 
@@ -728,6 +789,128 @@ where
 	}
 }
 
+/// A record deep-copied out of its evaluation: the packed bytes plus owned
+/// clones of every parked payload, replayable into a later evaluation's
+/// storage through the layout's erased glue. The layout stays with the
+/// holder, which proved it at wiring.
+pub struct OwnedRecord {
+	bytes: Box<[u8]>,
+	element: Option<Box<dyn std::any::Any + Send + Sync>>,
+	fields: Vec<(usize, Box<dyn crate::list::AnyAttributeValue>)>,
+}
+
+impl OwnedRecord {
+	/// # Safety
+	/// `rec` must be a live record of `layout`.
+	pub unsafe fn copy_out(layout: &Layout, rec: Rec) -> OwnedRecord {
+		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into();
+		let element = layout.element.parked.then(|| unsafe { (layout.element.clone_out)(rec.ptr()) });
+		let fields = layout
+			.fields
+			.iter()
+			.enumerate()
+			.filter(|(_, field)| field.repark.is_some())
+			.map(|(index, field)| (index, unsafe { (field.read_erased)(rec.ptr().add(field.offset)) }))
+			.collect();
+		OwnedRecord { bytes, element, fields }
+	}
+
+	/// Replays the copy into fresh storage of `layout`, the layout it was
+	/// copied out under, re-parking droppable payloads against `arena`;
+	/// `None` reports arena exhaustion.
+	pub fn replay<'e>(&self, layout: &Layout, arena: &'e crate::arena::Arena) -> Option<RecordValue<'e>> {
+		let mut value = RecordValue::zeroed();
+		let dst = match layout.frame_bytes() {
+			0 => value.as_mut_ptr(),
+			bytes => stack::push(bytes),
+		};
+		let written = self.write_into(layout, dst, arena);
+		if layout.frame_bytes() != 0 {
+			stack::pop(dst);
+			value = RecordValue::spilled(unsafe { Rec::new(dst.cast_const()) });
+		}
+		written.map(|()| value)
+	}
+
+	fn write_into(&self, layout: &Layout, dst: *mut u8, arena: &crate::arena::Arena) -> Option<()> {
+		unsafe { std::ptr::copy_nonoverlapping(self.bytes.as_ptr(), dst, self.bytes.len()) };
+		if let Some(element) = &self.element {
+			unsafe { (layout.element.repark)(&**element, dst, arena) }?;
+		}
+		for (index, value) in &self.fields {
+			let field = &layout.fields[*index];
+			let repark = field.repark.expect("copied fields carry re-park glue");
+			unsafe { repark(&**value, dst.add(field.offset), arena) }?;
+		}
+		Some(())
+	}
+}
+
+// TODO: Convert to a `#[node_macro::node]` node with the monitor, once the
+// macro grows a capture capability.
+/// Memoizes a record wire: a hit replays the deep copy into the current
+/// evaluation, a miss evaluates the edge and copies the record out.
+pub struct RecordMemo<N> {
+	edge: N,
+	layout: Layout,
+	cache: std::sync::Mutex<Option<(u64, OwnedRecord, crate::gpoll::Finality)>>,
+}
+
+impl<N> RecordMemo<N> {
+	pub fn new(edge: N, layout: &Layout) -> Self {
+		Self {
+			edge,
+			layout: layout.clone(),
+			cache: std::sync::Mutex::new(None),
+		}
+	}
+}
+
+impl<'e, C, N> Node<C> for RecordMemo<N>
+where
+	C: crate::graphene_hash::CacheHash + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
+	N: Node<C, Output = RecordValue<'e>>,
+{
+	type Output = RecordValue<'e>;
+
+	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
+		let key = crate::registry::cache_key(input);
+		{
+			let cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+			if let Some((hash, copy, finality)) = cache.as_ref()
+				&& *hash == key
+			{
+				return match copy.replay(&self.layout, input.arena()) {
+					Some(value) => match finality {
+						crate::gpoll::Finality::AllFinal => GPoll::Final(value),
+						crate::gpoll::Finality::Partial => GPoll::Partial(value),
+					},
+					None => GPoll::arena_exhausted(),
+				};
+			}
+		}
+		let result = self.edge.eval(input);
+		let publishable = match &result {
+			GPoll::Final(record) => Some((record, crate::gpoll::Finality::AllFinal)),
+			GPoll::Partial(record) => Some((record, crate::gpoll::Finality::Partial)),
+			_ => None,
+		};
+		if let Some((record, finality)) = publishable {
+			let copy = unsafe { OwnedRecord::copy_out(&self.layout, self.layout.rec(record)) };
+			*self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, copy, finality));
+		}
+		result
+	}
+
+	fn extent(&self, input: &C) -> GPoll<crate::gpoll::Extent> {
+		self.edge.extent(input)
+	}
+
+	fn layout(&self) -> Option<&Layout> {
+		Some(&self.layout)
+	}
+}
+
 /// Lifts a plain producer onto a record wire: the element lands at offset 0
 /// of a fresh element-only record, parked when it carries drop glue.
 pub struct RecordLift<El, N> {
@@ -736,11 +919,11 @@ pub struct RecordLift<El, N> {
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
-impl<El: 'static, N> RecordLift<El, N> {
+impl<El: Clone + Send + Sync + 'static, N> RecordLift<El, N> {
 	pub fn new(edge: N) -> Self {
 		Self {
 			edge,
-			layout: Layout::default().with_writes(0, element_dims::<El>(), &[]),
+			layout: Layout::default().with_writes(0, element_write::<El>(), &[]),
 			_marker: std::marker::PhantomData,
 		}
 	}
@@ -771,11 +954,11 @@ pub struct RecordLiftLend<El, N> {
 	_marker: std::marker::PhantomData<fn() -> El>,
 }
 
-impl<El: 'static, N> RecordLiftLend<El, N> {
+impl<El: Clone + Send + Sync + 'static, N> RecordLiftLend<El, N> {
 	pub fn new(edge: N) -> Self {
 		Self {
 			edge,
-			layout: Layout::default().with_writes(0, element_dims::<El>(), &[]),
+			layout: Layout::default().with_writes(0, element_write::<El>(), &[]),
 			_marker: std::marker::PhantomData,
 		}
 	}
@@ -930,7 +1113,14 @@ mod tests {
 	}
 
 	fn sized_field(name: &'static str, size: usize, align: usize) -> FieldWrite {
-		FieldWrite { name, level: 0, size, align, read_erased: unread }
+		FieldWrite {
+			name,
+			level: 0,
+			size,
+			align,
+			read_erased: unread,
+			repark: None,
+		}
 	}
 
 	fn f64_field(name: &'static str) -> FieldWrite {
@@ -939,7 +1129,7 @@ mod tests {
 
 	#[test]
 	fn canonical_order_and_offsets() {
-		let layout = Layout::default().with_writes(0, (8, 8), &[sized_field("tint", 4, 4), f64_field("opacity"), sized_field("flag", 1, 1)]);
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[sized_field("tint", 4, 4), f64_field("opacity"), sized_field("flag", 1, 1)]);
 		assert_eq!(layout.offset_of("opacity", 0), Some(8));
 		assert_eq!(layout.offset_of("tint", 0), Some(16));
 		assert_eq!(layout.offset_of("flag", 0), Some(20));
@@ -950,22 +1140,22 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "two different sizes")]
 	fn size_conflicts_panic() {
-		let layout = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
-		layout.with_writes(0, (8, 8), &[sized_field("opacity", 4, 4)]);
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
+		layout.with_writes(0, element_write::<f64>(), &[sized_field("opacity", 4, 4)]);
 	}
 
 	#[test]
 	fn union_is_order_independent() {
-		let a = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
-		let b = Layout::default().with_writes(0, (8, 8), &[f64_field("length")]);
+		let a = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
+		let b = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("length")]);
 		assert_eq!(Layout::union(&[&a, &b]), Layout::union(&[&b, &a]));
 		assert!(Layout::union(&[&a, &b]).offset_of("length", 0).is_some());
 	}
 
 	#[test]
 	fn translation_moves_fields_and_fills_census_defaults() {
-		let source = Layout::default().with_writes(0, (8, 8), &[f64_field("length")]);
-		let union = Layout::union(&[&source, &Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")])]);
+		let source = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("length")]);
+		let union = Layout::union(&[&source, &Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")])]);
 
 		let plan = SourcePlan::new(&source, &union).unwrap();
 		let record = [5f64, 7f64];
@@ -978,7 +1168,7 @@ mod tests {
 
 	#[test]
 	fn identity_layouts_forward() {
-		let layout = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
+		let layout = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
 		assert!(SourcePlan::new(&layout, &layout.clone()).is_none());
 	}
 
@@ -1010,6 +1200,29 @@ mod tests {
 	}
 
 	#[test]
+	fn owned_records_replay_re_parked_payloads_after_the_source_dies() {
+		let layout = Layout::default().with_writes(0, element_write::<String>(), &[FieldWrite::of::<crate::attribute::Name>(0)]);
+		let mut buffer = vec![0u64; layout.size.div_ceil(8)];
+		let base: *mut u8 = buffer.as_mut_ptr().cast();
+
+		let copy = {
+			let arena = crate::arena::Arena::new(1024).unwrap();
+			unsafe { write_element(base, String::from("element"), &arena) }.unwrap();
+			let (name, _) = arena.alloc(String::from("field")).unwrap();
+			unsafe { write_field::<&str>(base, layout.offset_of("name", 0).unwrap(), name.as_str()) };
+			unsafe { OwnedRecord::copy_out(&layout, Rec::new(base)) }
+		};
+		buffer.fill(u64::MAX);
+
+		let replay_arena = crate::arena::Arena::new(1024).unwrap();
+		stack::reserve(layout.frame_bytes());
+		let value = copy.replay(&layout, &replay_arena).unwrap();
+		let rec = layout.rec(&value);
+		assert_eq!(unsafe { read_element::<String>(rec) }, "element");
+		assert_eq!(unsafe { rec.read::<&str>(layout.offset_of("name", 0).unwrap()) }, "field");
+	}
+
+	#[test]
 	fn record_values_are_two_words() {
 		assert_eq!(size_of::<RecordValue>(), 16);
 		assert_eq!(align_of::<RecordValue>(), 8);
@@ -1017,7 +1230,7 @@ mod tests {
 
 	#[test]
 	fn layouts_resolve_inline_and_spilled_values() {
-		let inline = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity")]);
+		let inline = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity")]);
 		assert!(inline.is_inline());
 		assert_eq!(inline.frame_bytes(), 0);
 		let mut value = RecordValue::zeroed();
@@ -1029,7 +1242,7 @@ mod tests {
 		assert_eq!(unsafe { rec.element::<f64>() }, 4.);
 		assert_eq!(unsafe { rec.read::<f64>(inline.offset_of("opacity", 0).unwrap()) }, 0.5);
 
-		let spilled = Layout::default().with_writes(0, (8, 8), &[f64_field("opacity"), f64_field("length")]);
+		let spilled = Layout::default().with_writes(0, element_write::<f64>(), &[f64_field("opacity"), f64_field("length")]);
 		assert!(!spilled.is_inline());
 		assert_eq!(spilled.frame_bytes(), 24);
 		let record = [1f64, 2., 3.];
