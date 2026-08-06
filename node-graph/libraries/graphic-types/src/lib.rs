@@ -164,7 +164,7 @@ pub mod migrations {
 		Ok(match GradientRampFormat::deserialize(deserializer)? {
 			GradientRampFormat::Ramp(ramp) => ramp,
 			GradientRampFormat::FlatStops(stops) => GradientRamp {
-				gradient_interpolation: GradientInterpolation::SrgbGamma,
+				gradient_interpolation: GradientInterpolation::RgbGamma,
 				..GradientRamp::from(stops)
 			},
 			GradientRampFormat::Tuples(stops) => {
@@ -174,7 +174,7 @@ pub mod migrations {
 				gradient.elide_default_attributes();
 
 				GradientRamp {
-					gradient_interpolation: GradientInterpolation::SrgbGamma,
+					gradient_interpolation: GradientInterpolation::RgbGamma,
 					..GradientRamp::from(gradient)
 				}
 			}

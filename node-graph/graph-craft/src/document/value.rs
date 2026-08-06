@@ -812,7 +812,7 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					&& array.is_empty()
 				{
 					let ramp = GradientRamp {
-						gradient_interpolation: vector::style::GradientInterpolation::SrgbGamma,
+						gradient_interpolation: vector::style::GradientInterpolation::RgbGamma,
 						..Default::default()
 					};
 					return Ok(MemoHash::new(TaggedValue::GradientRamp(ramp)));
@@ -1074,7 +1074,7 @@ mod gradient_shape_migration {
 
 		assert_eq!(
 			ramp.gradient_interpolation,
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			"a ramp saved before the field existed should read as gamma"
 		);
 	}
@@ -1086,7 +1086,7 @@ mod gradient_shape_migration {
 		let TaggedValue::GradientRamp(ramp) = load(json) else {
 			panic!("the flat stops should become a gradient ramp value")
 		};
-		assert_eq!(ramp.gradient_interpolation, GradientInterpolation::SrgbGamma, "the pre-ramp flat form should carry the era's gamma");
+		assert_eq!(ramp.gradient_interpolation, GradientInterpolation::RgbGamma, "the pre-ramp flat form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
 		assert_eq!(gradient.positions(), vec![0., 0.25]);
@@ -1100,7 +1100,7 @@ mod gradient_shape_migration {
 		let TaggedValue::GradientRamp(ramp) = load(json) else {
 			panic!("the tuple stops should become a gradient ramp value")
 		};
-		assert_eq!(ramp.gradient_interpolation, GradientInterpolation::SrgbGamma, "the pre-ramp tuple form should carry the era's gamma");
+		assert_eq!(ramp.gradient_interpolation, GradientInterpolation::RgbGamma, "the pre-ramp tuple form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
 		assert_eq!(gradient.positions(), vec![0., 1.]);
@@ -1112,7 +1112,7 @@ mod gradient_shape_migration {
 	fn empty_legacy_gradient_table_degrades_to_the_default() {
 		let json = serde_json::json!({ "GradientTable": { "element": [] } });
 		let expected = GradientRamp {
-			gradient_interpolation: GradientInterpolation::SrgbGamma,
+			gradient_interpolation: GradientInterpolation::RgbGamma,
 			..Default::default()
 		};
 		assert_eq!(load(json), TaggedValue::GradientRamp(expected));

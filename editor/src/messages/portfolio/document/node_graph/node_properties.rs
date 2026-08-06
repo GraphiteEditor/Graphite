@@ -1390,7 +1390,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
 		SpectrumInput::new(GradientStops::from(&bw_track()))
-			.track_interpolation(GradientInterpolation::SrgbGamma)
+			.track_interpolation(GradientInterpolation::RgbGamma)
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1563,7 +1563,7 @@ fn spectrum_slider_row(
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
 			SpectrumInput::new(GradientStops::from(&track))
-				.track_interpolation(GradientInterpolation::SrgbGamma)
+				.track_interpolation(GradientInterpolation::RgbGamma)
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)

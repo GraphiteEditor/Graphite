@@ -294,8 +294,8 @@ pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_
 		GradientInterpolation::LCh => lerp_in_space::<color::Lch>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::Hsl => lerp_in_space::<color::Hsl>(color_a, color_b, t, gradient_hue_direction),
 		GradientInterpolation::Hsv => lerp_in_space::<Hsv>(color_a, color_b, t, gradient_hue_direction),
-		GradientInterpolation::SrgbLinear => color_a.lerp(&color_b, t),
-		GradientInterpolation::SrgbGamma => color_a.lerp_gamma_srgb(&color_b, t),
+		GradientInterpolation::RgbLinear => color_a.lerp(&color_b, t),
+		GradientInterpolation::RgbGamma => color_a.lerp_gamma_srgb(&color_b, t),
 	}
 }
 
@@ -897,7 +897,7 @@ impl Gradient {
 			// The space check probes the quarter points as well as the center, since spaces with a steep toe
 			// (like CIE Lab near black) peak their deviation off-center
 			let midpoint_deviates = (y_actual - y_linear).abs() > THRESHOLD;
-			let space_deviates = gradient_interpolation != GradientInterpolation::SrgbGamma && {
+			let space_deviates = gradient_interpolation != GradientInterpolation::RgbGamma && {
 				let color_left = interpolate_stop_colors(color_a, color_b, y_left as f32, gradient_interpolation, gradient_hue_direction);
 				let color_right = interpolate_stop_colors(color_a, color_b, y_right as f32, gradient_interpolation, gradient_hue_direction);
 				[0.25, 0.5, 0.75].into_iter().any(|fraction| {
@@ -944,7 +944,7 @@ impl Gradient {
 			}
 
 			// Only subdivide if the midpoint deviates from linear (0.5) or a non-gamma space may curve away from the drawn gamma segment
-			if (midpoint - 0.5).abs() >= 1e-6 || gradient_interpolation != GradientInterpolation::SrgbGamma {
+			if (midpoint - 0.5).abs() >= 1e-6 || gradient_interpolation != GradientInterpolation::RgbGamma {
 				subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, gradient_interpolation, gradient_hue_direction, &mut result, 0);
 			}
 
@@ -1032,11 +1032,11 @@ pub enum GradientInterpolation {
 	#[label("HSV")]
 	Hsv,
 	/// Blends stops in linear light, keeping transitions evenly bright.
-	#[label("sRGB Linear")]
-	SrgbLinear,
-	/// Blends stops in gamma-encoded sRGB, the classic SVG and CSS look.
-	#[label("sRGB Gamma")]
-	SrgbGamma,
+	#[label("RGB Linear")]
+	RgbLinear,
+	/// Blends stops in gamma-encoded RGB, the classic SVG and CSS look.
+	#[label("RGB Gamma")]
+	RgbGamma,
 }
 
 impl GradientInterpolation {
@@ -1051,7 +1051,7 @@ impl GradientInterpolation {
 
 	// TODO: Remove when switching to the new document format and Ctrl-C node serialization format
 	fn legacy_gamma() -> Self {
-		Self::SrgbGamma
+		Self::RgbGamma
 	}
 }
 
@@ -1222,14 +1222,14 @@ mod tests {
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_interpolation);
 
 		let gamma = GradientRamp {
-			gradient_interpolation: GradientInterpolation::SrgbGamma,
+			gradient_interpolation: GradientInterpolation::RgbGamma,
 			..default_interpolation.clone()
 		};
 		let json = serde_json::to_string(&gamma).unwrap();
-		assert!(json.contains(r#""gradient_interpolation":"SrgbGamma""#), "a non-default interpolation must serialize: {json}");
+		assert!(json.contains(r#""gradient_interpolation":"RgbGamma""#), "a non-default interpolation must serialize: {json}");
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), gamma);
 
-		let legacy_json = json.replace(r#","gradient_interpolation":"SrgbGamma""#, "");
+		let legacy_json = json.replace(r#","gradient_interpolation":"RgbGamma""#, "");
 		assert_eq!(
 			serde_json::from_str::<GradientRamp>(&legacy_json).unwrap(),
 			gamma,
@@ -1240,14 +1240,14 @@ mod tests {
 	#[test]
 	fn gradient_interpolation_round_trips_through_the_item_attribute() {
 		let ramp = GradientRamp {
-			gradient_interpolation: GradientInterpolation::SrgbGamma,
+			gradient_interpolation: GradientInterpolation::RgbGamma,
 			..GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]))
 		};
 
 		let item = Item::<Gradient>::from(ramp.clone());
 		assert_eq!(
 			item.attribute_cloned_or_default::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION),
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			"the runtime item should carry the interpolation as its attribute"
 		);
 		assert_eq!(GradientRamp::from(&item), ramp);
@@ -1264,11 +1264,11 @@ mod tests {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
 		// Gamma needs no synthesized samples since the renderers already draw gamma segments
-		assert_eq!(gradient.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default()).len(), 2);
+		assert_eq!(gradient.interpolated_samples(GradientInterpolation::RgbGamma, Default::default()).len(), 2);
 
 		// A linear black-to-white ramp curves away from any single gamma segment, so samples must densify,
 		// keeping the end stops in place and every synthesized color on the linear-light line
-		let samples = gradient.interpolated_samples(GradientInterpolation::SrgbLinear, Default::default());
+		let samples = gradient.interpolated_samples(GradientInterpolation::RgbLinear, Default::default());
 		assert!(samples.len() > 2, "linear interpolation should synthesize samples, got {}", samples.len());
 		assert_eq!(samples.first().unwrap().0, 0.);
 		assert_eq!(samples.last().unwrap().0, 1.);
@@ -1282,7 +1282,7 @@ mod tests {
 
 		// Identical end colors leave nothing to densify
 		let flat = Gradient::from(vec![Color::WHITE, Color::WHITE]);
-		assert_eq!(flat.interpolated_samples(GradientInterpolation::SrgbLinear, Default::default()).len(), 2);
+		assert_eq!(flat.interpolated_samples(GradientInterpolation::RgbLinear, Default::default()).len(), 2);
 	}
 
 	#[test]
@@ -1304,8 +1304,8 @@ mod tests {
 			(GradientInterpolation::Hsl, GradientHueDirection::Shorter),
 			(GradientInterpolation::Hsl, GradientHueDirection::Longer),
 			(GradientInterpolation::Hsv, GradientHueDirection::Shorter),
-			(GradientInterpolation::SrgbLinear, GradientHueDirection::Shorter),
-			(GradientInterpolation::SrgbGamma, GradientHueDirection::Shorter),
+			(GradientInterpolation::RgbLinear, GradientHueDirection::Shorter),
+			(GradientInterpolation::RgbGamma, GradientHueDirection::Shorter),
 		] {
 			for &(color_a, color_b) in &color_pairs {
 				for midpoint_step in 1..40 {
@@ -1366,8 +1366,8 @@ mod tests {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
 		let oklab = gradient.evaluate(0.5, Default::default(), GradientInterpolation::OkLab, Default::default());
-		let linear = gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbLinear, Default::default());
-		let gamma = gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbGamma, Default::default());
+		let linear = gradient.evaluate(0.5, Default::default(), GradientInterpolation::RgbLinear, Default::default());
+		let gamma = gradient.evaluate(0.5, Default::default(), GradientInterpolation::RgbGamma, Default::default());
 
 		assert_eq!(linear, Color::BLACK.lerp(&Color::WHITE, 0.5));
 		assert_eq!(gamma, Color::BLACK.lerp_gamma_srgb(&Color::WHITE, 0.5));
@@ -1481,7 +1481,7 @@ mod tests {
 		assert_eq!(gradient.positions(), vec![1.5, 0.4, -0.5]);
 
 		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default())
+			.interpolated_samples(GradientInterpolation::RgbGamma, Default::default())
 			.iter()
 			.map(|(position, ..)| *position)
 			.collect();
@@ -1499,7 +1499,7 @@ mod tests {
 		gradient.set_positions(&[f64::INFINITY, f64::NEG_INFINITY]);
 
 		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default())
+			.interpolated_samples(GradientInterpolation::RgbGamma, Default::default())
 			.iter()
 			.map(|(position, ..)| *position)
 			.collect();
@@ -1514,13 +1514,13 @@ mod tests {
 		gradient.set_positions(&[0., f64::NAN, 1.]);
 
 		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default())
+			.interpolated_samples(GradientInterpolation::RgbGamma, Default::default())
 			.iter()
 			.map(|(position, ..)| *position)
 			.collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
 		assert_eq!(
-			gradient.evaluate(0.5, Default::default(), GradientInterpolation::SrgbLinear, Default::default()),
+			gradient.evaluate(0.5, Default::default(), GradientInterpolation::RgbLinear, Default::default()),
 			Color::WHITE.lerp(&Color::RED, 0.5)
 		);
 
@@ -1530,7 +1530,7 @@ mod tests {
 		// With every position NaN the gradient samples as stopless, painting solid black to signal the upstream bug
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::RED]);
 		gradient.set_positions(&[f64::NAN, f64::NAN]);
-		assert!(gradient.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default()).is_empty());
+		assert!(gradient.interpolated_samples(GradientInterpolation::RgbGamma, Default::default()).is_empty());
 		assert_eq!(gradient.evaluate(0.5, Default::default(), Default::default(), Default::default()), Color::BLACK);
 	}
 
@@ -1539,7 +1539,7 @@ mod tests {
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK]);
 		gradient.set_positions(&[0.3, 1.]);
 
-		let samples = gradient.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default());
+		let samples = gradient.interpolated_samples(GradientInterpolation::RgbGamma, Default::default());
 		assert_eq!(samples[0], (0.3, Color::WHITE, None), "renderers that need a flat lead-in before the first stop add it themselves");
 	}
 
@@ -1551,7 +1551,7 @@ mod tests {
 		gradient.set_midpoints(&[f64::NAN, f64::NAN]);
 		assert_eq!(gradient.evaluate(0.25, Default::default(), Default::default(), Default::default()), linear_result);
 		let no_nan_annotations = gradient
-			.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default())
+			.interpolated_samples(GradientInterpolation::RgbGamma, Default::default())
 			.iter()
 			.all(|(position, _, midpoint)| position.is_finite() && !midpoint.is_some_and(|midpoint| midpoint.is_nan()));
 		assert!(no_nan_annotations, "NaN must not escape into rendered sample annotations");

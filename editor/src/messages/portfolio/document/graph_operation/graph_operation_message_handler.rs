@@ -589,10 +589,10 @@ fn resolve_color_interpolation(element: usvg::roxmltree::Node, stylesheet: &simp
 
 	while let Some(element) = next {
 		match declared_color_interpolation(element, stylesheet) {
-			Some("linearRGB") => return Some(GradientInterpolation::SrgbLinear),
+			Some("linearRGB") => return Some(GradientInterpolation::RgbLinear),
 			// `inherit` defers to the ancestors like an undeclared element
 			Some("inherit") | None => {}
-			Some(_) => return Some(GradientInterpolation::SrgbGamma),
+			Some(_) => return Some(GradientInterpolation::RgbGamma),
 		}
 
 		next = element.parent_element();
@@ -976,7 +976,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			};
 			let gradient_spread = convert_gradient_spread(linear.spread_method());
 			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
-			let gradient_interpolation = gradient_info.interpolations.get(linear.id()).copied().unwrap_or(GradientInterpolation::SrgbGamma);
+			let gradient_interpolation = gradient_info.interpolations.get(linear.id()).copied().unwrap_or(GradientInterpolation::RgbGamma);
 			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, Default::default(), transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
@@ -1001,7 +1001,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				}
 			};
 			let gradient_spread = convert_gradient_spread(radial.spread_method());
-			let gradient_interpolation = gradient_info.interpolations.get(radial.id()).copied().unwrap_or(GradientInterpolation::SrgbGamma);
+			let gradient_interpolation = gradient_info.interpolations.get(radial.id()).copied().unwrap_or(GradientInterpolation::RgbGamma);
 
 			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, Default::default(), transform);
 		}
@@ -1027,22 +1027,22 @@ mod tests {
 		let interpolations = extract_gradient_interpolations(svg);
 		assert_eq!(
 			interpolations.get("inherited"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"an undeclared gradient should inherit from its ancestors"
 		);
 		assert_eq!(
 			interpolations.get("attribute"),
-			Some(&GradientInterpolation::SrgbGamma),
+			Some(&GradientInterpolation::RgbGamma),
 			"an sRGB declaration should beat the inherited linearRGB"
 		);
 		assert_eq!(
 			interpolations.get("styled"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"the inline style should beat the presentation attribute"
 		);
 		assert_eq!(
 			interpolations.get("auto"),
-			Some(&GradientInterpolation::SrgbGamma),
+			Some(&GradientInterpolation::RgbGamma),
 			"auto should mean gamma like browsers treat it, not defer to ancestors"
 		);
 	}
@@ -1067,23 +1067,23 @@ mod tests {
 		let interpolations = extract_gradient_interpolations(svg);
 		assert_eq!(
 			interpolations.get("from-type-rule"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"a type rule in a style block should reach the gradient"
 		);
 		assert_eq!(
 			interpolations.get("from-class-rule"),
-			Some(&GradientInterpolation::SrgbGamma),
+			Some(&GradientInterpolation::RgbGamma),
 			"the class rule should outrank the type rule by specificity"
 		);
-		assert_eq!(interpolations.get("exact"), Some(&GradientInterpolation::SrgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(interpolations.get("exact"), Some(&GradientInterpolation::RgbLinear), "the ID rule should outrank the class rule");
 		assert_eq!(
 			interpolations.get("inline-beats-rules"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"the inline style should beat every style block rule"
 		);
 		assert_eq!(
 			interpolations.get("rule-beats-attribute"),
-			Some(&GradientInterpolation::SrgbGamma),
+			Some(&GradientInterpolation::RgbGamma),
 			"a style block rule should beat the presentation attribute"
 		);
 	}
@@ -1100,17 +1100,17 @@ mod tests {
 		let interpolations = extract_gradient_interpolations(svg);
 		assert_eq!(
 			interpolations.get("last-declaration-wins"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"the last of repeated inline declarations should win"
 		);
 		assert_eq!(
 			interpolations.get("important-beats-later"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"an `!important` declaration should beat a later normal one"
 		);
 		assert_eq!(
 			interpolations.get("important-rule-beats-inline"),
-			Some(&GradientInterpolation::SrgbLinear),
+			Some(&GradientInterpolation::RgbLinear),
 			"an `!important` style block rule should beat the inline style"
 		);
 	}

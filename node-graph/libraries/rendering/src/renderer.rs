@@ -2868,19 +2868,19 @@ mod tests {
 			&gradient,
 			GradientSpread::Repeat,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		assert_eq!(span, (0., 1.));
-		assert_eq!(samples, gradient.interpolated_samples(GradientInterpolation::SrgbGamma, Default::default()));
+		assert_eq!(samples, gradient.interpolated_samples(GradientInterpolation::RgbGamma, Default::default()));
 
 		// SVG guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
@@ -2896,7 +2896,7 @@ mod tests {
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
 		);
@@ -2916,7 +2916,7 @@ mod tests {
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Radial,
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
 		);
@@ -2931,7 +2931,7 @@ mod tests {
 			&Gradient::from(Vec::new()),
 			GradientSpread::Clear,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientInterpolation::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
