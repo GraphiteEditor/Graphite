@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
-pub use graphite_editor::messages::frontend::utility_types::{DocumentInfo, PersistedState};
+pub use graphite_editor::messages::frontend::utility_types::{DocumentInfo, FileFilter, PersistedState};
 pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
 pub use graphite_editor::messages::prelude::DocumentId;
@@ -98,11 +98,6 @@ pub enum DesktopWrapperMessage {
 	ClipboardReadResult { content: Option<String> },
 	PointerLockMove { x: f64, y: f64 },
 	LoadThirdPartyLicenses { text: String },
-}
-
-pub struct FileFilter {
-	pub name: String,
-	pub extensions: Vec<String>,
 }
 
 #[derive(Clone, Copy)]

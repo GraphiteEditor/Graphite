@@ -732,17 +732,13 @@ impl NodeGraphExecutor {
 			..
 		} = export_config;
 
-		let file_extension = match file_type {
-			FileType::Svg => "svg",
-			FileType::Png => "png",
-			FileType::Jpg => "jpg",
-		};
 		let base_name = match (artboard_name, artboard_count) {
 			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
 			_ => name,
 		};
-		let name = format!("{base_name}.{file_extension}");
+		let name = format!("{base_name}.{}", file_type.extension());
 		let folder = document.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
+		let filters = vec![file_type.file_filter()];
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -753,6 +749,7 @@ impl NodeGraphExecutor {
 					responses.add(FrontendMessage::TriggerSaveFile {
 						name,
 						folder,
+						filters,
 						content: svg.into_bytes().into(),
 					});
 				} else {
@@ -806,6 +803,7 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::TriggerSaveFile {
 					name,
 					folder,
+					filters,
 					content: encoded.into(),
 				});
 			}
