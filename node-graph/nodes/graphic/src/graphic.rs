@@ -14,7 +14,7 @@ use graphic_types::graphic::{Graphic, GraphicLevel, RowStep, TryFromGraphic, wal
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke as StrokeAttr};
 use graphic_types::{ATTR_FILL, ATTR_STROKE, Vector};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::gradient::{GradientForm as GradientFormValue, GradientSpread};
+use vector_types::gradient::{GradientForm as GradientFormValue, GradientHueDirection, GradientSpace, GradientSpread};
 use vector_types::{Gradient, ReferencePoint};
 
 fn arena_exhausted() -> Interrupt {
@@ -257,6 +257,10 @@ attribute_reads! {
 	read_gradient_form_attribute: GradientFormValue => GradientFormValue;
 	/// Reads a named gradient-spread attribute, such as `gradient_spread`.
 	read_gradient_spread_attribute: GradientSpread => GradientSpread;
+	/// Reads a named gradient-space attribute, such as `gradient_space`.
+	read_gradient_space_attribute: GradientSpace => GradientSpace;
+	/// Reads a named gradient-hue-direction attribute, such as `gradient_hue_direction`.
+	read_gradient_hue_direction_attribute: GradientHueDirection => GradientHueDirection;
 }
 
 /// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.

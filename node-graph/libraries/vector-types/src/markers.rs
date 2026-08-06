@@ -6,8 +6,10 @@ use core_types::attribute::Attribute;
 core_types::attribute! {
 	/// Gradient's spread behavior past its endpoints (`Pad`, `Reflect`, `Repeat`, or `Clear`).
 	pub GradientSpread("gradient_spread"): crate::gradient::GradientSpread;
-	/// Gradient's `GradientInterpolation` (`SrgbLinear` or `SrgbGamma`), the color space its stops blend in.
-	pub GradientInterpolation("gradient_interpolation"): crate::gradient::GradientInterpolation;
+	/// Gradient's `GradientSpace`, the color space its stops blend in.
+	pub GradientSpace("gradient_space"): crate::gradient::GradientSpace;
+	/// Gradient's `GradientHueDirection`, the hue path polar spaces interpolate along.
+	pub GradientHueDirection("gradient_hue_direction"): crate::gradient::GradientHueDirection;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientForm("gradient_form"): crate::gradient::GradientForm;
 	/// Optional `Vector` that overrides the item's own geometry for click-target generation.
@@ -22,12 +24,14 @@ core_types::attribute! {
 core_types::named_value! {
 	for crate::gradient::GradientSpread;
 	for crate::gradient::GradientForm;
-	for crate::gradient::GradientInterpolation;
+	for crate::gradient::GradientSpace;
+	for crate::gradient::GradientHueDirection;
 }
 
 pub const ATTR_GRADIENT_SPREAD: &str = GradientSpread::NAME;
 pub const ATTR_GRADIENT_FORM: &str = GradientForm::NAME;
-pub const ATTR_GRADIENT_INTERPOLATION: &str = GradientInterpolation::NAME;
+pub const ATTR_GRADIENT_SPACE: &str = GradientSpace::NAME;
+pub const ATTR_GRADIENT_HUE_DIRECTION: &str = GradientHueDirection::NAME;
 pub const ATTR_EDITOR_CLICK_TARGET: &str = EditorClickTarget::NAME;
 
 #[cfg(test)]

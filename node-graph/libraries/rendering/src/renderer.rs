@@ -26,8 +26,10 @@ use graphene_resource::Resource;
 use graphic_types::graphic::{PaintColumns, PaintOverlay, PaintReach, has_paint, is_paint_present, paint_graphics, set_paint_attribute, vector_can_reduce_to_clip_path};
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientInterpolation};
-use graphic_types::vector_types::markers::{GradientForm as GradientFormAttr, GradientInterpolation as GradientInterpolationAttr, GradientSpread as GradientSpreadAttr};
+use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientHueDirection, GradientSpace};
+use graphic_types::vector_types::markers::{
+	GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
+};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -426,10 +428,11 @@ pub(crate) fn spread_adjusted_samples(
 	gradient: &Gradient,
 	gradient_spread: GradientSpread,
 	gradient_form: GradientForm,
-	gradient_interpolation: GradientInterpolation,
+	gradient_space: GradientSpace,
+	gradient_hue_direction: GradientHueDirection,
 	guards: ClearGuardPlacement,
 ) -> (GradientSamples, (f64, f64)) {
-	let samples = gradient.interpolated_samples(gradient_interpolation);
+	let samples = gradient.interpolated_samples(gradient_space, gradient_hue_direction);
 	if gradient_spread != GradientSpread::Clear {
 		return (samples, (0., 1.));
 	}
@@ -514,9 +517,10 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list
 	let gradient_form: GradientForm = gradient_list.attr::<GradientFormAttr>(0);
 	let gradient_transform: DAffine2 = gradient_list.attr::<Transform>(0);
 	let gradient_spread: GradientSpread = gradient_list.attr::<GradientSpreadAttr>(0);
-	let gradient_interpolation: GradientInterpolation = gradient_list.attr::<GradientInterpolationAttr>(0);
+	let gradient_space: GradientSpace = gradient_list.attr::<GradientSpaceAttr>(0);
+	let gradient_hue_direction: GradientHueDirection = gradient_list.attr::<GradientHueDirectionAttr>(0);
 
-	let (samples, span) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::VelloRampTexels);
+	let (samples, span) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::VelloRampTexels);
 
 	let peniko_stops = peniko_color_stops(&samples);
 
@@ -772,7 +776,7 @@ fn collect_element_metadata<'a>(
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::Color(_) => {}
-		Graphic::Gradient(_) => {}
+		Graphic::Gradient(gradient) => collect_gradient_metadata(&Single(gradient), metadata, element_id),
 		Graphic::Text(text) => collect_text_metadata(&Single(text), metadata, footprint, element_id),
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
 	}
@@ -814,7 +818,8 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_click_targets(&PaintOverlay::new(&Single(vector), reach.paint), click_targets),
 		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
-		Graphic::Color(_) | Graphic::Gradient(_) => {}
+		Graphic::Color(_) => {}
+		Graphic::Gradient(gradient) => click_targets.extend(gradient_control_targets(&Single(gradient), |transform| transform, true)),
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
 		Graphic::Group(group) => add_group_upstream_click_targets(group, reach, click_targets),
 	}
@@ -827,7 +832,8 @@ fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintRe
 		Graphic::Vector(vector) if reach.applies() => add_vector_upstream_outline_targets(&PaintOverlay::new(&Single(vector), reach.paint), outlines),
 		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
-		Graphic::Color(_) | Graphic::Gradient(_) => {}
+		Graphic::Color(_) => {}
+		Graphic::Gradient(gradient) => outlines.extend(gradient_control_targets(&Single(gradient), |transform| transform, false)),
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
 		Graphic::Group(group) => add_group_upstream_outline_targets(group, reach, outlines),
 	}
@@ -894,7 +900,9 @@ fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata:
 		collect_raster_metadata(&run, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<GPU>>::new(item) {
 		collect_raster_metadata(&run, metadata, footprint, element_id)
-	} else if item.typed_lanes::<Color>().is_some() || item.typed_lanes::<Gradient>().is_some() {
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
+		collect_gradient_metadata(&run, metadata, element_id)
+	} else if item.typed_lanes::<Color>().is_some() {
 	} else if let Some(run) = RunView::<String>::new(item) {
 		collect_text_metadata(&run, metadata, footprint, element_id)
 	}
@@ -911,6 +919,8 @@ fn add_group_upstream_click_targets<'a>(group: &'a Group, reach: PaintReach<'a>,
 		}
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
 		add_raster_upstream_click_targets(click_targets)
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
+		click_targets.extend(gradient_control_targets(&run, |transform| transform, true))
 	} else if let Some(run) = RunView::<String>::new(item) {
 		add_text_upstream_click_targets(&run, click_targets)
 	}
@@ -927,6 +937,8 @@ fn add_group_upstream_outline_targets<'a>(group: &'a Group, reach: PaintReach<'a
 		}
 	} else if item.typed_lanes::<Raster<CPU>>().is_some() || item.typed_lanes::<Raster<GPU>>().is_some() {
 		add_raster_upstream_click_targets(outlines)
+	} else if let Some(run) = RunView::<Gradient>::new(item) {
+		outlines.extend(gradient_control_targets(&run, |transform| transform, false))
 	} else if let Some(run) = RunView::<String>::new(item) {
 		add_text_upstream_click_targets(&run, outlines)
 	}
@@ -2381,7 +2393,6 @@ fn render_color_vello<S: LaneSource<Element = Color>>(source: &S, scene: &mut Sc
 		}
 	}
 }
-
 /// A gradient's control geometry in its local space: the unit circle a radial gradient's transform carries to its drawn ellipse, or the (0,0) to (1,0) gradient line for a linear one.
 fn gradient_control_outline(gradient_form: GradientForm) -> Subpath<graphic_types::vector_types::vector::PointId> {
 	match gradient_form {
@@ -2424,7 +2435,8 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
-		let gradient_interpolation: GradientInterpolation = source.attr::<GradientInterpolationAttr>(index);
+		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(index);
+		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
 			if let Some((min, size)) = thumbnail_rect {
@@ -2440,7 +2452,7 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 				attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 			}
 
-			let (samples, _) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::SvgStopOrder);
+			let (samples, _) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::SvgStopOrder);
 
 			let mut stop_string = String::new();
 			for (position, color, original_midpoint) in samples {
@@ -2511,7 +2523,8 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 		let Some(gradient) = source.element(index) else { continue };
 		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(index);
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
-		let gradient_interpolation: GradientInterpolation = source.attr::<GradientInterpolationAttr>(index);
+		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(index);
+		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
@@ -2521,7 +2534,7 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-		let (samples, span) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_interpolation, ClearGuardPlacement::VelloRampTexels);
+		let (samples, span) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::VelloRampTexels);
 		let stops = peniko_color_stops(&samples);
 
 		let extend = peniko_extend(gradient_spread);
@@ -2576,6 +2589,49 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 	}
 }
 
+/// The control geometry of each gradient lane, transformed by `lane_transform`.
+fn gradient_control_targets<S: LaneSource>(source: &S, lane_transform: impl Fn(DAffine2) -> DAffine2, clickable_only: bool) -> Vec<ClickTarget> {
+	(0..source.lane_count())
+		.filter_map(|index| {
+			let gradient_form = source.attr::<GradientFormAttr>(index);
+			if clickable_only && !gradient_control_interior_is_clickable(gradient_form) {
+				return None;
+			}
+			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
+			target.apply_transform(lane_transform(source.attr::<Transform>(index)));
+			Some(target)
+		})
+		.collect()
+}
+
+fn collect_gradient_metadata<S: LaneSource>(source: &S, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {
+	let Some(element_id) = element_id else { return };
+	if source.lane_count() == 0 {
+		return;
+	}
+
+	// Targets are baked relative to lane 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`
+	let lane_zero_transform = source.attr::<Transform>(0);
+	let lane_zero_inverse = if transform_is_invertible(lane_zero_transform) {
+		lane_zero_transform.inverse()
+	} else {
+		DAffine2::IDENTITY
+	};
+
+	let outline_targets: Vec<Arc<ClickTarget>> = gradient_control_targets(source, |transform| lane_zero_inverse * transform, false).into_iter().map(Arc::new).collect();
+	let click_targets: Vec<Arc<ClickTarget>> = outline_targets
+		.iter()
+		.enumerate()
+		.filter(|(index, _)| gradient_control_interior_is_clickable(source.attr::<GradientFormAttr>(*index)))
+		.map(|(_, target)| target.clone())
+		.collect();
+
+	metadata.outlines.insert(element_id, outline_targets);
+	if !click_targets.is_empty() {
+		metadata.click_targets.insert(element_id, click_targets);
+	}
+}
+
 impl Render for List<Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		render_gradient_svg(self, render, render_params)
@@ -2586,64 +2642,15 @@ impl Render for List<Gradient> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>) {
-		let Some(element_id) = element_id else { return };
-		if self.is_empty() {
-			return;
-		}
-
-		// Targets are baked relative to item 0's transform, which `Graphic::collect_metadata` records as `local_transforms[element_id]`
-		let item_zero_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let item_zero_inverse = if transform_is_invertible(item_zero_transform) {
-			item_zero_transform.inverse()
-		} else {
-			DAffine2::IDENTITY
-		};
-
-		let mut outline_targets = Vec::new();
-		let mut click_targets = Vec::new();
-		for index in 0..self.len() {
-			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
-			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-
-			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
-			target.apply_transform(item_zero_inverse * item_transform);
-			let target = Arc::new(target);
-
-			if gradient_control_interior_is_clickable(gradient_form) {
-				click_targets.push(target.clone());
-			}
-			outline_targets.push(target);
-		}
-
-		metadata.outlines.insert(element_id, outline_targets);
-		if !click_targets.is_empty() {
-			metadata.click_targets.insert(element_id, click_targets);
-		}
+		collect_gradient_metadata(self, metadata, element_id)
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for index in 0..self.len() {
-			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
-			if !gradient_control_interior_is_clickable(gradient_form) {
-				continue;
-			}
-
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
-			target.apply_transform(transform);
-			click_targets.push(target);
-		}
+		click_targets.extend(gradient_control_targets(self, |transform| transform, true));
 	}
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
-		for index in 0..self.len() {
-			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
-			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-
-			let mut target = ClickTarget::new_with_subpath(gradient_control_outline(gradient_form), 0.);
-			target.apply_transform(transform);
-			outlines.push(target);
-		}
+		outlines.extend(gradient_control_targets(self, |transform| transform, false));
 	}
 }
 
@@ -3113,6 +3120,18 @@ impl Render for RunView<'_, Gradient> {
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		render_gradient_vello(self, scene, parent_transform, render_params)
 	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, _footprint: Footprint, element_id: Option<NodeId>) {
+		collect_gradient_metadata(self, metadata, element_id)
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		click_targets.extend(gradient_control_targets(self, |transform| transform, true));
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		outlines.extend(gradient_control_targets(self, |transform| transform, false));
+	}
 }
 
 impl Render for RunView<'_, Artboard<'_>> {
@@ -3330,18 +3349,20 @@ mod spread_tests {
 			&gradient,
 			GradientSpread::Repeat,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientSpace::RgbGamma,
+			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		assert_eq!(span, (0., 1.));
-		assert_eq!(samples, gradient.interpolated_samples(GradientInterpolation::SrgbGamma));
+		assert_eq!(samples, gradient.interpolated_samples(GradientSpace::RgbGamma, Default::default()));
 
 		// SVG guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientSpace::RgbGamma,
+			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		assert_eq!(span, (0., 1.));
@@ -3356,7 +3377,8 @@ mod spread_tests {
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientSpace::RgbGamma,
+			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
 		);
 		assert_eq!(
@@ -3375,7 +3397,8 @@ mod spread_tests {
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Radial,
-			GradientInterpolation::SrgbGamma,
+			GradientSpace::RgbGamma,
+			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
 		);
 		assert_eq!(span.0, 0.);
@@ -3389,7 +3412,8 @@ mod spread_tests {
 			&Gradient::from(Vec::new()),
 			GradientSpread::Clear,
 			GradientForm::Linear,
-			GradientInterpolation::SrgbGamma,
+			GradientSpace::RgbGamma,
+			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();

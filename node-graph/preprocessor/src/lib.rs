@@ -286,7 +286,9 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io.inputs.get(index)) else {
 				return NodeInput::value(TaggedValue::None, true);
 			};
-			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
+			// A unit primary is a placeholder, so it stays hidden in either of its spellings
+			let unit_primary = *ty == fn_type_fut!(Context, ()) || *ty == registry::record_source_type::<()>();
+			let exposed = if index == 0 { !unit_primary } else { field.exposed };
 
 			match &field.value_source {
 				RegistryValueSource::None => {}

@@ -173,6 +173,13 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphic_nodes::graphic::ReadAttributeSpreadMethodNode", "graphic_nodes::graphic::ReadSpreadMethodAttributeNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::graphic::read_gradient_space_attribute::IDENTIFIER,
+		aliases: &[
+			"graphic_nodes::graphic::ReadAttributeGradientInterpolationNode",
+			"graphic_nodes::graphic::ReadGradientInterpolationAttributeNode",
+		],
+	},
+	NodeReplacement {
 		node: graphene_std::list::remove_at_index::IDENTIFIER,
 		aliases: &["graphic_nodes::graphic::OmitElementNode", "graphic_nodes::graphic::RemoveAtIndexNode"],
 	},
@@ -272,6 +279,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_form::IDENTIFIER,
 		aliases: &["math_nodes::GradientTypeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::gradient_space::IDENTIFIER,
+		aliases: &["math_nodes::GradientInterpolationNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
