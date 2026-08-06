@@ -7,8 +7,8 @@ use graphic_types::graphic::{GraphicLevel, PaintColumns, PaintReach, bake_paint_
 use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::vector_types::gradient::{GradientForm, GradientInterpolation, GradientSpread};
-use graphic_types::vector_types::markers::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPREAD};
+use graphic_types::vector_types::gradient::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread};
+use graphic_types::vector_types::markers::{ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -330,8 +330,11 @@ fn gradient_paint_row(stops: GradientStops, mut attributes: core_types::list::It
 	if let Some(gradient_spread) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
 		gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, gradient_spread);
 	}
-	if let Some(gradient_interpolation) = attributes.remove::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION) {
-		gradient_paint.set_attribute(ATTR_GRADIENT_INTERPOLATION, 0, gradient_interpolation);
+	if let Some(gradient_space) = attributes.remove::<GradientSpace>(ATTR_GRADIENT_SPACE) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_SPACE, 0, gradient_space);
+	}
+	if let Some(gradient_hue_direction) = attributes.remove::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION) {
+		gradient_paint.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, 0, gradient_hue_direction);
 	}
 	attributes.insert(ATTR_FILL, Some(gradient_paint));
 

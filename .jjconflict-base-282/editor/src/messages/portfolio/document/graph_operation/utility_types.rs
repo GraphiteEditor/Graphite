@@ -18,7 +18,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientInterpolation, GradientSpread, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
@@ -432,7 +432,15 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, gradient_spread: GradientSpread, gradient_interpolation: GradientInterpolation, transform: DAffine2) {
+	pub fn fill_gradient_set(
+		&mut self,
+		gradient: Gradient,
+		gradient_form: GradientForm,
+		gradient_spread: GradientSpread,
+		gradient_space: GradientSpace,
+		gradient_hue_direction: GradientHueDirection,
+		transform: DAffine2,
+	) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
@@ -441,7 +449,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let ramp = GradientRamp::from(gradient);
 		let ramp = GradientRamp {
 			gradient_spread,
-			gradient_interpolation,
+			gradient_space,
+			gradient_hue_direction,
 			..ramp
 		};
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
@@ -768,16 +777,29 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(ramp.clone())
 	}
 
-	/// Set the interpolation on the chain's gradient value, which is where the ramp carries it. Never touches a
-	/// 'Gradient Interpolation' node: that one is a user-authored procedural override, not something the tools manage.
-	pub fn gradient_interpolation_set(&mut self, gradient_interpolation: GradientInterpolation) {
+	/// Set the space on the chain's gradient value, which is where the ramp carries it. Never touches a
+	/// 'Gradient Space' node: that one is a user-authored procedural override, not something the tools manage.
+	pub fn gradient_space_set(&mut self, gradient_space: GradientSpace) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
 		};
 		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
 
-		let ramp = GradientRamp { gradient_interpolation, ..ramp };
+		let ramp = GradientRamp { gradient_space, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Set the hue direction on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_hue_direction_set(&mut self, gradient_hue_direction: GradientHueDirection) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_hue_direction, ..ramp };
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}

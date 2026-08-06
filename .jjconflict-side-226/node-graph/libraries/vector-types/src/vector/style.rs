@@ -76,7 +76,7 @@ impl FillChoice<SRGBA8> {
 				let hex = srgba.to_rgba_hex();
 				Some(format!("linear-gradient(#{hex}, #{hex})"))
 			}
-			Self::Gradient(ramp) => Some(ramp.stops.to_css_linear_gradient(ramp.gradient_interpolation)),
+			Self::Gradient(ramp) => Some(ramp.stops.to_css_linear_gradient(ramp.gradient_space, ramp.gradient_hue_direction)),
 		}
 	}
 }

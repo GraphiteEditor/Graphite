@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientForm, GradientInterpolation, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -49,11 +49,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				gradient,
 				gradient_form,
 				gradient_spread,
-				gradient_interpolation,
+				gradient_space,
+				gradient_hue_direction,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, gradient_hue_direction, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -91,9 +92,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_spread_set(gradient_spread);
 				}
 			}
-			GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation } => {
+			GraphOperationMessage::GradientSpaceSet { layer, gradient_space } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_interpolation_set(gradient_interpolation);
+					modify_inputs.gradient_space_set(gradient_space);
+				}
+			}
+			GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_hue_direction_set(gradient_hue_direction);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -488,7 +494,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				let gradient_info = SvgGradientInfo {
 					graphite_stops: extract_graphite_gradient_stops(&svg),
-					interpolations: extract_gradient_interpolations(&svg),
+					spaces: extract_gradient_spaces(&svg),
 				};
 
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
@@ -529,14 +535,14 @@ const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
 struct SvgGradientInfo {
 	/// Real stops, keyed by gradient element `id`, for gradients Graphite exported with midpoint curve data.
 	graphite_stops: HashMap<String, Gradient>,
-	/// Interpolation spaces, keyed by gradient element `id`, resolved from the `color-interpolation` property.
-	interpolations: HashMap<String, GradientInterpolation>,
+	/// Gradient spaces, keyed by gradient element `id`, resolved from the `color-interpolation` property.
+	spaces: HashMap<String, GradientSpace>,
 }
 
 /// Pre-parses the raw SVG XML to resolve each gradient's inherited `color-interpolation` property, which usvg's
-/// tree does not carry. Only `linearRGB` selects linear interpolation; `auto` and `sRGB` (browsers treat the
+/// tree does not carry. Only `linearRGB` selects the linear space; `auto` and `sRGB` (browsers treat the
 /// user-agent-defined `auto` as `sRGB`) mean gamma, as does any unrecognized value.
-fn extract_gradient_interpolations(svg: &str) -> HashMap<String, GradientInterpolation> {
+fn extract_gradient_spaces(svg: &str) -> HashMap<String, GradientSpace> {
 	let mut result = HashMap::new();
 
 	// Quick check: gradients in an SVG that never mentions `color-interpolation` all take the sRGB default
@@ -567,9 +573,9 @@ fn extract_gradient_interpolations(svg: &str) -> HashMap<String, GradientInterpo
 		}
 
 		if let Some(gradient_id) = node.attribute("id")
-			&& let Some(gradient_interpolation) = resolve_color_interpolation(node, &stylesheet)
+			&& let Some(gradient_space) = resolve_color_interpolation(node, &stylesheet)
 		{
-			result.insert(gradient_id.to_string(), gradient_interpolation);
+			result.insert(gradient_id.to_string(), gradient_space);
 		}
 	}
 
@@ -578,15 +584,15 @@ fn extract_gradient_interpolations(svg: &str) -> HashMap<String, GradientInterpo
 
 /// The `color-interpolation` in effect for an element: the nearest self-or-ancestor declaration, taking each
 /// element's own winning declaration per [`declared_color_interpolation`]'s cascade order.
-fn resolve_color_interpolation(element: usvg::roxmltree::Node, stylesheet: &simplecss::StyleSheet) -> Option<GradientInterpolation> {
+fn resolve_color_interpolation(element: usvg::roxmltree::Node, stylesheet: &simplecss::StyleSheet) -> Option<GradientSpace> {
 	let mut next = Some(element);
 
 	while let Some(element) = next {
 		match declared_color_interpolation(element, stylesheet) {
-			Some("linearRGB") => return Some(GradientInterpolation::SrgbLinear),
+			Some("linearRGB") => return Some(GradientSpace::RgbLinear),
 			// `inherit` defers to the ancestors like an undeclared element
 			Some("inherit") | None => {}
-			Some(_) => return Some(GradientInterpolation::SrgbGamma),
+			Some(_) => return Some(GradientSpace::RgbGamma),
 		}
 
 		next = element.parent_element();
@@ -970,8 +976,8 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			};
 			let gradient_spread = convert_gradient_spread(linear.spread_method());
 			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
-			let gradient_interpolation = gradient_info.interpolations.get(linear.id()).copied().unwrap_or(GradientInterpolation::SrgbGamma);
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, transform);
+			let gradient_space = gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, Default::default(), transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -995,9 +1001,9 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				}
 			};
 			let gradient_spread = convert_gradient_spread(radial.spread_method());
-			let gradient_interpolation = gradient_info.interpolations.get(radial.id()).copied().unwrap_or(GradientInterpolation::SrgbGamma);
+			let gradient_space = gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma);
 
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_interpolation, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, Default::default(), transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};
@@ -1018,25 +1024,13 @@ mod tests {
 			</defs>
 		</svg>"##;
 
-		let interpolations = extract_gradient_interpolations(svg);
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("inherited"), Some(&GradientSpace::RgbLinear), "an undeclared gradient should inherit from its ancestors");
+		assert_eq!(spaces.get("attribute"), Some(&GradientSpace::RgbGamma), "an sRGB declaration should beat the inherited linearRGB");
+		assert_eq!(spaces.get("styled"), Some(&GradientSpace::RgbLinear), "the inline style should beat the presentation attribute");
 		assert_eq!(
-			interpolations.get("inherited"),
-			Some(&GradientInterpolation::SrgbLinear),
-			"an undeclared gradient should inherit from its ancestors"
-		);
-		assert_eq!(
-			interpolations.get("attribute"),
-			Some(&GradientInterpolation::SrgbGamma),
-			"an sRGB declaration should beat the inherited linearRGB"
-		);
-		assert_eq!(
-			interpolations.get("styled"),
-			Some(&GradientInterpolation::SrgbLinear),
-			"the inline style should beat the presentation attribute"
-		);
-		assert_eq!(
-			interpolations.get("auto"),
-			Some(&GradientInterpolation::SrgbGamma),
+			spaces.get("auto"),
+			Some(&GradientSpace::RgbGamma),
 			"auto should mean gamma like browsers treat it, not defer to ancestors"
 		);
 	}
@@ -1058,26 +1052,18 @@ mod tests {
 			</defs>
 		</svg>"##;
 
-		let interpolations = extract_gradient_interpolations(svg);
+		let spaces = extract_gradient_spaces(svg);
+		assert_eq!(spaces.get("from-type-rule"), Some(&GradientSpace::RgbLinear), "a type rule in a style block should reach the gradient");
 		assert_eq!(
-			interpolations.get("from-type-rule"),
-			Some(&GradientInterpolation::SrgbLinear),
-			"a type rule in a style block should reach the gradient"
-		);
-		assert_eq!(
-			interpolations.get("from-class-rule"),
-			Some(&GradientInterpolation::SrgbGamma),
+			spaces.get("from-class-rule"),
+			Some(&GradientSpace::RgbGamma),
 			"the class rule should outrank the type rule by specificity"
 		);
-		assert_eq!(interpolations.get("exact"), Some(&GradientInterpolation::SrgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(spaces.get("exact"), Some(&GradientSpace::RgbLinear), "the ID rule should outrank the class rule");
+		assert_eq!(spaces.get("inline-beats-rules"), Some(&GradientSpace::RgbLinear), "the inline style should beat every style block rule");
 		assert_eq!(
-			interpolations.get("inline-beats-rules"),
-			Some(&GradientInterpolation::SrgbLinear),
-			"the inline style should beat every style block rule"
-		);
-		assert_eq!(
-			interpolations.get("rule-beats-attribute"),
-			Some(&GradientInterpolation::SrgbGamma),
+			spaces.get("rule-beats-attribute"),
+			Some(&GradientSpace::RgbGamma),
 			"a style block rule should beat the presentation attribute"
 		);
 	}
@@ -1091,20 +1077,20 @@ mod tests {
 			<linearGradient id="important-rule-beats-inline" class="forced" style="color-interpolation: sRGB"/>
 		</svg>"##;
 
-		let interpolations = extract_gradient_interpolations(svg);
+		let spaces = extract_gradient_spaces(svg);
 		assert_eq!(
-			interpolations.get("last-declaration-wins"),
-			Some(&GradientInterpolation::SrgbLinear),
+			spaces.get("last-declaration-wins"),
+			Some(&GradientSpace::RgbLinear),
 			"the last of repeated inline declarations should win"
 		);
 		assert_eq!(
-			interpolations.get("important-beats-later"),
-			Some(&GradientInterpolation::SrgbLinear),
+			spaces.get("important-beats-later"),
+			Some(&GradientSpace::RgbLinear),
 			"an `!important` declaration should beat a later normal one"
 		);
 		assert_eq!(
-			interpolations.get("important-rule-beats-inline"),
-			Some(&GradientInterpolation::SrgbLinear),
+			spaces.get("important-rule-beats-inline"),
+			Some(&GradientSpace::RgbLinear),
 			"an `!important` style block rule should beat the inline style"
 		);
 	}
@@ -1114,7 +1100,7 @@ mod tests {
 		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><linearGradient id="plain"/></svg>"##;
 
 		assert!(
-			extract_gradient_interpolations(svg).is_empty(),
+			extract_gradient_spaces(svg).is_empty(),
 			"gradients without any declaration should fall back to the caller's gamma default"
 		);
 	}
