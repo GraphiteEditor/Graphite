@@ -135,22 +135,114 @@ impl SelectedMeshGradient {
 	}
 }
 
+fn approximate_valid_region_bounds(initial_position: DVec2, [min, max]: [DVec2; 2], mut is_valid: impl FnMut(DVec2) -> bool) -> Option<[DVec2; 2]> {
+	const SUBDIVISIONS: usize = 12;
+
+	let mut x_samples = (0..=SUBDIVISIONS)
+		.map(|index| min.x + (max.x - min.x) * index as f64 / SUBDIVISIONS as f64)
+		.collect::<Vec<_>>();
+	let mut y_samples = (0..=SUBDIVISIONS)
+		.map(|index| min.y + (max.y - min.y) * index as f64 / SUBDIVISIONS as f64)
+		.collect::<Vec<_>>();
+	x_samples.push(initial_position.x);
+	y_samples.push(initial_position.y);
+	x_samples.sort_by(f64::total_cmp);
+	y_samples.sort_by(f64::total_cmp);
+	x_samples.dedup();
+	y_samples.dedup();
+
+	let columns = x_samples.len();
+	let rows = y_samples.len();
+	let seed_column = x_samples.iter().position(|&x| x == initial_position.x)?;
+	let seed_row = y_samples.iter().position(|&y| y == initial_position.y)?;
+	let seed_index = seed_row * columns + seed_column;
+
+	let valid_samples = y_samples
+		.iter()
+		.flat_map(|&y| x_samples.iter().map(move |&x| DVec2::new(x, y)))
+		.map(&mut is_valid)
+		.collect::<Vec<_>>();
+
+	if !valid_samples[seed_index] {
+		return None;
+	}
+
+	let mut visited = vec![false; rows * columns];
+	let mut queue = VecDeque::from([seed_index]);
+	let mut bounds_min = initial_position;
+	let mut bounds_max = initial_position;
+
+	while let Some(index) = queue.pop_front() {
+		if visited[index] || !valid_samples[index] {
+			continue;
+		}
+		visited[index] = true;
+
+		let row = index / columns;
+		let column = index % columns;
+		let position = DVec2::new(x_samples[column], y_samples[row]);
+		bounds_min = bounds_min.min(position);
+		bounds_max = bounds_max.max(position);
+
+		if row > 0 {
+			queue.push_back(index - columns);
+		}
+		if row + 1 < rows {
+			queue.push_back(index + columns);
+		}
+		if column > 0 {
+			queue.push_back(index - 1);
+		}
+		if column + 1 < columns {
+			queue.push_back(index + 1);
+		}
+	}
+
+	Some([bounds_min, bounds_max])
+}
+
+fn constrain_to_valid_region(target: DVec2, valid_region_center: DVec2, candidate: impl Fn(DVec2) -> Option<MeshGradient>) -> Option<MeshGradient> {
+	candidate(target).or_else(|| {
+		const BINARY_SEARCH_ITERATIONS: usize = 12;
+		let mut valid_t = 0.;
+		let mut invalid_t = 1.;
+		let mut valid_gradient = candidate(valid_region_center)?;
+
+		for _ in 0..BINARY_SEARCH_ITERATIONS {
+			let mid_t = (valid_t + invalid_t) / 2.;
+			let mid_position = valid_region_center.lerp(target, mid_t);
+
+			if let Some(gradient) = candidate(mid_position) {
+				valid_t = mid_t;
+				valid_gradient = gradient;
+			} else {
+				invalid_t = mid_t;
+			}
+		}
+
+		Some(valid_gradient)
+	})
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum MeshGradientTarget {
 	Corner {
 		corner_index: usize,
 		initial_mouse: DVec2,
 		initial_corner: DVec2,
+		valid_region_center: DVec2,
 	},
 	Segment {
 		segment_id: SegmentId,
 		initial_mouse: DVec2,
 		initial_handles: [DVec2; 2],
+		valid_region_center: DVec2,
 	},
 	Handle {
 		handle_id: HandleId,
 		initial_mouse: DVec2,
 		initial_handle: DVec2,
+		valid_region_center: DVec2,
 	},
 }
 
@@ -422,6 +514,18 @@ impl Fsm for MeshGradientToolFsmState {
 
 								if distance_squared < tolerance_squared {
 									responses.add(DocumentMessage::StartTransaction);
+									let valid_region_center = gradient
+										.geometry()
+										.bounding_box()
+										.and_then(|bounds| {
+											approximate_valid_region_bounds(corner.position, bounds, |position| {
+												let mut candidate = gradient.clone();
+												candidate.set_corner_position(corner.index, position).is_some()
+													&& candidate.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()))
+											})
+										})
+										.map(|[min, max]| min.midpoint(max))
+										.unwrap_or(corner.position);
 
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
@@ -432,6 +536,7 @@ impl Fsm for MeshGradientToolFsmState {
 											corner_index: corner.index,
 											initial_mouse: local_mouse,
 											initial_corner: corner.position,
+											valid_region_center,
 										},
 									});
 
@@ -472,6 +577,18 @@ impl Fsm for MeshGradientToolFsmState {
 
 								if let Some((handle_id, initial_handle, _)) = closest_handle {
 									responses.add(DocumentMessage::StartTransaction);
+									let valid_region_center = gradient
+										.geometry()
+										.bounding_box()
+										.and_then(|bounds| {
+											approximate_valid_region_bounds(initial_handle, bounds, |position| {
+												let mut candidate = gradient.clone();
+												candidate.set_handle_position(handle_id, position).is_some()
+													&& candidate.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()))
+											})
+										})
+										.map(|[min, max]| min.midpoint(max))
+										.unwrap_or(initial_handle);
 
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
@@ -482,6 +599,7 @@ impl Fsm for MeshGradientToolFsmState {
 											handle_id,
 											initial_mouse: local_mouse,
 											initial_handle,
+											valid_region_center,
 										},
 									});
 
@@ -505,6 +623,24 @@ impl Fsm for MeshGradientToolFsmState {
 									};
 
 									responses.add(DocumentMessage::StartTransaction);
+									let valid_region_center = gradient
+										.geometry()
+										.bounding_box()
+										.and_then(|bounds| {
+											approximate_valid_region_bounds(local_mouse, bounds, |position| {
+												let delta = position - local_mouse;
+												let mut candidate = gradient.clone();
+												candidate
+													.set_edge_handles(edge.segment_id, BezierHandles::Cubic {
+														handle_start: handles[0] + delta,
+														handle_end: handles[1] + delta,
+													})
+													.is_some()
+													&& candidate.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()))
+											})
+										})
+										.map(|[min, max]| min.midpoint(max))
+										.unwrap_or(local_mouse);
 
 									tool_data.selected_mesh = Some(SelectedMeshGradient {
 										layer,
@@ -515,6 +651,7 @@ impl Fsm for MeshGradientToolFsmState {
 											segment_id: edge.segment_id,
 											initial_mouse: local_mouse,
 											initial_handles: handles,
+											valid_region_center,
 										},
 									});
 
@@ -546,7 +683,7 @@ impl Fsm for MeshGradientToolFsmState {
 				let current_local_mouse = mesh_to_viewport.inverse().transform_point2(input.mouse.position);
 				let snap_data = SnapData::new(document, input, viewport);
 				let snap_angle = input.keyboard.get(constrain_axis as usize);
-				let mut constrain_or_snap_local_point = |origin_local: DVec2, local_point: DVec2| {
+				let mut snap_local_point = |origin_local: DVec2, local_point: DVec2| {
 					if snap_angle {
 						snap_manager.clear_indicator();
 
@@ -576,44 +713,80 @@ impl Fsm for MeshGradientToolFsmState {
 					local_point
 				};
 
-				match selected_mesh.target {
+				match &mut selected_mesh.target {
 					MeshGradientTarget::Corner {
 						corner_index,
-						initial_mouse: initial_local_mouse,
+						initial_mouse,
 						initial_corner,
+						valid_region_center,
 					} => {
-						let delta = current_local_mouse - initial_local_mouse;
-						let new_corner_position = constrain_or_snap_local_point(initial_corner, initial_corner + delta);
+						let corner_index = *corner_index;
+						let initial_mouse = *initial_mouse;
+						let initial_corner = *initial_corner;
+						let valid_region_center = *valid_region_center;
+						let desired_position = initial_corner + current_local_mouse - initial_mouse;
+						let snapped_local_mouse = snap_local_point(initial_corner, desired_position);
+						let candidate_gradient = |position| {
+							let mut gradient = selected_mesh.gradient.clone();
+							gradient.set_corner_position(corner_index, position)?;
+							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
+							is_valid.then_some(gradient)
+						};
+						let constrained_gradient = constrain_to_valid_region(snapped_local_mouse, valid_region_center, candidate_gradient);
 
-						selected_mesh.gradient.set_corner_position(corner_index, new_corner_position);
-						selected_mesh.update_gradient_in_graph(responses);
-						responses.add(OverlaysMessage::Draw);
+						if let Some(gradient) = constrained_gradient {
+							selected_mesh.gradient = gradient;
+							selected_mesh.update_gradient_in_graph(responses);
+							responses.add(OverlaysMessage::Draw);
+						}
 					}
 					MeshGradientTarget::Segment {
 						segment_id,
 						initial_mouse: initial_local_mouse,
 						initial_handles,
+						valid_region_center,
 					} => {
-						let snapped_local_mouse = constrain_or_snap_local_point(initial_local_mouse, current_local_mouse);
-						let delta = snapped_local_mouse - initial_local_mouse;
-						let handle_start = initial_handles[0] + delta;
-						let handle_end = initial_handles[1] + delta;
+						let snapped_local_mouse = snap_local_point(*initial_local_mouse, current_local_mouse);
+						let candidate_gradient = |mouse_position| {
+							let delta = mouse_position - *initial_local_mouse;
+							let mut gradient = selected_mesh.gradient.clone();
+							gradient.set_edge_handles(
+								*segment_id,
+								BezierHandles::Cubic {
+									handle_start: initial_handles[0] + delta,
+									handle_end: initial_handles[1] + delta,
+								},
+							)?;
+							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
+							is_valid.then_some(gradient)
+						};
 
-						selected_mesh.gradient.set_edge_handles(segment_id, BezierHandles::Cubic { handle_start, handle_end });
-						selected_mesh.update_gradient_in_graph(responses);
-						responses.add(OverlaysMessage::Draw);
+						if let Some(gradient) = constrain_to_valid_region(snapped_local_mouse, *valid_region_center, candidate_gradient) {
+							selected_mesh.gradient = gradient;
+							selected_mesh.update_gradient_in_graph(responses);
+							responses.add(OverlaysMessage::Draw);
+						}
 					}
 					MeshGradientTarget::Handle {
 						handle_id,
 						initial_mouse,
 						initial_handle,
+						valid_region_center,
 					} => {
-						let delta = current_local_mouse - initial_mouse;
-						let new_handle_position = constrain_or_snap_local_point(initial_handle, initial_handle + delta);
+						let delta = current_local_mouse - *initial_mouse;
+						let new_handle_position = snap_local_point(*initial_handle, *initial_handle + delta);
+						let candidate_gradient = |position| {
+							let mut gradient = selected_mesh.gradient.clone();
+							gradient.set_handle_position(*handle_id, position)?;
+							let is_valid = gradient.patches().all(|patch| patch.is_some_and(|patch| patch.sampled_no_foldover()));
+							is_valid.then_some(gradient)
+						};
 
-						selected_mesh.gradient.set_handle_position(handle_id, new_handle_position);
-						selected_mesh.update_gradient_in_graph(responses);
-						responses.add(OverlaysMessage::Draw);
+						if let Some(gradient) = constrain_to_valid_region(new_handle_position, *valid_region_center, candidate_gradient) {
+							selected_mesh.gradient = gradient;
+							selected_mesh.update_gradient_in_graph(responses);
+							responses.add(OverlaysMessage::Draw);
+						}
 					}
 				};
 

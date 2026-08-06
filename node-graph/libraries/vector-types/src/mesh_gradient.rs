@@ -42,6 +42,33 @@ pub struct MeshPatch {
 	pub edges: [PathSeg; 4],
 }
 
+impl MeshPatch {
+	/// Checks for foldovers by sampling the position Jacobian over the patch.
+	pub fn sampled_no_foldover(&self) -> bool {
+		const SUBDIVISIONS: usize = 64;
+		const RELATIVE_EPSILON: f64 = 1e-6;
+		const SAFETY_BUFFER: f64 = 0.1;
+
+		for row in 0..=SUBDIVISIONS {
+			let v = row as f64 / SUBDIVISIONS as f64;
+			for column in 0..=SUBDIVISIONS {
+				let u = column as f64 / SUBDIVISIONS as f64;
+				let jacobian = position_jacobian(self.corners, self.edges, u, v);
+				let derivative_u = jacobian.x_axis;
+				let derivative_v = jacobian.y_axis;
+				let scale = derivative_u.length() * derivative_v.length();
+				let determinant = derivative_u.perp_dot(derivative_v);
+
+				if !scale.is_finite() || !determinant.is_finite() || determinant <= (RELATIVE_EPSILON + SAFETY_BUFFER) * scale {
+					return false;
+				}
+			}
+		}
+
+		true
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct MeshGrid<T> {
@@ -664,26 +691,7 @@ impl MeshPatchEvaluator {
 
 	/// Returns the Jacobian matrix of bilinearly blended Coons patch.
 	fn position_jacobian(&self, u: f64, v: f64) -> DMat2 {
-		let [top, bottom, left, right] = self.edges;
-		let [top_left, top_right, bottom_left, bottom_right] = self.corners;
-
-		let top_u_pos = point_to_dvec2(top.eval(u));
-		let bottom_u_pos = point_to_dvec2(bottom.eval(u));
-		let left_v_pos = point_to_dvec2(left.eval(v));
-		let right_v_pos = point_to_dvec2(right.eval(v));
-
-		let top_bottom_derivative_u = (1. - v) * pathseg_tangent(top, u) + v * pathseg_tangent(bottom, u);
-		let left_right_derivative_u = right_v_pos - left_v_pos;
-		let top_bottom_derivative_v = bottom_u_pos - top_u_pos;
-		let left_right_derivative_v = (1. - u) * pathseg_tangent(left, v) + u * pathseg_tangent(right, v);
-
-		let bilinear_derivative_u = (1. - v) * (top_right - top_left) + v * (bottom_right - bottom_left);
-		let bilinear_derivative_v = (1. - u) * (bottom_left - top_left) + u * (bottom_right - top_right);
-
-		let derivative_u = top_bottom_derivative_u + left_right_derivative_u - bilinear_derivative_u;
-		let derivative_v = top_bottom_derivative_v + left_right_derivative_v - bilinear_derivative_v;
-
-		DMat2::from_cols(derivative_u, derivative_v)
+		position_jacobian(self.corners, self.edges, u, v)
 	}
 
 	/// Returns 81 samples of (uv, position) tuples in the patch.
@@ -1014,6 +1022,29 @@ impl core_types::bounds::BoundingBox for MeshGradient {
 /// Helper to create initial handles.
 fn handles(start: DVec2, end: DVec2) -> (Option<DVec2>, Option<DVec2>) {
 	(Some(start + (end - start) / 3.), Some(end + (start - end) / 3.))
+}
+
+fn position_jacobian(corners: [DVec2; 4], edges: [PathSeg; 4], u: f64, v: f64) -> DMat2 {
+	let [top, bottom, left, right] = edges;
+	let [top_left, top_right, bottom_left, bottom_right] = corners;
+
+	let top_u_pos = point_to_dvec2(top.eval(u));
+	let bottom_u_pos = point_to_dvec2(bottom.eval(u));
+	let left_v_pos = point_to_dvec2(left.eval(v));
+	let right_v_pos = point_to_dvec2(right.eval(v));
+
+	let top_bottom_derivative_u = (1. - v) * pathseg_tangent(top, u) + v * pathseg_tangent(bottom, u);
+	let left_right_derivative_u = right_v_pos - left_v_pos;
+	let top_bottom_derivative_v = bottom_u_pos - top_u_pos;
+	let left_right_derivative_v = (1. - u) * pathseg_tangent(left, v) + u * pathseg_tangent(right, v);
+
+	let bilinear_derivative_u = (1. - v) * (top_right - top_left) + v * (bottom_right - bottom_left);
+	let bilinear_derivative_v = (1. - u) * (bottom_left - top_left) + u * (bottom_right - top_right);
+
+	let derivative_u = top_bottom_derivative_u + left_right_derivative_u - bilinear_derivative_u;
+	let derivative_v = top_bottom_derivative_v + left_right_derivative_v - bilinear_derivative_v;
+
+	DMat2::from_cols(derivative_u, derivative_v)
 }
 
 #[cfg(test)]
