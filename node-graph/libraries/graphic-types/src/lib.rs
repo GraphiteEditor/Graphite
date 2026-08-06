@@ -14,7 +14,7 @@ pub mod migrations {
 	use crate::Vector;
 	use core_types::Color;
 	use vector_types::gradient::GradientStops;
-	use vector_types::{Gradient, GradientInterpolation, GradientRamp};
+	use vector_types::{Gradient, GradientRamp, GradientSpace};
 
 	// Storing legacy structs that are only used in document migration.
 	// TODO: Eventually remove this document upgrade code
@@ -149,7 +149,7 @@ pub mod migrations {
 	// TODO: Eventually remove this document upgrade code
 	/// Recovers a [`GradientRamp`] from any of its on-disk shapes: the current nested form, the flat stops struct
 	/// that preceded it, or the ancient position-color tuple list (whose even positions elide back to absence).
-	/// The pre-ramp shapes come from documents that rendered in gamma, so they carry that interpolation explicitly.
+	/// The pre-ramp shapes come from documents that rendered in gamma, so they carry that space explicitly.
 	pub fn migrate_to_gradient_ramp<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientRamp, D::Error> {
 		use serde::Deserialize;
 
@@ -164,7 +164,7 @@ pub mod migrations {
 		Ok(match GradientRampFormat::deserialize(deserializer)? {
 			GradientRampFormat::Ramp(ramp) => ramp,
 			GradientRampFormat::FlatStops(stops) => GradientRamp {
-				gradient_interpolation: GradientInterpolation::SrgbGamma,
+				gradient_space: GradientSpace::RgbGamma,
 				..GradientRamp::from(stops)
 			},
 			GradientRampFormat::Tuples(stops) => {
@@ -174,7 +174,7 @@ pub mod migrations {
 				gradient.elide_default_attributes();
 
 				GradientRamp {
-					gradient_interpolation: GradientInterpolation::SrgbGamma,
+					gradient_space: GradientSpace::RgbGamma,
 					..GradientRamp::from(gradient)
 				}
 			}
