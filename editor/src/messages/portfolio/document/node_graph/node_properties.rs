@@ -33,7 +33,7 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientRamp, GradientSpace, GradientSpread, GradientStops, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin,
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
@@ -304,7 +304,7 @@ pub(crate) fn property_from_type(
 						// =========================
 						Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
@@ -1390,7 +1390,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
 		SpectrumInput::new(GradientStops::from(&bw_track()))
-			.track_interpolation(GradientInterpolation::RgbGamma)
+			.track_space(GradientSpace::RgbGamma)
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1563,7 +1563,7 @@ fn spectrum_slider_row(
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
 			SpectrumInput::new(GradientStops::from(&track))
-				.track_interpolation(GradientInterpolation::RgbGamma)
+				.track_space(GradientSpace::RgbGamma)
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)
@@ -2407,7 +2407,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient: Gradient,
 			gradient_form: GradientForm,
 			gradient_spread: GradientSpread,
-			gradient_interpolation: GradientInterpolation,
+			gradient_space: GradientSpace,
 			gradient_hue_direction: GradientHueDirection,
 			transform: DAffine2,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
@@ -2439,7 +2439,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						gradient: gradient.stops,
 						gradient_form: gradient.gradient_form,
 						gradient_spread: gradient.gradient_spread,
-						gradient_interpolation: gradient.gradient_interpolation,
+						gradient_space: gradient.gradient_space,
 						gradient_hue_direction: gradient.gradient_hue_direction,
 						transform: gradient.transform,
 						transform_is_value: gradient.transform_is_value,
@@ -2471,13 +2471,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		ResolvedFill::Gradient {
 			gradient: stops,
 			gradient_spread,
-			gradient_interpolation,
+			gradient_space,
 			gradient_hue_direction,
 			..
 		} => {
 			let stops = stops.clone();
 			let gradient_spread = *gradient_spread;
-			let gradient_interpolation = *gradient_interpolation;
+			let gradient_space = *gradient_space;
 			let gradient_hue_direction = *gradient_hue_direction;
 
 			let reverse_button = IconButton::new("Reverse", 24)
@@ -2487,7 +2487,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					move |_| {
 						TaggedValue::GradientRamp(GradientRamp {
 							gradient_spread,
-							gradient_interpolation,
+							gradient_space,
 							gradient_hue_direction,
 							..GradientRamp::from(stops.reversed())
 						})
@@ -2513,12 +2513,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		ResolvedFill::Gradient {
 			gradient: stops,
 			gradient_spread,
-			gradient_interpolation,
+			gradient_space,
 			gradient_hue_direction,
 			..
 		} => FillChoice::<SRGBA8>::Gradient(GradientRamp {
 			gradient_spread: *gradient_spread,
-			gradient_interpolation: *gradient_interpolation,
+			gradient_space: *gradient_space,
 			gradient_hue_direction: *gradient_hue_direction,
 			..GradientRamp::from(stops)
 		}),

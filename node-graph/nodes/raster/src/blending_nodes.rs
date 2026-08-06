@@ -42,7 +42,7 @@ mod blend_std {
 	}
 	impl Blend<Color> for Gradient {
 		// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
-		// it evaluates both sources with the default spread and interpolation rather than their own attributes (which this
+		// it evaluates both sources with the default spread and space rather than their own attributes (which this
 		// element-level impl cannot read); and the output keeps over's attributes despite being sampled in the default space
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut combined_stops = self.positions().into_iter().chain(under.positions()).collect::<Vec<_>>();

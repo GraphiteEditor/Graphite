@@ -60,8 +60,8 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
-/// Gradient's `GradientInterpolation`, the color space its stops blend in.
-pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
+/// Gradient's `GradientSpace`, the color space its stops blend in.
+pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
 /// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
 /// hue wheel the stops blend when the interpolation space is polar.
 pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";

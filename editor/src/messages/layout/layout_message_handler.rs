@@ -531,7 +531,7 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
-				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient(spectrum_input.track_interpolation, spectrum_input.track_hue_direction);
+				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient(spectrum_input.track_space, spectrum_input.track_hue_direction);
 				spectrum_input.track_start_css = spectrum_input.track.color.first().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
 				spectrum_input.track_end_css = spectrum_input.track.color.last().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
 			}

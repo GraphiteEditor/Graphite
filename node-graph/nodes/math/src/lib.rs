@@ -1395,9 +1395,9 @@ fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<
 
 /// Sets the color space each gradient in the input list blends between its stops with.
 #[node_macro::node(category("Gradient"))]
-fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
+fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *space.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
 	gradient
 }
 
@@ -1425,13 +1425,13 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 	gradient
 }
 
-/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_interpolation` color space.
+/// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops blend in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>, position: Item<Fraction>) -> Item<Color> {
 	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
-	let gradient_interpolation = gradient.attribute_cloned_or_default::<vector_types::GradientInterpolation>(core_types::ATTR_GRADIENT_INTERPOLATION);
+	let gradient_space = gradient.attribute_cloned_or_default::<vector_types::GradientSpace>(core_types::ATTR_GRADIENT_SPACE);
 	let gradient_hue_direction = gradient.attribute_cloned_or_default::<vector_types::GradientHueDirection>(core_types::ATTR_GRADIENT_HUE_DIRECTION);
-	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_interpolation, gradient_hue_direction);
+	let color = gradient.element().evaluate(*position.element(), gradient_spread, gradient_space, gradient_hue_direction);
 	Item::new_from_element(color)
 }
 

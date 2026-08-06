@@ -1,11 +1,11 @@
 use core_types::list::{ATTR_FILL, Item, ItemAttributeValues, List};
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL,
 	ATTR_TRANSFORM, Color, Ctx,
 };
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{bake_paint_transforms, set_paint_attribute};
-use graphic_types::vector_types::gradient::{GradientForm, GradientInterpolation, GradientSpread};
+use graphic_types::vector_types::gradient::{GradientForm, GradientSpace, GradientSpread};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
@@ -290,8 +290,8 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						if let Some(gradient_spread) = attributes.remove::<GradientSpread>(ATTR_GRADIENT_SPREAD) {
 							gradient_paint.set_attribute(ATTR_GRADIENT_SPREAD, 0, gradient_spread);
 						}
-						if let Some(gradient_interpolation) = attributes.remove::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION) {
-							gradient_paint.set_attribute(ATTR_GRADIENT_INTERPOLATION, 0, gradient_interpolation);
+						if let Some(gradient_space) = attributes.remove::<GradientSpace>(ATTR_GRADIENT_SPACE) {
+							gradient_paint.set_attribute(ATTR_GRADIENT_SPACE, 0, gradient_space);
 						}
 						set_paint_attribute(&mut attributes, ATTR_FILL, gradient_paint);
 

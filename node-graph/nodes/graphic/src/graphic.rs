@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
-use vector_types::gradient::{GradientForm, GradientInterpolation, GradientSpread};
+use vector_types::gradient::{GradientForm, GradientSpace, GradientSpread};
 use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
@@ -747,18 +747,18 @@ fn read_attribute_gradient_spread(
 	result
 }
 
-/// Reads a named `GradientInterpolation` attribute from the input list, outputting each value as an element of a new `GradientInterpolation[]`.
+/// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
 #[node_macro::node(category("Attributes: Read"))]
-fn read_attribute_gradient_interpolation(
+fn read_attribute_gradient_space(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: Item<String>,
-) -> List<GradientInterpolation> {
+) -> List<GradientSpace> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientInterpolation>(&name, index) else { continue };
+		let Some(value) = content.attribute::<GradientSpace>(&name, index) else { continue };
 		result.push(Item::new_from_element(*value));
 	}
 	result

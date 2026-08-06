@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSpread, GradientStops};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientHueDirection, GradientRamp, GradientSpace, GradientSpread, GradientStops};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -30,7 +30,7 @@ pub struct ColorPickerMessageHandler {
 	// When set, the picker is editing a gradient: the visual pickers and inputs target the active stop's color.
 	gradient: Option<Gradient>,
 	gradient_spread: GradientSpread,
-	gradient_interpolation: GradientInterpolation,
+	gradient_space: GradientSpace,
 	gradient_hue_direction: GradientHueDirection,
 	active_marker_index: Option<u32>,
 	active_marker_is_midpoint: bool,
@@ -54,7 +54,7 @@ impl Default for ColorPickerMessageHandler {
 			old_is_none: true,
 			gradient: None,
 			gradient_spread: GradientSpread::default(),
-			gradient_interpolation: GradientInterpolation::default(),
+			gradient_space: GradientSpace::default(),
 			gradient_hue_direction: GradientHueDirection::default(),
 			active_marker_index: None,
 			active_marker_is_midpoint: false,
@@ -77,7 +77,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.set_new_hsva(0., 0., 0., 1., true);
 						self.gradient = None;
 						self.gradient_spread = GradientSpread::default();
-						self.gradient_interpolation = GradientInterpolation::default();
+						self.gradient_space = GradientSpace::default();
 						self.gradient_hue_direction = GradientHueDirection::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
@@ -85,7 +85,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 					FillChoice::Solid(color) => {
 						self.gradient = None;
 						self.gradient_spread = GradientSpread::default();
-						self.gradient_interpolation = GradientInterpolation::default();
+						self.gradient_space = GradientSpace::default();
 						self.gradient_hue_direction = GradientHueDirection::default();
 						self.active_marker_index = None;
 						self.active_marker_is_midpoint = false;
@@ -95,7 +95,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.active_marker_index = Some(0);
 						self.active_marker_is_midpoint = false;
 						self.gradient_spread = ramp.gradient_spread;
-						self.gradient_interpolation = ramp.gradient_interpolation;
+						self.gradient_space = ramp.gradient_space;
 						self.gradient_hue_direction = ramp.gradient_hue_direction;
 						let gradient = Gradient::from(ramp);
 						let first_color = gradient.color(0).unwrap_or(Color::BLACK);
@@ -209,21 +209,21 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerColorChanged {
 					value: FillChoice::Gradient(GradientRamp {
 						gradient_spread,
-						gradient_interpolation: self.gradient_interpolation,
+						gradient_space: self.gradient_space,
 						gradient_hue_direction: self.gradient_hue_direction,
 						..GradientRamp::from(gradient)
 					}),
 				});
 				self.send_layouts(responses);
 			}
-			ColorPickerMessage::SetGradientInterpolation { gradient_interpolation } => {
+			ColorPickerMessage::SetGradientSpace { gradient_space } => {
 				let Some(gradient) = &self.gradient else { return };
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
-				self.gradient_interpolation = gradient_interpolation;
+				self.gradient_space = gradient_space;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
 					value: FillChoice::Gradient(GradientRamp {
 						gradient_spread: self.gradient_spread,
-						gradient_interpolation,
+						gradient_space,
 						gradient_hue_direction: self.gradient_hue_direction,
 						..GradientRamp::from(gradient)
 					}),
@@ -237,7 +237,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerColorChanged {
 					value: FillChoice::Gradient(GradientRamp {
 						gradient_spread: self.gradient_spread,
-						gradient_interpolation: self.gradient_interpolation,
+						gradient_space: self.gradient_space,
 						gradient_hue_direction,
 						..GradientRamp::from(gradient)
 					}),
@@ -330,7 +330,7 @@ impl ColorPickerMessageHandler {
 			responses.add(FrontendMessage::ColorPickerColorChanged {
 				value: FillChoice::Gradient(GradientRamp {
 					gradient_spread: self.gradient_spread,
-					gradient_interpolation: self.gradient_interpolation,
+					gradient_space: self.gradient_space,
 					gradient_hue_direction: self.gradient_hue_direction,
 					..GradientRamp::from(&*gradient)
 				}),
@@ -390,7 +390,7 @@ impl ColorPickerMessageHandler {
 				gradient.set_midpoint(index as usize, position.clamp(MIN_MIDPOINT, MAX_MIDPOINT));
 			}
 			SpectrumInputUpdate::InsertMarker { position } => {
-				let new_index = gradient.insert_stop(position, self.gradient_interpolation, self.gradient_hue_direction);
+				let new_index = gradient.insert_stop(position, self.gradient_space, self.gradient_hue_direction);
 				self.active_marker_index = Some(new_index as u32);
 				self.active_marker_is_midpoint = false;
 				if let Some(color) = gradient.color(new_index) {
@@ -462,7 +462,7 @@ impl ColorPickerMessageHandler {
 		responses.add(FrontendMessage::ColorPickerColorChanged {
 			value: FillChoice::Gradient(GradientRamp {
 				gradient_spread: self.gradient_spread,
-				gradient_interpolation: self.gradient_interpolation,
+				gradient_space: self.gradient_space,
 				gradient_hue_direction: self.gradient_hue_direction,
 				..GradientRamp::from(&gradient)
 			}),
@@ -494,7 +494,7 @@ impl ColorPickerMessageHandler {
 			let markers = gradient.iter().map(|stop| SpectrumMarker::new(stop.position, stop.midpoint, stop.color)).collect();
 			let mut row_widgets = vec![
 				SpectrumInput::new(GradientStops::from(gradient))
-					.track_interpolation(self.gradient_interpolation)
+					.track_space(self.gradient_space)
 					.track_hue_direction(self.gradient_hue_direction)
 					.markers(markers)
 					.active_marker_index(self.active_marker_index)
@@ -678,25 +678,19 @@ impl ColorPickerMessageHandler {
 			]));
 		}
 
-		// Gradient interpolation color space (only present when the picker is in gradient mode)
+		// Gradient color space (only present when the picker is in gradient mode)
 		if self.gradient.is_some() {
-			let entries = MenuListEntry::sections_from_choice_type(|gradient_interpolation| ColorPickerMessage::SetGradientInterpolation { gradient_interpolation }.into());
+			let entries = MenuListEntry::sections_from_choice_type(|gradient_space| ColorPickerMessage::SetGradientSpace { gradient_space }.into());
 
 			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Space")
-					.tooltip_label("Gradient Interpolation Space")
-					.tooltip_description(SPACE_DESCRIPTION)
-					.widget_instance(),
+				TextLabel::new("Space").tooltip_label("Gradient Space").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				DropdownInput::new(entries)
-					.selected_index(Some(self.gradient_interpolation as u32))
-					.disabled(self.disabled)
-					.widget_instance(),
+				DropdownInput::new(entries).selected_index(Some(self.gradient_space as u32)).disabled(self.disabled).widget_instance(),
 			]));
 		}
 
-		// Gradient hue direction (only present when the chosen interpolation space is polar)
-		if self.gradient.is_some() && self.gradient_interpolation.is_polar() {
+		// Gradient hue direction (only present when the chosen space is polar)
+		if self.gradient.is_some() && self.gradient_space.is_polar() {
 			let entries = MenuListEntry::sections_from_choice_type(|gradient_hue_direction| ColorPickerMessage::SetGradientHueDirection { gradient_hue_direction }.into());
 
 			groups.push(LayoutGroup::row(vec![
