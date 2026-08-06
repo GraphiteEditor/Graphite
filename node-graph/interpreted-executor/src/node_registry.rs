@@ -189,30 +189,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		// ==========
 		// MEMO NODES
 		// ==========
-		(
-			ProtoNodeIdentifier::new("graphene_core::memo::MemoizeNode"),
-			RegistryEntry {
-				io: NodeIOTypes::new(
-					concrete!(Context),
-					core_types::Type::Record(Box::new(core_types::Type::Generic(std::borrow::Cow::Borrowed("T")))),
-					vec![core_types::registry::generic_record_edge_type("T")],
-				),
-				constructor: |inputs| {
-					if inputs.len() != 1 {
-						return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-					}
-					let mut inputs = inputs.into_iter();
-					let handle = inputs.next().unwrap();
-					let ty = handle.ty().clone();
-					let Some(layout) = handle.layout().cloned() else {
-						return Err(ConstructionError::MissingLayout);
-					};
-					let edge = handle.downcast_erased::<core_types::registry::ErasedRecordNode>(ty.clone())?;
-					let node = core_types::record::RecordMemo::new(edge, &layout);
-					Ok(EdgeHandle::new_erased(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>, ty))
-				},
-			},
-		),
 		// ============
 		// REF ADAPTERS
 		// ============

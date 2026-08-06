@@ -5,37 +5,49 @@ use core_types::gpoll::{Extent, Finality, GPoll, Interrupt};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
 use core_types::node::Node;
+use core_types::record::{OwnedRecord, RecordValue};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
-/// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
-#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl, plain, extent(memoize_extent))]
-fn memoize<I: CacheHash, T: Clone>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T, Finality)>>>, content: impl Node<I, Output = T>) -> GPoll<T> {
-	let key = cache_key(&input);
-	if let Some((hash, value, finality)) = cache.lock().unwrap().as_ref()
+/// Stores a deep copy of the last record that flowed through this node and replays it on subsequent renders if the context has not changed.
+#[node_macro::node(category("General"), path(graphene_core::memo), extent(memoize_extent))]
+fn memoize<'e>(
+	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
+	#[data] cache: Arc<Mutex<Option<(u64, OwnedRecord, Finality)>>>,
+	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
+) -> GPoll<RecordValue<'e>> {
+	let key = cache_key(&ctx);
+	if let Some((hash, copy, finality)) = cache.lock().unwrap().as_ref()
 		&& *hash == key
 	{
-		return match finality {
-			Finality::AllFinal => GPoll::Final(value.clone()),
-			Finality::Partial => GPoll::Partial(value.clone()),
+		return match copy.replay(content.layout(), ctx.arena()) {
+			Some(value) => match finality {
+				Finality::AllFinal => GPoll::Final(value),
+				Finality::Partial => GPoll::Partial(value),
+			},
+			None => GPoll::arena_exhausted(),
 		};
 	}
-	let result = content.eval(input);
-	match &result {
-		GPoll::Final(value) => *cache.lock().unwrap() = Some((key, value.clone(), Finality::AllFinal)),
-		GPoll::Partial(value) => *cache.lock().unwrap() = Some((key, value.clone(), Finality::Partial)),
-		GPoll::Pending | GPoll::Fallback(_) | GPoll::Error(_) => {}
+	let result = content.eval(&ctx);
+	let publishable = match &result {
+		GPoll::Final(value) => Some((value, Finality::AllFinal)),
+		GPoll::Partial(value) => Some((value, Finality::Partial)),
+		GPoll::Pending | GPoll::Fallback(_) | GPoll::Error(_) => None,
+	};
+	if let Some((value, finality)) = publishable {
+		// SAFETY: the value came from this edge, so it carries the edge's layout.
+		let copy = unsafe { OwnedRecord::copy_out(content.layout(), content.layout().rec(value)) };
+		*cache.lock().unwrap() = Some((key, copy, finality));
 	}
 	result
 }
 
-fn memoize_extent<C, T, NodeContent>(node: &MemoizeNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
+fn memoize_extent<C, NodeContent>(node: &MemoizeNode<NodeContent>, ctx: &C) -> GPoll<Extent>
 where
-	T: Clone,
-	NodeContent: Node<C, Output = T>,
+	NodeContent: Node<C>,
 {
 	node.content.extent(ctx)
 }
@@ -137,7 +149,7 @@ mod tests {
 	use super::*;
 	use core_types::SourceId;
 	use core_types::context::{ContextImpl, EvalScope};
-	use core_types::registry::{EdgeHandle, ErasedLendNode, ErasedNode};
+	use core_types::registry::{EdgeHandle, ErasedLendNode, ErasedNode, ErasedRecordNode};
 	use std::sync::atomic::{AtomicU32, Ordering};
 
 	struct CountingNode(AtomicU32);
@@ -174,6 +186,10 @@ mod tests {
 		EvalScope::new(Some(0.5), None, None, generations, arena)
 	}
 
+	fn element_layout<T: Clone + Send + Sync + 'static>() -> core_types::record::Layout {
+		core_types::record::Layout::default().with_writes(0, core_types::record::element_write::<T>(), &[])
+	}
+
 	#[test]
 	fn monitor_serialize_exposes_the_io_record_through_the_edge() {
 		let arena = Arena::new(1024).unwrap();
@@ -199,7 +215,9 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let memoized = MemoizeNode::new(CountingNode(AtomicU32::new(0)));
+		let layout = element_layout::<u32>();
+		let memoized = MemoizeNode::new(core_types::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0))), &layout);
+		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
 		assert_eq!(memoized.eval(&ctx), GPoll::Final(1));
@@ -214,7 +232,9 @@ mod tests {
 		let scope_before = scope_fixture(&before, &arena);
 		let scope_after = scope_fixture(&after, &arena);
 
-		let memoized = MemoizeNode::new(CountingNode(AtomicU32::new(0)));
+		let layout = element_layout::<u32>();
+		let memoized = MemoizeNode::new(core_types::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0))), &layout);
+		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
 		assert_eq!(memoized.eval(&ContextImpl::root(&scope_before)), GPoll::Final(1));
@@ -228,7 +248,9 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let memoized = MemoizeNode::new(PartialCountingNode(AtomicU32::new(0)));
+		let layout = element_layout::<u32>();
+		let memoized = MemoizeNode::new(core_types::record::RecordLift::<u32, _>::new(PartialCountingNode(AtomicU32::new(0))), &layout);
+		let memoized = core_types::record::RecordExtract::<u32, _>::new(memoized, &layout);
 
 		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
 		assert_eq!(memoized.eval(&ctx), GPoll::Partial(1));
@@ -241,9 +263,11 @@ mod tests {
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let edge = EdgeHandle::new(Arc::new(CountingNode(AtomicU32::new(0))) as Arc<ErasedNode<u32>>);
-		let memoized = EdgeHandle::new(Arc::new(MemoizeNode::new(edge.downcast::<u32>().unwrap())) as Arc<ErasedNode<u32>>);
-		let stacked = MemoizeNode::new(memoized.downcast::<u32>().unwrap());
+		let layout = element_layout::<u32>();
+		let edge = EdgeHandle::new_record::<u32>(Arc::new(core_types::record::RecordLift::<u32, _>::new(CountingNode(AtomicU32::new(0)))) as Arc<ErasedRecordNode>);
+		let memoized = EdgeHandle::new_record::<u32>(Arc::new(MemoizeNode::new(edge.downcast_record::<u32>().unwrap(), &layout)) as Arc<ErasedRecordNode>);
+		let stacked = MemoizeNode::new(memoized.downcast_record::<u32>().unwrap(), &layout);
+		let stacked = core_types::record::RecordExtract::<u32, _>::new(stacked, &layout);
 
 		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));
 		assert_eq!(stacked.eval(&ctx), GPoll::Final(1));

@@ -752,7 +752,7 @@ mod tests {
 		let evals = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 		let lift = core_types::record::RecordLift::<f64, _>::new(CountingValue(evals.clone()));
 		let layout = Node::<ContextImpl>::layout(&lift).unwrap().clone();
-		let memo = core_types::record::RecordMemo::new(lift, &layout);
+		let memo = crate::memo::MemoizeNode::new(lift, &layout);
 
 		let GPoll::Final(value) = memo.eval(&ctx) else {
 			panic!("expected a final record");
@@ -781,7 +781,7 @@ mod tests {
 			fields: vec![(layout.offset_of("opacity", 0).unwrap(), 0.5)],
 			partial: true,
 		};
-		let memo = core_types::record::RecordMemo::new(source, &layout);
+		let memo = crate::memo::MemoizeNode::new(source, &layout);
 
 		let GPoll::Partial(_) = memo.eval(&ctx) else {
 			panic!("expected a partial record");
@@ -801,7 +801,7 @@ mod tests {
 		reserve_for(&[&labeled, &labeled]);
 
 		let chain = LabelNode::new(bare_source(&source_layout, 1.), ValueNode(String::from("a")), &source_layout);
-		let memo = core_types::record::RecordMemo::new(chain, &labeled);
+		let memo = crate::memo::MemoizeNode::new(chain, &labeled);
 
 		let first_arena = Arena::new(1024).unwrap();
 		{

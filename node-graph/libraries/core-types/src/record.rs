@@ -364,6 +364,32 @@ pub fn lift_poll<'e, T: Send + Sync + 'static>(poll: GPoll<T>, layout: &Layout, 
 	}
 }
 
+/// The raw lazy record edge handed to a record-opaque kernel: the wire plus
+/// its wiring-proven layout, the pairing the kernel's unsafe record
+/// operations rely on. The kernel must only pair the layout with values this
+/// edge produced.
+pub struct RecordEdgeInput<'a, N> {
+	node: &'a N,
+	layout: &'a Layout,
+}
+
+impl<'a, N> RecordEdgeInput<'a, N> {
+	pub fn new(node: &'a N, layout: &'a Layout) -> Self {
+		Self { node, layout }
+	}
+
+	pub fn layout(&self) -> &Layout {
+		self.layout
+	}
+
+	pub fn eval<'e, C>(&self, ctx: &C) -> GPoll<RecordValue<'e>>
+	where
+		N: Node<C, Output = RecordValue<'e>>,
+	{
+		self.node.eval(ctx)
+	}
+}
+
 /// The raw lazy edge handed to a poll kernel whose wire rides records while
 /// the kernel consumes the plain element.
 pub struct ElementEdge<'a, El, N> {
@@ -799,6 +825,12 @@ pub struct OwnedRecord {
 	fields: Vec<(usize, Box<dyn crate::list::AnyAttributeValue>)>,
 }
 
+impl std::fmt::Debug for OwnedRecord {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("OwnedRecord(..)")
+	}
+}
+
 impl OwnedRecord {
 	/// # Safety
 	/// `rec` must be a live record of `layout`.
@@ -843,71 +875,6 @@ impl OwnedRecord {
 			unsafe { repark(&**value, dst.add(field.offset), arena) }?;
 		}
 		Some(())
-	}
-}
-
-// TODO: Convert to a `#[node_macro::node]` node with the monitor, once the
-// macro grows a capture capability.
-/// Memoizes a record wire: a hit replays the deep copy into the current
-/// evaluation, a miss evaluates the edge and copies the record out.
-pub struct RecordMemo<N> {
-	edge: N,
-	layout: Layout,
-	cache: std::sync::Mutex<Option<(u64, OwnedRecord, crate::gpoll::Finality)>>,
-}
-
-impl<N> RecordMemo<N> {
-	pub fn new(edge: N, layout: &Layout) -> Self {
-		Self {
-			edge,
-			layout: layout.clone(),
-			cache: std::sync::Mutex::new(None),
-		}
-	}
-}
-
-impl<'e, C, N> Node<C> for RecordMemo<N>
-where
-	C: crate::graphene_hash::CacheHash + crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
-	N: Node<C, Output = RecordValue<'e>>,
-{
-	type Output = RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		let key = crate::registry::cache_key(input);
-		{
-			let cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-			if let Some((hash, copy, finality)) = cache.as_ref()
-				&& *hash == key
-			{
-				return match copy.replay(&self.layout, input.arena()) {
-					Some(value) => match finality {
-						crate::gpoll::Finality::AllFinal => GPoll::Final(value),
-						crate::gpoll::Finality::Partial => GPoll::Partial(value),
-					},
-					None => GPoll::arena_exhausted(),
-				};
-			}
-		}
-		let result = self.edge.eval(input);
-		let publishable = match &result {
-			GPoll::Final(record) => Some((record, crate::gpoll::Finality::AllFinal)),
-			GPoll::Partial(record) => Some((record, crate::gpoll::Finality::Partial)),
-			_ => None,
-		};
-		if let Some((record, finality)) = publishable {
-			let copy = unsafe { OwnedRecord::copy_out(&self.layout, self.layout.rec(record)) };
-			*self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, copy, finality));
-		}
-		result
-	}
-
-	fn extent(&self, input: &C) -> GPoll<crate::gpoll::Extent> {
-		self.edge.extent(input)
-	}
-
-	fn layout(&self) -> Option<&Layout> {
-		Some(&self.layout)
 	}
 }
 

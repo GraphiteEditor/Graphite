@@ -42,6 +42,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let record = record_shape(parsed);
 	let routing = routing_io(parsed);
 	let flip = record_flip(parsed);
+	let opaque = record_opaque(parsed);
 	let record_skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	// Record nodes with a `_: ()` primary input have no carrier edge; the unit
 	// field stays visible in the metadata but claims no struct field.
@@ -171,7 +172,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}));
 			state
 		}
-		None if routing.is_some() => vec![quote!(pub(super) __layout: gcore::record::Layout)],
+		None if routing.is_some() || opaque => vec![quote!(pub(super) __layout: gcore::record::Layout)],
 		None if flip => {
 			let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __frame_bytes: usize)];
 			state.extend((0..struct_regular_fields.len()).map(|index| {
@@ -331,8 +332,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	// Record nodes construct through the generated `wire` fn, which resolves
 	// offsets from the carrier layout; `new` cannot fill that state.
-	let routing_layout_param = routing.is_some().then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
-	let routing_layout_init = routing.is_some().then(|| quote!(__layout: __layout.clone(),)).into_iter();
+	let routing_layout_param = (routing.is_some() || opaque).then(|| quote!(__layout: &gcore::record::Layout,)).into_iter();
+	let routing_layout_init = (routing.is_some() || opaque).then(|| quote!(__layout: __layout.clone(),)).into_iter();
 	let flip_layout_params = flip
 		.then(|| {
 			(0..struct_regular_fields.len()).map(|index| {
@@ -750,6 +751,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let skips_carrier = record.as_ref().is_some_and(|shape| shape.skips_carrier());
 	let routing = routing_io(parsed);
 	let flip = record_flip(parsed);
+	let opaque = record_opaque(parsed);
 	let snapshot_ctx = async_fn && matches!(&parsed.input.ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "CtxSnapshot"));
 
 	let mut ctx_bounds: Vec<TokenStream2> = match ctx_param {
@@ -907,6 +909,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			generics.insert(0, quote!('__record));
 		}
 	}
+	if opaque {
+		for (index, field) in regular_fields.iter().enumerate() {
+			if let ParsedFieldType::Node(NodeParsedField { output_type, .. }) = &field.ty {
+				let source_generic = format_ident!("__Source{index}");
+				generics.push(quote!(#source_generic: #core_types::node::Node<#ctx_ident, Output = #output_type>));
+			}
+		}
+	}
 
 	let data_field_generic_idents: Vec<Ident> = parsed
 		.fn_generics
@@ -979,6 +989,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if derive_routing && routing_source(output_type) => {
 					let source_generic = format_ident!("__Source{index}");
 					quote!(#pat: #core_types::record::RecordLazyInput<'_, '__record, #source_generic>)
+				}
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => {
+					let source_generic = format_ident!("__Source{index}");
+					quote!(#pat: &#core_types::record::RecordEdgeInput<'_, #source_generic>)
 				}
 				ParsedFieldType::Node(NodeParsedField { output_type, .. }) if flip && raw_lazy => {
 					let source_generic = format_ident!("__Source{index}");
@@ -1127,6 +1141,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let #name = #core_types::record::ElementLazyInput::<#output_type, _>::new(&self.#name, &__cell, #index, &self.#slot);
 				}
 			}
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => quote! {
+				let #name = #core_types::record::RecordEdgeInput::new(&self.#name, &self.__layout);
+			},
 			ParsedFieldType::Node(_) if raw_lazy => quote!(),
 			ParsedFieldType::Node(_) => quote! {
 				let #name = #core_types::node::LazyInput::new(&self.#name, &__cell, #index);
@@ -1153,6 +1170,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			ParsedFieldType::Node(_) if flip && raw_lazy => quote!(&#name),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && raw_lazy && is_record_value(output_type) => quote!(&#name),
 			ParsedFieldType::Node(_) if raw_lazy => quote!(&self.#name),
 			_ => quote!(#name),
 		}
@@ -1534,7 +1552,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => Vec::new(),
 	};
 
-	let record_layout_impl = match record.is_some() || routing.is_some() || flip {
+	let record_layout_impl = match record.is_some() || routing.is_some() || flip || opaque {
 		true => quote! {
 			fn layout(&self) -> Option<&#core_types::record::Layout> {
 				Some(&self.__layout)
@@ -1927,6 +1945,17 @@ pub(crate) fn record_flip(parsed: &ParsedNodeFn) -> bool {
 	true
 }
 
+pub(crate) fn is_record_value(ty: &Type) -> bool {
+	matches!(ty, Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "RecordValue"))
+}
+
+/// Whether a kernel operates on whole records: it names `RecordValue` in its
+/// output, receives raw record edges paired with the node's layout, and
+/// takes on the record APIs' unsafe contracts itself.
+pub(crate) fn record_opaque(parsed: &ParsedNodeFn) -> bool {
+	is_record_value(&slot_value_type(&parsed.output_type))
+}
+
 pub(crate) fn routing_io(parsed: &ParsedNodeFn) -> Option<RoutingIo> {
 	if has_record_io(parsed) || parsed.is_async {
 		return None;
@@ -2135,6 +2164,9 @@ fn entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, data_field_generic
 	}
 	if record_flip(parsed) {
 		return flip_entries_tokens(parsed, struct_name, regular_fields);
+	}
+	if record_opaque(parsed) {
+		return record_opaque_entries_tokens(parsed, struct_name, regular_fields);
 	}
 	let Some(rows) = implementation_rows(parsed, regular_fields) else {
 		return quote!();
@@ -2476,6 +2508,84 @@ fn routing_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fi
 					Ok(gcore::registry::EdgeHandle::new_erased(
 						::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
 						#first_source_ty,
+					))
+				},
+			}]
+		}
+	}
+}
+
+fn record_opaque_entries_tokens(parsed: &ParsedNodeFn, struct_name: &Ident, regular_fields: &[&ParsedField]) -> TokenStream2 {
+	let is_record = |field: &ParsedField| matches!(&field.ty, ParsedFieldType::Node(NodeParsedField { output_type, .. }) if is_record_value(output_type));
+	let values_concrete = regular_fields.iter().filter(|field| !is_record(field)).all(|field| {
+		let (ty, lend) = match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend, .. }) => (ty, lend.is_some()),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => (output_type, false),
+		};
+		!contains_open_generic(parsed, ty) && (lend || !type_disqualifies(ty))
+	});
+	if !values_concrete {
+		return quote!();
+	}
+
+	let fn_name = &parsed.fn_name;
+	let entries_name = format_ident!("{}_entries", fn_name);
+	let arity = regular_fields.len();
+	let names: Vec<&Ident> = regular_fields.iter().map(|field| &field.pat_ident.ident).collect();
+
+	let input_types = regular_fields.iter().map(|field| {
+		if is_record(field) {
+			return quote!(gcore::registry::generic_record_edge_type("T"));
+		}
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(gcore::registry::lend_edge_type::<#ty>()),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(gcore::registry::edge_type::<#ty>()),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(gcore::registry::edge_type::<#output_type>()),
+		}
+	});
+	let downcasts = regular_fields.iter().enumerate().map(|(index, field)| {
+		let name = &field.pat_ident.ident;
+		if is_record(field) {
+			let layout = format_ident!("__layout_{index}");
+			let handle = format_ident!("__handle_{index}");
+			let ty = format_ident!("__ty_{index}");
+			return quote! {
+				let #handle = inputs.next().unwrap();
+				let #ty = #handle.ty().clone();
+				let Some(#layout) = #handle.layout().cloned() else {
+					return Err(gcore::registry::ConstructionError::MissingLayout);
+				};
+				let #name = #handle.downcast_erased::<gcore::registry::ErasedRecordNode>(#ty.clone())?;
+			};
+		}
+		match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(let #name = inputs.next().unwrap().downcast_lend::<#ty>()?;),
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#ty>()?;),
+			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => quote!(let #name = inputs.next().unwrap().downcast::<#output_type>()?;),
+		}
+	});
+	let first_record = regular_fields.iter().position(|field| is_record(field)).expect("record-opaque nodes have a record input");
+	let record_layout = format_ident!("__layout_{first_record}");
+	let record_ty = format_ident!("__ty_{first_record}");
+
+	quote! {
+		pub fn #entries_name() -> ::std::vec::Vec<gcore::registry::RegistryEntry> {
+			vec![gcore::registry::RegistryEntry {
+				io: gcore::registry::NodeIOTypes::new(
+					gcore::concrete!(gcore::context::ContextImpl<'static>),
+					gcore::Type::Record(Box::new(gcore::Type::Generic(::std::borrow::Cow::Borrowed("T")))),
+					vec![#(#input_types),*],
+				),
+				constructor: |inputs| {
+					if inputs.len() != #arity {
+						return Err(gcore::registry::ConstructionError::Arity { expected: #arity, got: inputs.len() });
+					}
+					let mut inputs = inputs.into_iter();
+					#(#downcasts)*
+					let __node = #struct_name::new(#(#names,)* &#record_layout);
+					Ok(gcore::registry::EdgeHandle::new_erased(
+						::std::sync::Arc::new(__node) as ::std::sync::Arc<gcore::registry::ErasedRecordNode>,
+						#record_ty,
 					))
 				},
 			}]
