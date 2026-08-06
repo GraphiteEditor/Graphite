@@ -589,8 +589,8 @@ pub struct SpectrumInput {
 	/// The color space the track's stops interpolate in, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_space: GradientSpace,
-	/// Whether the track's stops wrap as a cycle, used to compute `track_css`. Not sent to the frontend.
-	#[serde(skip)]
+	/// Whether the track's stops wrap as a cycle, used to compute `track_css` and by the frontend to draw the wrap segment's midpoint diamond.
+	#[serde(rename = "trackCyclic")]
 	pub track_cyclic: bool,
 	/// The hue direction the track's stops interpolate with in a polar space, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]

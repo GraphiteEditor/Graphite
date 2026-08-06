@@ -13,6 +13,7 @@
 	export let trackCSS: string;
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
+	export let trackCyclic = false;
 	export let markers: SpectrumMarker[];
 	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
@@ -240,15 +241,20 @@
 		const absolute = pointerPosition(e);
 		if (absolute === undefined) return;
 
+		// The wrap segment's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first
+		const isWrapSegment = trackCyclic && activeMarkerIndex === markers.length - 1;
 		const left = markers[activeMarkerIndex]?.position;
-		const right = markers[activeMarkerIndex + 1]?.position;
+		const right = isWrapSegment ? markers[0].position + 1 : markers[activeMarkerIndex + 1]?.position;
 		if (left === undefined || right === undefined) return;
 		const range = right - left;
 		if (range <= 0) return;
 
+		// A pointer left of the wrap segment's start reads as wrapped past the boundary
+		const local = isWrapSegment && absolute < left ? absolute + 1 - left : absolute - left;
+
 		midpointDragged = true;
 		dispatch("dragging", true);
-		emit({ MoveMidpoint: { index: activeMarkerIndex, position: (absolute - left) / range } });
+		emit({ MoveMidpoint: { index: activeMarkerIndex, position: local / range } });
 	}
 
 	function abortDrag() {
@@ -347,7 +353,22 @@
 	}
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
-	$: midpointPositions = !showMidpoints || markers.length < 2 ? [] : markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
+	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrap segment's diamond is the last marker.
+	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean): number[] {
+		if (!showMidpoints || markers.length < 2) return [];
+		const positions = markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
+
+		// The wrap segment's diamond may land on either side of the 1|0 boundary
+		if (trackCyclic) {
+			const first = markers[0];
+			const last = markers[markers.length - 1];
+			const wrapLength = first.position + 1 - last.position;
+			if (wrapLength > 1e-9) positions.push((last.position + last.midpoint * wrapLength) % 1);
+		}
+
+		return positions;
+	}
+	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic);
 
 	onMount(() => {
 		document.addEventListener("keydown", deleteShortcut);
