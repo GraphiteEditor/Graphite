@@ -5,7 +5,7 @@ use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::IORecord;
 use core_types::node::Node;
-use core_types::record::{OwnedRecord, RecordCapture, RecordValue};
+use core_types::record::{OwnedRecord, RecordCapture, RecordValue, copy_record_bytes, record_from_bytes};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -52,12 +52,12 @@ where
 	node.content.extent(ctx)
 }
 
-#[node_macro::node(category(""), path(graphene_core::memo), skip_impl, extent(frame_memo_extent))]
-fn frame_memo<'e, T: Clone + 'static + Send + Sync>(
+#[node_macro::node(category(""), path(graphene_core::memo), extent(frame_memo_extent))]
+fn frame_memo<'e>(
 	ctx: impl Ctx + CacheHash + ExtractArena<'e>,
-	#[data] cell: ArenaCell<FrameTable<T, 32>>,
-	content: impl Node<Context<'_>, Output = T>,
-) -> GPoll<&'e T> {
+	#[data] cell: ArenaCell<FrameTable<Box<[u8]>, 32>>,
+	content: impl Node<Context<'_>, Output = RecordValue<'e>>,
+) -> GPoll<RecordValue<'e>> {
 	let arena = ctx.arena();
 	let table = match cell.load(arena) {
 		Some(table) => table,
@@ -66,28 +66,38 @@ fn frame_memo<'e, T: Clone + 'static + Send + Sync>(
 				cell.store(weak);
 				table
 			}
-			None => return park(arena, content.eval(ctx)),
+			None => return content.eval(&ctx),
 		},
 	};
+	// SAFETY: published bytes are same-frame copies of this edge's records,
+	// so they carry the edge's layout with live parked references.
+	let revive = |bytes: &'e Box<[u8]>| unsafe { record_from_bytes(content.layout(), bytes) };
 	match table.lookup(cache_key(ctx)) {
-		Lookup::Hit(Finality::AllFinal, value) => GPoll::Final(value),
-		Lookup::Hit(Finality::Partial, value) => GPoll::Partial(value),
-		Lookup::Vacant(slot) => match content.eval(ctx) {
-			GPoll::Final(value) => GPoll::Final(slot.publish(value, Finality::AllFinal)),
-			GPoll::Partial(value) => GPoll::Partial(slot.publish(value, Finality::Partial)),
+		Lookup::Hit(Finality::AllFinal, bytes) => GPoll::Final(revive(bytes)),
+		Lookup::Hit(Finality::Partial, bytes) => GPoll::Partial(revive(bytes)),
+		Lookup::Vacant(slot) => match content.eval(&ctx) {
+			GPoll::Final(value) => {
+				// SAFETY: the value came from this edge, so it carries the edge's layout.
+				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(&value)) };
+				GPoll::Final(revive(slot.publish(bytes, Finality::AllFinal)))
+			}
+			GPoll::Partial(value) => {
+				// SAFETY: as above.
+				let bytes = unsafe { copy_record_bytes(content.layout(), content.layout().rec(&value)) };
+				GPoll::Partial(revive(slot.publish(bytes, Finality::Partial)))
+			}
 			unpublishable => {
 				slot.release();
-				park(arena, unpublishable)
+				unpublishable
 			}
 		},
-		Lookup::Full => park(arena, content.eval(ctx)),
+		Lookup::Full => content.eval(&ctx),
 	}
 }
 
-fn frame_memo_extent<C, T, NodeContent>(node: &FrameMemoNode<T, NodeContent>, ctx: &C) -> GPoll<Extent>
+fn frame_memo_extent<C, NodeContent>(node: &FrameMemoNode<NodeContent>, ctx: &C) -> GPoll<Extent>
 where
-	T: Clone + 'static + Send + Sync,
-	NodeContent: Node<C, Output = T>,
+	NodeContent: Node<C>,
 {
 	node.content.extent(ctx)
 }
@@ -281,24 +291,24 @@ mod tests {
 	}
 
 	#[test]
-	fn frame_memo_turns_an_owned_edge_into_a_lending_edge() {
+	fn frame_memo_shares_one_record_copy_per_frame() {
 		let arena = Arena::new(4096).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let edge = EdgeHandle::new(Arc::new(ValueNode("lent out".to_string())) as Arc<ErasedNode<String>>);
-		let lending = EdgeHandle::new_ref(Arc::new(FrameMemoNode::new(edge.downcast::<String>().unwrap())) as Arc<ErasedLendNode<String>>);
-		assert_eq!(*lending.ty(), core_types::registry::lend_edge_type::<String>());
+		let layout = element_layout::<String>();
+		let memo = FrameMemoNode::new(core_types::record::RecordLift::<String, _>::new(ValueNode("lent out".to_string())), &layout);
 
-		let node = lending.downcast_lend::<String>().unwrap();
-		let GPoll::Final(first) = node.eval(&ctx) else {
-			panic!("lend must fill the frame table and lend");
+		let GPoll::Final(first) = memo.eval(&ctx) else {
+			panic!("the miss must fill the frame table");
 		};
-		let GPoll::Final(second) = node.eval(&ctx) else {
-			panic!("second eval must lend the published value");
+		let GPoll::Final(second) = memo.eval(&ctx) else {
+			panic!("the hit must revive the published record");
 		};
+		let first: &String = unsafe { core_types::record::borrow_element(layout.rec(&first)) };
+		let second: &String = unsafe { core_types::record::borrow_element(layout.rec(&second)) };
 		assert_eq!(first, "lent out");
-		assert!(std::ptr::eq(first, second));
+		assert!(std::ptr::eq(first, second), "the hit shares the parked payload");
 	}
 }

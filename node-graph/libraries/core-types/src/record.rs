@@ -743,6 +743,29 @@ impl<N> RecordSource<N> {
 	}
 }
 
+/// # Safety
+/// `rec` must be a live record of `layout`.
+pub unsafe fn copy_record_bytes(layout: &Layout, rec: Rec) -> Box<[u8]> {
+	unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into()
+}
+
+/// Builds a record value over `bytes`, a record of `layout` copied out
+/// earlier: inline layouts copy into the value, spilled ones alias the
+/// bytes.
+///
+/// # Safety
+/// `bytes` must hold a record of `layout` whose parked references are still
+/// live; both hold for a copy taken in the same evaluation frame.
+pub unsafe fn record_from_bytes<'e>(layout: &Layout, bytes: &'e [u8]) -> RecordValue<'e> {
+	if layout.is_inline() {
+		let mut value = RecordValue::zeroed();
+		unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), value.as_mut_ptr(), bytes.len()) };
+		value
+	} else {
+		RecordValue::spilled(unsafe { Rec::new(bytes.as_ptr()) })
+	}
+}
+
 /// A captured record: the layout plus a generation-checked handle to the
 /// arena copy, materialized by the introspection holder, which owns the
 /// arena. A dead generation materializes to `None`, never to a stale read.
@@ -762,7 +785,7 @@ impl RecordCapture {
 	/// # Safety
 	/// `rec` must be a live record of `layout`.
 	pub unsafe fn capture(layout: &Layout, rec: Rec, arena: &crate::arena::Arena) -> Option<RecordCapture> {
-		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into();
+		let bytes = unsafe { copy_record_bytes(layout, rec) };
 		arena.alloc(bytes).map(|(_, weak)| RecordCapture { layout: layout.clone(), bytes: weak })
 	}
 
