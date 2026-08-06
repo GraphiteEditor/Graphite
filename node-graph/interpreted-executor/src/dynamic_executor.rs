@@ -145,14 +145,15 @@ impl DynamicExecutor {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	/// A record capture materializes its element here against the arena,
-	/// inside the introspection window, so consumers downcast the element
-	/// type directly.
+	/// A monitor's record capture materializes its element here against the
+	/// arena, inside the introspection window, so consumers downcast the
+	/// element type directly. The captured input context stays on the
+	/// serialized io record for consumers that need it.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let result = self.tree.introspect(node_path)?;
-		if let Some(capture) = result.downcast_ref::<core_types::record::RecordCapture>() {
+		if let Some(io) = result.downcast_ref::<core_types::memo::IORecord<core_types::context::CtxSnapshot, core_types::record::RecordCapture>>() {
 			let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-			return capture.materialize_element(&arena).map(Arc::from).ok_or(IntrospectError::NoData);
+			return io.output.materialize_element(&arena).map(Arc::from).ok_or(IntrospectError::NoData);
 		}
 		Ok(result)
 	}

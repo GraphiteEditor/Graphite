@@ -474,15 +474,17 @@ mod tests {
 			assert_eq!(unsafe { layout.rec(&value).element::<f64>() }, 4.);
 		}
 
-		let capture = Node::<ContextImpl>::serialize(&monitor).unwrap();
-		let capture = capture.downcast_ref::<core_types::record::RecordCapture>().unwrap();
-		let fields = capture.materialize(&arena).unwrap();
+		let io = Node::<ContextImpl>::serialize(&monitor).unwrap();
+		let io = io
+			.downcast_ref::<core_types::memo::IORecord<core_types::context::CtxSnapshot, core_types::record::RecordCapture>>()
+			.unwrap();
+		let fields = io.output.materialize(&arena).unwrap();
 		assert_eq!(fields.len(), 1);
 		assert_eq!(fields[0].0, "opacity");
 		assert_eq!(*fields[0].1.as_any().downcast_ref::<f64>().unwrap(), 0.25);
 
 		arena.reset();
-		assert!(capture.materialize(&arena).is_none(), "a dead generation materializes to nothing");
+		assert!(io.output.materialize(&arena).is_none(), "a dead generation materializes to nothing");
 	}
 
 	#[test]

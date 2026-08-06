@@ -1,8 +1,9 @@
 use core_types::arena::{Arena, ArenaCell};
-use core_types::context::{Ctx, ExtractArena};
+use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractArena};
 use core_types::frame_table::{FrameTable, Lookup};
 use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
+use core_types::memo::IORecord;
 use core_types::node::Node;
 use core_types::record::{OwnedRecord, RecordCapture, RecordValue};
 use core_types::registry::cache_key;
@@ -119,23 +120,26 @@ fn lend<'e, T: Send + Sync>(ctx: impl Ctx + ExtractArena<'e>, value: T) -> GPoll
 	park(ctx.arena(), GPoll::Final(value))
 }
 
-type MonitorValue = Arc<Mutex<Option<RecordCapture>>>;
+type MonitorValue = Arc<Mutex<Option<IORecord<CtxSnapshot, RecordCapture>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
-fn monitor<'e>(ctx: impl Ctx + ExtractArena<'e>, #[data] capture: MonitorValue, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> {
+fn monitor<'e>(ctx: impl Ctx + DeriveCtx + ExtractAll + ExtractArena<'e>, #[data] io: MonitorValue, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> {
 	let result = content.eval(&ctx);
 	if let GPoll::Final(value) | GPoll::Partial(value) = &result {
 		// SAFETY: the value came from this edge, so it carries the edge's layout.
 		let captured = unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) };
-		*capture.lock().unwrap() = captured;
+		*io.lock().unwrap() = captured.map(|output| IORecord {
+			input: CtxSnapshot::capture(ctx),
+			output,
+		});
 	}
 	result
 }
 
-fn serialize_monitor(capture: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-	let capture = capture.lock().unwrap();
-	capture.as_ref().map(|capture| Arc::new(capture.clone()) as Arc<dyn std::any::Any + Send + Sync>)
+fn serialize_monitor(io: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+	let io = io.lock().unwrap();
+	io.as_ref().map(|io| Arc::new(io.clone()) as Arc<dyn std::any::Any + Send + Sync>)
 }
 
 #[cfg(test)]
@@ -201,9 +205,13 @@ mod tests {
 			panic!("expected a final record");
 		};
 
-		let capture = handle.serialize().expect("the eval landed a capture");
-		let capture = capture.downcast_ref::<RecordCapture>().expect("the capture is a record capture");
-		let element = capture.materialize_element(&arena).expect("the capture materializes inside the window");
+		let io = handle.serialize().expect("the eval landed a capture");
+		let io = io.downcast_ref::<IORecord<CtxSnapshot, RecordCapture>>().expect("the capture is the monitor io");
+		assert!(
+			core_types::context::ExtractFootprint::try_footprint(&io.input).is_none(),
+			"the root context has no footprint to capture"
+		);
+		let element = io.output.materialize_element(&arena).expect("the capture materializes inside the window");
 		assert_eq!(*element.downcast_ref::<u32>().unwrap(), 11);
 	}
 

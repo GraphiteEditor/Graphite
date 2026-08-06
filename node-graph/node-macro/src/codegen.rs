@@ -1042,6 +1042,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				quote!(#node_generic: #bound)
 			}
 		},
+		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if opaque && is_record_value(output_type) => {
+			quote!(#node_generic: #core_types::node::Node<#ctx_ident, Output = #output_type>)
+		}
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
 			let bound = lazy_bound(output_type);
 			quote!(#node_generic: #bound)
