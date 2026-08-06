@@ -10,12 +10,11 @@ use graphene_std::application_io::{ExportFormat, NodeGraphUpdateMessage, RenderC
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
 use graphene_std::list::List;
-use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, graphic_types};
-use graphene_std::{ATTR_TRANSFORM, CtxSnapshot, Graphic, NodeInputDecleration};
+use graphene_std::{ATTR_TRANSFORM, Graphic, NodeInputDecleration};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -900,18 +899,9 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Extract a monitor node's recorded output, trying each context type the runtime may have evaluated it under.
+/// Extract a monitor node's captured output element.
 fn introspected_output<T: Clone + Send + Sync + 'static>(data: &Arc<dyn Any + Send + Sync>) -> Option<T> {
-	if let Some(io) = data.downcast_ref::<IORecord<(), T>>() {
-		return Some(io.output.clone());
-	}
-	if let Some(io) = data.downcast_ref::<IORecord<Footprint, T>>() {
-		return Some(io.output.clone());
-	}
-	if let Some(io) = data.downcast_ref::<IORecord<CtxSnapshot, T>>() {
-		return Some(io.output.clone());
-	}
-	None
+	data.downcast_ref::<T>().cloned()
 }
 
 // Re-export for usage by tests in other modules
@@ -927,9 +917,7 @@ mod test {
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
 	use graph_craft::ProtoNodeIdentifier;
 	use graph_craft::document::NodeNetwork;
-	use graphene_std::CtxSnapshot;
 	use graphene_std::NodeInputDecleration;
-	use graphene_std::memo::IORecord;
 	use test_prelude::LayerNodeIdentifier;
 
 	/// Stores all of the monitor nodes that have been attached to a graph
@@ -990,17 +978,11 @@ mod test {
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
-			// This is quite inflexible since it only allows the footprint as inputs.
-			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
-				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
-				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<CtxSnapshot, Input::Result>>() {
-				Some(x.output.clone())
-			} else {
+			let element = dynamic.downcast_ref::<Input::Result>().cloned();
+			if element.is_none() {
 				warn!("cannot downcast type for introspection");
-				None
 			}
+			element
 		}
 
 		/// Grab all of the values of the input every time it occurs in the graph.

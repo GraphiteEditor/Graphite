@@ -145,12 +145,14 @@ impl DynamicExecutor {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	/// A record capture materializes here against the arena, inside the introspection window.
+	/// A record capture materializes its element here against the arena,
+	/// inside the introspection window, so consumers downcast the element
+	/// type directly.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let result = self.tree.introspect(node_path)?;
 		if let Some(capture) = result.downcast_ref::<core_types::record::RecordCapture>() {
 			let arena = self.arena.lock().unwrap_or_else(PoisonError::into_inner);
-			return capture.materialize(&arena).map(|fields| Arc::new(fields) as Arc<_>).ok_or(IntrospectError::NoData);
+			return capture.materialize_element(&arena).map(Arc::from).ok_or(IntrospectError::NoData);
 		}
 		Ok(result)
 	}
@@ -648,11 +650,9 @@ mod test {
 
 		let executor = DynamicExecutor::new(network).unwrap();
 		assert_eq!((&executor).execute(()).unwrap(), GPoll::Final(TaggedValue::F64(7.)));
-		let fields = executor.introspect(&[NodeId(9)]).unwrap();
-		let fields = fields
-			.downcast_ref::<Vec<(&'static str, Box<dyn core_types::list::AnyAttributeValue>)>>()
-			.expect("a record capture materializes to its fields");
-		assert!(fields.is_empty(), "an element-only record has no attribute fields");
+		let element = executor.introspect(&[NodeId(9)]).unwrap();
+		let element = element.downcast_ref::<f64>().expect("a record capture materializes to its element");
+		assert_eq!(*element, 7.);
 	}
 
 	#[test]

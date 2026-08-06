@@ -4,13 +4,6 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
 
-/// Stores both what a node was called with and what it returned.
-#[derive(Clone, Debug)]
-pub struct IORecord<I, O> {
-	pub input: I,
-	pub output: O,
-}
-
 #[derive(Clone, Debug)]
 pub struct MemoHash<T: CacheHash> {
 	hash: u64,

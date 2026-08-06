@@ -464,7 +464,7 @@ mod tests {
 		let layout = f64_layout(&["opacity"]);
 		reserve_for(&[&layout, &layout]);
 
-		let monitor = core_types::record::RecordMonitor::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout);
+		let monitor = crate::memo::MonitorNode::new(f64_record_source(&layout, 4., vec![(layout.offset_of("opacity", 0).unwrap(), 0.25)]), &layout);
 		{
 			let scope = scope_fixture(&generations, &arena);
 			let ctx = ContextImpl::root(&scope);

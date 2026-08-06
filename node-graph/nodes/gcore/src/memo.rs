@@ -1,11 +1,10 @@
 use core_types::arena::{Arena, ArenaCell};
-use core_types::context::{Ctx, CtxSnapshot, DeriveCtx, ExtractAll, ExtractArena};
+use core_types::context::{Ctx, ExtractArena};
 use core_types::frame_table::{FrameTable, Lookup};
-use core_types::gpoll::{Extent, Finality, GPoll, Interrupt};
+use core_types::gpoll::{Extent, Finality, GPoll};
 use core_types::graphene_hash::CacheHash;
-use core_types::memo::*;
 use core_types::node::Node;
-use core_types::record::{OwnedRecord, RecordValue};
+use core_types::record::{OwnedRecord, RecordCapture, RecordValue};
 use core_types::registry::cache_key;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -120,28 +119,23 @@ fn lend<'e, T: Send + Sync>(ctx: impl Ctx + ExtractArena<'e>, value: T) -> GPoll
 	park(ctx.arena(), GPoll::Final(value))
 }
 
-type MonitorValue<T> = Arc<Mutex<Option<Arc<IORecord<CtxSnapshot, T>>>>>;
+type MonitorValue = Arc<Mutex<Option<RecordCapture>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl, plain)]
-fn monitor<T: Clone + 'static + Send + Sync>(
-	ctx: impl Ctx + DeriveCtx + ExtractAll,
-	#[allow(clippy::type_complexity)]
-	#[data]
-	io: MonitorValue<T>,
-	content: impl Node<Context<'_>, Output = T>,
-) -> Result<T, Interrupt> {
-	let output = content.eval(&ctx.derived())?;
-	*io.lock().unwrap() = Some(Arc::new(IORecord {
-		input: CtxSnapshot::capture(ctx),
-		output: output.clone(),
-	}));
-	Ok(output)
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"))]
+fn monitor<'e>(ctx: impl Ctx + ExtractArena<'e>, #[data] capture: MonitorValue, content: impl Node<Context<'_>, Output = RecordValue<'e>>) -> GPoll<RecordValue<'e>> {
+	let result = content.eval(&ctx);
+	if let GPoll::Final(value) | GPoll::Partial(value) = &result {
+		// SAFETY: the value came from this edge, so it carries the edge's layout.
+		let captured = unsafe { RecordCapture::capture(content.layout(), content.layout().rec(value), ctx.arena()) };
+		*capture.lock().unwrap() = captured;
+	}
+	result
 }
 
-fn serialize_monitor<T: Clone + 'static + Send + Sync>(io: &MonitorValue<T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-	let io = io.lock().unwrap();
-	io.as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
+fn serialize_monitor(capture: &MonitorValue) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+	let capture = capture.lock().unwrap();
+	capture.as_ref().map(|capture| Arc::new(capture.clone()) as Arc<dyn std::any::Any + Send + Sync>)
 }
 
 #[cfg(test)]
@@ -191,21 +185,26 @@ mod tests {
 	}
 
 	#[test]
-	fn monitor_serialize_exposes_the_io_record_through_the_edge() {
+	fn monitor_serialize_exposes_the_capture_through_the_edge() {
 		let arena = Arena::new(1024).unwrap();
 		let generations = [];
 		let scope = scope_fixture(&generations, &arena);
 		let ctx = ContextImpl::root(&scope);
 
-		let handle = EdgeHandle::new(Arc::new(MonitorNode::new(ValueNode(11u32))) as Arc<ErasedNode<u32>>);
-		assert!(handle.serialize().is_none(), "no record before the first eval");
+		let layout = element_layout::<u32>();
+		let monitor = MonitorNode::new(core_types::record::RecordLift::<u32, _>::new(ValueNode(11u32)), &layout);
+		let handle = EdgeHandle::new_record::<u32>(Arc::new(monitor) as Arc<ErasedRecordNode>);
+		assert!(handle.serialize().is_none(), "no capture before the first eval");
 
-		let edge = handle.duplicate().downcast::<u32>().unwrap();
-		assert_eq!(edge.eval(&ctx), GPoll::Final(11));
+		let edge = handle.duplicate().downcast_record::<u32>().unwrap();
+		let GPoll::Final(_) = edge.eval(&ctx) else {
+			panic!("expected a final record");
+		};
 
-		let record = handle.serialize().expect("the eval landed a record");
-		let record = record.downcast_ref::<IORecord<CtxSnapshot, u32>>().expect("the record is the monitor io");
-		assert_eq!(record.output, 11);
+		let capture = handle.serialize().expect("the eval landed a capture");
+		let capture = capture.downcast_ref::<RecordCapture>().expect("the capture is a record capture");
+		let element = capture.materialize_element(&arena).expect("the capture materializes inside the window");
+		assert_eq!(*element.downcast_ref::<u32>().unwrap(), 11);
 	}
 
 	#[test]

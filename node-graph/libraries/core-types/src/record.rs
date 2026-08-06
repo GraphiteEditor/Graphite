@@ -752,7 +752,26 @@ pub struct RecordCapture {
 	bytes: crate::arena::ArenaWeak<Box<[u8]>>,
 }
 
+impl std::fmt::Debug for RecordCapture {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("RecordCapture(..)")
+	}
+}
+
 impl RecordCapture {
+	/// # Safety
+	/// `rec` must be a live record of `layout`.
+	pub unsafe fn capture(layout: &Layout, rec: Rec, arena: &crate::arena::Arena) -> Option<RecordCapture> {
+		let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(rec.ptr(), layout.size) }.into();
+		arena.alloc(bytes).map(|(_, weak)| RecordCapture { layout: layout.clone(), bytes: weak })
+	}
+
+	/// The captured element, cloned out through the layout's erased glue.
+	pub fn materialize_element(&self, arena: &crate::arena::Arena) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+		let bytes = self.bytes.upgrade(arena)?;
+		Some(unsafe { (self.layout.element.clone_out)(bytes.as_ptr()) })
+	}
+
 	pub fn materialize(&self, arena: &crate::arena::Arena) -> Option<Vec<(&'static str, Box<dyn crate::list::AnyAttributeValue>)>> {
 		let bytes = self.bytes.upgrade(arena)?;
 		Some(
@@ -762,56 +781,6 @@ impl RecordCapture {
 				.map(|field| (field.name, unsafe { (field.read_erased)(bytes.as_ptr().add(field.offset)) }))
 				.collect(),
 		)
-	}
-}
-
-// TODO: Convert to a `#[node_macro::node]` node once routing nodes forward
-// layouts and the macro grows a capture capability.
-/// The monitor over a record wire: forwards the record and captures an arena
-/// copy readable through the introspection window, like a frame memo.
-pub struct RecordMonitor<N> {
-	edge: N,
-	layout: Layout,
-	capture: std::sync::Mutex<Option<RecordCapture>>,
-}
-
-impl<N> RecordMonitor<N> {
-	pub fn new(edge: N, layout: &Layout) -> Self {
-		Self {
-			edge,
-			layout: layout.clone(),
-			capture: std::sync::Mutex::new(None),
-		}
-	}
-}
-
-impl<'e, C, N> Node<C> for RecordMonitor<N>
-where
-	C: crate::context::ExtractArena<ArenaRef = &'e crate::arena::Arena>,
-	N: Node<C, Output = RecordValue<'e>>,
-{
-	type Output = RecordValue<'e>;
-
-	fn eval(&self, input: &C) -> GPoll<RecordValue<'e>> {
-		let value = self.edge.eval(input);
-		if let GPoll::Final(record) | GPoll::Partial(record) = &value {
-			let bytes: Box<[u8]> = unsafe { std::slice::from_raw_parts(self.layout.rec(record).ptr(), self.layout.size) }.into();
-			let capture = input.arena().alloc(bytes).map(|(_, weak)| RecordCapture {
-				layout: self.layout.clone(),
-				bytes: weak,
-			});
-			*self.capture.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = capture;
-		}
-		value
-	}
-
-	fn layout(&self) -> Option<&Layout> {
-		Some(&self.layout)
-	}
-
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		let capture = self.capture.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()?;
-		Some(std::sync::Arc::new(capture))
 	}
 }
 

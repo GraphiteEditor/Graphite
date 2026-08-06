@@ -2,7 +2,6 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::value::RenderOutput;
-use graphene_std::application_io::Texture;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::gradient::GradientStops;
 use graphene_std::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
@@ -20,7 +19,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Context, Graphic, ProtoNodeIdentifier, SourceId, concrete, fn_type};
-use node_registry_macros::{async_node, clone_node, convert_node, frame_memo_node, into_node, lend_node, record_extract_node, record_lift_node};
+use node_registry_macros::{clone_node, convert_node, frame_memo_node, into_node, lend_node, record_extract_node, record_lift_node};
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutorHandle;
@@ -109,83 +108,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		// =============
 		// MONITOR NODES
 		// =============
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => ()]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<Artboard>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<Graphic>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<Vector>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<Raster<CPU>>]),
-		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<Raster<GPU>>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<GradientStops>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => String]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => IVec2]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => DVec2]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => DAffine2]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => Option<DAffine2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => bool]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => f64]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => u32]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => u64]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => BlendMode]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => Texture]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::application_io::resource::Resource]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::ReferencePoint]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::BooleanOperation]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::StrokeCap]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::StrokeJoin]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::PaintOrder]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::StrokeAlign]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::Stroke]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => Box<graphene_std::vector::VectorModification>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::PointSpacingType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => Option<f64>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<String>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<NodeId>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<f64>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<u8>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<bool>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<DAffine2>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<BlendMode>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<graphene_std::vector::style::GradientType>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<graphene_std::vector::style::GradientSpreadMethod>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => AttributeDyn]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => Graphic]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::text::Font]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => List<BrushStroke>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => DocumentNode]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::Footprint]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::blending::BlendMode]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::LuminanceCalculation]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::extract_xy::XY]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::text_nodes::StringCapitalization]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::RedGreenBlue]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::RedGreenBlueAlpha]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::animation::RealTimeMode]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::NoiseType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::FractalType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::CellularDistanceFunction]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::CellularReturnType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::DomainWarpType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::RelativeAbsolute]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::SelectiveColorChoice]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::GridType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::ArcType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::RowsOrColumns]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::MergeByDistanceAlgorithm]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::ExtrudeJoiningAlgorithm]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::PointSpacingType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::GradientType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::GradientSpreadMethod]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::ReferencePoint]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::text::TextAlign]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::ScaleType]),
-		async_node!(graphene_core::memo::MonitorNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::InterpolationDistribution]),
 		// ==========
 		// MEMO NODES
 		// ==========
@@ -354,31 +276,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 		record_lift_node!(wgpu_executor::WgpuPipelineCache),
 		#[cfg(feature = "gpu")]
 		record_extract_node!(wgpu_executor::WgpuPipelineCache),
-		(
-			ProtoNodeIdentifier::new("graphene_core::memo::MonitorNode"),
-			RegistryEntry {
-				io: NodeIOTypes::new(
-					concrete!(Context),
-					core_types::Type::Record(Box::new(core_types::Type::Generic(std::borrow::Cow::Borrowed("T")))),
-					vec![core_types::registry::generic_record_edge_type("T")],
-				),
-				constructor: |inputs| {
-					if inputs.len() != 1 {
-						return Err(ConstructionError::Arity { expected: 1, got: inputs.len() });
-					}
-					let mut inputs = inputs.into_iter();
-					let handle = inputs.next().unwrap();
-					let ty = handle.ty().clone();
-					let Some(layout) = handle.layout().cloned() else {
-						return Err(ConstructionError::MissingLayout);
-					};
-					let edge = handle.downcast_erased::<core_types::registry::ErasedRecordNode>(ty.clone())?;
-					let node = core_types::record::RecordMonitor::new(edge, &layout);
-					Ok(EdgeHandle::new_erased(std::sync::Arc::new(node) as std::sync::Arc<core_types::registry::ErasedRecordNode>, ty))
-				},
-			},
-		),
-		clone_node!(f64),
 		frame_memo_node!(f64),
 		lend_node!(f32),
 		clone_node!(f32),
@@ -630,30 +527,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>> {
 pub static NODE_REGISTRY: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, Vec<RegistryEntry>>> = once_cell::sync::Lazy::new(node_registry);
 
 mod node_registry_macros {
-	macro_rules! async_node {
-		// This `params` variant of the macro wraps the normal `fn_params` variant and is used as a shorthand for writing `T` instead of `() => T`
-		($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
-			async_node!($path, input: $input, fn_params: [ $(() => $type),*])
-		};
-		($path:ty, input: $input:ty, fn_params: [$first_arg:ty => $first:ty $(, $arg:ty => $type:ty)*]) => {
-			(
-				ProtoNodeIdentifier::new(stringify!($path)),
-				RegistryEntry {
-					io: NodeIOTypes::new(concrete!($input), concrete!($first), vec![fn_type!($first_arg, $first) $(, fn_type!($arg, $type))*]),
-					constructor: |inputs| {
-						let expected = [stringify!($first) $(, stringify!($type))*].len();
-						if inputs.len() != expected {
-							return Err(ConstructionError::Arity { expected, got: inputs.len() });
-						}
-						let mut inputs = inputs.into_iter();
-						let node = <$path>::new(inputs.next().unwrap().downcast::<$first>()? $(, inputs.next().unwrap().downcast::<$type>()?)*);
-						Ok(EdgeHandle::new(std::sync::Arc::new(node) as std::sync::Arc<ErasedNode<$first>>))
-					},
-				},
-			)
-		};
-	}
-
 	macro_rules! into_node {
 		(from: $from:ty, to: $to:ty) => {
 			(
@@ -854,7 +727,6 @@ mod node_registry_macros {
 		};
 	}
 
-	pub(crate) use async_node;
 	pub(crate) use clone_node;
 	pub(crate) use convert_node;
 	pub(crate) use frame_memo_node;
