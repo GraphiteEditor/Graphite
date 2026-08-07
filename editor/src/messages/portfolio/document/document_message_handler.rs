@@ -14,6 +14,8 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+use crate::messages::portfolio::document::guide_message::GuideLineMessage;
+use crate::messages::portfolio::document::guide_message_handler::{GuideLinesMessageContext, GuideLinesMessageHandler};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -85,6 +87,8 @@ pub struct DocumentMessageHandler {
 	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
 	#[serde(skip)]
 	pub data_panel_message_handler: DataPanelMessageHandler,
+	#[serde(flatten)]
+	pub guide_lines_message_handler: GuideLinesMessageHandler,
 
 	// ============================================
 	// Fields that are saved in the document format
@@ -159,6 +163,9 @@ pub struct DocumentMessageHandler {
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
+	/// Snap manager used exclusively for snapping guide lines during create/move operations.
+	#[serde(skip)]
+	guide_snap_manager: crate::messages::tool::common_functionality::snapping::SnapManager,
 }
 
 impl Default for DocumentMessageHandler {
@@ -172,6 +179,7 @@ impl Default for DocumentMessageHandler {
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
+			guide_lines_message_handler: GuideLinesMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -200,7 +208,9 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+
 			is_loaded: false,
+			guide_snap_manager: Default::default(),
 		}
 	}
 }
@@ -236,6 +246,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 
 				self.navigation_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::GuideLine(message) => {
+				// Apply snapping to guide create/move before forwarding to the handler.
+				let message = if self.snapping_state.snapping_enabled {
+					self.snap_guide_message(message, ipp, viewport)
+				} else {
+					message
+				};
+				let context = GuideLinesMessageContext {
+					document_to_viewport: self.metadata().document_to_viewport,
+				};
+				self.guide_lines_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Overlays(message) => {
 				let visibility_settings = self.overlays_visibility_settings;
@@ -1335,6 +1357,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.start_transaction();
 				self.history.push_undo(self.network_interface.clone());
+				self.history.push_guide_undo(self.current_guide_state());
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -1350,7 +1373,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			},
 			DocumentMessage::CancelTransaction => {
 				self.network_interface.finish_transaction();
-				self.history.discard_last_undo();
+				if let Some(guide_state) = self.history.discard_last_undo() {
+					self.guide_lines_message_handler.guide_lines = guide_state.guide_lines;
+					responses.add(OverlaysMessage::Draw);
+				}
 			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
@@ -1751,6 +1777,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
+		common.extend(self.guide_lines_message_handler.actions());
 
 		// Additional actions available on desktop
 		#[cfg(not(target_family = "wasm"))]
@@ -1914,6 +1941,59 @@ impl DocumentMessageHandler {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		ClickXRayIter::new(&self.network_interface, XRayTarget::Point(point))
+	}
+
+	fn snap_guide_message(&mut self, message: GuideLineMessage, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> GuideLineMessage {
+		use crate::messages::portfolio::document::utility_types::guide::GuideLineDirection;
+		use crate::messages::portfolio::document::utility_types::misc::SnapSource;
+		use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapTypeConfiguration};
+
+		let mut snap_manager = std::mem::take(&mut self.guide_snap_manager);
+
+		let mut snap_constrained = |document: &DocumentMessageHandler, raw_viewport: DVec2, direction: GuideLineDirection| -> DVec2 {
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let raw_doc = document_to_viewport.inverse().transform_point2(raw_viewport);
+			let snap_data = SnapData::new(document, ipp, viewport);
+			let point = SnapCandidatePoint::new_source(raw_doc, SnapSource::None);
+			let constraint = match direction {
+				// Horizontal guide: position varies on Y, constrain snap search along Y
+				GuideLineDirection::Horizontal => SnapConstraint::Line { origin: raw_doc, direction: DVec2::Y },
+				// Vertical guide: position varies on X, constrain snap search along X
+				GuideLineDirection::Vertical => SnapConstraint::Line { origin: raw_doc, direction: DVec2::X },
+			};
+			let snapped = snap_manager.constrained_snap(&snap_data, &point, constraint, SnapTypeConfiguration::default());
+			snap_manager.update_indicator(snapped.clone());
+			document_to_viewport.transform_point2(snapped.snapped_point_document)
+		};
+
+		let result = match message {
+			GuideLineMessage::CreateGuideLine { id, direction, mouse_x, mouse_y } => {
+				let snapped = snap_constrained(self, DVec2::new(mouse_x, mouse_y), direction);
+				GuideLineMessage::CreateGuideLine {
+					id,
+					direction,
+					mouse_x: snapped.x,
+					mouse_y: snapped.y,
+				}
+			}
+			GuideLineMessage::MoveGuideLine { id, mouse_x, mouse_y } => {
+				if let Some(guide_line) = self.guide_lines_message_handler.guide_lines.iter().find(|g| g.id == id) {
+					let direction = guide_line.direction;
+					let snapped = snap_constrained(self, DVec2::new(mouse_x, mouse_y), direction);
+					GuideLineMessage::MoveGuideLine {
+						id,
+						mouse_x: snapped.x,
+						mouse_y: snapped.y,
+					}
+				} else {
+					GuideLineMessage::MoveGuideLine { id, mouse_x, mouse_y }
+				}
+			}
+			other => other,
+		};
+
+		self.guide_snap_manager = snap_manager;
+		result
 	}
 
 	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
@@ -2403,6 +2483,13 @@ impl DocumentMessageHandler {
 		paths
 	}
 
+	pub fn current_guide_state(&self) -> crate::messages::portfolio::document::utility_types::guide::GuideLinesState {
+		crate::messages::portfolio::document::utility_types::guide::GuideLinesState {
+			guide_lines: self.guide_lines_message_handler.guide_lines.clone(),
+			guide_lines_visible: self.guide_lines_message_handler.guide_lines_visible,
+		}
+	}
+
 	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
@@ -2411,7 +2498,9 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
+		if legacy_applied {
+			self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
+		}
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2431,11 +2520,28 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.history.pop_undo()?;
-		let previous_network = self.install_history_snapshot(network_interface, viewport);
+		let network_snapshot = self.history.pop_undo();
+		let guide_snapshot = self.history.pop_guide_undo();
 
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		if network_snapshot.is_none() && guide_snapshot.is_none() {
+			return None;
+		}
+
+		if let Some(guide_state) = guide_snapshot {
+			let current_state = self.current_guide_state();
+			self.guide_lines_message_handler.guide_lines = guide_state.guide_lines;
+			self.guide_lines_message_handler.guide_lines_visible = guide_state.guide_lines_visible;
+			self.history.push_guide_redo(current_state);
+			responses.add(OverlaysMessage::Draw);
+			responses.add(PortfolioMessage::UpdateDocumentWidgets);
+		}
+
+		let previous_network = if let Some(network_interface) = network_snapshot {
+			Some(self.install_history_snapshot(network_interface, viewport))
+		} else {
+			None
+		};
+
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
@@ -2443,8 +2549,9 @@ impl DocumentMessageHandler {
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
 		responses.add(NodeGraphMessage::UnloadWires);
 
-		Some(previous_network)
+		previous_network
 	}
+
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
@@ -2453,25 +2560,50 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
+		if legacy_applied {
+			self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
+		}
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.history.pop_redo()?;
-		let previous_network = self.install_history_snapshot(network_interface, viewport);
+		let network_snapshot = self.history.pop_redo();
+		let guide_snapshot = self.history.pop_guide_redo();
 
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		if network_snapshot.is_none() && guide_snapshot.is_none() {
+			return None;
+		}
+
+		if let Some(guide_state) = guide_snapshot {
+			let current_state = self.current_guide_state();
+			self.guide_lines_message_handler.guide_lines = guide_state.guide_lines;
+			self.guide_lines_message_handler.guide_lines_visible = guide_state.guide_lines_visible;
+			self.history.push_guide_undo(current_state);
+			responses.add(OverlaysMessage::Draw);
+			responses.add(PortfolioMessage::UpdateDocumentWidgets);
+		}
+
+		let previous_network = if let Some(network_interface) = network_snapshot {
+			Some(self.install_history_snapshot(network_interface, viewport))
+		} else {
+			None
+		};
+
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
-		Some(previous_network)
+
+		previous_network
 	}
 
 	pub fn current_hash(&self) -> u64 {
-		self.network_interface.document_network().current_hash()
+		use std::hash::{Hash, Hasher};
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		self.network_interface.document_network().current_hash().hash(&mut hasher);
+		self.guide_lines_message_handler.guide_lines.hash(&mut hasher);
+		self.guide_lines_message_handler.guide_lines_visible.hash(&mut hasher);
+		hasher.finish()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
