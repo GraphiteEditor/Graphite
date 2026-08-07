@@ -55,9 +55,8 @@ mod blend_std {
 				GradientStop { position, midpoint: 0.5, color }
 			});
 
-			let mut gradient = Gradient::new(stops);
-			gradient.elide_default_attributes(false);
-			gradient
+			// Positions stay explicit because eliding them needs the cyclic flag this impl can't read, and a wrong guess would relocate the stops
+			Gradient::new(stops)
 		}
 	}
 }

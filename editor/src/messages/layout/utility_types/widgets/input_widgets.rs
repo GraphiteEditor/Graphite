@@ -599,11 +599,11 @@ pub struct SpectrumInput {
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]
 	pub track_css: String,
-	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated from `track`'s first stop.
+	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated by evaluating `track` at position 0.
 	#[serde(rename = "trackStartCSS")]
 	#[widget_builder(skip)]
 	pub track_start_css: String,
-	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated from `track`'s last stop.
+	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated by evaluating `track` at position 1.
 	#[serde(rename = "trackEndCSS")]
 	#[widget_builder(skip)]
 	pub track_end_css: String,

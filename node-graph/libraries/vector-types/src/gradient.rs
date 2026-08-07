@@ -76,8 +76,7 @@ impl From<GradientStops<Color>> for Gradient {
 	}
 }
 
-// Color picker round-trip: the caller should follow with `elide_default_attributes` (which needs the ramp's cyclic
-// flag to know the default distribution) to restore the canonical absence-as-default form
+// Color picker round-trip: faithful, since eliding default-restating attributes needs the cyclic flag that only the ramp conversion holds
 impl From<&GradientStops<SRGBA8>> for Gradient {
 	fn from(stops: &GradientStops<SRGBA8>) -> Self {
 		let mut gradient = Gradient::from(stops.color.iter().map(|&color| Color::from(color)).collect::<Vec<_>>());
@@ -209,7 +208,6 @@ impl From<&GradientRamp> for GradientStops<SRGBA8> {
 	}
 }
 
-// Color picker round-trip: routes through the runtime type so default-restating attributes elide
 impl From<&GradientStops<SRGBA8>> for GradientRamp {
 	fn from(stops: &GradientStops<SRGBA8>) -> Self {
 		Self::from(Gradient::from(stops))
@@ -240,14 +238,18 @@ impl From<&Gradient> for GradientRamp<SRGBA8> {
 	}
 }
 
+// Color picker round-trip: the picker sends every position explicitly, so elide the ones restating the even distribution the cyclic flag selects
 impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 	fn from(ramp: &GradientRamp<SRGBA8>) -> Self {
+		let mut gradient = Gradient::from(&ramp.stops);
+		gradient.elide_default_attributes(ramp.gradient_cyclic);
+
 		Self {
 			gradient_spread: ramp.gradient_spread,
 			gradient_space: ramp.gradient_space,
 			gradient_cyclic: ramp.gradient_cyclic,
 			gradient_hue_direction: ramp.gradient_hue_direction,
-			..Self::from(&ramp.stops)
+			..Self::from(gradient)
 		}
 	}
 }
@@ -1565,12 +1567,29 @@ mod tests {
 
 	#[test]
 	fn gradient_ui_write_back_elides_default_attributes() {
+		// The picker always sends explicit positions, so the write-back is what restores the canonical absence-as-default form
+		let write_back = |gradient: &Gradient, gradient_cyclic: bool| {
+			let sent = GradientRamp::<SRGBA8> { gradient_cyclic, ..gradient.into() };
+			Gradient::from(&GradientRamp::from(&sent))
+		};
+
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		gradient.set_positions(&[0., 0.5, 1.]);
 		gradient.set_midpoints(&[0.7, 0.5, 0.5]);
 
-		let round_tripped = Gradient::from(&GradientStops::<SRGBA8>::from(&gradient));
-		assert!(!round_tripped.has_position_attribute(), "materialized even positions should elide on write-back");
-		assert_eq!(round_tripped.midpoints(), vec![0.7, 0.5, 0.5]);
+		let written_back = write_back(&gradient, false);
+		assert!(!written_back.has_position_attribute(), "the even distribution should elide on write-back");
+		assert_eq!(written_back.midpoints(), vec![0.7, 0.5, 0.5]);
+
+		// Cyclic ramps spread over one more interval, so thirds are the elidable distribution and halves are not
+		let mut cyclic = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		cyclic.set_positions(&[0., 1. / 3., 2. / 3.]);
+		assert!(!write_back(&cyclic, true).has_position_attribute(), "the cyclic even distribution should elide on write-back");
+		assert_eq!(
+			write_back(&gradient, true).positions(true),
+			vec![0., 0.5, 1.],
+			"positions that only look default when non-cyclic must survive"
+		);
 	}
 
 	#[test]
