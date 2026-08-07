@@ -49,6 +49,8 @@ pub enum ColorPickerMessage {
 	GradientUpdate { update: SpectrumInputUpdate },
 	/// Gradient spread choice from the gradient "Ends" selection.
 	SetGradientSpread { gradient_spread: GradientSpread },
+	/// Gradient cyclic choice: whether the stops wrap as a cycle, from the "Cyclic" checkbox.
+	SetGradientCyclic { gradient_cyclic: bool },
 	/// Gradient space choice: the color space the stops interpolate in, from the "Space" dropdown.
 	SetGradientSpace { gradient_space: GradientSpace },
 	/// Gradient hue direction choice: which way around the hue wheel the stops interpolate in a polar space, from the "Arc" dropdown.

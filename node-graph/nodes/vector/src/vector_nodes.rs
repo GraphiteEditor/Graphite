@@ -47,6 +47,7 @@ use vector_types::vector::{PointDomain, RegionDomain};
 /// randomized draws up to it.
 fn assign_color_at(
 	gradient: &Gradient,
+	gradient_cyclic: bool,
 	gradient_space: vector_types::GradientSpace,
 	gradient_hue_direction: vector_types::GradientHueDirection,
 	position: usize,
@@ -70,7 +71,7 @@ fn assign_color_at(
 			_ => position as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 		},
 	};
-	gradient.evaluate(factor, Default::default(), gradient_space, gradient_hue_direction)
+	gradient.evaluate(factor, Default::default(), gradient_cyclic, gradient_space, gradient_hue_direction)
 }
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
@@ -113,6 +114,7 @@ fn assign_colors<'e>(
 	if gradient.is_empty() {
 		return Ok((content.lane(lane).map_element(element), Attr(existing_fill), Attr(existing_stroke)));
 	}
+	let gradient_cyclic = gradient.lane(0).attr::<vector_types::markers::GradientCyclic>();
 	let gradient_space = gradient.lane(0).attr::<vector_types::markers::GradientSpace>();
 	let gradient_hue_direction = gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>();
 	let gradient_element = gradient.element_ref(0);
@@ -125,7 +127,17 @@ fn assign_colors<'e>(
 		false => gradient_element,
 	};
 
-	let color = assign_color_at(gradient_element, gradient_space, gradient_hue_direction, lane, content.len(), randomize, seed, repeat_every);
+	let color = assign_color_at(
+		gradient_element,
+		gradient_cyclic,
+		gradient_space,
+		gradient_hue_direction,
+		lane,
+		content.len(),
+		randomize,
+		seed,
+		repeat_every,
+	);
 	let paint = List::new_from_element(color).into_graphic_list();
 	let parked = park_paint(ctx.arena(), paint)?;
 
@@ -183,6 +195,7 @@ fn assign_colors_graphic<'e>(
 	if gradient.is_empty() {
 		return Ok(content.lane(lane).map_element(original.clone()));
 	}
+	let gradient_cyclic = gradient.lane(0).attr::<vector_types::markers::GradientCyclic>();
 	let gradient_space = gradient.lane(0).attr::<vector_types::markers::GradientSpace>();
 	let gradient_hue_direction = gradient.lane(0).attr::<vector_types::markers::GradientHueDirection>();
 	let gradient_element = gradient.element_ref(0);
@@ -230,7 +243,17 @@ fn assign_colors_graphic<'e>(
 		Some(mut rows) => {
 			for row in 0..rows.len() {
 				let has_stroke = rows.element(row).is_some_and(|vector| vector.stroke.is_some());
-				let color = assign_color_at(gradient_element, gradient_space, gradient_hue_direction, position + row, length, randomize, seed, repeat_every);
+				let color = assign_color_at(
+					gradient_element,
+					gradient_cyclic,
+					gradient_space,
+					gradient_hue_direction,
+					position + row,
+					length,
+					randomize,
+					seed,
+					repeat_every,
+				);
 				let paint = List::new_from_element(color).into_graphic_list();
 				if fill {
 					set_paint_attribute_at(&mut rows, row, ATTR_FILL, paint.clone());

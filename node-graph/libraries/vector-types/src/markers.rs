@@ -10,6 +10,9 @@ core_types::attribute! {
 	pub GradientSpace("gradient_space"): crate::gradient::GradientSpace;
 	/// Gradient's `GradientHueDirection`, the hue path polar spaces interpolate along.
 	pub GradientHueDirection("gradient_hue_direction"): crate::gradient::GradientHueDirection;
+	/// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
+	/// interpolates from the last stop through the 1|0 boundary back to the first.
+	pub GradientCyclic("gradient_cyclic"): bool;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientForm("gradient_form"): crate::gradient::GradientForm;
 	/// Optional `Vector` that overrides the item's own geometry for click-target generation.
@@ -30,6 +33,7 @@ core_types::named_value! {
 
 pub const ATTR_GRADIENT_SPREAD: &str = GradientSpread::NAME;
 pub const ATTR_GRADIENT_FORM: &str = GradientForm::NAME;
+pub const ATTR_GRADIENT_CYCLIC: &str = GradientCyclic::NAME;
 pub const ATTR_GRADIENT_SPACE: &str = GradientSpace::NAME;
 pub const ATTR_GRADIENT_HUE_DIRECTION: &str = GradientHueDirection::NAME;
 pub const ATTR_EDITOR_CLICK_TARGET: &str = EditorClickTarget::NAME;

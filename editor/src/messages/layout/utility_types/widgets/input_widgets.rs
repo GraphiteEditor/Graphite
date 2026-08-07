@@ -589,6 +589,9 @@ pub struct SpectrumInput {
 	/// The color space the track's stops interpolate in, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_space: GradientSpace,
+	/// Whether the track's stops wrap as a cycle, used to compute `track_css` and by the frontend to draw the wrapped interval's midpoint diamond.
+	#[serde(rename = "trackCyclic")]
+	pub track_cyclic: bool,
 	/// The hue direction the track's stops interpolate with in a polar space, used to compute `track_css`. Not sent to the frontend.
 	#[serde(skip)]
 	pub track_hue_direction: GradientHueDirection,
@@ -596,11 +599,11 @@ pub struct SpectrumInput {
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]
 	pub track_css: String,
-	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated from `track`'s first stop.
+	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated by evaluating `track` at position 0.
 	#[serde(rename = "trackStartCSS")]
 	#[widget_builder(skip)]
 	pub track_start_css: String,
-	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated from `track`'s last stop.
+	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated by evaluating `track` at position 1.
 	#[serde(rename = "trackEndCSS")]
 	#[widget_builder(skip)]
 	pub track_end_css: String,
@@ -641,7 +644,8 @@ pub struct SpectrumInput {
 pub struct SpectrumMarker {
 	/// Position (0..1) of the marker along the spectrum track.
 	position: f64,
-	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
+	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true.
+	/// The last marker's value controls the wrapped interval when `track_cyclic` is set, and is otherwise ignored.
 	midpoint: f64,
 	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
 	#[serde(rename = "handleColorCSS")]

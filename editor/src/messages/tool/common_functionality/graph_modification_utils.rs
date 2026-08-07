@@ -407,6 +407,11 @@ pub fn get_chain_source_gradient_space(layer: LayerNodeIdentifier, network_inter
 	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_space)
 }
 
+/// The cyclic wrap flag baked into the 'Gradient Value' node feeding a layer's chain.
+pub fn get_chain_source_gradient_cyclic(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
+	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_cyclic)
+}
+
 /// The hue direction baked into the 'Gradient Value' node feeding a layer's chain.
 pub fn get_chain_source_gradient_hue_direction(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientHueDirection> {
 	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_hue_direction)
@@ -768,6 +773,7 @@ pub struct FillNodeGradient {
 	pub gradient_form: GradientForm,
 	pub gradient_spread: GradientSpread,
 	pub gradient_space: GradientSpace,
+	pub gradient_cyclic: bool,
 	pub gradient_hue_direction: GradientHueDirection,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
@@ -783,6 +789,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	};
 	let gradient_spread = ramp.gradient_spread;
 	let gradient_space = ramp.gradient_space;
+	let gradient_cyclic = ramp.gradient_cyclic;
 	let gradient_hue_direction = ramp.gradient_hue_direction;
 	let stops = Gradient::from(ramp);
 	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
@@ -802,6 +809,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		gradient_form,
 		gradient_spread,
 		gradient_space,
+		gradient_cyclic,
 		gradient_hue_direction,
 		transform,
 		transform_is_value: transform_input.is_some(),
@@ -953,6 +961,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					gradient_form,
 					gradient_spread: ramp.gradient_spread,
 					gradient_space: ramp.gradient_space,
+					gradient_cyclic: ramp.gradient_cyclic,
 					gradient_hue_direction: ramp.gradient_hue_direction,
 					transform,
 				});

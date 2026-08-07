@@ -1151,7 +1151,7 @@ mod gradient_shape_migration {
 		assert_eq!(ramp.gradient_space, GradientSpace::RgbGamma, "the pre-ramp flat form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
-		assert_eq!(gradient.positions(), vec![0., 0.25]);
+		assert_eq!(gradient.positions(false), vec![0., 0.25]);
 		assert!(gradient.has_midpoint_attribute(), "the flat form must parse faithfully");
 	}
 
@@ -1165,7 +1165,7 @@ mod gradient_shape_migration {
 		assert_eq!(ramp.gradient_space, GradientSpace::RgbGamma, "the pre-ramp tuple form should carry the era's gamma");
 
 		let gradient = Gradient::from(ramp);
-		assert_eq!(gradient.positions(), vec![0., 1.]);
+		assert_eq!(gradient.positions(false), vec![0., 1.]);
 		assert!(!gradient.has_position_attribute(), "even legacy tuple positions should elide");
 	}
 
@@ -1187,6 +1187,10 @@ mod gradient_shape_migration {
 		let TaggedValue::LegacyGradient(legacy) = load(json) else {
 			panic!("the ancient full struct should become a legacy gradient value")
 		};
-		assert_eq!(Gradient::from(legacy.stops).positions(), vec![0., 1.], "the nested tuple stops should parse through the field adapter");
+		assert_eq!(
+			Gradient::from(legacy.stops).positions(false),
+			vec![0., 1.],
+			"the nested tuple stops should parse through the field adapter"
+		);
 	}
 }
