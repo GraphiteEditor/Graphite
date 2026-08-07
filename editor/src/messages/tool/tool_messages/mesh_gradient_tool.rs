@@ -128,7 +128,7 @@ struct SelectedMeshGradient {
 
 impl SelectedMeshGradient {
 	pub fn update_gradient_in_graph(&mut self, responses: &mut VecDeque<Message>) {
-		responses.add(GraphOperationMessage::MeshGradientValueSet {
+		responses.add(GraphOperationMessage::MeshGradientSet {
 			layer: self.layer,
 			mesh_gradient: self.gradient.clone(),
 		});

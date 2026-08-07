@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	get_fill_input_node_id, get_upstream_gradient_value_node_id, get_upstream_mesh_gradient_value_node_id, gradient_chain_target_input,
+	get_fill_input_node_id, get_fill_node_id_with_direct_fill_input, get_upstream_gradient_value_node_id, get_upstream_mesh_gradient_value_node_id, gradient_chain_target_input,
 };
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -573,14 +573,29 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Write the mesh gradient to the 'Mesh Gradient Value' node feeding the layer.
-	pub fn mesh_gradient_value_set(&mut self, mesh_gradient: MeshGradient) {
+	/// Write the mesh gradient back to the value source feeding the layer.
+	pub fn mesh_gradient_set(&mut self, mesh_gradient: MeshGradient) {
 		let Some(output_layer) = self.get_output_layer() else { return };
-		let Some(mesh_gradient_value_id) = get_upstream_mesh_gradient_value_node_id(output_layer, self.network_interface) else {
+
+		if let Some(mesh_gradient_value_id) = get_upstream_mesh_gradient_value_node_id(output_layer, self.network_interface) {
+			let input_connector = InputConnector::node(mesh_gradient_value_id, graphene_std::math_nodes::mesh_gradient_value::MeshGradientInput::INDEX);
+			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false), false);
+			return;
+		}
+
+		let Some(fill_node_id) = get_fill_node_id_with_direct_fill_input(output_layer, self.network_interface) else {
 			return;
 		};
-		let input_connector = InputConnector::node(mesh_gradient_value_id, graphene_std::math_nodes::mesh_gradient_value::MeshGradientInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupMeshGradientInput::INDEX),
+			NodeInput::value(TaggedValue::MeshGradient(mesh_gradient.clone()), false),
+			true,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Graphic>>::INDEX),
+			NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false),
+			false,
+		);
 	}
 
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.

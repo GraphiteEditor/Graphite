@@ -47,7 +47,7 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		spread_method: GradientSpreadMethod,
 	},
-	MeshGradientValueSet {
+	MeshGradientSet {
 		layer: LayerNodeIdentifier,
 		mesh_gradient: MeshGradient,
 	},

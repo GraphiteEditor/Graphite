@@ -791,7 +791,7 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	let network = document.network_interface.nested_network(&network_path).expect("the found network path should resolve");
 	let inputs = &network.nodes[&node_id].inputs;
 
-	assert_eq!(inputs.len(), 8, "the legacy Fill should upgrade to the 8-input shape");
+	assert_eq!(inputs.len(), 9, "the legacy Fill should upgrade to the 9-input shape");
 	let paint = &inputs[graphene_std::vector::fill::FillInput::<graphene_std::list::List<graphene_std::Graphic>>::INDEX];
 	assert!(
 		matches!(paint, graph_craft::document::NodeInput::Node { .. }),
@@ -806,5 +806,10 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 	assert!(
 		matches!(transform, Some(TaggedValue::DAffine2(_))),
 		"the transform input should hold a matrix, but became {transform:?}"
+	);
+	let backup_mesh_gradient = inputs[graphene_std::vector::fill::BackupMeshGradientInput::INDEX].as_value();
+	assert!(
+		matches!(backup_mesh_gradient, Some(TaggedValue::MeshGradient(_))),
+		"the backup mesh gradient input should hold a mesh gradient, but became {backup_mesh_gradient:?}"
 	);
 }

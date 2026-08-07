@@ -920,22 +920,16 @@ impl MeshGradientEvaluator {
 	}
 
 	/// Recursively subdivide only the regions whose parallelogram does not approximate the source geometry within the given tolerance.
-	pub fn subdivide_patches_adaptive(
-		&self,
-		maximum_subdivisions_per_patch_per_axis: usize,
-		mesh_transform: DAffine2,
-		parent_to_viewport: DAffine2,
-		position_error_tolerance: f64,
-	) -> Option<Vec<MeshSubpatch>> {
-		if !maximum_subdivisions_per_patch_per_axis.is_power_of_two() || !position_error_tolerance.is_finite() || position_error_tolerance < 0. {
+	pub fn subdivide_patches_adaptive(&self, minimum_subpatch_size: f64, mesh_transform: DAffine2, parent_transform: DAffine2, position_error_tolerance: f64) -> Option<Vec<MeshSubpatch>> {
+		if !position_error_tolerance.is_finite() || position_error_tolerance < 0. {
 			return None;
 		}
 
 		let samples = [0., 0.25, 0.5, 0.75, 1.];
 		let mut subpatches = Vec::new();
 		for (patch_index, patch) in self.patches.iter().enumerate() {
-			let mut pending = vec![(0., 0., 1., 1_usize)];
-			while let Some((u_start, v_start, stride, subdivisions_per_axis)) = pending.pop() {
+			let mut pending = vec![(0., 0., 1.)];
+			while let Some((u_start, v_start, stride)) = pending.pop() {
 				let corner_uvs = [
 					DVec2::new(u_start, v_start),
 					DVec2::new(u_start + stride, v_start),
@@ -945,6 +939,15 @@ impl MeshGradientEvaluator {
 				let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.eval_position(uv.x, uv.y)));
 				let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
 
+				let patch_to_viewport = parent_transform * mesh_transform;
+				let [top_left, top_right, bottom_left, bottom_right] = corner_uvs.map(|uv| patch_to_viewport.transform_point2(patch.eval_position(uv.x, uv.y)));
+
+				let u_size = top_left.distance(top_right).min(bottom_left.distance(bottom_right));
+				let v_size = top_left.distance(bottom_left).min(top_right.distance(bottom_right));
+				let subpatch_size = u_size.min(v_size);
+
+				let reached_minimum_size = subpatch_size <= minimum_subpatch_size;
+
 				let mut within_tolerance = true;
 				'error_samples: for &local_v in &samples {
 					for &local_u in &samples {
@@ -953,7 +956,7 @@ impl MeshGradientEvaluator {
 						let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
 
 						let position_error_vector = expected_pos - approximated_pos;
-						let position_error = parent_to_viewport.transform_vector2(position_error_vector).length();
+						let position_error = parent_transform.transform_vector2(position_error_vector).length();
 						if !position_error.is_finite() || position_error > position_error_tolerance {
 							within_tolerance = false;
 							break 'error_samples;
@@ -961,7 +964,7 @@ impl MeshGradientEvaluator {
 					}
 				}
 
-				if within_tolerance || subdivisions_per_axis >= maximum_subdivisions_per_patch_per_axis {
+				if within_tolerance || reached_minimum_size {
 					subpatches.push(MeshSubpatch {
 						corners: std::array::from_fn(|index| MeshSubpatchVertex {
 							position: corner_positions[index],
@@ -972,12 +975,11 @@ impl MeshGradientEvaluator {
 					});
 				} else {
 					let half_stride = stride / 2.;
-					let child_subdivisions_per_axis = subdivisions_per_axis * 2;
 					pending.extend([
-						(u_start + half_stride, v_start + half_stride, half_stride, child_subdivisions_per_axis),
-						(u_start, v_start + half_stride, half_stride, child_subdivisions_per_axis),
-						(u_start + half_stride, v_start, half_stride, child_subdivisions_per_axis),
-						(u_start, v_start, half_stride, child_subdivisions_per_axis),
+						(u_start + half_stride, v_start + half_stride, half_stride),
+						(u_start, v_start + half_stride, half_stride),
+						(u_start + half_stride, v_start, half_stride),
+						(u_start, v_start, half_stride),
 					]);
 				}
 			}

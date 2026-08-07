@@ -273,11 +273,10 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
-// FIXME: Use minimum subpatch size in viewport instead
-const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 32;
 const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 1.5;
-const MESH_MINIMUM_CLIP_INFLATION: f64 = 0.01;
-const MESH_MAXIMUM_CLIP_INFLATION: f64 = 12.8;
+const MESH_MAXIMUM_CLIP_INFLATION: f64 = 0.5;
+
+const MESH_MINIMUM_SUBPATCH_SIZE: f64 = 2.;
 
 fn mesh_linear_approximated_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, depth: usize) -> Vec<(f32, T)>
 where
@@ -333,9 +332,9 @@ fn mesh_subpatch_inflation(subpatch: &MeshSubpatch) -> (f64, f64) {
 	let subpatch_transform = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
 	let (_, smallest_scale) = singular_values(subpatch_transform);
 	let clip_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
-		(1. / smallest_scale).clamp(MESH_MINIMUM_CLIP_INFLATION, MESH_MAXIMUM_CLIP_INFLATION)
+		(1. / smallest_scale).min(MESH_MAXIMUM_CLIP_INFLATION)
 	} else {
-		MESH_MINIMUM_CLIP_INFLATION
+		0.
 	};
 
 	(clip_inflation, clip_inflation * 2.)
@@ -2661,21 +2660,8 @@ impl Render for List<MeshGradient> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let viewport_zoom = if render_params.viewport_zoom.is_finite() && render_params.viewport_zoom > 0. {
-				render_params.viewport_zoom
-			} else {
-				1.
-			};
-
-			let error_to_viewport = DAffine2::from_scale(DVec2::splat(viewport_zoom)) * parent_transform;
-
 			let Some(evaluator) = mesh_gradient.evaluator() else { continue };
-			let Some(subpatches) = evaluator.subdivide_patches_adaptive(
-				MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
-				mesh_transform,
-				error_to_viewport,
-				MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
-			) else {
+			let Some(subpatches) = evaluator.subdivide_patches_adaptive(MESH_MINIMUM_SUBPATCH_SIZE, mesh_transform, parent_transform, MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT) else {
 				continue;
 			};
 

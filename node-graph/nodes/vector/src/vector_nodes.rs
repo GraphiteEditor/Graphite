@@ -193,6 +193,7 @@ async fn fill<V, F: IntoGraphicList + 'n + Send + 'static>(
 	_spread_method: Item<GradientSpreadMethod>,
 	_has_transform: Item<bool>,
 	_transform: Item<DAffine2>,
+	_backup_mesh_gradient: Item<MeshGradient>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + 'n + Send,
