@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientForm, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -48,24 +48,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				layer,
 				gradient,
 				gradient_form,
-				gradient_spread,
-				gradient_space,
-				gradient_cyclic,
-				gradient_hue_direction,
-				gradient_interpolation,
+				gradient_settings,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(
-						gradient,
-						gradient_form,
-						gradient_spread,
-						gradient_space,
-						gradient_cyclic,
-						gradient_hue_direction,
-						gradient_interpolation,
-						transform,
-					);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_settings, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -995,10 +982,13 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let gradient_spread = convert_gradient_spread(linear.spread_method());
 			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
-			let gradient_space = gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma);
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, false, Default::default(), Default::default(), transform);
+			let settings = GradientSettings {
+				spread: convert_gradient_spread(linear.spread_method()),
+				space: gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma),
+				..Default::default()
+			};
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -1021,10 +1011,12 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let gradient_spread = convert_gradient_spread(radial.spread_method());
-			let gradient_space = gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma);
-
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, false, Default::default(), Default::default(), transform);
+			let settings = GradientSettings {
+				spread: convert_gradient_spread(radial.spread_method()),
+				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),
+				..Default::default()
+			};
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

@@ -1633,6 +1633,7 @@ impl GradientInterpolation {
 /// The whole-ramp attributes governing how a gradient plays back, read together off a gradient item so the
 /// sampling entry points take one argument instead of a widening list of same-typed positional ones.
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GradientSettings {
 	pub spread: GradientSpread,
 	pub cyclic: bool,
@@ -1848,6 +1849,50 @@ mod tests {
 		assert!(
 			oklab.attribute::<GradientSpace>(ATTR_GRADIENT_SPACE).is_none(),
 			"the default OkLab must stay absent rather than materialize"
+		);
+	}
+
+	#[test]
+	fn gradient_hue_direction_round_trips_through_the_item_attribute() {
+		let ramp = GradientRamp {
+			gradient_hue_direction: GradientHueDirection::Longer,
+			..GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]))
+		};
+
+		let item = Item::<Gradient>::from(ramp.clone());
+		assert_eq!(
+			item.attribute_cloned_or_default::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION),
+			GradientHueDirection::Longer,
+			"the runtime item should carry the hue direction as its attribute"
+		);
+		assert_eq!(GradientRamp::from(&item), ramp);
+
+		let shorter = Item::<Gradient>::from(GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])));
+		assert!(
+			shorter.attribute::<GradientHueDirection>(ATTR_GRADIENT_HUE_DIRECTION).is_none(),
+			"the default Shorter must stay absent rather than materialize"
+		);
+	}
+
+	#[test]
+	fn gradient_interpolation_round_trips_through_the_item_attribute() {
+		let ramp = GradientRamp {
+			gradient_interpolation: GradientInterpolation::Smooth,
+			..GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]))
+		};
+
+		let item = Item::<Gradient>::from(ramp.clone());
+		assert_eq!(
+			item.attribute_cloned_or_default::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION),
+			GradientInterpolation::Smooth,
+			"the runtime item should carry the interpolation as its attribute"
+		);
+		assert_eq!(GradientRamp::from(&item), ramp);
+
+		let linear = Item::<Gradient>::from(GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])));
+		assert!(
+			linear.attribute::<GradientInterpolation>(ATTR_GRADIENT_INTERPOLATION).is_none(),
+			"the default Linear must stay absent rather than materialize"
 		);
 	}
 

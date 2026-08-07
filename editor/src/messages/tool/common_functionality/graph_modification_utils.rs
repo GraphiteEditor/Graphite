@@ -14,7 +14,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSpace, GradientSpread, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 
@@ -397,28 +397,9 @@ fn get_chain_source_gradient_ramp(layer: LayerNodeIdentifier, network_interface:
 	Some(ramp)
 }
 
-/// The spread baked into the 'Gradient Value' node feeding a layer's chain.
-pub fn get_chain_source_gradient_spread(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSpread> {
-	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_spread)
-}
-
-/// The space baked into the 'Gradient Value' node feeding a layer's chain.
-pub fn get_chain_source_gradient_space(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSpace> {
-	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_space)
-}
-
-/// The cyclic wrap flag baked into the 'Gradient Value' node feeding a layer's chain.
-pub fn get_chain_source_gradient_cyclic(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
-	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_cyclic)
-}
-
-/// The hue direction baked into the 'Gradient Value' node feeding a layer's chain.
-pub fn get_chain_source_gradient_interpolation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientInterpolation> {
-	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_interpolation)
-}
-
-pub fn get_chain_source_gradient_hue_direction(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientHueDirection> {
-	Some(get_chain_source_gradient_ramp(layer, network_interface)?.gradient_hue_direction)
+/// The whole-ramp settings baked into the 'Gradient Value' node feeding a layer's chain.
+pub fn get_chain_source_gradient_settings(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientSettings> {
+	Some(get_chain_source_gradient_ramp(layer, network_interface)?.into())
 }
 
 /// Get the gradient stops of a layer, if any.
@@ -775,11 +756,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 pub struct FillNodeGradient {
 	pub stops: Gradient,
 	pub gradient_form: GradientForm,
-	pub gradient_spread: GradientSpread,
-	pub gradient_space: GradientSpace,
-	pub gradient_cyclic: bool,
-	pub gradient_hue_direction: GradientHueDirection,
-	pub gradient_interpolation: GradientInterpolation,
+	pub settings: GradientSettings,
 	pub transform: DAffine2,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
@@ -792,11 +769,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	let TaggedValue::GradientRamp(ramp) = fill_node.input(fill::FillInput)?.as_value()? else {
 		return None;
 	};
-	let gradient_spread = ramp.gradient_spread;
-	let gradient_space = ramp.gradient_space;
-	let gradient_cyclic = ramp.gradient_cyclic;
-	let gradient_hue_direction = ramp.gradient_hue_direction;
-	let gradient_interpolation = ramp.gradient_interpolation;
+	let settings = GradientSettings::from(ramp);
 	let stops = Gradient::from(ramp);
 	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientForm(value)) => value,
@@ -813,11 +786,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	Some(FillNodeGradient {
 		stops,
 		gradient_form,
-		gradient_spread,
-		gradient_space,
-		gradient_cyclic,
-		gradient_hue_direction,
-		gradient_interpolation,
+		settings,
 		transform,
 		transform_is_value: transform_input.is_some(),
 	})
@@ -966,11 +935,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					layer,
 					gradient: Gradient::from(ramp),
 					gradient_form,
-					gradient_spread: ramp.gradient_spread,
-					gradient_space: ramp.gradient_space,
-					gradient_cyclic: ramp.gradient_cyclic,
-					gradient_hue_direction: ramp.gradient_hue_direction,
-					gradient_interpolation: ramp.gradient_interpolation,
+					gradient_settings: ramp.into(),
 					transform,
 				});
 			}
