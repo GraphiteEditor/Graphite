@@ -118,6 +118,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.gradient_hue_direction_set(gradient_hue_direction);
 				}
 			}
+			GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_interpolation_set(gradient_interpolation);
+				}
+			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_set(opacity);

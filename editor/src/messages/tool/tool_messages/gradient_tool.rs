@@ -936,6 +936,10 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 		layer,
 		gradient_hue_direction: appearance.gradient_hue_direction,
 	});
+	responses.add(GraphOperationMessage::GradientInterpolationSet {
+		layer,
+		gradient_interpolation: appearance.gradient_interpolation,
+	});
 }
 
 impl GradientTool {
@@ -2021,6 +2025,7 @@ fn apply_stops_update(
 			responses.add(GraphOperationMessage::GradientSpaceSet { layer, gradient_space });
 			responses.add(GraphOperationMessage::GradientCyclicSet { layer, gradient_cyclic });
 			responses.add(GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction });
+			responses.add(GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation });
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {

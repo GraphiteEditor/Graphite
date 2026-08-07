@@ -77,6 +77,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		gradient_hue_direction: GradientHueDirection,
 	},
+	GradientInterpolationSet {
+		layer: LayerNodeIdentifier,
+		gradient_interpolation: GradientInterpolation,
+	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,

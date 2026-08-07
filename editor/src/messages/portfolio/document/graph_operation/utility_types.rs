@@ -810,6 +810,18 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Set the hue direction on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_interpolation_set(&mut self, gradient_interpolation: GradientInterpolation) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_interpolation, ..ramp };
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
 	pub fn gradient_hue_direction_set(&mut self, gradient_hue_direction: GradientHueDirection) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {

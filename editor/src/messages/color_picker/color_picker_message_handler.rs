@@ -529,6 +529,7 @@ impl ColorPickerMessageHandler {
 				gradient_space: self.gradient_space,
 				gradient_cyclic: self.gradient_cyclic,
 				gradient_hue_direction: self.gradient_hue_direction,
+				gradient_interpolation: self.gradient_interpolation,
 				..GradientRamp::from(&gradient)
 			}),
 		});
