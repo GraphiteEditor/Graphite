@@ -1621,6 +1621,8 @@ pub enum GradientInterpolation {
 	#[default]
 	Linear,
 	/// Transitions along a curve that flows through the stops without corners.
+	///
+	/// The rate of color change carries smoothly through each stop (C1 continuity) and never overshoots beyond the stop colors, properties of its spline: a Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) with Fritsch-Carlson tangent limiting.
 	Smooth,
 }
 
