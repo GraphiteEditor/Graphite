@@ -1,6 +1,6 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
+use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -92,8 +92,8 @@ impl From<&GradientStops<SRGBA8>> for Gradient {
 
 impl GradientStops<SRGBA8> {
 	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
-	pub fn to_css_linear_gradient(&self, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> String {
-		Gradient::from(self).to_css_linear_gradient(gradient_cyclic, gradient_space, gradient_hue_direction)
+	pub fn to_css_linear_gradient(&self, settings: GradientSettings) -> String {
+		Gradient::from(self).to_css_linear_gradient(settings)
 	}
 }
 
@@ -108,8 +108,8 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpread::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_spread: GradientSpread,
-	// TODO: Elide the default again (removing `legacy_gamma` and the serde aliases) when switching to the new document format and Ctrl-C node serialization format
-	#[cfg_attr(feature = "serde", serde(default = "GradientSpace::legacy_gamma", alias = "gradient_interpolation"))]
+	// TODO: Elide the default again (removing `legacy_gamma`) when switching to the new document format and Ctrl-C node serialization format
+	#[cfg_attr(feature = "serde", serde(default = "GradientSpace::legacy_gamma"))]
 	pub gradient_space: GradientSpace,
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
@@ -117,6 +117,9 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientHueDirection::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_hue_direction: GradientHueDirection,
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub gradient_interpolation: GradientInterpolation,
 }
 
 unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C> {
@@ -131,6 +134,7 @@ impl<C> From<GradientStops<C>> for GradientRamp<C> {
 			gradient_space: Default::default(),
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
+			gradient_interpolation: Default::default(),
 		}
 	}
 }
@@ -143,6 +147,7 @@ impl From<&Gradient> for GradientRamp {
 			gradient_space: Default::default(),
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
+			gradient_interpolation: Default::default(),
 		}
 	}
 }
@@ -182,6 +187,9 @@ impl From<GradientRamp> for Item<Gradient> {
 		if !ramp.gradient_hue_direction.is_default() {
 			item.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, ramp.gradient_hue_direction);
 		}
+		if !ramp.gradient_interpolation.is_default() {
+			item.set_attribute(ATTR_GRADIENT_INTERPOLATION, ramp.gradient_interpolation);
+		}
 		item
 	}
 }
@@ -194,6 +202,7 @@ impl From<&Item<Gradient>> for GradientRamp {
 			gradient_space: item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE),
 			gradient_cyclic: item.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC),
 			gradient_hue_direction: item.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION),
+			gradient_interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
 		}
 	}
 }
@@ -222,6 +231,7 @@ impl From<&GradientRamp> for GradientRamp<SRGBA8> {
 			gradient_space: ramp.gradient_space,
 			gradient_cyclic: ramp.gradient_cyclic,
 			gradient_hue_direction: ramp.gradient_hue_direction,
+			gradient_interpolation: ramp.gradient_interpolation,
 		}
 	}
 }
@@ -234,6 +244,7 @@ impl From<&Gradient> for GradientRamp<SRGBA8> {
 			gradient_space: Default::default(),
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
+			gradient_interpolation: Default::default(),
 		}
 	}
 }
@@ -249,6 +260,7 @@ impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 			gradient_space: ramp.gradient_space,
 			gradient_cyclic: ramp.gradient_cyclic,
 			gradient_hue_direction: ramp.gradient_hue_direction,
+			gradient_interpolation: ramp.gradient_interpolation,
 			..Self::from(gradient)
 		}
 	}
@@ -278,6 +290,10 @@ impl RenderComplexity for Gradient {
 	}
 }
 
+/// Controls accuracy vs. number of samples tradeoff.
+/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve.
+const SAMPLE_THRESHOLD: f64 = 2. / 255.;
+
 /// The effective midpoint domain shared by sampling and rendering: NaN reads as the linear default, and extremes are bounded to `0.01..=0.99` so curves stay finite and cheap to subdivide.
 fn sanitized_midpoint(midpoint: f64) -> f64 {
 	if midpoint.is_nan() { 0.5 } else { midpoint.clamp(0.01, 0.99) }
@@ -297,6 +313,22 @@ fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
 		let p = -1. / midpoint.log2();
 		t.powf(p)
 	}
+}
+
+/// Calls a color-space-generic function with the `color` crate space matching a [`GradientSpace`] variant.
+macro_rules! with_space {
+	($gradient_space:expr, $function:ident $(, $argument:expr)* $(,)?) => {
+		match $gradient_space {
+			GradientSpace::OkLab => $function::<color::Oklab>($($argument),*),
+			GradientSpace::OkLCh => $function::<color::Oklch>($($argument),*),
+			GradientSpace::Lab => $function::<color::Lab>($($argument),*),
+			GradientSpace::LCh => $function::<color::Lch>($($argument),*),
+			GradientSpace::Hsl => $function::<color::Hsl>($($argument),*),
+			GradientSpace::Hsv => $function::<Hsv>($($argument),*),
+			GradientSpace::RgbLinear => $function::<color::LinearSrgb>($($argument),*),
+			GradientSpace::RgbGamma => $function::<color::Srgb>($($argument),*),
+		}
+	};
 }
 
 /// Interpolates between two adjacent stops' colors at `t` across their interval, in the gradient's chosen color space.
@@ -431,6 +463,389 @@ impl color::ColorSpace for Hsv {
 fn max_gamma_channel_deviation(a: Color, b: Color) -> f64 {
 	let (a, b) = (a.to_gamma_srgb_channels(), b.to_gamma_srgb_channels());
 	(0..4).fold(0_f64, |max, i| max.max((a[i] - b[i]).abs() as f64))
+}
+
+/// A color's channels in the space `CS`, alongside its straight alpha.
+fn space_channels<CS: color::ColorSpace>(color: Color) -> [f64; 4] {
+	let [x, y, z] = CS::from_linear_srgb([color.r(), color.g(), color.b()]);
+	[x as f64, y as f64, z as f64, color.a() as f64]
+}
+
+/// The inverse of [`space_channels`], leaving an out-of-gamut result unclamped so it clips at render encoding.
+fn color_from_space_channels<CS: color::ColorSpace>(channels: [f64; 4]) -> Color {
+	let [red, green, blue] = CS::to_linear_srgb([channels[0] as f32, channels[1] as f32, channels[2] as f32]);
+	Color::from_rgbaf32_unchecked(red, green, blue, channels[3] as f32)
+}
+
+/// The channel carrying hue in a polar space, or `None` for a rectangular one.
+fn space_hue_index<CS: color::ColorSpace>() -> Option<usize> {
+	match CS::LAYOUT {
+		color::ColorSpaceLayout::HueFirst => Some(0),
+		color::ColorSpaceLayout::HueThird => Some(2),
+		_ => None,
+	}
+}
+
+/// The CSS Color 4 hue fixup: the signed arc between two hues taking the route the direction asks for.
+fn hue_delta(delta: f64, gradient_hue_direction: GradientHueDirection) -> f64 {
+	match gradient_hue_direction {
+		GradientHueDirection::Shorter => {
+			if delta > 180. {
+				delta - 360.
+			} else if delta < -180. {
+				delta + 360.
+			} else {
+				delta
+			}
+		}
+		GradientHueDirection::Longer => {
+			if 0. < delta && delta < 180. {
+				delta - 360.
+			} else if -180. < delta && delta <= 0. {
+				delta + 360.
+			} else {
+				delta
+			}
+		}
+		GradientHueDirection::Increasing => {
+			if delta < 0. {
+				delta + 360.
+			} else {
+				delta
+			}
+		}
+		GradientHueDirection::Decreasing => {
+			if delta > 0. {
+				delta - 360.
+			} else {
+				delta
+			}
+		}
+	}
+}
+
+/// Every knot's color in the space `CS`. An achromatic knot borrows its nearest chromatic neighbor's powerless
+/// hue, then the whole hue run accumulates its per-step fixup so the spline sees one continuous sequence rather
+/// than values that wrap at 360.
+fn knot_channels<CS: color::ColorSpace>(knots: &[GradientStop], gradient_hue_direction: GradientHueDirection) -> Vec<[f64; 4]> {
+	let mut channels: Vec<[f64; 4]> = knots.iter().map(|knot| space_channels::<CS>(knot.color)).collect();
+
+	let Some(hue_index) = space_hue_index::<CS>() else { return channels };
+
+	// Chroma (or saturation) is channel 1 in both polar layouts; the threshold scales to the space's lightness range
+	let achromatic = 1e-4 * CS::WHITE_COMPONENTS.iter().fold(0_f32, |max, &component| max.max(component)) as f64;
+	let chromatic: Vec<usize> = (0..channels.len()).filter(|&index| channels[index][1] >= achromatic).collect();
+	if chromatic.is_empty() {
+		return channels;
+	}
+
+	for index in 0..channels.len() {
+		if channels[index][1] < achromatic
+			&& let Some(&nearest) = chromatic.iter().min_by_key(|&&other| other.abs_diff(index))
+		{
+			channels[index][hue_index] = channels[nearest][hue_index];
+		}
+	}
+
+	for index in 1..channels.len() {
+		let previous = channels[index - 1][hue_index];
+		let delta = hue_delta(channels[index][hue_index].rem_euclid(360.) - previous.rem_euclid(360.), gradient_hue_direction);
+		channels[index][hue_index] = previous + delta;
+	}
+
+	channels
+}
+
+/// A monotone piecewise cubic Hermite interpolant (PCHIP). It passes through every sample and joins the pieces
+/// with matching slopes, while the Fritsch-Carlson limiter keeps each piece bounded by its own two samples, so
+/// an interpolated channel never overshoots the values it was built from.
+///
+/// Construction is O(n) and evaluation is O(log n) in the sample count.
+struct MonotoneSpline {
+	position: Vec<f64>,
+	value: Vec<f64>,
+	tangent: Vec<f64>,
+}
+
+impl MonotoneSpline {
+	fn new(position: Vec<f64>, value: Vec<f64>) -> Self {
+		let count = position.len();
+		if count < 2 {
+			let tangent = vec![0.; count];
+			return Self { position, value, tangent };
+		}
+
+		let secant: Vec<f64> = (0..count - 1)
+			.map(|index| {
+				let run = position[index + 1] - position[index];
+				if run.abs() < f64::EPSILON { 0. } else { (value[index + 1] - value[index]) / run }
+			})
+			.collect();
+
+		// A sign change or a flat run between neighboring secants pins that tangent to zero, which is what stops
+		// the curve from bulging past a local extreme
+		let mut tangent = Vec::with_capacity(count);
+		tangent.push(secant[0]);
+		for index in 1..count - 1 {
+			let (before, after) = (secant[index - 1], secant[index]);
+			tangent.push(if before * after <= 0. { 0. } else { (before + after) / 2. });
+		}
+		tangent.push(secant[count - 2]);
+
+		// Fritsch-Carlson: pull any tangent pair back inside the radius-3 circle around their shared secant
+		for index in 0..count - 1 {
+			if secant[index].abs() < f64::EPSILON {
+				tangent[index] = 0.;
+				tangent[index + 1] = 0.;
+				continue;
+			}
+
+			let (alpha, beta) = (tangent[index] / secant[index], tangent[index + 1] / secant[index]);
+			let magnitude = alpha * alpha + beta * beta;
+			if magnitude > 9. {
+				let scale = 3. / magnitude.sqrt();
+				tangent[index] = scale * alpha * secant[index];
+				tangent[index + 1] = scale * beta * secant[index];
+			}
+		}
+
+		Self { position, value, tangent }
+	}
+
+	fn evaluate(&self, at: f64) -> f64 {
+		let count = self.position.len();
+		if count == 0 {
+			return 0.;
+		}
+		if count == 1 || at <= self.position[0] {
+			return self.value[0];
+		}
+		if at >= self.position[count - 1] {
+			return self.value[count - 1];
+		}
+
+		let index = self.position.partition_point(|&position| position <= at).clamp(1, count - 1) - 1;
+		let run = self.position[index + 1] - self.position[index];
+		if run.abs() < f64::EPSILON {
+			return self.value[index + 1];
+		}
+
+		let t = (at - self.position[index]) / run;
+		let (t2, t3) = (t * t, t * t * t);
+
+		(2. * t3 - 3. * t2 + 1.) * self.value[index] + (t3 - 2. * t2 + t) * run * self.tangent[index] + (-2. * t3 + 3. * t2) * self.value[index + 1] + (t3 - t2) * run * self.tangent[index + 1]
+	}
+}
+
+/// The Smooth path: a monotone spline per color channel through every stop, traversed by a second monotone
+/// spline that maps ramp position to spline parameter. Fitting the stop and midpoint constraints into one
+/// global warp is what keeps the traversal rate continuous across stops, where independent per-interval
+/// curves (what Linear uses) would kink at each one.
+struct SmoothPath {
+	space: GradientSpace,
+	hue_index: Option<usize>,
+	channel: [MonotoneSpline; 4],
+	warp: MonotoneSpline,
+}
+
+impl SmoothPath {
+	fn new(stops: &[GradientStop], settings: GradientSettings) -> Self {
+		// A cyclic ramp gains two wrapped copies of each end, enough that the tangent estimate on either side of the
+		// 1|0 boundary sees the same neighborhood, so the loop's two views of the wrapped interval agree and the seam
+		// joins smoothly
+		let count = stops.len();
+		let mut knots: Vec<GradientStop> = Vec::with_capacity(count + 4);
+		if settings.cyclic && count >= 2 {
+			knots.push(GradientStop {
+				position: stops[count - 2].position - 1.,
+				..stops[count - 2]
+			});
+			knots.push(GradientStop {
+				position: stops[count - 1].position - 1.,
+				..stops[count - 1]
+			});
+			knots.extend_from_slice(stops);
+			knots.push(GradientStop {
+				position: stops[0].position + 1.,
+				..stops[0]
+			});
+			knots.push(GradientStop {
+				position: stops[1].position + 1.,
+				..stops[1]
+			});
+		} else {
+			knots.extend_from_slice(stops);
+		}
+
+		let channels = with_space!(settings.space, knot_channels, &knots, settings.hue_direction);
+		let parameter: Vec<f64> = (0..knots.len()).map(|index| index as f64).collect();
+		let channel = std::array::from_fn(|component| MonotoneSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect()));
+
+		// Each stop pins its own knot parameter and each midpoint the half-parameter between two, so one monotone
+		// curve satisfies every midpoint constraint at once
+		let mut warp_position = Vec::with_capacity(knots.len() * 2);
+		let mut warp_value = Vec::with_capacity(knots.len() * 2);
+		for (index, knot) in knots.iter().enumerate() {
+			warp_position.push(knot.position);
+			warp_value.push(index as f64);
+
+			if let Some(next) = knots.get(index + 1) {
+				let midpoint = knot.position + sanitized_midpoint(knot.midpoint) * (next.position - knot.position);
+				if midpoint > knot.position && midpoint < next.position {
+					warp_position.push(midpoint);
+					warp_value.push(index as f64 + 0.5);
+				}
+			}
+		}
+
+		Self {
+			space: settings.space,
+			hue_index: with_space!(settings.space, space_hue_index),
+			channel,
+			warp: MonotoneSpline::new(warp_position, warp_value),
+		}
+	}
+
+	fn evaluate(&self, t: f64) -> Color {
+		let parameter = self.warp.evaluate(t);
+		let mut channels: [f64; 4] = std::array::from_fn(|component| self.channel[component].evaluate(parameter));
+		if let Some(hue_index) = self.hue_index {
+			channels[hue_index] = channels[hue_index].rem_euclid(360.);
+		}
+
+		with_space!(self.space, color_from_space_channels, channels)
+	}
+}
+
+/// Stepped holds each stop's color the whole way to the next stop, so the ramp jumps at stops and midpoints are inert.
+fn stepped_color(stops: &[GradientStop], t: f64, gradient_cyclic: bool) -> Color {
+	let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return Color::BLACK };
+
+	// Before the first stop a cyclic ramp is still inside the wrapped interval, which the last stop's color holds
+	if t < first.position {
+		return if gradient_cyclic { last.color } else { first.color };
+	}
+	if t >= last.position {
+		return last.color;
+	}
+
+	stops.windows(2).find(|pair| t < pair[1].position).map_or(last.color, |pair| pair[0].color)
+}
+
+/// Linear traces the chord from each stop to the next, turning a corner at every stop, with the midpoint biasing
+/// the timing across each interval independently.
+fn linear_color(stops: &[GradientStop], t: f64, settings: GradientSettings) -> Color {
+	let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return Color::BLACK };
+
+	if settings.cyclic && (t < first.position || t > last.position) {
+		let wrap_length = first.position + 1. - last.position;
+		if wrap_length <= f64::EPSILON {
+			return first.color;
+		}
+
+		let local = if t >= last.position { t - last.position } else { t + 1. - last.position };
+		let adjusted_t = apply_midpoint(local / wrap_length, last.midpoint);
+		return interpolate_stop_colors(last.color, first.color, adjusted_t as f32, settings.space, settings.hue_direction);
+	}
+
+	if t <= first.position {
+		return first.color;
+	}
+	if t >= last.position {
+		return last.color;
+	}
+
+	for pair in stops.windows(2) {
+		let (a, b) = (&pair[0], &pair[1]);
+		if t >= a.position && t <= b.position {
+			let normalized_t = (t - a.position) / (b.position - a.position);
+			let adjusted_t = apply_midpoint(normalized_t, a.midpoint);
+			return interpolate_stop_colors(a.color, b.color, adjusted_t as f32, settings.space, settings.hue_direction);
+		}
+	}
+
+	Color::BLACK
+}
+
+/// Stepped's bake is exact rather than approximated: each interval emits its color at both ends, leaving the
+/// renderer's own interpolation nothing to traverse so the jump lands squarely on the next stop.
+fn stepped_samples(stops: &[GradientStop], gradient_cyclic: bool) -> Vec<(f64, Color, Option<f64>)> {
+	let count = stops.len();
+	let (first, last) = (&stops[0], &stops[count - 1]);
+	let mut result = Vec::with_capacity(count * 2 + 2);
+
+	// The wrapped interval holds the last stop's color from the 1|0 boundary through to the first stop
+	if gradient_cyclic && first.position > 0. {
+		result.push((0., last.color, None));
+		result.push((first.position, last.color, None));
+	}
+
+	for pair in stops.windows(2) {
+		result.push((pair[0].position, pair[0].color, Some(0.5)));
+		result.push((pair[1].position, pair[0].color, None));
+	}
+	result.push((last.position, last.color, Some(0.5)));
+
+	if gradient_cyclic && last.position < 1. {
+		result.push((1., last.color, None));
+	}
+
+	result
+}
+
+/// Smooth's bake: anchor every stop, then subdivide between anchors until the renderer's gamma segments track the spline.
+fn smooth_samples(stops: &[GradientStop], settings: GradientSettings) -> Vec<(f64, Color, Option<f64>)> {
+	fn subdivide(path: &SmoothPath, left: f64, right: f64, color_left: Color, color_right: Color, result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
+		const MAX_DEPTH: u32 = 20;
+		if depth >= MAX_DEPTH {
+			return;
+		}
+
+		// Probe the quarter points as well as the center, since a space with a steep toe peaks its deviation off-center
+		let deviates = [0.25, 0.5, 0.75].into_iter().any(|fraction| {
+			let probe = path.evaluate(left + (right - left) * fraction);
+			max_gamma_channel_deviation(probe, color_left.lerp_gamma_srgb(&color_right, fraction as f32)) > SAMPLE_THRESHOLD
+		});
+		if !deviates {
+			return;
+		}
+
+		let mid = (left + right) / 2.;
+		let color_mid = path.evaluate(mid);
+		subdivide(path, left, mid, color_left, color_mid, result, depth + 1);
+		result.push((mid, color_mid, None));
+		subdivide(path, mid, right, color_mid, color_right, result, depth + 1);
+	}
+
+	let path = SmoothPath::new(stops, settings);
+	let count = stops.len();
+
+	// A cyclic ramp's baked list runs boundary to boundary so downstream renderers stay unaware of the cycle
+	let mut anchors: Vec<(f64, Option<f64>)> = Vec::with_capacity(count + 2);
+	if settings.cyclic && stops[0].position > 0. {
+		anchors.push((0., None));
+	}
+	anchors.extend(stops.iter().map(|stop| (stop.position, Some(sanitized_midpoint(stop.midpoint)))));
+	if settings.cyclic && stops[count - 1].position < 1. {
+		anchors.push((1., None));
+	}
+
+	let mut result: Vec<(f64, Color, Option<f64>)> = Vec::new();
+	for (index, &(position, midpoint)) in anchors.iter().enumerate() {
+		// Both ends of a cyclic bake share the boundary-crossing color, so the seam closes exactly rather than
+		// relying on the two wrapped views of the spline agreeing to the last bit
+		let color = match result.first() {
+			Some(&(_, boundary, _)) if position >= 1. && anchors[0].0 <= 0. => boundary,
+			_ => path.evaluate(position),
+		};
+		result.push((position, color, midpoint));
+
+		if let Some(&(next, _)) = anchors.get(index + 1) {
+			subdivide(&path, position, next, color, path.evaluate(next), &mut result, 0);
+		}
+	}
+
+	result
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -704,8 +1119,15 @@ impl Gradient {
 	/// Insert a new stop at the given position, sampling the gradient at that position to determine the new stop's color.
 	/// The new stop's midpoint is inherited from the interval it splits (or `0.5` if inserting at the very start of a non-cyclic gradient).
 	/// Returns the index where the new stop was inserted.
-	pub fn insert_stop(&mut self, position: f64, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> usize {
-		let color = self.evaluate(position, Default::default(), gradient_cyclic, gradient_space, gradient_hue_direction);
+	pub fn insert_stop(&mut self, position: f64, settings: GradientSettings) -> usize {
+		let gradient_cyclic = settings.cyclic;
+		let color = self.evaluate(
+			position,
+			GradientSettings {
+				spread: Default::default(),
+				..settings
+			},
+		);
 		let index = (0..self.len()).position(|i| self.position(i, gradient_cyclic) > position).unwrap_or(self.len());
 
 		// Inserting before the first stop of a cyclic gradient splits the wrapped interval, so its handle is inherited
@@ -794,9 +1216,9 @@ impl Gradient {
 		stops
 	}
 
-	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the `gradient_spread` determines how the gradient extends.
-	pub fn evaluate(&self, t: f64, gradient_spread: GradientSpread, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> Color {
-		let t = match gradient_spread {
+	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the spread determines how the gradient extends.
+	pub fn evaluate(&self, t: f64, settings: GradientSettings) -> Color {
+		let t = match settings.spread {
 			GradientSpread::Pad => t.clamp(0., 1.),
 			GradientSpread::Repeat => t.rem_euclid(1.),
 			GradientSpread::Reflect => {
@@ -811,36 +1233,15 @@ impl Gradient {
 			}
 		};
 
-		let stops = self.normalized_stops(gradient_cyclic);
-		let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return Color::BLACK };
+		let stops = self.normalized_stops(settings.cyclic);
 
-		if gradient_cyclic && (t < first.position || t > last.position) {
-			let wrap_length = first.position + 1. - last.position;
-			if wrap_length <= f64::EPSILON {
-				return first.color;
-			}
-			let local = if t >= last.position { t - last.position } else { t + 1. - last.position };
-			let adjusted_t = apply_midpoint(local / wrap_length, last.midpoint);
-			return interpolate_stop_colors(last.color, first.color, adjusted_t as f32, gradient_space, gradient_hue_direction);
+		match settings.interpolation {
+			GradientInterpolation::Stepped => stepped_color(&stops, t, settings.cyclic),
+			GradientInterpolation::Linear => linear_color(&stops, t, settings),
+			GradientInterpolation::Smooth if stops.len() >= 2 => SmoothPath::new(&stops, settings).evaluate(t),
+			// A spline through fewer than two stops has nothing to curve between
+			GradientInterpolation::Smooth => linear_color(&stops, t, settings),
 		}
-
-		if t <= first.position {
-			return first.color;
-		}
-		if t >= last.position {
-			return last.color;
-		}
-
-		for pair in stops.windows(2) {
-			let (a, b) = (&pair[0], &pair[1]);
-			if t >= a.position && t <= b.position {
-				let normalized_t = (t - a.position) / (b.position - a.position);
-				let adjusted_t = apply_midpoint(normalized_t, a.midpoint);
-				return interpolate_stop_colors(a.color, b.color, adjusted_t as f32, gradient_space, gradient_hue_direction);
-			}
-		}
-
-		Color::BLACK
 	}
 
 	pub fn sort(&mut self, gradient_cyclic: bool) {
@@ -894,13 +1295,13 @@ impl Gradient {
 	}
 
 	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves and color space so the rendered gradient matches Graphite's interpolation rather than browser defaults.
-	pub fn to_css_linear_gradient(&self, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> String {
+	pub fn to_css_linear_gradient(&self, settings: GradientSettings) -> String {
 		if self.len() <= 1 {
 			let hex = self.color(0).map(|c| SRGBA8::from(c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
 			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
 		}
 		let pieces = self
-			.interpolated_samples(gradient_cyclic, gradient_space, gradient_hue_direction)
+			.interpolated_samples(settings)
 			.into_iter()
 			.map(|(position, color, _)| {
 				let percent = ((position * 100.) * 1e2).round() / 1e2;
@@ -911,20 +1312,16 @@ impl Gradient {
 		format!("linear-gradient(to right, {pieces})")
 	}
 
-	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves
-	/// and color space.
+	/// Produce a set of linearly-interpolated color samples that approximate the gradient's true curve.
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
 	/// midpoint for actual gradient stops, and `None` for synthesized curve approximation samples.
 	///
 	/// The downstream SVG/CSS and Vello renderers interpolate between adjacent emitted stops in gamma sRGB space, so the
-	/// subdivision emits enough samples that the gamma-drawn segments match the ramp's true curve: the midpoint bias, and
-	/// the color space when it is not gamma itself.
-	pub fn interpolated_samples(&self, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> Vec<(f64, Color, Option<f64>)> {
-		/// Controls accuracy vs. number of samples tradeoff.
-		/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve with this midpoint bias.
-		const THRESHOLD: f64 = 2. / 255.;
-
+	/// subdivision emits enough samples that the gamma-drawn segments match the ramp's true curve: the midpoint bias, the
+	/// color space when it is not gamma itself, and the spline path when the ramp interpolates smoothly. Stepped is exact
+	/// without any subdivision, since a pair of samples per interval reproduces its jumps.
+	pub fn interpolated_samples(&self, settings: GradientSettings) -> Vec<(f64, Color, Option<f64>)> {
 		#[allow(clippy::too_many_arguments)]
 		fn subdivide(
 			left: f64,
@@ -955,14 +1352,14 @@ impl Gradient {
 			// from the ramp's true curve: from the midpoint bias, or from a non-gamma space's own curvature.
 			// The space check probes the quarter points as well as the center, since spaces with a steep toe
 			// (like CIE Lab near black) peak their deviation off-center
-			let midpoint_deviates = (y_actual - y_linear).abs() > THRESHOLD;
+			let midpoint_deviates = (y_actual - y_linear).abs() > SAMPLE_THRESHOLD;
 			let space_deviates = gradient_space != GradientSpace::RgbGamma && {
 				let color_left = interpolate_stop_colors(color_a, color_b, y_left as f32, gradient_space, gradient_hue_direction);
 				let color_right = interpolate_stop_colors(color_a, color_b, y_right as f32, gradient_space, gradient_hue_direction);
 				[0.25, 0.5, 0.75].into_iter().any(|fraction| {
 					let y_probe = apply_midpoint(left + (right - left) * fraction, midpoint);
 					let color_target = interpolate_stop_colors(color_a, color_b, y_probe as f32, gradient_space, gradient_hue_direction);
-					max_gamma_channel_deviation(color_target, color_left.lerp_gamma_srgb(&color_right, fraction as f32)) > THRESHOLD
+					max_gamma_channel_deviation(color_target, color_left.lerp_gamma_srgb(&color_right, fraction as f32)) > SAMPLE_THRESHOLD
 				})
 			};
 
@@ -977,7 +1374,89 @@ impl Gradient {
 			}
 		}
 
-		let stops = self.normalized_stops(gradient_cyclic);
+		fn linear_samples(stops: &[GradientStop], settings: GradientSettings) -> Vec<(f64, Color, Option<f64>)> {
+			let (gradient_space, gradient_hue_direction) = (settings.space, settings.hue_direction);
+			let count = stops.len();
+			let mut result = Vec::new();
+
+			for i in 0..count - 1 {
+				let pos_a = stops[i].position;
+				let pos_b = stops[i + 1].position;
+				let color_a = stops[i].color;
+				let color_b = stops[i + 1].color;
+				let midpoint = sanitized_midpoint(stops[i].midpoint);
+				let next_midpoint = sanitized_midpoint(stops[i + 1].midpoint);
+
+				// Add the start stop (subsequent intervals share the previous end stop)
+				if i == 0 {
+					result.push((pos_a, color_a, Some(midpoint)));
+				}
+
+				// Only subdivide if the midpoint deviates from linear (0.5) or a non-gamma space may curve away from the drawn gamma segment
+				if (midpoint - 0.5).abs() >= 1e-6 || gradient_space != GradientSpace::RgbGamma {
+					subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, gradient_space, gradient_hue_direction, &mut result, 0);
+				}
+
+				// Add the end stop
+				result.push((pos_b, color_b, Some(next_midpoint)));
+			}
+
+			// Bake the wrapped interval into the flat list: the piece from the last stop to the 1|0 boundary, and the piece
+			// continuing from the boundary to the first stop, so both ends of the emitted list share the boundary-crossing
+			// color and downstream renderers stay unaware of the cycle
+			if settings.cyclic {
+				let (first, last) = (&stops[0], &stops[count - 1]);
+				let wrap_length = first.position + 1. - last.position;
+				if wrap_length > f64::EPSILON {
+					let wrap_midpoint = sanitized_midpoint(last.midpoint);
+					let boundary_fraction = (1. - last.position) / wrap_length;
+					let y_boundary = apply_midpoint(boundary_fraction, wrap_midpoint);
+					let boundary_color = interpolate_stop_colors(last.color, first.color, y_boundary as f32, gradient_space, gradient_hue_direction);
+
+					if last.position < 1. {
+						let virtual_end = last.position + wrap_length;
+						subdivide(
+							0.,
+							boundary_fraction,
+							wrap_midpoint,
+							last.position,
+							virtual_end,
+							last.color,
+							first.color,
+							gradient_space,
+							gradient_hue_direction,
+							&mut result,
+							0,
+						);
+						result.push((1., boundary_color, None));
+					}
+
+					if first.position > 0. {
+						let virtual_start = last.position - 1.;
+						let mut leading = vec![(0., boundary_color, None)];
+						subdivide(
+							boundary_fraction,
+							1.,
+							wrap_midpoint,
+							virtual_start,
+							first.position,
+							last.color,
+							first.color,
+							gradient_space,
+							gradient_hue_direction,
+							&mut leading,
+							0,
+						);
+						leading.append(&mut result);
+						result = leading;
+					}
+				}
+			}
+
+			result
+		}
+
+		let stops = self.normalized_stops(settings.cyclic);
 		let count = stops.len();
 		if count == 0 {
 			return vec![];
@@ -987,81 +1466,11 @@ impl Gradient {
 			return vec![(stops[0].position, stops[0].color, Some(sanitized_midpoint(stops[0].midpoint)))];
 		}
 
-		let mut result = Vec::new();
-
-		for i in 0..count - 1 {
-			let pos_a = stops[i].position;
-			let pos_b = stops[i + 1].position;
-			let color_a = stops[i].color;
-			let color_b = stops[i + 1].color;
-			let midpoint = sanitized_midpoint(stops[i].midpoint);
-			let next_midpoint = sanitized_midpoint(stops[i + 1].midpoint);
-
-			// Add the start stop (subsequent intervals share the previous end stop)
-			if i == 0 {
-				result.push((pos_a, color_a, Some(midpoint)));
-			}
-
-			// Only subdivide if the midpoint deviates from linear (0.5) or a non-gamma space may curve away from the drawn gamma segment
-			if (midpoint - 0.5).abs() >= 1e-6 || gradient_space != GradientSpace::RgbGamma {
-				subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, gradient_space, gradient_hue_direction, &mut result, 0);
-			}
-
-			// Add the end stop
-			result.push((pos_b, color_b, Some(next_midpoint)));
-		}
-
-		// Bake the wrapped interval into the flat list: the piece from the last stop to the 1|0 boundary, and the piece
-		// continuing from the boundary to the first stop, so both ends of the emitted list share the boundary-crossing
-		// color and downstream renderers stay unaware of the cycle
-		if gradient_cyclic {
-			let (first, last) = (&stops[0], &stops[count - 1]);
-			let wrap_length = first.position + 1. - last.position;
-			if wrap_length > f64::EPSILON {
-				let wrap_midpoint = sanitized_midpoint(last.midpoint);
-				let boundary_fraction = (1. - last.position) / wrap_length;
-				let y_boundary = apply_midpoint(boundary_fraction, wrap_midpoint);
-				let boundary_color = interpolate_stop_colors(last.color, first.color, y_boundary as f32, gradient_space, gradient_hue_direction);
-
-				if last.position < 1. {
-					let virtual_end = last.position + wrap_length;
-					subdivide(
-						0.,
-						boundary_fraction,
-						wrap_midpoint,
-						last.position,
-						virtual_end,
-						last.color,
-						first.color,
-						gradient_space,
-						gradient_hue_direction,
-						&mut result,
-						0,
-					);
-					result.push((1., boundary_color, None));
-				}
-
-				if first.position > 0. {
-					let virtual_start = last.position - 1.;
-					let mut leading = vec![(0., boundary_color, None)];
-					subdivide(
-						boundary_fraction,
-						1.,
-						wrap_midpoint,
-						virtual_start,
-						first.position,
-						last.color,
-						first.color,
-						gradient_space,
-						gradient_hue_direction,
-						&mut leading,
-						0,
-					);
-					leading.append(&mut result);
-					result = leading;
-				}
-			}
-		}
+		let mut result = match settings.interpolation {
+			GradientInterpolation::Stepped => stepped_samples(&stops, settings.cyclic),
+			GradientInterpolation::Linear => linear_samples(&stops, settings),
+			GradientInterpolation::Smooth => smooth_samples(&stops, settings),
+		};
 
 		// If every midpoint is 0.5 (or within epsilon), turn all midpoints to None
 		if result.iter().all(|(_, _, midpoint)| matches!(midpoint, Some(m) if (m - 0.5).abs() < 1e-6)) {
@@ -1193,6 +1602,62 @@ impl GradientHueDirection {
 	}
 }
 
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Dropdown)]
+pub enum GradientInterpolation {
+	/// Holds each stop's color all the way to the next stop, jumping between them instead of transitioning.
+	Stepped,
+	/// Transitions straight from each stop to the next, turning a corner at every stop.
+	#[default]
+	Linear,
+	/// Transitions along a curve that flows through the stops without corners.
+	Smooth,
+}
+
+impl GradientInterpolation {
+	pub fn is_default(&self) -> bool {
+		*self == Self::default()
+	}
+}
+
+/// The whole-ramp attributes governing how a gradient plays back, read together off a gradient item so the
+/// sampling entry points take one argument instead of a widening list of same-typed positional ones.
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash)]
+pub struct GradientSettings {
+	pub spread: GradientSpread,
+	pub cyclic: bool,
+	pub space: GradientSpace,
+	pub hue_direction: GradientHueDirection,
+	pub interpolation: GradientInterpolation,
+}
+
+impl From<&Item<Gradient>> for GradientSettings {
+	fn from(item: &Item<Gradient>) -> Self {
+		Self {
+			spread: item.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD),
+			cyclic: item.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC),
+			space: item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE),
+			hue_direction: item.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION),
+			interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
+		}
+	}
+}
+
+impl<C> From<&GradientRamp<C>> for GradientSettings {
+	fn from(ramp: &GradientRamp<C>) -> Self {
+		Self {
+			spread: ramp.gradient_spread,
+			cyclic: ramp.gradient_cyclic,
+			space: ramp.gradient_space,
+			hue_direction: ramp.gradient_hue_direction,
+			interpolation: ramp.gradient_interpolation,
+		}
+	}
+}
+
 /// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
 /// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
 /// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
@@ -1263,7 +1728,7 @@ mod tests {
 	fn default_is_empty_and_black_to_white_is_the_artist_starting_gradient() {
 		assert!(Gradient::default().is_empty());
 		assert_eq!(Gradient::black_to_white().positions(false), vec![0., 1.]);
-		assert_eq!(Gradient::default().evaluate(0.5, Default::default(), false, Default::default(), Default::default()), Color::BLACK);
+		assert_eq!(Gradient::default().evaluate(0.5, Default::default()), Color::BLACK);
 	}
 
 	#[test]
@@ -1336,10 +1801,10 @@ mod tests {
 		);
 		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), default_space);
 
-		// The pre-rename field key and variant names from the interim format alias to the current ones
-		let renamed_away = json.replace(r#""gradient_space""#, r#""gradient_interpolation""#).replace(r#""OkLab""#, r#""SrgbLinear""#);
+		// The pre-rename variant names from the interim format alias to the current ones
+		let renamed_away = json.replace(r#""OkLab""#, r#""SrgbLinear""#);
 		let recovered = serde_json::from_str::<GradientRamp>(&renamed_away).unwrap();
-		assert_eq!(recovered.gradient_space, GradientSpace::RgbLinear, "the old key and variant names should decode via their aliases");
+		assert_eq!(recovered.gradient_space, GradientSpace::RgbLinear, "the old variant names should decode via their aliases");
 
 		let gamma = GradientRamp {
 			gradient_space: GradientSpace::RgbGamma,
@@ -1380,15 +1845,124 @@ mod tests {
 	}
 
 	#[test]
+	fn stepped_holds_each_color_to_the_next_stop_and_ignores_midpoints() {
+		let stepped = GradientSettings {
+			interpolation: GradientInterpolation::Stepped,
+			..Default::default()
+		};
+
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		gradient.set_midpoints(&[0.1, 0.9, 0.5]);
+
+		// Each stop's color fills its whole interval, jumping only once the next stop is reached
+		for (t, expected) in [(0., Color::BLACK), (0.49, Color::BLACK), (0.5, Color::WHITE), (0.99, Color::WHITE), (1., Color::RED)] {
+			assert_eq!(gradient.evaluate(t, stepped), expected, "stepped should hold the left stop's color at {t}");
+		}
+
+		// The bake reproduces the jumps exactly rather than approximating them, so each interval emits both of its ends
+		let samples = gradient.interpolated_samples(stepped);
+		assert_eq!(
+			samples.iter().map(|&(position, color, _)| (position, color)).collect::<Vec<_>>(),
+			vec![(0., Color::BLACK), (0.5, Color::BLACK), (0.5, Color::WHITE), (1., Color::WHITE), (1., Color::RED)]
+		);
+	}
+
+	#[test]
+	fn smooth_passes_through_every_stop_without_overshooting_between_them() {
+		let smooth = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			interpolation: GradientInterpolation::Smooth,
+			..Default::default()
+		};
+
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::BLACK]);
+
+		// A monotone spline is pinned to its stops, unlike an overshooting one such as Catmull-Rom
+		for (index, expected) in [(0., Color::BLACK), (0.5, Color::WHITE), (1., Color::BLACK)] {
+			let sampled = gradient.evaluate(index, smooth);
+			assert!((sampled.r() - expected.r()).abs() < 1e-4, "the spline must pass through the stop at {index}, got {sampled:?}");
+		}
+
+		// Every sample between two stops stays bounded by them, so no channel manufactures an out-of-gamut excursion
+		for step in 0..=100 {
+			let red = gradient.evaluate(step as f64 / 100., smooth).r();
+			assert!((-1e-4..=1. + 1e-4).contains(&red), "the monotone spline must not overshoot its stops, got {red} at step {step}");
+		}
+	}
+
+	#[test]
+	fn smooth_removes_the_rate_kink_that_linear_leaves_at_a_stop() {
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::from_rgbaf32_unchecked(0.25, 0.25, 0.25, 1.), Color::WHITE]);
+		gradient.set_positions(&[0., 0.5, 1.]);
+
+		// Sample the slope just either side of the middle stop, where Linear's independent chords change rate abruptly.
+		// The step stays small so the one-sided differences approximate the slopes at the stop rather than averaging in curvature.
+		let slope_around_middle = |settings: GradientSettings| {
+			const STEP: f64 = 1e-3;
+			let sample = |t: f64| gradient.evaluate(t, settings).r() as f64;
+			let before = (sample(0.5) - sample(0.5 - STEP)) / STEP;
+			let after = (sample(0.5 + STEP) - sample(0.5)) / STEP;
+			(after - before).abs()
+		};
+
+		let linear = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			..Default::default()
+		};
+		let smooth = GradientSettings {
+			interpolation: GradientInterpolation::Smooth,
+			..linear
+		};
+
+		assert!(
+			slope_around_middle(smooth) < slope_around_middle(linear) / 10.,
+			"smooth should carry its rate through the stop where linear turns a corner"
+		);
+	}
+
+	#[test]
+	fn smooth_closes_a_cyclic_loop_across_the_boundary() {
+		let smooth_cyclic = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			cyclic: true,
+			interpolation: GradientInterpolation::Smooth,
+			..Default::default()
+		};
+
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 1.)]);
+
+		// The two wrapped views of the boundary must agree, or the seam shows as a visible discontinuity
+		let (before, after) = (gradient.evaluate(0.999, smooth_cyclic), gradient.evaluate(0.001, smooth_cyclic));
+		assert!((before.r() - after.r()).abs() < 2. / 255., "the loop must join across the 1|0 boundary, got {before:?} then {after:?}");
+
+		// The bake's ends share that crossing color exactly, so downstream renderers see a closed ramp
+		let samples = gradient.interpolated_samples(smooth_cyclic);
+		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
+		assert_eq!((first.0, first.1), (0., last.1), "the baked ends must share the boundary-crossing color");
+		assert_eq!(last.0, 1.);
+	}
+
+	#[test]
 	fn linear_space_densifies_samples_where_gamma_segments_deviate() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
 		// Gamma needs no synthesized samples since the renderers already draw gamma segments
-		assert_eq!(gradient.interpolated_samples(false, GradientSpace::RgbGamma, Default::default()).len(), 2);
+		assert_eq!(
+			gradient
+				.interpolated_samples(GradientSettings {
+					space: GradientSpace::RgbGamma,
+					..Default::default()
+				})
+				.len(),
+			2
+		);
 
 		// A linear black-to-white ramp curves away from any single gamma segment, so samples must densify,
 		// keeping the end stops in place and every synthesized color on the linear-light line
-		let samples = gradient.interpolated_samples(false, GradientSpace::RgbLinear, Default::default());
+		let samples = gradient.interpolated_samples(GradientSettings {
+			space: GradientSpace::RgbLinear,
+			..Default::default()
+		});
 		assert!(samples.len() > 2, "the linear space should synthesize samples, got {}", samples.len());
 		assert_eq!(samples.first().unwrap().0, 0.);
 		assert_eq!(samples.last().unwrap().0, 1.);
@@ -1402,7 +1976,14 @@ mod tests {
 
 		// Identical end colors leave nothing to densify
 		let flat = Gradient::from(vec![Color::WHITE, Color::WHITE]);
-		assert_eq!(flat.interpolated_samples(false, GradientSpace::RgbLinear, Default::default()).len(), 2);
+		assert_eq!(
+			flat.interpolated_samples(GradientSettings {
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			})
+			.len(),
+			2
+		);
 	}
 
 	#[test]
@@ -1433,7 +2014,11 @@ mod tests {
 
 					let mut gradient = Gradient::from(vec![color_a, color_b]);
 					gradient.set_midpoints(&[midpoint, 0.5]);
-					let samples = gradient.interpolated_samples(false, gradient_space, gradient_hue_direction);
+					let samples = gradient.interpolated_samples(GradientSettings {
+						space: gradient_space,
+						hue_direction: gradient_hue_direction,
+						..Default::default()
+					});
 
 					for probe in 0..=1000 {
 						let t = probe as f64 / 1000.;
@@ -1469,13 +2054,43 @@ mod tests {
 	fn clear_spread_evaluates_to_transparency_outside_the_unit_range() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
-		assert_eq!(gradient.evaluate(-0.25, GradientSpread::Clear, false, Default::default(), Default::default()), Color::TRANSPARENT);
-		assert_eq!(gradient.evaluate(1.25, GradientSpread::Clear, false, Default::default(), Default::default()), Color::TRANSPARENT);
+		assert_eq!(
+			gradient.evaluate(
+				-0.25,
+				GradientSettings {
+					spread: GradientSpread::Clear,
+					..Default::default()
+				}
+			),
+			Color::TRANSPARENT
+		);
+		assert_eq!(
+			gradient.evaluate(
+				1.25,
+				GradientSettings {
+					spread: GradientSpread::Clear,
+					..Default::default()
+				}
+			),
+			Color::TRANSPARENT
+		);
 
 		for t in [0., 0.25, 1.] {
 			assert_eq!(
-				gradient.evaluate(t, GradientSpread::Clear, false, Default::default(), Default::default()),
-				gradient.evaluate(t, GradientSpread::Pad, false, Default::default(), Default::default()),
+				gradient.evaluate(
+					t,
+					GradientSettings {
+						spread: GradientSpread::Clear,
+						..Default::default()
+					}
+				),
+				gradient.evaluate(
+					t,
+					GradientSettings {
+						spread: GradientSpread::Pad,
+						..Default::default()
+					}
+				),
 				"inside the range Clear must match Pad at t = {t}"
 			);
 		}
@@ -1485,9 +2100,27 @@ mod tests {
 	fn evaluate_follows_the_gradient_space() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 
-		let oklab = gradient.evaluate(0.5, Default::default(), false, GradientSpace::OkLab, Default::default());
-		let linear = gradient.evaluate(0.5, Default::default(), false, GradientSpace::RgbLinear, Default::default());
-		let gamma = gradient.evaluate(0.5, Default::default(), false, GradientSpace::RgbGamma, Default::default());
+		let oklab = gradient.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::OkLab,
+				..Default::default()
+			},
+		);
+		let linear = gradient.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
+		let gamma = gradient.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			},
+		);
 
 		assert_eq!(linear, Color::BLACK.lerp(&Color::WHITE, 0.5));
 		assert_eq!(gamma, Color::BLACK.lerp_gamma_srgb(&Color::WHITE, 0.5));
@@ -1509,28 +2142,52 @@ mod tests {
 
 		// Red to blue in HSL crosses through magenta on the shorter arc (300 degrees), not through green (120 degrees)
 		let red_to_blue = Gradient::from(vec![Color::RED, Color::BLUE]);
-		let magenta = red_to_blue.evaluate(0.5, Default::default(), false, GradientSpace::Hsl, Default::default());
+		let magenta = red_to_blue.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::Hsl,
+				..Default::default()
+			},
+		);
 		for (channel, expected) in [(magenta.r(), 1.), (magenta.g(), 0.), (magenta.b(), 1.)] {
 			assert!((channel - expected).abs() < 1e-3, "the HSL mid color of red and blue should be magenta, got {magenta:?}");
 		}
 
 		// White's hue is powerless, so an OkLCh interpolation toward it keeps red's hue instead of drifting toward white's arbitrary hue
 		let red_to_white = Gradient::from(vec![Color::RED, Color::WHITE]);
-		let pink = red_to_white.evaluate(0.5, Default::default(), false, GradientSpace::OkLCh, Default::default());
+		let pink = red_to_white.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::OkLCh,
+				..Default::default()
+			},
+		);
 		let [_, _, red_hue] = color::Oklch::from_linear_srgb([Color::RED.r(), Color::RED.g(), Color::RED.b()]);
 		let [_, pink_chroma, pink_hue] = color::Oklch::from_linear_srgb([pink.r(), pink.g(), pink.b()]);
 		assert!(pink_chroma > 0.05, "the mid color should stay chromatic, got {pink:?}");
 		assert!((pink_hue - red_hue).abs() < 0.5, "the mid hue should hold red's {red_hue} degrees, got {pink_hue}");
 
 		// HSV rides the cube's top face toward white, keeping the mid tint at full brightness where HSL dips
-		let tint = red_to_white.evaluate(0.5, Default::default(), false, GradientSpace::Hsv, Default::default());
+		let tint = red_to_white.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::Hsv,
+				..Default::default()
+			},
+		);
 		for (channel, target) in tint.to_gamma_srgb_channels().into_iter().zip([1., 0.5, 0.5, 1.]) {
 			assert!((channel - target).abs() < 1e-3, "the HSV mid tint of red and white should be gamma (1, 0.5, 0.5), got {tint:?}");
 		}
 
 		// Toward black both saturation and value halve, the classic HSV shade that neither HSL nor HWB produces
 		let red_to_black = Gradient::from(vec![Color::RED, Color::BLACK]);
-		let shade = red_to_black.evaluate(0.5, Default::default(), false, GradientSpace::Hsv, Default::default());
+		let shade = red_to_black.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::Hsv,
+				..Default::default()
+			},
+		);
 		for (channel, target) in shade.to_gamma_srgb_channels().into_iter().zip([0.5, 0.25, 0.25, 1.]) {
 			assert!((channel - target).abs() < 1e-3, "the HSV mid shade of red and black should be gamma (0.5, 0.25, 0.25), got {shade:?}");
 		}
@@ -1548,7 +2205,14 @@ mod tests {
 			(GradientHueDirection::Decreasing, [1., 0., 1.]),
 		];
 		for (gradient_hue_direction, expected_rgb) in expectations {
-			let mid = red_to_blue.evaluate(0.5, Default::default(), false, GradientSpace::Hsl, gradient_hue_direction);
+			let mid = red_to_blue.evaluate(
+				0.5,
+				GradientSettings {
+					space: GradientSpace::Hsl,
+					hue_direction: gradient_hue_direction,
+					..Default::default()
+				},
+			);
 			for (channel, target) in [mid.r(), mid.g(), mid.b()].into_iter().zip(expected_rgb) {
 				assert!(
 					(channel - target).abs() < 1e-3,
@@ -1559,7 +2223,14 @@ mod tests {
 
 		// Identical hues under Longer take a full turn around the wheel, passing through cyan halfway
 		let red_to_red = Gradient::from(vec![Color::RED, Color::RED]);
-		let mid = red_to_red.evaluate(0.5, Default::default(), false, GradientSpace::Hsl, GradientHueDirection::Longer);
+		let mid = red_to_red.evaluate(
+			0.5,
+			GradientSettings {
+				space: GradientSpace::Hsl,
+				hue_direction: GradientHueDirection::Longer,
+				..Default::default()
+			},
+		);
 		for (channel, target) in [mid.r(), mid.g(), mid.b()].into_iter().zip([0., 1., 1.]) {
 			assert!((channel - target).abs() < 1e-3, "the full-turn mid of red and red should be cyan, got {mid:?}");
 		}
@@ -1618,7 +2289,10 @@ mod tests {
 		assert_eq!(gradient.positions(false), vec![1.5, 0.4, -0.5]);
 
 		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(false, GradientSpace::RgbGamma, Default::default())
+			.interpolated_samples(GradientSettings {
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			})
 			.iter()
 			.map(|(position, ..)| *position)
 			.collect();
@@ -1626,8 +2300,8 @@ mod tests {
 		assert_eq!(sample_positions.first(), Some(&0.));
 		assert_eq!(sample_positions.last(), Some(&1.));
 
-		assert_eq!(gradient.evaluate(0., Default::default(), false, Default::default(), Default::default()), Color::RED);
-		assert_eq!(gradient.evaluate(1., Default::default(), false, Default::default(), Default::default()), Color::WHITE);
+		assert_eq!(gradient.evaluate(0., Default::default()), Color::RED);
+		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
 	}
 
 	#[test]
@@ -1636,13 +2310,16 @@ mod tests {
 		gradient.set_positions(&[f64::INFINITY, f64::NEG_INFINITY]);
 
 		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(false, GradientSpace::RgbGamma, Default::default())
+			.interpolated_samples(GradientSettings {
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			})
 			.iter()
 			.map(|(position, ..)| *position)
 			.collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
-		assert_eq!(gradient.evaluate(0., Default::default(), false, Default::default(), Default::default()), Color::BLACK);
-		assert_eq!(gradient.evaluate(1., Default::default(), false, Default::default(), Default::default()), Color::WHITE);
+		assert_eq!(gradient.evaluate(0., Default::default()), Color::BLACK);
+		assert_eq!(gradient.evaluate(1., Default::default()), Color::WHITE);
 	}
 
 	#[test]
@@ -1651,13 +2328,22 @@ mod tests {
 		gradient.set_positions(&[0., f64::NAN, 1.]);
 
 		let sample_positions: Vec<f64> = gradient
-			.interpolated_samples(false, GradientSpace::RgbGamma, Default::default())
+			.interpolated_samples(GradientSettings {
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			})
 			.iter()
 			.map(|(position, ..)| *position)
 			.collect();
 		assert_eq!(sample_positions, vec![0., 1.]);
 		assert_eq!(
-			gradient.evaluate(0.5, Default::default(), false, GradientSpace::RgbLinear, Default::default()),
+			gradient.evaluate(
+				0.5,
+				GradientSettings {
+					space: GradientSpace::RgbLinear,
+					..Default::default()
+				}
+			),
 			Color::WHITE.lerp(&Color::RED, 0.5)
 		);
 
@@ -1667,8 +2353,15 @@ mod tests {
 		// With every position NaN the gradient samples as stopless, painting solid black to signal the upstream bug
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::RED]);
 		gradient.set_positions(&[f64::NAN, f64::NAN]);
-		assert!(gradient.interpolated_samples(false, GradientSpace::RgbGamma, Default::default()).is_empty());
-		assert_eq!(gradient.evaluate(0.5, Default::default(), false, Default::default(), Default::default()), Color::BLACK);
+		assert!(
+			gradient
+				.interpolated_samples(GradientSettings {
+					space: GradientSpace::RgbGamma,
+					..Default::default()
+				})
+				.is_empty()
+		);
+		assert_eq!(gradient.evaluate(0.5, Default::default()), Color::BLACK);
 	}
 
 	#[test]
@@ -1676,19 +2369,25 @@ mod tests {
 		let mut gradient = Gradient::from(vec![Color::WHITE, Color::BLACK]);
 		gradient.set_positions(&[0.3, 1.]);
 
-		let samples = gradient.interpolated_samples(false, GradientSpace::RgbGamma, Default::default());
+		let samples = gradient.interpolated_samples(GradientSettings {
+			space: GradientSpace::RgbGamma,
+			..Default::default()
+		});
 		assert_eq!(samples[0], (0.3, Color::WHITE, None), "renderers that need a flat lead-in before the first stop add it themselves");
 	}
 
 	#[test]
 	fn nan_midpoints_read_as_linear() {
 		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
-		let linear_result = gradient.evaluate(0.25, Default::default(), false, Default::default(), Default::default());
+		let linear_result = gradient.evaluate(0.25, Default::default());
 
 		gradient.set_midpoints(&[f64::NAN, f64::NAN]);
-		assert_eq!(gradient.evaluate(0.25, Default::default(), false, Default::default(), Default::default()), linear_result);
+		assert_eq!(gradient.evaluate(0.25, Default::default()), linear_result);
 		let no_nan_annotations = gradient
-			.interpolated_samples(false, GradientSpace::RgbGamma, Default::default())
+			.interpolated_samples(GradientSettings {
+				space: GradientSpace::RgbGamma,
+				..Default::default()
+			})
 			.iter()
 			.all(|(position, _, midpoint)| position.is_finite() && !midpoint.is_some_and(|midpoint| midpoint.is_nan()));
 		assert!(no_nan_annotations, "NaN must not escape into rendered sample annotations");
@@ -1725,16 +2424,44 @@ mod tests {
 	fn cyclic_evaluate_wraps_from_the_last_stop_back_to_the_first() {
 		// Elided cyclic positions put the stops at 0 and 0.5, so the wrapped interval spans the other half
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
-		let quarter = gradient.evaluate(0.25, Default::default(), true, GradientSpace::RgbLinear, Default::default());
-		let wrap_quarter = gradient.evaluate(0.75, Default::default(), true, GradientSpace::RgbLinear, Default::default());
+		let quarter = gradient.evaluate(
+			0.25,
+			GradientSettings {
+				cyclic: true,
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
+		let wrap_quarter = gradient.evaluate(
+			0.75,
+			GradientSettings {
+				cyclic: true,
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
 		assert_eq!(quarter, Color::BLACK.lerp(&Color::WHITE, 0.5));
 		assert_eq!(wrap_quarter, Color::WHITE.lerp(&Color::BLACK, 0.5));
 
 		// A wrapped interval crossing the 1|0 boundary reads as one continuous span, so its two sides agree at the seam
 		let mut offset = Gradient::from(vec![Color::BLACK, Color::WHITE]);
 		offset.set_positions(&[0.25, 0.5]);
-		let at_end = offset.evaluate(1., Default::default(), true, GradientSpace::RgbLinear, Default::default());
-		let at_start = offset.evaluate(0., Default::default(), true, GradientSpace::RgbLinear, Default::default());
+		let at_end = offset.evaluate(
+			1.,
+			GradientSettings {
+				cyclic: true,
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
+		let at_start = offset.evaluate(
+			0.,
+			GradientSettings {
+				cyclic: true,
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
 		assert_eq!(at_end, at_start, "the 1|0 boundary must be seamless");
 		assert_eq!(at_end, Color::WHITE.lerp(&Color::BLACK, 2. / 3.));
 	}
@@ -1745,7 +2472,14 @@ mod tests {
 		gradient.set_midpoints(&[0.5, 0.25]);
 
 		let expected_t = apply_midpoint(0.5, 0.25);
-		let mid = gradient.evaluate(0.75, Default::default(), true, GradientSpace::RgbLinear, Default::default());
+		let mid = gradient.evaluate(
+			0.75,
+			GradientSettings {
+				cyclic: true,
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
 		assert_eq!(mid, Color::WHITE.lerp(&Color::BLACK, expected_t as f32));
 	}
 
@@ -1755,7 +2489,11 @@ mod tests {
 		gradient.set_positions(&[0.25, 0.5]);
 		gradient.set_midpoints(&[0.5, 0.3]);
 
-		let samples = gradient.interpolated_samples(true, GradientSpace::OkLab, Default::default());
+		let samples = gradient.interpolated_samples(GradientSettings {
+			cyclic: true,
+			space: GradientSpace::OkLab,
+			..Default::default()
+		});
 		assert_eq!(samples.first().unwrap().0, 0.);
 		assert_eq!(samples.last().unwrap().0, 1.);
 		assert_eq!(samples.first().unwrap().1, samples.last().unwrap().1, "both ends must share the boundary-crossing color");
@@ -1779,7 +2517,14 @@ mod tests {
 				}
 			};
 
-			let true_color = gradient.evaluate(t, Default::default(), true, GradientSpace::OkLab, Default::default());
+			let true_color = gradient.evaluate(
+				t,
+				GradientSettings {
+					cyclic: true,
+					space: GradientSpace::OkLab,
+					..Default::default()
+				},
+			);
 			let deviation = max_gamma_channel_deviation(playback, true_color);
 			assert!(deviation <= 4. / 255., "playback deviates {:.1}/255 at t={t}", deviation * 255.);
 		}
@@ -1802,7 +2547,14 @@ mod tests {
 		gradient.set_midpoints(&[0.5, 0.3]);
 
 		// The elided cyclic stops sit at 0 and 0.5, so 0.75 lands mid-wrap
-		let index = gradient.insert_stop(0.75, true, GradientSpace::RgbLinear, Default::default());
+		let index = gradient.insert_stop(
+			0.75,
+			GradientSettings {
+				cyclic: true,
+				space: GradientSpace::RgbLinear,
+				..Default::default()
+			},
+		);
 		assert_eq!(index, 2);
 		assert_eq!(gradient.midpoint(2), 0.3, "the wrap handle should be inherited by the split");
 		assert_eq!(gradient.color(2), Some(Color::WHITE.lerp(&Color::BLACK, apply_midpoint(0.5, 0.3) as f32)));
