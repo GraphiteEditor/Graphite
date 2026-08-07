@@ -1,0 +1,89 @@
+[package]
+name = "graph-craft"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors.workspace = true
+
+[features]
+default = ["dealloc_nodes", "wgpu", "loading"]
+dealloc_nodes = ["core-types/dealloc_nodes"]
+wgpu = ["wgpu-executor"]
+tokio = ["dep:tokio"]
+loading = ["serde_json"]
+wasm = [
+	"core-types/wasm",
+	"graphic-types/wasm",
+	"text-nodes/wasm",
+	"tsify",
+	"wasm-bindgen",
+]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+graphene-hash = { workspace = true }
+core-types = { workspace = true, features = ["serde"] }
+brush-nodes = { workspace = true, features = ["serde"] }
+graphene-core = { workspace = true, features = ["serde"] }
+graphene-application-io = { workspace = true, features = ["serde"] }
+rendering = { workspace = true, features = ["serde"] }
+raster-nodes = { workspace = true, features = ["serde"] }
+vector-nodes = { workspace = true, features = ["serde"] }
+graphic-types = { workspace = true, features = ["serde"] }
+text-nodes = { workspace = true, features = ["serde"] }
+
+# Workspace dependencies
+log = { workspace = true }
+glam = { workspace = true }
+rustc-hash = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+
+# Optional workspace dependencies
+wgpu-executor = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+# Workspace dependencies
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { workspace = true, features = [
+	"Navigator",
+	"DomException",
+	"Window",
+	"StorageManager",
+	"FileSystemDirectoryHandle",
+	"FileSystemFileHandle",
+	"FileSystemGetFileOptions",
+	"FileSystemGetDirectoryOptions",
+	"FileSystemWritableFileStream",
+	"WritableStream",
+	"Blob",
+] }
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+winit = { workspace = true }
+mmap-io = { workspace = true }
+
+[dev-dependencies]
+# Workspace dependencies
+graph-craft = { workspace = true, features = ["loading"] }
+interpreted-executor = { workspace = true }
+pretty_assertions = { workspace = true }
+criterion = { workspace = true }
+gungraun = { workspace = true }
+
+# Benchmarks
+[[bench]]
+name = "compile_demo_art_criterion"
+harness = false
+
+[[bench]]
+name = "compile_demo_art_gungraun"
+harness = false

@@ -1,0 +1,38 @@
+//! Not immediately shader compatible due to needing [`Gradient`] as a param, which needs [`Vec`]
+
+use crate::adjust::Adjust;
+use core_types::list::Item;
+use core_types::{Color, Ctx};
+use raster_types::{CPU, Raster};
+use vector_types::Gradient;
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn gradient_map<T: Adjust<Color> + Send>(
+	_: impl Ctx,
+	#[implementations(
+		Raster<CPU>,
+		Color,
+		Gradient,
+	)]
+	image: Item<T>,
+	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
+	reverse: Item<bool>,
+) -> Item<T> {
+	let mut image = image;
+	let gradient_spread = gradient.attribute_cloned_or_default::<vector_types::GradientSpread>(core_types::ATTR_GRADIENT_SPREAD);
+	let gradient_space = gradient.attribute_cloned_or_default::<vector_types::GradientSpace>(core_types::ATTR_GRADIENT_SPACE);
+	let gradient_hue_direction = gradient.attribute_cloned_or_default::<vector_types::GradientHueDirection>(core_types::ATTR_GRADIENT_HUE_DIRECTION);
+	let gradient = gradient.into_element();
+	let reverse = reverse.into_element();
+
+	image.element_mut().adjust(|color| {
+		let intensity = color.luminance_rec_709();
+		let intensity = if reverse { 1. - intensity } else { intensity };
+		gradient.evaluate(intensity as f64, gradient_spread, gradient_space, gradient_hue_direction)
+	});
+
+	image
+}

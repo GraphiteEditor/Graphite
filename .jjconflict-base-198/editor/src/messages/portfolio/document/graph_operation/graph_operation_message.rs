@@ -31,6 +31,7 @@ pub enum GraphOperationMessage {
 		gradient_form: GradientForm,
 		gradient_spread: GradientSpread,
 		gradient_space: GradientSpace,
+		gradient_cyclic: bool,
 		gradient_hue_direction: GradientHueDirection,
 		transform: DAffine2,
 	},
@@ -66,6 +67,10 @@ pub enum GraphOperationMessage {
 	GradientSpaceSet {
 		layer: LayerNodeIdentifier,
 		gradient_space: GradientSpace,
+	},
+	GradientCyclicSet {
+		layer: LayerNodeIdentifier,
+		gradient_cyclic: bool,
 	},
 	GradientHueDirectionSet {
 		layer: LayerNodeIdentifier,
