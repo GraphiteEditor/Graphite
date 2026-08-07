@@ -600,6 +600,8 @@ pub struct MeshSubpatchVertex {
 
 pub struct MeshSubpatch {
 	pub corners: [MeshSubpatchVertex; 4],
+	pub patch_index: usize,
+	pub uv_bounds: [DVec2; 2],
 }
 
 #[derive(Clone, Copy)]
@@ -680,13 +682,6 @@ impl MeshPatchEvaluator {
 		let s_b = top_left * (1. - u) * (1. - v) + top_right * u * (1. - v) + bottom_left * (1. - u) * v + bottom_right * u * v;
 
 		s_c + s_d - s_b
-	}
-
-	fn eval_vertex(&self, u: f64, v: f64, mesh_transform: DAffine2) -> MeshSubpatchVertex {
-		MeshSubpatchVertex {
-			position: mesh_transform.transform_point2(self.eval_position(u, v)),
-			gamma_color: self.eval_color(u as f32, v as f32),
-		}
 	}
 
 	/// Returns the Jacobian matrix of bilinearly blended Coons patch.
@@ -924,51 +919,42 @@ impl MeshGradientEvaluator {
 		self.patches[patch_index].eval_color(u, v)
 	}
 
-	/// Recursively subdivide only the regions that do not approximate the source mesh within the given tolerances.
+	/// Recursively subdivide only the regions whose parallelogram does not approximate the source geometry within the given tolerance.
 	pub fn subdivide_patches_adaptive(
 		&self,
 		maximum_subdivisions_per_patch_per_axis: usize,
 		mesh_transform: DAffine2,
 		parent_to_viewport: DAffine2,
 		position_error_tolerance: f64,
-		color_error_tolerance: f32,
 	) -> Option<Vec<MeshSubpatch>> {
-		if !maximum_subdivisions_per_patch_per_axis.is_power_of_two()
-			|| !position_error_tolerance.is_finite()
-			|| position_error_tolerance < 0.
-			|| !color_error_tolerance.is_finite()
-			|| color_error_tolerance < 0.
-		{
+		if !maximum_subdivisions_per_patch_per_axis.is_power_of_two() || !position_error_tolerance.is_finite() || position_error_tolerance < 0. {
 			return None;
 		}
 
 		let samples = [0., 0.25, 0.5, 0.75, 1.];
 		let mut subpatches = Vec::new();
-		for patch in &self.patches {
+		for (patch_index, patch) in self.patches.iter().enumerate() {
 			let mut pending = vec![(0., 0., 1., 1_usize)];
 			while let Some((u_start, v_start, stride, subdivisions_per_axis)) = pending.pop() {
-				let top_left = patch.eval_vertex(u_start, v_start, mesh_transform);
-				let top_right = patch.eval_vertex(u_start + stride, v_start, mesh_transform);
-				let bottom_left = patch.eval_vertex(u_start, v_start + stride, mesh_transform);
-				let bottom_right = patch.eval_vertex(u_start + stride, v_start + stride, mesh_transform);
-				let corners = [top_left, top_right, bottom_left, bottom_right];
-				let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corners.map(|vertex| vertex.position);
-				let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = corners.map(|vertex| Vec4::from_array(vertex.gamma_color));
+				let corner_uvs = [
+					DVec2::new(u_start, v_start),
+					DVec2::new(u_start + stride, v_start),
+					DVec2::new(u_start, v_start + stride),
+					DVec2::new(u_start + stride, v_start + stride),
+				];
+				let corner_positions = corner_uvs.map(|uv| mesh_transform.transform_point2(patch.eval_position(uv.x, uv.y)));
+				let [top_left_pos, top_right_pos, bottom_left_pos, _bottom_right_pos] = corner_positions;
 
 				let mut within_tolerance = true;
 				'error_samples: for &local_v in &samples {
 					for &local_u in &samples {
-						let expected_vertex = patch.eval_vertex(u_start + local_u * stride, v_start + local_v * stride, mesh_transform);
-						// Approximiated position/color derived by bilerp, which simulates the values in the rendered parallelogram with two linear gradients
+						let expected_pos = mesh_transform.transform_point2(patch.eval_position(u_start + local_u * stride, v_start + local_v * stride));
+						// Approximated position in the rendered parallelogram.
 						let approximated_pos = top_left_pos + (top_right_pos - top_left_pos) * local_u + (bottom_left_pos - top_left_pos) * local_v;
-						let top_color = top_left_color.lerp(top_right_color, local_u as f32);
-						let bottom_color = bottom_left_color.lerp(bottom_right_color, local_u as f32);
-						let approximated_color = top_color.lerp(bottom_color, local_v as f32);
 
-						let position_error_vector = expected_vertex.position - approximated_pos;
+						let position_error_vector = expected_pos - approximated_pos;
 						let position_error = parent_to_viewport.transform_vector2(position_error_vector).length();
-						let color_error = (Vec4::from_array(expected_vertex.gamma_color) - approximated_color).abs().max_element();
-						if !position_error.is_finite() || !color_error.is_finite() || position_error > position_error_tolerance || color_error > color_error_tolerance {
+						if !position_error.is_finite() || position_error > position_error_tolerance {
 							within_tolerance = false;
 							break 'error_samples;
 						}
@@ -976,7 +962,14 @@ impl MeshGradientEvaluator {
 				}
 
 				if within_tolerance || subdivisions_per_axis >= maximum_subdivisions_per_patch_per_axis {
-					subpatches.push(MeshSubpatch { corners });
+					subpatches.push(MeshSubpatch {
+						corners: std::array::from_fn(|index| MeshSubpatchVertex {
+							position: corner_positions[index],
+							gamma_color: patch.eval_color(corner_uvs[index].x as f32, corner_uvs[index].y as f32),
+						}),
+						patch_index,
+						uv_bounds: [DVec2::new(u_start, v_start), DVec2::new(u_start + stride, v_start + stride)],
+					});
 				} else {
 					let half_stride = stride / 2.;
 					let child_subdivisions_per_axis = subdivisions_per_axis * 2;

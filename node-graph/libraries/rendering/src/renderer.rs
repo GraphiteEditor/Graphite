@@ -274,11 +274,49 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 }
 
 // FIXME: Use minimum subpatch size in viewport instead
-const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 16;
-const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 2.;
-const MESH_COLOR_ERROR_TOLERANCE: f32 = 5. / 255.;
-const MESH_BASE_CLIP_INFLATION: f64 = 0.01;
-const MESH_MAXIMUM_INFLATION_BUCKET: usize = 8;
+const MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS: usize = 32;
+const MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT: f64 = 1.5;
+const MESH_MINIMUM_CLIP_INFLATION: f64 = 0.01;
+const MESH_MAXIMUM_CLIP_INFLATION: f64 = 12.8;
+
+fn mesh_linear_approximated_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, depth: usize) -> Vec<(f32, T)>
+where
+	T: Copy + Add<Output = T> + Sub<Output = T> + Mul<f32, Output = T>,
+{
+	const ERROR_TOLERANCE: f32 = 1. / 255.;
+	const SAMPLES: [f32; 3] = [0.25, 0.5, 0.75];
+	const MAX_DEPTH: usize = 8;
+
+	let start_result = func(start);
+	let end_result = func(end);
+	let needs_split = SAMPLES.iter().any(|&sample| {
+		let t = start + (end - start) * sample;
+		error(start_result + (end_result - start_result) * sample, func(t)) > ERROR_TOLERANCE
+	});
+
+	if needs_split && depth < MAX_DEPTH {
+		let mid = (start + end) / 2.;
+		let mut points = mesh_linear_approximated_points(func, error, start, mid, depth + 1);
+		points.extend(mesh_linear_approximated_points(func, error, mid, end, depth + 1).into_iter().skip(1));
+		points
+	} else {
+		vec![(start, start_result), (end, end_result)]
+	}
+}
+
+fn mesh_alpha(index: usize, t: f32) -> f32 {
+	match index {
+		0 => (1. - t).powi(3),
+		1 => 3. * (1. - t).powi(2) / (t.powi(2) - 3. * t + 3.),
+		2 => 3. * (1. - t) / (3. - 2. * t),
+		_ => unreachable!(),
+	}
+}
+
+fn mesh_cubic_color(control_points: [Vec4; 4], t: f32) -> Vec4 {
+	let one_minus_t = 1. - t;
+	control_points[0] * one_minus_t.powi(3) + control_points[1] * (3. * t * one_minus_t.powi(2)) + control_points[2] * (3. * t.powi(2) * one_minus_t) + control_points[3] * t.powi(3)
+}
 
 fn mesh_gamma_color_to_srgba8(color: [f32; 4]) -> SRGBA8 {
 	let float_to_u8 = |x: f32| (x.clamp(0., 1.) * 255.).round() as u8;
@@ -290,27 +328,17 @@ fn mesh_gamma_color_to_srgba8(color: [f32; 4]) -> SRGBA8 {
 	}
 }
 
-fn mesh_subpatch_inflation_bucket(subpatch: &MeshSubpatch) -> usize {
+fn mesh_subpatch_inflation(subpatch: &MeshSubpatch) -> (f64, f64) {
 	let [top_left, top_right, bottom_left, _] = subpatch.corners;
 	let subpatch_transform = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
 	let (_, smallest_scale) = singular_values(subpatch_transform);
-	let required_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
-		(1. / smallest_scale).max(MESH_BASE_CLIP_INFLATION)
+	let clip_inflation = if smallest_scale.is_finite() && smallest_scale > f64::EPSILON {
+		(1. / smallest_scale).clamp(MESH_MINIMUM_CLIP_INFLATION, MESH_MAXIMUM_CLIP_INFLATION)
 	} else {
-		MESH_BASE_CLIP_INFLATION
+		MESH_MINIMUM_CLIP_INFLATION
 	};
 
-	((required_inflation / MESH_BASE_CLIP_INFLATION).log2().ceil() as usize).min(MESH_MAXIMUM_INFLATION_BUCKET)
-}
-
-fn mesh_inflation_values(bucket: usize) -> (f64, f64, f64, f64) {
-	let clip_inflation = MESH_BASE_CLIP_INFLATION * 2_f64.powi(bucket as i32);
-	let paint_inflation = clip_inflation * 2.;
-	let clip_min = -clip_inflation;
-	let clip_size = 1. + 2. * clip_inflation;
-	let paint_min = -paint_inflation;
-	let paint_size = 1. + 2. * paint_inflation;
-	(clip_min, clip_size, paint_min, paint_size)
+	(clip_inflation, clip_inflation * 2.)
 }
 
 /// `(max, min)` factors by which a unit vector is stretched under `transform`'s linear part — the
@@ -2312,258 +2340,198 @@ impl Render for List<Gradient> {
 
 impl Render for List<MeshGradient> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		const USE_DISPLACEMENT_MAP: bool = true;
-
 		for index in 0..self.len() {
 			let Some(mesh_gradient) = self.element(index) else { continue };
 			let Some(mesh_evaluator) = mesh_gradient.evaluator() else { continue };
 			let mesh_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			// FIXME: use below attrs
-			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			if USE_DISPLACEMENT_MAP {
-				for patch in mesh_gradient.patches() {
-					let Some(patch) = patch else { continue };
-					let Some(patch_evaluator) = mesh_evaluator.patch_evaluator(patch.index) else { continue };
-					let mut unique_id = generate_uuid();
+			for patch in mesh_gradient.patches() {
+				let Some(patch) = patch else { continue };
+				let Some(patch_evaluator) = mesh_evaluator.patch_evaluator(patch.index) else { continue };
+				let mut unique_id = generate_uuid();
 
-					let [top_left_color, top_right_color, bottom_left_color, bottom_right_color] = patch.colors;
+				// Construct a closed path of the patch edge for calculating the bounding box and create a clipping mask.
+				let [top, bottom, left, right] = patch.edges;
+				let mut patch_boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
+				patch_boundary.close_path();
 
-					// Construct a closed path of the patch edge for calculating the bounding box and create a clipping mask.
-					let [top, bottom, left, right] = patch.edges;
-					let mut patch_boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
-					patch_boundary.close_path();
+				let bounds = patch_boundary.bounding_box();
+				let bounds_min = DVec2::new(bounds.x0, bounds.y0);
+				let bounds_max = DVec2::new(bounds.x1, bounds.y1);
+				let bounds_size = bounds_max - bounds_min;
+				// The patch transform is done by A*D, where..
+				// D := Displacement map that projects from a bicubicly colored unit rectangle to the patch shape in normalized map space
+				// A (displacement_map_to_patch) := Affine transform from the patch to the mesh space
+				// Keeping the affine transform outside the displacement map limits the map to the non-affine deformation,
+				// reducing quantization error when the patch is scaled.
+				let displacement_map_to_patch = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
+				let patch_to_displacement_map = displacement_map_to_patch.inverse();
 
-					let bounds = patch_boundary.bounding_box();
-					let bounds_min = DVec2::new(bounds.x0, bounds.y0);
-					let bounds_max = DVec2::new(bounds.x1, bounds.y1);
-					let bounds_size = bounds_max - bounds_min;
-					// The patch transform is done by A*D, where..
-					// D := Displacement map that projects from a bicubicly colored unit rectangle to the patch shape in normalized map space
-					// A (displacement_map_to_patch) := Affine transform from the patch to the mesh space
-					// Keeping the affine transform outside the displacement map limits the map to the non-affine deformation,
-					// reducing quantization error when the patch is scaled.
-					let displacement_map_to_patch = DAffine2::from_cols(DVec2::new(bounds_size.x, 0.), DVec2::new(0., bounds_size.y), bounds_min);
-					let patch_to_displacement_map = displacement_map_to_patch.inverse();
+				// Padding for the source rectangle to allow displacement map's error caused by float calculation
+				const SOURCE_PADDING_IN_VIEWPORT_PX: f64 = 5.;
+				// Padding for the rendered patch to hide anti-aliasing gaps between patches
+				const PATCH_PADDING_IN_VIEWPORT_PX: f64 = 1.;
+				let map_to_viewport = render.transform * mesh_transform * displacement_map_to_patch;
+				let viewport_u_length = map_to_viewport.transform_vector2(DVec2::X).length();
+				let viewport_v_length = map_to_viewport.transform_vector2(DVec2::Y).length();
+				let padding_values = |target_padding_px: f64| {
+					let padding_u = target_padding_px / viewport_u_length;
+					let padding_v = target_padding_px / viewport_v_length;
+					let padded_x = -padding_u;
+					let padded_y = -padding_v;
+					let padded_width = 1. + 2. * padding_u;
+					let padded_height = 1. + 2. * padding_v;
+					[padded_x, padded_y, padded_width, padded_height]
+				};
+				let [source_padded_x, source_padded_y, source_padded_width, source_padded_height] = padding_values(SOURCE_PADDING_IN_VIEWPORT_PX);
+				let [patch_padded_x, patch_padded_y, patch_padded_width, patch_padded_height] = padding_values(PATCH_PADDING_IN_VIEWPORT_PX);
 
-					// Padding for the source rectangle to allow displacement map's error caused by float calculation
-					const SOURCE_PADDING_IN_VIEWPORT_PX: f64 = 5.;
-					// Padding for the rendered patch to hide anti-aliasing gaps between patches
-					const PATCH_PADDING_IN_VIEWPORT_PX: f64 = 1.;
-					let map_to_viewport = render.transform * mesh_transform * displacement_map_to_patch;
-					let viewport_u_length = map_to_viewport.transform_vector2(DVec2::X).length();
-					let viewport_v_length = map_to_viewport.transform_vector2(DVec2::Y).length();
-					let padding_values = |target_padding_px: f64| {
-						let padding_u = target_padding_px / viewport_u_length;
-						let padding_v = target_padding_px / viewport_v_length;
-						let padded_x = -padding_u;
-						let padded_y = -padding_v;
-						let padded_width = 1. + 2. * padding_u;
-						let padded_height = 1. + 2. * padding_v;
-						[padded_x, padded_y, padded_width, padded_height]
-					};
-					let [source_padded_x, source_padded_y, source_padded_width, source_padded_height] = padding_values(SOURCE_PADDING_IN_VIEWPORT_PX);
-					let [patch_padded_x, patch_padded_y, patch_padded_width, patch_padded_height] = padding_values(PATCH_PADDING_IN_VIEWPORT_PX);
+				// Collect pairs from a position in a source unit rectangle and a position in the target coons patch.
+				let mut displacements: Vec<(DVec2, DVec2)> = vec![];
+				const MAP_SIZE: u32 = 128;
+				let inverse_seeds = patch_evaluator.inverse_seeds();
 
-					// Collect pairs from a position in a source unit rectangle and a position in the target coons patch.
-					let mut displacements: Vec<(DVec2, DVec2)> = vec![];
-					const MAP_SIZE: u32 = 128;
-					let inverse_seeds = patch_evaluator.inverse_seeds();
+				for y in 0..MAP_SIZE {
+					for x in 0..MAP_SIZE {
+						// Adds 0.5 to evalute the center of a png pixel
+						let s = (x as f64 + 0.5) / MAP_SIZE as f64;
+						let t = (y as f64 + 0.5) / MAP_SIZE as f64;
 
-					for y in 0..MAP_SIZE {
-						for x in 0..MAP_SIZE {
-							// Adds 0.5 to evalute the center of a png pixel
-							let s = (x as f64 + 0.5) / MAP_SIZE as f64;
-							let t = (y as f64 + 0.5) / MAP_SIZE as f64;
+						// Position in the displaced result. This can be larger than [0, 1].
+						let target_pos = DVec2::new(source_padded_x + s * source_padded_width, source_padded_y + t * source_padded_height);
+						let target_mesh_pos = displacement_map_to_patch.transform_point2(target_pos);
+						// Calculate the original position where the target position is projected from. This should be [0, 1].
+						let initial_uv = inverse_seeds
+							.iter()
+							.min_by(|(_, first_position), (_, second_position)| first_position.distance_squared(target_mesh_pos).total_cmp(&second_position.distance_squared(target_mesh_pos)))
+							.map(|(uv, _)| *uv)
+							.unwrap_or(DVec2::splat(0.5));
+						let source_pos = patch_evaluator.inverse_patch_position(target_mesh_pos, initial_uv);
 
-							// Position in the displaced result. This can be larger than [0, 1].
-							let target_pos = DVec2::new(source_padded_x + s * source_padded_width, source_padded_y + t * source_padded_height);
-							let target_mesh_pos = displacement_map_to_patch.transform_point2(target_pos);
-							// Calculate the original position where the target position is projected from. This should be [0, 1].
-							let initial_uv = inverse_seeds
-								.iter()
-								.min_by(|(_, first_position), (_, second_position)| first_position.distance_squared(target_mesh_pos).total_cmp(&second_position.distance_squared(target_mesh_pos)))
-								.map(|(uv, _)| *uv)
-								.unwrap_or(DVec2::splat(0.5));
-							let source_pos = patch_evaluator.inverse_patch_position(target_mesh_pos, initial_uv);
-
-							displacements.push((source_pos, target_pos));
-						}
+						displacements.push((source_pos, target_pos));
 					}
+				}
 
-					let max_displacement = displacements
-						.iter()
-						.flat_map(|(original, target)| {
-							let displacement = target - original;
-							[displacement.x.abs(), displacement.y.abs()]
-						})
-						.fold(0., f64::max);
-					// feDisplacementMap represents offsets in [-scale / 2, scale / 2], so double the maximum absolute displacement
-					let scale = max_displacement * 2.;
+				let max_displacement = displacements
+					.iter()
+					.flat_map(|(original, target)| {
+						let displacement = target - original;
+						[displacement.x.abs(), displacement.y.abs()]
+					})
+					.fold(0., f64::max);
+				// feDisplacementMap represents offsets in [-scale / 2, scale / 2], so double the maximum absolute displacement
+				let scale = max_displacement * 2.;
 
-					let mut rgba16_bytes = Vec::with_capacity((MAP_SIZE * MAP_SIZE * 4 * size_of::<u16>() as u32) as usize);
+				let mut rgba16_bytes = Vec::with_capacity((MAP_SIZE * MAP_SIZE * 4 * size_of::<u16>() as u32) as usize);
 
-					let encode_displacement = |source: f64, target: f64| {
-						let max_channel = u16::MAX as f64;
-						let ideal = (0.5 + (source - target) / scale) * max_channel;
-						let minimum = ((0.5 - target / scale) * max_channel).ceil().max(0.);
-						let maximum = ((0.5 + (1. - target) / scale) * max_channel).floor().min(max_channel);
+				let encode_displacement = |source: f64, target: f64| {
+					let max_channel = u16::MAX as f64;
+					let ideal = (0.5 + (source - target) / scale) * max_channel;
+					let minimum = ((0.5 - target / scale) * max_channel).ceil().max(0.);
+					let maximum = ((0.5 + (1. - target) / scale) * max_channel).floor().min(max_channel);
 
-						ideal.round().clamp(minimum, maximum) as u16
-					};
-					for displacement in displacements {
-						let (source_pos, target_pos) = displacement;
-						let red = encode_displacement(source_pos.x, target_pos.x);
-						let green = encode_displacement(source_pos.y, target_pos.y);
+					ideal.round().clamp(minimum, maximum) as u16
+				};
+				for displacement in displacements {
+					let (source_pos, target_pos) = displacement;
+					let red = encode_displacement(source_pos.x, target_pos.x);
+					let green = encode_displacement(source_pos.y, target_pos.y);
 
-						for channel in [red, green, 0, u16::MAX] {
-							rgba16_bytes.extend_from_slice(&channel.to_ne_bytes());
-						}
+					for channel in [red, green, 0, u16::MAX] {
+						rgba16_bytes.extend_from_slice(&channel.to_ne_bytes());
 					}
+				}
 
-					let mut displacement_map_png = Vec::new();
-					::image::codecs::png::PngEncoder::new(&mut displacement_map_png)
-						.write_image(&rgba16_bytes, MAP_SIZE, MAP_SIZE, ::image::ExtendedColorType::Rgba16)
-						.expect("failed to encode displacement map as 16-bit PNG");
+				let mut displacement_map_png = Vec::new();
+				::image::codecs::png::PngEncoder::new(&mut displacement_map_png)
+					.write_image(&rgba16_bytes, MAP_SIZE, MAP_SIZE, ::image::ExtendedColorType::Rgba16)
+					.expect("failed to encode displacement map as 16-bit PNG");
 
-					let preamble = "data:image/png;base64,";
-					let mut data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
-					data_url.push_str(preamble);
-					base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut data_url);
+				let preamble = "data:image/png;base64,";
+				let mut data_url = String::with_capacity(preamble.len() + displacement_map_png.len() * 4 / 3 + 4);
+				data_url.push_str(preamble);
+				base64::engine::general_purpose::STANDARD.encode_string(displacement_map_png, &mut data_url);
 
-					// Create a unit rectangle with bicubic interpolated color.
-					// 4 u-direction gradients using 3 v-direction masks to approximate a bicubic Bezier surface.
-					// The key concept is that both source-over compositing with opaque color layers and Bezier curve forms a convex combination,
-					// which allows us to simulate the bicubic interpolation by stacking gradients and masks.
+				// Create a unit rectangle with bicubic interpolated color.
+				// 4 u-direction gradients using 3 v-direction masks to approximate a bicubic Bezier surface.
+				// The key concept is that both source-over compositing with opaque color layers and Bezier curve forms a convex combination,
+				// which allows us to simulate the bicubic interpolation by stacking gradients and masks.
 
-					// Define three alpha functions from the v-direction Bernstein basis weights.
-					// They compensate for attenuation accumulated through source-over compositing,
-					// making the final weights of the four color layers equal the Bernstein weights.
-					let alpha0 = |t: f32| (1. - t).powi(3);
-					let alpha1 = |t: f32| (3. * (1. - t).powi(2)) / (t.powi(2) - 3. * t + 3.);
-					let alpha2 = |t: f32| (3. * (1. - t)) / (3. - 2. * t);
-					let alpha_functions = [alpha0, alpha1, alpha2];
+				// Define three alpha functions from the v-direction Bernstein basis weights.
+				// They compensate for attenuation accumulated through source-over compositing,
+				// making the final weights of the four color layers equal the Bernstein weights.
+				let alpha_functions: [_; 3] = std::array::from_fn(|index| move |t| mesh_alpha(index, t));
 
-					// Approximate these functions over [0, 1] using linear gradients with multiple stops.
-					// TODO: The functions contain no patch-specific color data, so their stop data can be reused for every patch.
-					fn linear_approximated_points<T>(func: &impl Fn(f32) -> T, error: &impl Fn(T, T) -> f32, start: f32, end: f32, current_depth: usize) -> Vec<(f32, T)>
-					where
-						T: Copy + Add<Output = T> + Sub<Output = T> + Mul<f32, Output = T>,
-					{
-						const GRADIENT_ERROR_TOLERANCE: f32 = 1. / 255.;
-						const LINEAR_APPROXIMATION_SAMPLES: [f32; 3] = [0.25, 0.5, 0.75];
-						const MAX_RECURSION_DEPTH: usize = 8;
+				fn gradient_stop_element(offset: f32, opacity: f32, gamma_color: [f32; 4]) -> String {
+					let offset = (offset.clamp(0., 1.) * 1_000_000.).round() / 1_000_000.;
+					let opacity = (opacity.clamp(0., 1.) * 1000.).round() / 1000.;
+					format!(
+						r##"<stop offset="{offset}" stop-color="#{}" stop-opacity="{opacity}"/>"##,
+						mesh_gamma_color_to_srgba8(gamma_color).to_rgb_hex(),
+					)
+				}
 
-						let start_result = func(start);
-						let end_result = func(end);
+				fn alpha_func_to_gradient_stops_string(func: &impl Fn(f32) -> f32) -> String {
+					let error_func = |a: f32, b: f32| (a - b).abs();
+					mesh_linear_approximated_points(func, &error_func, 0., 1., 0)
+						.into_iter()
+						.map(|(arg, result)| gradient_stop_element(arg, result, Color::WHITE.to_gamma_srgb_channels()))
+						.collect::<String>()
+				}
 
-						if start == end {
-							return vec![(start, start_result)];
-						}
+				let alpha_mask_ids: [String; 3] = std::array::from_fn(|i| {
+					let alpha_func = alpha_functions[i];
+					let stops = alpha_func_to_gradient_stops_string(&alpha_func);
+					let id = format!("mg-am{i}-{unique_id}");
 
-						let need_split = LINEAR_APPROXIMATION_SAMPLES.iter().any(|sample_pos| {
-							let sample = start + (end - start) * sample_pos;
-							let approximated = start_result + (end_result - start_result) * (*sample_pos);
-							let actual = func(sample);
-							error(approximated, actual) > GRADIENT_ERROR_TOLERANCE
-						});
-
-						if need_split && current_depth < MAX_RECURSION_DEPTH {
-							let mid = start + (end - start) * 0.5;
-							let mid_first_half = linear_approximated_points(func, error, start, mid, current_depth + 1);
-							let mid_second_half = linear_approximated_points(func, error, mid, end, current_depth + 1);
-							let mut points = mid_first_half;
-							// Both vectors contain mid, so skip the first point of the second half
-							points.extend(mid_second_half.into_iter().skip(1));
-							return points;
-						}
-
-						vec![(start, start_result), (end, end_result)]
-					}
-
-					fn gradient_stop_element(offset: f32, opacity: f32, gamma_color: [f32; 4]) -> String {
-						let offset = (offset.clamp(0., 1.) * 1_000_000.).round() / 1_000_000.;
-						let opacity = (opacity.clamp(0., 1.) * 1000.).round() / 1000.;
-						format!(
-							r##"<stop offset="{offset}" stop-color="#{}" stop-opacity="{opacity}"/>"##,
-							mesh_gamma_color_to_srgba8(gamma_color).to_rgb_hex(),
-						)
-					}
-
-					fn alpha_func_to_gradient_stops_string(func: &impl Fn(f32) -> f32) -> String {
-						let error_func = |a: f32, b: f32| (a - b).abs();
-						linear_approximated_points(func, &error_func, 0., 1., 0)
-							.into_iter()
-							.map(|(arg, result)| gradient_stop_element(arg, result, Color::WHITE.to_gamma_srgb_channels()))
-							.collect::<String>()
-					}
-
-					let alpha_mask_ids: [String; 3] = std::array::from_fn(|i| {
-						let alpha_func = alpha_functions[i];
-						let stops = alpha_func_to_gradient_stops_string(&alpha_func);
-						let id = format!("mg-am{i}-{unique_id}");
-
-						write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="mg-ag{i}-{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
-						)
-						.unwrap();
-						write!(
+					write!(
+						&mut render.svg_defs,
+						r##"<linearGradient id="mg-ag{i}-{unique_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+					)
+					.unwrap();
+					write!(
 						&mut render.svg_defs,
 						r##"<mask id="{id}" x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha"><rect x="{source_padded_x}" y="{source_padded_y}" width="{source_padded_width}" height="{source_padded_height}" fill="url(#mg-ag{i}-{unique_id})"/></mask>"##,
 					)
 					.unwrap();
 
-						id
-					});
+					id
+				});
 
-					// Convert the corner color values and their u/v derivatives from Hermite form
-					// into a 4x4 bicubic Bezier control points.
-					let control_points = patch_evaluator.bicubic_bezier_control_points();
+				// Convert the corner color values and their u/v derivatives from Hermite form
+				// into a 4x4 bicubic Bezier control points.
+				let control_points = patch_evaluator.bicubic_bezier_control_points();
 
-					// Create four u-parametric Bezier color functions, one for each row in the v direction of the 4x4 control net.
-					let u_color_curves: [_; 4] = std::array::from_fn(|v| {
-						move |t: f32| {
-							let one_minus_t = 1. - t;
+				// Create four u-parametric Bezier color functions, one for each row in the v direction of the 4x4 control net.
+				let u_color_curves: [_; 4] = std::array::from_fn(|v| move |t: f32| mesh_cubic_color(control_points[v], t));
 
-							let b0 = one_minus_t.powi(3);
-							let b1 = 3. * t * one_minus_t.powi(2);
-							let b2 = 3. * t.powi(2) * one_minus_t;
-							let b3 = t.powi(3);
+				fn u_color_curves_to_gradient_stops_string(func: &impl Fn(f32) -> Vec4) -> String {
+					let error_func = |a: Vec4, b: Vec4| (a - b).abs().max_element();
+					mesh_linear_approximated_points(func, &error_func, 0., 1., 0)
+						.into_iter()
+						.map(|(arg, result)| gradient_stop_element(arg, 1., result.to_array()))
+						.collect::<String>()
+				}
 
-							control_points[v][0] * b0 + control_points[v][1] * b1 + control_points[v][2] * b2 + control_points[v][3] * b3
-						}
-					});
-
-					fn u_color_curves_to_gradient_stops_string(func: &impl Fn(f32) -> Vec4) -> String {
-						let error_func = |a: Vec4, b: Vec4| (a - b).abs().max_element();
-						linear_approximated_points(func, &error_func, 0., 1., 0)
-							.into_iter()
-							.map(|(arg, result)| gradient_stop_element(arg, 1., result.to_array()))
-							.collect::<String>()
-					}
-
-					// Approximate these functions over [0, 1] using linear gradients with multiple stops,
-					// in the same manner as the alpha functions.
-					let u_color_curves_gradient_ids: [String; 4] = std::array::from_fn(|i| {
-						let curve = &u_color_curves[i];
-						let stops = u_color_curves_to_gradient_stops_string(curve);
-						let id = format!("mg-cg{i}-{unique_id}");
-
-						write!(
-							&mut render.svg_defs,
-							r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
-						)
-						.unwrap();
-
-						id
-					});
+				// Approximate these functions over [0, 1] using linear gradients with multiple stops,
+				// in the same manner as the alpha functions.
+				let u_color_curves_gradient_ids: [String; 4] = std::array::from_fn(|i| {
+					let curve = &u_color_curves[i];
+					let stops = u_color_curves_to_gradient_stops_string(curve);
+					let id = format!("mg-cg{i}-{unique_id}");
 
 					write!(
 						&mut render.svg_defs,
-						r##"<filter
+						r##"<linearGradient id="{id}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse">{stops}</linearGradient>"##,
+					)
+					.unwrap();
+
+					id
+				});
+
+				write!(
+					&mut render.svg_defs,
+					r##"<filter
 							id="fd{unique_id}"
 							x="{source_padded_x}"
 							y="{source_padded_y}"
@@ -2591,18 +2559,18 @@ impl Render for List<MeshGradient> {
 								xChannelSelector="R"
 								yChannelSelector="G"/>
 						</filter>"##
-					)
-					.unwrap();
+				)
+				.unwrap();
 
-					// Clip the mapped result by patch shape
-					let patch_clip_inflation = DAffine2::from_scale_angle_translation(DVec2::new(patch_padded_width, patch_padded_height), 0., DVec2::new(patch_padded_x, patch_padded_y));
+				// Clip the mapped result by patch shape
+				let patch_clip_inflation = DAffine2::from_scale_angle_translation(DVec2::new(patch_padded_width, patch_padded_height), 0., DVec2::new(patch_padded_x, patch_padded_y));
 
-					let patch_clip_transform = patch_clip_inflation * patch_to_displacement_map;
-					patch_boundary.apply_affine(Affine::new(patch_clip_transform.to_cols_array()));
-					let patch_boundary_d = patch_boundary.to_svg();
-					write!(
-						&mut render.svg_defs,
-						r##"<mask
+				let patch_clip_transform = patch_clip_inflation * patch_to_displacement_map;
+				patch_boundary.apply_affine(Affine::new(patch_clip_transform.to_cols_array()));
+				let patch_boundary_d = patch_boundary.to_svg();
+				write!(
+					&mut render.svg_defs,
+					r##"<mask
 						id="mc{unique_id}"
 						x="{source_padded_x}"
 						y="{source_padded_y}"
@@ -2613,150 +2581,49 @@ impl Render for List<MeshGradient> {
 						mask-type="alpha">
 						<path d="{patch_boundary_d}" fill="#fff"/>
 					</mask>"##
-					)
-					.unwrap();
-
-					render.parent_tag(
-						"g",
-						|attributes| {
-							attributes.push("transform", format_transform_matrix(mesh_transform * displacement_map_to_patch));
-						},
-						|render| {
-							render.parent_tag(
-								"g",
-								|attributes| {
-									attributes.push("mask", format!("url(#mc{unique_id})"));
-								},
-								|render| {
-									render.parent_tag(
-										"g",
-										|attributes| {
-											attributes.push("style", "isolation:isolate");
-											attributes.push("filter", format!("url(#fd{unique_id})"));
-										},
-										|render| {
-											u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
-												render.leaf_tag("rect", |attributes| {
-													attributes.push("x", source_padded_x.to_string());
-													attributes.push("y", source_padded_y.to_string());
-													attributes.push("width", source_padded_width.to_string());
-													attributes.push("height", source_padded_height.to_string());
-													attributes.push("fill", format!("url(#{gradient_id})"));
-													if i != 3 {
-														let mask_id = alpha_mask_ids[i].clone();
-														attributes.push("mask", format!("url(#{mask_id})"));
-													}
-												});
-											});
-										},
-									);
-								},
-							);
-						},
-					);
-
-					unique_id += 1;
-				}
-			} else {
-				let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
-					evaluator.subdivide_patches_adaptive(
-						MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
-						mesh_transform,
-						render.transform,
-						MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
-						MESH_COLOR_ERROR_TOLERANCE,
-					)
-				}) else {
-					continue;
-				};
-
-				let inflation_buckets: Vec<_> = subpatches.iter().map(mesh_subpatch_inflation_bucket).collect();
-				let mut used_inflation_buckets = [false; MESH_MAXIMUM_INFLATION_BUCKET + 1];
-				inflation_buckets.iter().for_each(|&bucket| used_inflation_buckets[bucket] = true);
-
-				let shared_id = generate_uuid();
-				write!(
-					&mut render.svg_defs,
-					r##"<linearGradient id="gm{shared_id}" x1="0.5" y1="0" x2="0.5" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>"##,
 				)
 				.unwrap();
-				used_inflation_buckets
-				.iter()
-				.enumerate()
-				.filter(|(_, used)| **used)
-				.for_each(|(bucket, _)| {
-					let (clip_min, clip_size, paint_min, paint_size) = mesh_inflation_values(bucket);
-					write!(
-						&mut render.svg_defs,
-						r##"<clipPath id="mc{shared_id}-{bucket}" clipPathUnits="userSpaceOnUse"><rect x="{clip_min}" y="{clip_min}" width="{clip_size}" height="{clip_size}"/></clipPath>
-						<mask id="mm{shared_id}-{bucket}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="url(#gm{shared_id})"/></mask>
-						<mask id="mi{shared_id}-{bucket}" x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"><rect x="{paint_min}" y="{paint_min}" width="{paint_size}" height="{paint_size}" fill="#fff"/></mask>"##,
-					)
-					.unwrap();
-				});
 
-				let mut unique_id = generate_uuid();
-				subpatches.iter().zip(inflation_buckets).for_each(|(subpatch, bucket)| {
-					let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
-					let subpatch_transform = format_transform_matrix(DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position));
-					let (_, _, paint_min, paint_size) = mesh_inflation_values(bucket);
+				render.parent_tag(
+					"g",
+					|attributes| {
+						attributes.push("transform", format_transform_matrix(mesh_transform * displacement_map_to_patch));
+					},
+					|render| {
+						render.parent_tag(
+							"g",
+							|attributes| {
+								attributes.push("mask", format!("url(#mc{unique_id})"));
+							},
+							|render| {
+								render.parent_tag(
+									"g",
+									|attributes| {
+										attributes.push("style", "isolation:isolate");
+										attributes.push("filter", format!("url(#fd{unique_id})"));
+									},
+									|render| {
+										u_color_curves_gradient_ids.iter().enumerate().rev().for_each(|(i, gradient_id)| {
+											render.leaf_tag("rect", |attributes| {
+												attributes.push("x", source_padded_x.to_string());
+												attributes.push("y", source_padded_y.to_string());
+												attributes.push("width", source_padded_width.to_string());
+												attributes.push("height", source_padded_height.to_string());
+												attributes.push("fill", format!("url(#{gradient_id})"));
+												if i != 3 {
+													let mask_id = alpha_mask_ids[i].clone();
+													attributes.push("mask", format!("url(#{mask_id})"));
+												}
+											});
+										});
+									},
+								);
+							},
+						);
+					},
+				);
 
-					// linear gradient for the bottom line
-					write!(
-						&mut render.svg_defs,
-						r##"<linearGradient id="gb{unique_id}" x1="0" y1="1" x2="1" y2="1" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-						mesh_gamma_color_to_srgba8(bottom_left.gamma_color).to_rgba_hex(),
-						mesh_gamma_color_to_srgba8(bottom_right.gamma_color).to_rgba_hex(),
-					)
-					.unwrap();
-
-					// linear gradient for the top line
-					write!(
-						&mut render.svg_defs,
-						r##"<linearGradient id="gt{unique_id}" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
-						mesh_gamma_color_to_srgba8(top_left.gamma_color).to_rgba_hex(),
-						mesh_gamma_color_to_srgba8(top_right.gamma_color).to_rgba_hex(),
-					)
-					.unwrap();
-
-					render.parent_tag(
-						"g",
-						|attributes| {
-							attributes.push("transform", subpatch_transform);
-							attributes.push("clip-path", format!("url(#mc{shared_id}-{bucket})"));
-						},
-						|render| {
-							// Force both gradient layers to composite before the outer clip applies edge coverage.
-							render.parent_tag(
-								"g",
-								|attributes| {
-									attributes.push("style", "isolation:isolate");
-									attributes.push("mask", format!("url(#mi{shared_id}-{bucket})"));
-								},
-								|render| {
-									render.leaf_tag("rect", |attributes| {
-										attributes.push("x", paint_min.to_string());
-										attributes.push("y", paint_min.to_string());
-										attributes.push("width", paint_size.to_string());
-										attributes.push("height", paint_size.to_string());
-										attributes.push("fill", format!("url(#gb{unique_id})"));
-									});
-
-									render.leaf_tag("rect", |attributes| {
-										attributes.push("x", paint_min.to_string());
-										attributes.push("y", paint_min.to_string());
-										attributes.push("width", paint_size.to_string());
-										attributes.push("height", paint_size.to_string());
-										attributes.push("fill", format!("url(#gt{unique_id})"));
-										attributes.push("mask", format!("url(#mm{shared_id}-{bucket})"));
-									});
-								},
-							);
-						},
-					);
-
-					unique_id += 1;
-				});
+				unique_id += 1;
 			}
 		}
 	}
@@ -2764,9 +2631,9 @@ impl Render for List<MeshGradient> {
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		let linear_gradient = |start: DVec2, end: DVec2, start_color: SRGBA8, end_color: SRGBA8| {
+		let linear_gradient = |start: DVec2, end: DVec2, stop_values: Vec<(f32, SRGBA8)>| {
 			let mut stops = peniko::ColorStops::new();
-			for (offset, color) in [(0., start_color), (1., end_color)] {
+			for (offset, color) in stop_values {
 				stops.push(peniko::ColorStop {
 					offset,
 					color: peniko::color::DynamicColor::from_alpha_color(color.to_peniko_color()),
@@ -2785,19 +2652,6 @@ impl Render for List<MeshGradient> {
 				..Default::default()
 			})
 		};
-		let transparent_white = SRGBA8 {
-			red: 255,
-			green: 255,
-			blue: 255,
-			alpha: 0,
-		};
-		let opaque_white = SRGBA8 {
-			red: 255,
-			green: 255,
-			blue: 255,
-			alpha: 255,
-		};
-		let mask_gradient = linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), opaque_white, transparent_white);
 		let infinite_rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 		for index in 0..self.len() {
@@ -2815,15 +2669,13 @@ impl Render for List<MeshGradient> {
 
 			let error_to_viewport = DAffine2::from_scale(DVec2::splat(viewport_zoom)) * parent_transform;
 
-			let Some(subpatches) = mesh_gradient.evaluator().and_then(|evaluator| {
-				evaluator.subdivide_patches_adaptive(
-					MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
-					mesh_transform,
-					error_to_viewport,
-					MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
-					MESH_COLOR_ERROR_TOLERANCE,
-				)
-			}) else {
+			let Some(evaluator) = mesh_gradient.evaluator() else { continue };
+			let Some(subpatches) = evaluator.subdivide_patches_adaptive(
+				MESH_MAXIMUM_SUBDIVISIONS_PER_PATCH_PER_AXIS,
+				mesh_transform,
+				error_to_viewport,
+				MESH_POSITION_ERROR_TOLERANCE_IN_VIEWPORT,
+			) else {
 				continue;
 			};
 
@@ -2855,71 +2707,112 @@ impl Render for List<MeshGradient> {
 				item_layer = true;
 			}
 
-			for subpatch in subpatches {
-				let [top_left, top_right, bottom_left, bottom_right] = subpatch.corners;
-				let local_to_mesh = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
-				let is_subpatch_flipped = local_to_mesh.matrix2.determinant() < 0.;
-				if is_subpatch_flipped {
-					continue;
-				}
-
-				let local_to_device = parent_transform * local_to_mesh;
-				let local_to_scene = kurbo::Affine::new(local_to_device.to_cols_array());
-				// Deshear the brush axes because Vello evaluates linear gradients from their transformed endpoints.
-				let inverse_local_to_device = if transform_is_invertible(local_to_device) {
-					local_to_device.inverse()
-				} else {
-					Default::default()
-				};
-				let horizontal_gradient_to_device = gradient_placement(local_to_device, GradientType::Linear);
-				let vertical_axis = local_to_device.matrix2.y_axis;
-				let vertical_band_normal = local_to_device.matrix2.x_axis.perp();
-				let vertical_line = if vertical_band_normal.length_squared() > 0. {
-					vertical_axis.project_onto(vertical_band_normal)
-				} else {
-					vertical_axis
-				};
-				let vertical_gradient_to_device = DAffine2 {
-					matrix2: DMat2::from_cols(vertical_line.perp(), vertical_line),
-					translation: local_to_device.translation,
-				};
-				let horizontal_brush_transform = kurbo::Affine::new((inverse_local_to_device * horizontal_gradient_to_device).to_cols_array());
-				let vertical_brush_transform = kurbo::Affine::new((inverse_local_to_device * vertical_gradient_to_device).to_cols_array());
-				let bucket = mesh_subpatch_inflation_bucket(&subpatch);
-				let (clip_min, clip_size, paint_min, paint_size) = mesh_inflation_values(bucket);
-				let clip_rect = kurbo::Rect::new(clip_min, clip_min, clip_min + clip_size, clip_min + clip_size);
-				let paint_rect = kurbo::Rect::new(paint_min, paint_min, paint_min + paint_size, paint_min + paint_size);
-
-				let bottom_gradient = linear_gradient(
-					DVec2::new(0., 1.),
-					DVec2::new(1., 1.),
-					mesh_gamma_color_to_srgba8(bottom_left.gamma_color),
-					mesh_gamma_color_to_srgba8(bottom_right.gamma_color),
-				);
-				let top_gradient = linear_gradient(
-					DVec2::ZERO,
-					DVec2::X,
-					mesh_gamma_color_to_srgba8(top_left.gamma_color),
-					mesh_gamma_color_to_srgba8(top_right.gamma_color),
-				);
-
-				// Composite both horizontal gradients first, then apply edge coverage once through the outer clip.
-				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &clip_rect);
-				scene.fill(peniko::Fill::NonZero, local_to_scene, &bottom_gradient, Some(horizontal_brush_transform), &paint_rect);
-				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &paint_rect);
-				scene.fill(peniko::Fill::NonZero, local_to_scene, &mask_gradient, Some(vertical_brush_transform), &paint_rect);
-				scene.push_layer(
-					peniko::Fill::NonZero,
-					peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
-					1.,
-					local_to_scene,
-					&paint_rect,
-				);
-				scene.fill(peniko::Fill::NonZero, local_to_scene, &top_gradient, Some(horizontal_brush_transform), &paint_rect);
-				scene.pop_layer();
-				scene.pop_layer();
-				scene.pop_layer();
+			let mut mesh_boundary = BezPath::new();
+			for patch in mesh_gradient.patches().flatten() {
+				let [top, bottom, left, right] = patch.edges;
+				let mut boundary = BezPath::from_path_segments([top, right, bottom.reverse(), left.reverse()].into_iter());
+				boundary.close_path();
+				mesh_boundary.extend(boundary);
 			}
+			scene.push_layer(
+				peniko::Fill::NonZero,
+				peniko::Mix::Normal,
+				1.,
+				kurbo::Affine::new((parent_transform * mesh_transform).to_cols_array()),
+				&mesh_boundary,
+			);
+
+			for patch_subpatches in subpatches.chunk_by(|a, b| a.patch_index == b.patch_index) {
+				let Some(patch_evaluator) = evaluator.patch_evaluator(patch_subpatches[0].patch_index) else {
+					continue;
+				};
+				let control_points = patch_evaluator.bicubic_bezier_control_points();
+
+				for subpatch in patch_subpatches {
+					let [top_left, top_right, bottom_left, _] = subpatch.corners;
+					let local_to_mesh = DAffine2::from_cols(top_right.position - top_left.position, bottom_left.position - top_left.position, top_left.position);
+					if local_to_mesh.matrix2.determinant() < 0. {
+						continue;
+					}
+
+					let local_to_device = parent_transform * local_to_mesh;
+					let local_to_scene = kurbo::Affine::new(local_to_device.to_cols_array());
+					// Deshear the brush axes because Vello evaluates linear gradients from their transformed endpoints.
+					let inverse_local_to_device = if transform_is_invertible(local_to_device) {
+						local_to_device.inverse()
+					} else {
+						Default::default()
+					};
+					let horizontal_gradient_to_device = gradient_placement(local_to_device, GradientType::Linear);
+					let vertical_axis = local_to_device.matrix2.y_axis;
+					let vertical_band_normal = local_to_device.matrix2.x_axis.perp();
+					let vertical_line = if vertical_band_normal.length_squared() > 0. {
+						vertical_axis.project_onto(vertical_band_normal)
+					} else {
+						vertical_axis
+					};
+					let vertical_gradient_to_device = DAffine2 {
+						matrix2: DMat2::from_cols(vertical_line.perp(), vertical_line),
+						translation: local_to_device.translation,
+					};
+					let horizontal_brush_transform = kurbo::Affine::new((inverse_local_to_device * horizontal_gradient_to_device).to_cols_array());
+					let vertical_brush_transform = kurbo::Affine::new((inverse_local_to_device * vertical_gradient_to_device).to_cols_array());
+					let (clip_inflation, paint_inflation) = mesh_subpatch_inflation(subpatch);
+					let clip_rect = kurbo::Rect::new(-clip_inflation, -clip_inflation, 1. + clip_inflation, 1. + clip_inflation);
+					let paint_rect = kurbo::Rect::new(-paint_inflation, -paint_inflation, 1. + paint_inflation, 1. + paint_inflation);
+					let [uv_min, uv_max] = subpatch.uv_bounds.map(|uv| uv.as_vec2());
+					let remap_offset = |value: f32, start: f32, end: f32| (value - start) / (end - start);
+
+					let color_gradients: [_; 4] = std::array::from_fn(|row| {
+						let curve = |u| mesh_cubic_color(control_points[row], u);
+						let error = |a: Vec4, b: Vec4| (a - b).abs().max_element();
+						let stops = mesh_linear_approximated_points(&curve, &error, uv_min.x, uv_max.x, 0)
+							.into_iter()
+							.map(|(u, color)| (remap_offset(u, uv_min.x, uv_max.x), mesh_gamma_color_to_srgba8(color.to_array())))
+							.collect();
+						linear_gradient(DVec2::ZERO, DVec2::X, stops)
+					});
+					let alpha_gradients: [_; 3] = std::array::from_fn(|index| {
+						let alpha = |v| mesh_alpha(index, v);
+						let error = |a: f32, b: f32| (a - b).abs();
+						let stops = mesh_linear_approximated_points(&alpha, &error, uv_min.y, uv_max.y, 0)
+							.into_iter()
+							.map(|(v, alpha)| {
+								(
+									remap_offset(v, uv_min.y, uv_max.y),
+									SRGBA8 {
+										red: 255,
+										green: 255,
+										blue: 255,
+										alpha: (alpha.clamp(0., 1.) * 255.).round() as u8,
+									},
+								)
+							})
+							.collect();
+						linear_gradient(DVec2::new(0.5, 0.), DVec2::new(0.5, 1.), stops)
+					});
+
+					// Build the bicubic color first, then apply subpatch edge coverage once.
+					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &clip_rect);
+					scene.fill(peniko::Fill::NonZero, local_to_scene, &color_gradients[3], Some(horizontal_brush_transform), &paint_rect);
+					for layer in (0..3).rev() {
+						scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., local_to_scene, &paint_rect);
+						scene.fill(peniko::Fill::NonZero, local_to_scene, &alpha_gradients[layer], Some(vertical_brush_transform), &paint_rect);
+						scene.push_layer(
+							peniko::Fill::NonZero,
+							peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+							1.,
+							local_to_scene,
+							&paint_rect,
+						);
+						scene.fill(peniko::Fill::NonZero, local_to_scene, &color_gradients[layer], Some(horizontal_brush_transform), &paint_rect);
+						scene.pop_layer();
+						scene.pop_layer();
+					}
+					scene.pop_layer();
+				}
+			}
+			scene.pop_layer();
 
 			if item_layer {
 				scene.pop_layer();
