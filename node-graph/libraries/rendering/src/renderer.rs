@@ -496,19 +496,23 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 	}
 }
 
+/// The whole-ramp settings attributes carried by the gradient at `index` of the list.
+pub(crate) fn gradient_settings_at(list: &List<Gradient>, index: usize) -> GradientSettings {
+	GradientSettings {
+		spread: list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index),
+		cyclic: list.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index),
+		space: list.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
+		hue_direction: list.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index),
+		interpolation: list.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
+	}
+}
+
 fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_transform: &DAffine2) -> Option<(peniko::Brush, DAffine2)> {
 	let stops = gradient_list.element(0)?;
 
 	let gradient_form: GradientForm = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-	let gradient_spread: GradientSpread = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
-	let settings = GradientSettings {
-		spread: gradient_spread,
-		cyclic: gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, 0),
-		space: gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, 0),
-		hue_direction: gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, 0),
-		interpolation: gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, 0),
-	};
+	let settings = gradient_settings_at(gradient_list, 0);
 
 	let (samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
@@ -532,7 +536,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 			}
 			.into(),
 		},
-		extend: peniko_extend(gradient_spread),
+		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
 		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 		..Default::default()
@@ -2189,15 +2193,8 @@ impl Render for List<Gradient> {
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, index);
 			let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, index);
-			let settings = GradientSettings {
-				spread: gradient_spread,
-				cyclic: self.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index),
-				space: self.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
-				hue_direction: self.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index),
-				interpolation: self.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
-			};
+			let settings = gradient_settings_at(self, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -2237,10 +2234,10 @@ impl Render for List<Gradient> {
 				};
 
 				let gradient_id = generate_uuid();
-				let gradient_spread_attribute = if matches!(gradient_spread, GradientSpread::Pad | GradientSpread::Clear) {
+				let gradient_spread_attribute = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
 					String::new()
 				} else {
-					format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
+					format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
 				};
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
@@ -2280,12 +2277,7 @@ impl Render for List<Gradient> {
 			return;
 		}
 
-		for (((index, gradient), gradient_spread), gradient_form) in self
-			.iter_element_values()
-			.enumerate()
-			.zip(self.iter_attribute_values_or_default::<GradientSpread>(ATTR_GRADIENT_SPREAD))
-			.zip(self.iter_attribute_values_or_default::<GradientForm>(ATTR_GRADIENT_FORM))
-		{
+		for ((index, gradient), gradient_form) in self.iter_element_values().enumerate().zip(self.iter_attribute_values_or_default::<GradientForm>(ATTR_GRADIENT_FORM)) {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
@@ -2295,18 +2287,12 @@ impl Render for List<Gradient> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let settings = GradientSettings {
-				spread: gradient_spread,
-				cyclic: self.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, index),
-				space: self.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, index),
-				hue_direction: self.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, index),
-				interpolation: self.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, index),
-			};
+			let settings = gradient_settings_at(self, index);
 			let (samples, span) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
 			let stops = peniko_color_stops(&samples);
 
-			let extend = peniko_extend(gradient_spread);
+			let extend = peniko_extend(settings.spread);
 
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.

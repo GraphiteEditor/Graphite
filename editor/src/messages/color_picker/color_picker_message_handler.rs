@@ -217,38 +217,20 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_spread = gradient_spread;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						gradient_interpolation: self.gradient_interpolation,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
 			ColorPickerMessage::SetGradientCyclic { gradient_cyclic } => {
-				if self.gradient.is_none() {
-					return;
-				}
+				let Some(gradient) = &mut self.gradient else { return };
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 
 				let previous_cyclic = std::mem::replace(&mut self.gradient_cyclic, gradient_cyclic);
-				if let Some(gradient) = &mut self.gradient {
-					gradient.rebase_positions_for_cyclic(previous_cyclic, gradient_cyclic);
-				}
+				gradient.rebase_positions_for_cyclic(previous_cyclic, gradient_cyclic);
 
-				let Some(gradient) = &self.gradient else { return };
+				let ramp = GradientRamp::from(&*gradient);
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						gradient_interpolation: self.gradient_interpolation,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(ramp.with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -257,14 +239,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_space = gradient_space;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						gradient_interpolation: self.gradient_interpolation,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -273,14 +248,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_hue_direction = gradient_hue_direction;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction,
-						gradient_interpolation: self.gradient_interpolation,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -289,14 +257,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 				self.gradient_interpolation = gradient_interpolation;
 				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(GradientRamp {
-						gradient_spread: self.gradient_spread,
-						gradient_space: self.gradient_space,
-						gradient_cyclic: self.gradient_cyclic,
-						gradient_hue_direction: self.gradient_hue_direction,
-						gradient_interpolation,
-						..GradientRamp::from(gradient)
-					}),
+					value: FillChoice::Gradient(GradientRamp::from(gradient).with_settings(self.gradient_settings())),
 				});
 				self.send_layouts(responses);
 			}
@@ -348,7 +309,7 @@ impl ColorPickerMessageHandler {
 		self.old_is_none = is_none;
 	}
 
-	/// The whole-ramp settings the picker is currently editing with, for the sampling entry points that need them all.
+	/// The whole-ramp settings the picker is currently editing with, bundled for sampling and for emitting ramps.
 	fn gradient_settings(&self) -> GradientSettings {
 		GradientSettings {
 			spread: self.gradient_spread,
@@ -394,15 +355,9 @@ impl ColorPickerMessageHandler {
 			&& (active_index as usize) < gradient.len()
 		{
 			gradient.set_color(active_index as usize, color);
+			let ramp = GradientRamp::from(&*gradient);
 			responses.add(FrontendMessage::ColorPickerColorChanged {
-				value: FillChoice::Gradient(GradientRamp {
-					gradient_spread: self.gradient_spread,
-					gradient_space: self.gradient_space,
-					gradient_cyclic: self.gradient_cyclic,
-					gradient_hue_direction: self.gradient_hue_direction,
-					gradient_interpolation: self.gradient_interpolation,
-					..GradientRamp::from(&*gradient)
-				}),
+				value: FillChoice::Gradient(ramp.with_settings(self.gradient_settings())),
 			});
 		} else {
 			responses.add(FrontendMessage::ColorPickerColorChanged {
@@ -532,14 +487,7 @@ impl ColorPickerMessageHandler {
 		}
 
 		responses.add(FrontendMessage::ColorPickerColorChanged {
-			value: FillChoice::Gradient(GradientRamp {
-				gradient_spread: self.gradient_spread,
-				gradient_space: self.gradient_space,
-				gradient_cyclic: self.gradient_cyclic,
-				gradient_hue_direction: self.gradient_hue_direction,
-				gradient_interpolation: self.gradient_interpolation,
-				..GradientRamp::from(&gradient)
-			}),
+			value: FillChoice::Gradient(GradientRamp::from(&gradient).with_settings(self.gradient_settings())),
 		});
 		self.gradient = Some(gradient);
 		self.send_layouts(responses);

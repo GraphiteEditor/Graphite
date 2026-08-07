@@ -39,6 +39,18 @@ pub struct GradientOptions {
 	gradient_interpolation: GradientInterpolation,
 }
 
+impl GradientOptions {
+	fn settings(&self) -> GradientSettings {
+		GradientSettings {
+			spread: self.gradient_spread,
+			cyclic: self.gradient_cyclic,
+			space: self.gradient_space,
+			hue_direction: self.gradient_hue_direction,
+			interpolation: self.gradient_interpolation,
+		}
+	}
+}
+
 #[impl_message(Message, ToolMessage, Gradient)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -155,17 +167,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				self.options.gradient_cyclic = ramp.gradient_cyclic;
 				self.options.gradient_hue_direction = ramp.gradient_hue_direction;
 				self.options.gradient_interpolation = ramp.gradient_interpolation;
-				apply_stops_update(
-					&mut self.data,
-					context,
-					responses,
-					Gradient::from(&ramp),
-					ramp.gradient_spread,
-					ramp.gradient_space,
-					ramp.gradient_cyclic,
-					ramp.gradient_hue_direction,
-					ramp.gradient_interpolation,
-				);
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), GradientSettings::from(&ramp));
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -297,24 +299,17 @@ impl LayoutHolder for GradientTool {
 				},
 			])
 		});
-		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp {
-			gradient_spread: self.options.gradient_spread,
-			gradient_space: self.options.gradient_space,
-			gradient_cyclic: self.options.gradient_cyclic,
-			gradient_hue_direction: self.options.gradient_hue_direction,
-			gradient_interpolation: self.options.gradient_interpolation,
-			..GradientRamp::from(&stops_value)
-		}))
-		.allow_none(false)
-		.narrow(true)
-		.tooltip_label("Gradient Stops")
-		.tooltip_description("Edit the gradient's color stops.")
-		.on_update(|input: &ColorInput| {
-			let ramp = input.value.as_gradient().cloned().unwrap_or_default();
-			GradientToolMessage::UpdateRamp { ramp }.into()
-		})
-		.on_commit(|_| DocumentMessage::AddTransaction.into())
-		.widget_instance();
+		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value).with_settings(self.options.settings())))
+			.allow_none(false)
+			.narrow(true)
+			.tooltip_label("Gradient Stops")
+			.tooltip_description("Edit the gradient's color stops.")
+			.on_update(|input: &ColorInput| {
+				let ramp = input.value.as_gradient().cloned().unwrap_or_default();
+				GradientToolMessage::UpdateRamp { ramp }.into()
+			})
+			.on_commit(|_| DocumentMessage::AddTransaction.into())
+			.widget_instance();
 
 		let reverse_stops = IconButton::new("Reverse", 24)
 			.tooltip_label("Reverse Stops")
@@ -903,6 +898,10 @@ impl SelectedGradient {
 
 /// Send the per-attribute graph operations that mirror the in-memory `Gradient` onto the chain feeding the layer.
 fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradient, appearance: GradientAppearance, responses: &mut VecDeque<Message>) {
+	responses.add(GraphOperationMessage::GradientCyclicSet {
+		layer,
+		gradient_cyclic: appearance.gradient_cyclic,
+	});
 	responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: gradient.clone() });
 	responses.add(GraphOperationMessage::GradientPositionsSet {
 		layer,
@@ -927,10 +926,6 @@ fn dispatch_gradient_chain_writes(layer: LayerNodeIdentifier, gradient: &Gradien
 	responses.add(GraphOperationMessage::GradientSpaceSet {
 		layer,
 		gradient_space: appearance.gradient_space,
-	});
-	responses.add(GraphOperationMessage::GradientCyclicSet {
-		layer,
-		gradient_cyclic: appearance.gradient_cyclic,
 	});
 	responses.add(GraphOperationMessage::GradientHueDirectionSet {
 		layer,
@@ -1994,18 +1989,7 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-#[allow(clippy::too_many_arguments)]
-fn apply_stops_update(
-	data: &mut GradientToolData,
-	context: &mut ToolActionMessageContext,
-	responses: &mut VecDeque<Message>,
-	new_gradient: Gradient,
-	gradient_spread: GradientSpread,
-	gradient_space: GradientSpace,
-	gradient_cyclic: bool,
-	gradient_hue_direction: GradientHueDirection,
-	gradient_interpolation: GradientInterpolation,
-) {
+fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, settings: GradientSettings) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -2020,23 +2004,38 @@ fn apply_stops_update(
 		}
 
 		if get_upstream_gradient_value_node_id(layer, &context.document.network_interface).is_some() {
+			responses.add(GraphOperationMessage::GradientCyclicSet {
+				layer,
+				gradient_cyclic: settings.cyclic,
+			});
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: new_gradient.clone() });
-			responses.add(GraphOperationMessage::GradientSpreadSet { layer, gradient_spread });
-			responses.add(GraphOperationMessage::GradientSpaceSet { layer, gradient_space });
-			responses.add(GraphOperationMessage::GradientCyclicSet { layer, gradient_cyclic });
-			responses.add(GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction });
-			responses.add(GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation });
+			responses.add(GraphOperationMessage::GradientSpreadSet {
+				layer,
+				gradient_spread: settings.spread,
+			});
+			responses.add(GraphOperationMessage::GradientSpaceSet {
+				layer,
+				gradient_space: settings.space,
+			});
+			responses.add(GraphOperationMessage::GradientHueDirectionSet {
+				layer,
+				gradient_hue_direction: settings.hue_direction,
+			});
+			responses.add(GraphOperationMessage::GradientInterpolationSet {
+				layer,
+				gradient_interpolation: settings.interpolation,
+			});
 			updated_any_layer = true;
 		} else if let Some((_gradient, appearance, _source)) = resolve_gradient(layer, &context.document.network_interface) {
 			responses.add(GraphOperationMessage::FillGradientSet {
 				layer,
 				gradient: new_gradient.clone(),
 				gradient_form: appearance.gradient_form,
-				gradient_spread,
-				gradient_space,
-				gradient_cyclic,
-				gradient_hue_direction,
-				gradient_interpolation,
+				gradient_spread: settings.spread,
+				gradient_space: settings.space,
+				gradient_cyclic: settings.cyclic,
+				gradient_hue_direction: settings.hue_direction,
+				gradient_interpolation: settings.interpolation,
 				transform: appearance.transform,
 			});
 			updated_any_layer = true;
@@ -2045,10 +2044,11 @@ fn apply_stops_update(
 
 	if let Some(selected_gradient) = &mut data.selected_gradient {
 		selected_gradient.gradient = new_gradient.clone();
-		selected_gradient.appearance.gradient_spread = gradient_spread;
-		selected_gradient.appearance.gradient_space = gradient_space;
-		selected_gradient.appearance.gradient_cyclic = gradient_cyclic;
-		selected_gradient.appearance.gradient_hue_direction = gradient_hue_direction;
+		selected_gradient.appearance.gradient_spread = settings.spread;
+		selected_gradient.appearance.gradient_space = settings.space;
+		selected_gradient.appearance.gradient_cyclic = settings.cyclic;
+		selected_gradient.appearance.gradient_hue_direction = settings.hue_direction;
+		selected_gradient.appearance.gradient_interpolation = settings.interpolation;
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.

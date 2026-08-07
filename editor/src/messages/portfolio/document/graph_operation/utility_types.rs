@@ -796,7 +796,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
-	/// Set the cyclic wrap flag on the chain's gradient value, which is where the ramp carries it.
+	/// Set the cyclic wrap flag on the chain's gradient value, which is where the ramp carries it. This rebases the
+	/// ramp's stops from the old flag's basis, so batch it before any stops write rather than after one, or the rebase
+	/// would reinterpret incoming stops already authored under the new flag.
 	pub fn gradient_cyclic_set(&mut self, gradient_cyclic: bool) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
@@ -809,7 +811,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
-	/// Set the hue direction on the chain's gradient value, which is where the ramp carries it.
+	/// Set the interpolation on the chain's gradient value, which is where the ramp carries it.
 	pub fn gradient_interpolation_set(&mut self, gradient_interpolation: GradientInterpolation) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
@@ -822,6 +824,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
+	/// Set the hue direction on the chain's gradient value, which is where the ramp carries it.
 	pub fn gradient_hue_direction_set(&mut self, gradient_hue_direction: GradientHueDirection) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {

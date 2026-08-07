@@ -389,7 +389,7 @@ pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &No
 }
 
 /// The ramp held by the 'Gradient Value' node feeding a layer's chain, which carries the whole-ramp settings.
-fn get_chain_source_gradient_ramp<'a>(layer: LayerNodeIdentifier, network_interface: &'a NodeNetworkInterface) -> Option<&'a GradientRamp> {
+fn get_chain_source_gradient_ramp(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<&GradientRamp> {
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
 	let TaggedValue::GradientRamp(ramp) = gradient_value_node.input(graphene_std::math_nodes::gradient_value::GradientInput)?.as_value()? else {
 		return None;

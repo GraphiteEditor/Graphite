@@ -531,6 +531,7 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 				color_input.chosen_gradient = color_input.value.to_css_background_image();
 			}
 			Widget::SpectrumInput(spectrum_input) => {
+				// The track strip spans exactly 0 to 1, which no spread affects, so the widget carries no spread of its own
 				let settings = graphene_std::vector::style::GradientSettings {
 					spread: Default::default(),
 					cyclic: spectrum_input.track_cyclic,

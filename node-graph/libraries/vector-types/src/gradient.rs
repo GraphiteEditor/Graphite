@@ -266,6 +266,19 @@ impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 	}
 }
 
+impl<C> GradientRamp<C> {
+	/// Overwrites the whole-ramp settings fields as one bundle. This writes the cyclic flag without rebasing stop
+	/// positions (unlike [`GradientRamp::with_cyclic`]), so the stops must already be authored under `settings.cyclic`.
+	pub fn with_settings(mut self, settings: GradientSettings) -> Self {
+		self.gradient_spread = settings.spread;
+		self.gradient_cyclic = settings.cyclic;
+		self.gradient_space = settings.space;
+		self.gradient_hue_direction = settings.hue_direction;
+		self.gradient_interpolation = settings.interpolation;
+		self
+	}
+}
+
 impl GradientRamp {
 	pub fn black_to_white() -> Self {
 		Self::from(Gradient::black_to_white())
@@ -367,20 +380,11 @@ pub fn interpolate_stop_colors(color_a: Color, color_b: Color, t: f32, gradient_
 /// Polar spaces arc through hue per the direction, with an achromatic endpoint's powerless hue adopting the other's per CSS.
 /// The mix can land slightly outside the sRGB gamut; it stays unclamped here and clips at render encoding.
 fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, gradient_hue_direction: GradientHueDirection) -> Color {
-	use color::ColorSpaceLayout;
-
 	let mut a = CS::from_linear_srgb([color_a.r(), color_a.g(), color_a.b()]);
 	let mut b = CS::from_linear_srgb([color_b.r(), color_b.g(), color_b.b()]);
 
-	let hue_index = match CS::LAYOUT {
-		ColorSpaceLayout::HueFirst => Some(0),
-		ColorSpaceLayout::HueThird => Some(2),
-		_ => None,
-	};
-	if let Some(hue_index) = hue_index {
-		// Chroma (or saturation) is channel 1 in both polar layouts; the threshold scales to the space's
-		// lightness range so conversion noise on achromatic colors stays below it
-		let achromatic = 1e-4 * CS::WHITE_COMPONENTS.iter().fold(0_f32, |max, &component| max.max(component));
+	if let Some(hue_index) = space_hue_index::<CS>() {
+		let achromatic = achromatic_chroma_threshold::<CS>();
 		if a[1] < achromatic && b[1] >= achromatic {
 			a[hue_index] = b[hue_index];
 		}
@@ -388,43 +392,8 @@ fn lerp_in_space<CS: color::ColorSpace>(color_a: Color, color_b: Color, t: f32, 
 			b[hue_index] = a[hue_index];
 		}
 
-		// The CSS Color 4 hue fixup, on hues the conversions already place in the 0 to 360 range
-		let delta = b[hue_index] - a[hue_index];
-		let delta = match gradient_hue_direction {
-			GradientHueDirection::Shorter => {
-				if delta > 180. {
-					delta - 360.
-				} else if delta < -180. {
-					delta + 360.
-				} else {
-					delta
-				}
-			}
-			GradientHueDirection::Longer => {
-				if 0. < delta && delta < 180. {
-					delta - 360.
-				} else if -180. < delta && delta <= 0. {
-					delta + 360.
-				} else {
-					delta
-				}
-			}
-			GradientHueDirection::Increasing => {
-				if delta < 0. {
-					delta + 360.
-				} else {
-					delta
-				}
-			}
-			GradientHueDirection::Decreasing => {
-				if delta > 0. {
-					delta - 360.
-				} else {
-					delta
-				}
-			}
-		};
-		b[hue_index] = a[hue_index] + delta;
+		// The fixup applies to hues the conversions already place in the 0 to 360 range
+		b[hue_index] = a[hue_index] + hue_delta((b[hue_index] - a[hue_index]) as f64, gradient_hue_direction) as f32;
 	}
 
 	let mixed = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
@@ -504,6 +473,12 @@ fn space_hue_index<CS: color::ColorSpace>() -> Option<usize> {
 	}
 }
 
+/// The chroma (or saturation, channel 1 in both polar layouts) below which a color counts as achromatic and its
+/// hue as powerless, scaled to the space's lightness range so conversion noise stays below the threshold.
+fn achromatic_chroma_threshold<CS: color::ColorSpace>() -> f32 {
+	1e-4 * CS::WHITE_COMPONENTS.iter().fold(0_f32, |max, &component| max.max(component))
+}
+
 /// The CSS Color 4 hue fixup: the signed arc between two hues taking the route the direction asks for.
 fn hue_delta(delta: f64, gradient_hue_direction: GradientHueDirection) -> f64 {
 	match gradient_hue_direction {
@@ -550,8 +525,7 @@ fn knot_channels<CS: color::ColorSpace>(knots: &[GradientStop], gradient_hue_dir
 
 	let Some(hue_index) = space_hue_index::<CS>() else { return channels };
 
-	// Chroma (or saturation) is channel 1 in both polar layouts; the threshold scales to the space's lightness range
-	let achromatic = 1e-4 * CS::WHITE_COMPONENTS.iter().fold(0_f32, |max, &component| max.max(component)) as f64;
+	let achromatic = achromatic_chroma_threshold::<CS>() as f64;
 	let chromatic: Vec<usize> = (0..channels.len()).filter(|&index| channels[index][1] >= achromatic).collect();
 	if chromatic.is_empty() {
 		return channels;
@@ -1153,6 +1127,7 @@ impl Gradient {
 	/// Returns the index where the new stop was inserted.
 	pub fn insert_stop(&mut self, position: f64, settings: GradientSettings) -> usize {
 		let gradient_cyclic = settings.cyclic;
+		// The sampled position is inside the ramp, where the spread must act as Pad (Repeat would wrap an exact 1 onto the first stop)
 		let color = self.evaluate(
 			position,
 			GradientSettings {
@@ -1869,10 +1844,10 @@ mod tests {
 		);
 		assert_eq!(GradientRamp::from(&item), ramp);
 
-		let linear = Item::<Gradient>::from(GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])));
+		let oklab = Item::<Gradient>::from(GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])));
 		assert!(
-			linear.attribute::<GradientSpace>(ATTR_GRADIENT_SPACE).is_none(),
-			"the default Linear must stay absent rather than materialize"
+			oklab.attribute::<GradientSpace>(ATTR_GRADIENT_SPACE).is_none(),
+			"the default OkLab must stay absent rather than materialize"
 		);
 	}
 

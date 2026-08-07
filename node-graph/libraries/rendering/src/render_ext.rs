@@ -1,16 +1,16 @@
-use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, gradient_settings_at, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_FORM, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientForm;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::{GradientSettings, GradientSpread};
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -95,13 +95,7 @@ impl RenderExt for List<Gradient> {
 		let Some(stops) = self.element(0) else { return 0 };
 		let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let settings = GradientSettings {
-			spread: self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0),
-			cyclic: self.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, 0),
-			space: self.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, 0),
-			hue_direction: self.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, 0),
-			interpolation: self.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION, 0),
-		};
+		let settings = gradient_settings_at(self, 0);
 
 		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
 
