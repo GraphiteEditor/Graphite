@@ -9,7 +9,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientForm;
 use graphic_types::vector_types::markers::{
-	GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
+	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
 };
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
@@ -115,8 +115,17 @@ pub fn render_gradient_paint<S: core_types::lane::LaneSource<Element = Gradient>
 		let gradient_spread: GradientSpread = source.attr::<GradientSpreadAttr>(0);
 		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(0);
 		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(0);
+		let gradient_cyclic: bool = source.attr::<GradientCyclicAttr>(0);
 
-		let (samples, _) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::SvgStopOrder);
+		let (samples, _) = spread_adjusted_samples(
+			stops,
+			gradient_spread,
+			gradient_form,
+			gradient_cyclic,
+			gradient_space,
+			gradient_hue_direction,
+			ClearGuardPlacement::SvgStopOrder,
+		);
 
 		for (position, color, original_midpoint) in samples {
 			stop.push_str("<stop");

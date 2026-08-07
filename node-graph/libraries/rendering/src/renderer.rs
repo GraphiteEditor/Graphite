@@ -28,7 +28,7 @@ use graphic_types::markers::{EditorMergedLayers, Fill, Stroke};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientHueDirection, GradientSpace};
 use graphic_types::vector_types::markers::{
-	GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
+	GradientCyclic as GradientCyclicAttr, GradientForm as GradientFormAttr, GradientHueDirection as GradientHueDirectionAttr, GradientSpace as GradientSpaceAttr, GradientSpread as GradientSpreadAttr,
 };
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
@@ -429,11 +429,12 @@ pub(crate) fn spread_adjusted_samples(
 	gradient: &Gradient,
 	gradient_spread: GradientSpread,
 	gradient_form: GradientForm,
+	gradient_cyclic: bool,
 	gradient_space: GradientSpace,
 	gradient_hue_direction: GradientHueDirection,
 	guards: ClearGuardPlacement,
 ) -> (GradientSamples, (f64, f64)) {
-	let samples = gradient.interpolated_samples(gradient_space, gradient_hue_direction);
+	let samples = gradient.interpolated_samples(gradient_cyclic, gradient_space, gradient_hue_direction);
 	if gradient_spread != GradientSpread::Clear {
 		return (samples, (0., 1.));
 	}
@@ -520,8 +521,17 @@ fn create_peniko_gradient_brush<S: LaneSource<Element = Gradient>>(gradient_list
 	let gradient_spread: GradientSpread = gradient_list.attr::<GradientSpreadAttr>(0);
 	let gradient_space: GradientSpace = gradient_list.attr::<GradientSpaceAttr>(0);
 	let gradient_hue_direction: GradientHueDirection = gradient_list.attr::<GradientHueDirectionAttr>(0);
+	let gradient_cyclic: bool = gradient_list.attr::<GradientCyclicAttr>(0);
 
-	let (samples, span) = spread_adjusted_samples(stops, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::VelloRampTexels);
+	let (samples, span) = spread_adjusted_samples(
+		stops,
+		gradient_spread,
+		gradient_form,
+		gradient_cyclic,
+		gradient_space,
+		gradient_hue_direction,
+		ClearGuardPlacement::VelloRampTexels,
+	);
 
 	let peniko_stops = peniko_color_stops(&samples);
 
@@ -2430,6 +2440,7 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(index);
 		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(index);
+		let gradient_cyclic: bool = source.attr::<GradientCyclicAttr>(index);
 		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 		render.leaf_tag(tag, |attributes| {
 			if let Some((min, size)) = thumbnail_rect {
@@ -2445,7 +2456,15 @@ fn render_gradient_svg<S: LaneSource<Element = Gradient>>(source: &S, render: &m
 				attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 			}
 
-			let (samples, _) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::SvgStopOrder);
+			let (samples, _) = spread_adjusted_samples(
+				gradient,
+				gradient_spread,
+				gradient_form,
+				gradient_cyclic,
+				gradient_space,
+				gradient_hue_direction,
+				ClearGuardPlacement::SvgStopOrder,
+			);
 
 			let mut stop_string = String::new();
 			for (position, color, original_midpoint) in samples {
@@ -2518,6 +2537,7 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 		let gradient_form: GradientForm = source.attr::<GradientFormAttr>(index);
 		let gradient_space: GradientSpace = source.attr::<GradientSpaceAttr>(index);
 		let gradient_hue_direction: GradientHueDirection = source.attr::<GradientHueDirectionAttr>(index);
+		let gradient_cyclic: bool = source.attr::<GradientCyclicAttr>(index);
 		let transform: DAffine2 = source.attr::<Transform>(index);
 		let blend_mode_attr: BlendMode = source.attr::<BlendModeAttr>(index);
 		let opacity_attr: f64 = source.attr::<Opacity>(index);
@@ -2527,7 +2547,15 @@ fn render_gradient_vello<S: LaneSource<Element = Gradient>>(source: &S, scene: &
 		let blend_mode = blend_mode_attr.to_peniko();
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-		let (samples, span) = spread_adjusted_samples(gradient, gradient_spread, gradient_form, gradient_space, gradient_hue_direction, ClearGuardPlacement::VelloRampTexels);
+		let (samples, span) = spread_adjusted_samples(
+			gradient,
+			gradient_spread,
+			gradient_form,
+			gradient_cyclic,
+			gradient_space,
+			gradient_hue_direction,
+			ClearGuardPlacement::VelloRampTexels,
+		);
 		let stops = peniko_color_stops(&samples);
 
 		let extend = peniko_extend(gradient_spread);
@@ -3336,18 +3364,20 @@ mod spread_tests {
 			&gradient,
 			GradientSpread::Repeat,
 			GradientForm::Linear,
+			false,
 			GradientSpace::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
 		);
 		assert_eq!(span, (0., 1.));
-		assert_eq!(samples, gradient.interpolated_samples(GradientSpace::RgbGamma, Default::default()));
+		assert_eq!(samples, gradient.interpolated_samples(false, GradientSpace::RgbGamma, Default::default()));
 
 		// SVG guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
 		let (samples, span) = spread_adjusted_samples(
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Linear,
+			false,
 			GradientSpace::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
@@ -3364,6 +3394,7 @@ mod spread_tests {
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Linear,
+			false,
 			GradientSpace::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
@@ -3384,6 +3415,7 @@ mod spread_tests {
 			&gradient,
 			GradientSpread::Clear,
 			GradientForm::Radial,
+			false,
 			GradientSpace::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::VelloRampTexels,
@@ -3399,6 +3431,7 @@ mod spread_tests {
 			&Gradient::from(Vec::new()),
 			GradientSpread::Clear,
 			GradientForm::Linear,
+			false,
 			GradientSpace::RgbGamma,
 			Default::default(),
 			ClearGuardPlacement::SvgStopOrder,
