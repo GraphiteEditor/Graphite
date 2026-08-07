@@ -669,11 +669,12 @@ struct SmoothPath {
 impl SmoothPath {
 	fn new(stops: &[GradientStop], settings: GradientSettings) -> Self {
 		// A cyclic ramp gains two wrapped copies of each end, enough that the tangent estimate on either side of the
-		// 1|0 boundary sees the same neighborhood, so the loop's two views of the wrapped interval agree and the seam
-		// joins smoothly
+		// 1|0 boundary sees the same neighborhood and the seam joins smoothly. Stops at both 0 and 1 leave a zero-length
+		// wrapped interval: that seam is a hard jump, and its copies would land on the real end stops, so it gets none.
 		let count = stops.len();
+		let wrapped_interval = count >= 2 && stops[0].position + 1. - stops[count - 1].position > f64::EPSILON;
 		let mut knots: Vec<GradientStop> = Vec::with_capacity(count + 4);
-		if settings.cyclic && count >= 2 {
+		if settings.cyclic && wrapped_interval {
 			knots.push(GradientStop {
 				position: stops[count - 2].position - 1.,
 				..stops[count - 2]
@@ -844,16 +845,17 @@ fn smooth_samples(stops: &[GradientStop], settings: GradientSettings) -> Vec<(f6
 		anchors.push((0., None));
 	}
 	anchors.extend(stops.iter().map(|stop| (stop.position, Some(sanitized_midpoint(stop.midpoint)))));
-	if settings.cyclic && stops[count - 1].position < 1. {
+	let synthetic_end = settings.cyclic && stops[count - 1].position < 1.;
+	if synthetic_end {
 		anchors.push((1., None));
 	}
 
 	let mut result: Vec<(f64, Color, Option<f64>)> = Vec::new();
 	for (index, &(position, midpoint)) in anchors.iter().enumerate() {
-		// Both ends of a cyclic bake share the boundary-crossing color, so the seam closes exactly rather than
-		// relying on the two wrapped views of the spline agreeing to the last bit
+		// A synthetic end anchor copies the start's color so the seam closes exactly rather than relying on the
+		// two wrapped views of the spline agreeing to the last bit; a real stop at 1 keeps its own color
 		let color = match result.first() {
-			Some(&(_, boundary, _)) if position >= 1. && anchors[0].0 <= 0. => boundary,
+			Some(&(_, boundary, _)) if synthetic_end && position >= 1. => boundary,
 			_ => path.evaluate(position),
 		};
 		result.push((position, color, midpoint));
@@ -1997,6 +1999,47 @@ mod tests {
 		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
 		assert_eq!((first.0, first.1), (0., last.1), "the baked ends must share the boundary-crossing color");
 		assert_eq!(last.0, 1.);
+	}
+
+	#[test]
+	fn smooth_bake_keeps_the_end_stops_their_own_colors() {
+		let smooth = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			interpolation: GradientInterpolation::Smooth,
+			..Default::default()
+		};
+
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		let samples = gradient.interpolated_samples(smooth);
+		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
+		assert_eq!((first.0, first.1), (0., Color::BLACK));
+		assert_eq!((last.0, last.1), (1., Color::WHITE));
+	}
+
+	#[test]
+	fn smooth_cyclic_stops_on_both_boundaries_keep_a_hard_seam() {
+		let open = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			interpolation: GradientInterpolation::Smooth,
+			..Default::default()
+		};
+		let cyclic = GradientSettings { cyclic: true, ..open };
+
+		let mut gradient = Gradient::from(vec![Color::BLACK, Color::from_rgbaf32_unchecked(0.25, 0.25, 0.25, 1.), Color::WHITE]);
+		gradient.set_positions(&[0., 0.5, 1.]);
+
+		// With no wrapped interval to cross, the cycle's seam is the jump between the two end stops and the
+		// spline matches its open form everywhere
+		for step in 0..=100 {
+			let t = step as f64 / 100.;
+			assert_eq!(gradient.evaluate(t, cyclic), gradient.evaluate(t, open), "cyclic and open must agree at {t}");
+		}
+
+		let samples = gradient.interpolated_samples(cyclic);
+		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
+		assert_eq!((first.0, first.1), (0., Color::BLACK));
+		assert_eq!((last.0, last.1), (1., Color::WHITE));
 	}
 
 	#[test]
