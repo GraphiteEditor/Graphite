@@ -1,16 +1,16 @@
-use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, spread_adjusted_samples, transform_is_invertible};
+use crate::renderer::{ClearGuardPlacement, RenderParams, format_transform_matrix, gradient_placement, gradient_settings_at, spread_adjusted_samples, transform_is_invertible};
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FORM, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_FORM, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientForm;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
-use vector_types::gradient::{GradientHueDirection, GradientSpace, GradientSpread};
+use vector_types::gradient::GradientSpread;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
@@ -95,20 +95,9 @@ impl RenderExt for List<Gradient> {
 		let Some(stops) = self.element(0) else { return 0 };
 		let gradient_form: GradientForm = self.attribute_cloned_or_default(ATTR_GRADIENT_FORM, 0);
 		let local_gradient_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let gradient_spread: GradientSpread = self.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD, 0);
-		let gradient_space: GradientSpace = self.attribute_cloned_or_default(ATTR_GRADIENT_SPACE, 0);
-		let gradient_cyclic: bool = self.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC, 0);
-		let gradient_hue_direction: GradientHueDirection = self.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION, 0);
+		let settings = gradient_settings_at(self, 0);
 
-		let (samples, _) = spread_adjusted_samples(
-			stops,
-			gradient_spread,
-			gradient_form,
-			gradient_cyclic,
-			gradient_space,
-			gradient_hue_direction,
-			ClearGuardPlacement::SvgStopOrder,
-		);
+		let (samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
 
 		for (position, color, original_midpoint) in samples {
 			stop.push_str("<stop");
@@ -147,10 +136,10 @@ impl RenderExt for List<Gradient> {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let gradient_spread = if matches!(gradient_spread, GradientSpread::Pad | GradientSpread::Clear) {
+		let gradient_spread = if matches!(settings.spread, GradientSpread::Pad | GradientSpread::Clear) {
 			String::new()
 		} else {
-			format!(r#" spreadMethod="{}""#, gradient_spread.svg_name())
+			format!(r#" spreadMethod="{}""#, settings.spread.svg_name())
 		};
 
 		let gradient_id = generate_uuid();

@@ -13,7 +13,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientForm, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -48,14 +48,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				layer,
 				gradient,
 				gradient_form,
-				gradient_spread,
-				gradient_space,
-				gradient_cyclic,
-				gradient_hue_direction,
+				gradient_settings,
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, gradient_cyclic, gradient_hue_direction, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_settings, transform);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -106,6 +103,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::GradientHueDirectionSet { layer, gradient_hue_direction } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_hue_direction_set(gradient_hue_direction);
+				}
+			}
+			GraphOperationMessage::GradientInterpolationSet { layer, gradient_interpolation } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_interpolation_set(gradient_interpolation);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -727,7 +729,7 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
 	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
 	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
-	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+	Some(Color::from_gamma_srgb_channels(r, g, b, opacity))
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -980,10 +982,13 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let gradient_spread = convert_gradient_spread(linear.spread_method());
 			// SVG interpolates between stops in gamma sRGB unless `color-interpolation` opts into linearRGB, carried explicitly rather than as the linear default
-			let gradient_space = gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma);
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, false, Default::default(), transform);
+			let settings = GradientSettings {
+				spread: convert_gradient_spread(linear.spread_method()),
+				space: gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma),
+				..Default::default()
+			};
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -1006,10 +1011,12 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
-			let gradient_spread = convert_gradient_spread(radial.spread_method());
-			let gradient_space = gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma);
-
-			modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_spread, gradient_space, false, Default::default(), transform);
+			let settings = GradientSettings {
+				spread: convert_gradient_spread(radial.spread_method()),
+				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),
+				..Default::default()
+			};
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};
@@ -1039,6 +1046,31 @@ mod tests {
 			Some(&GradientSpace::RgbGamma),
 			"auto should mean gamma like browsers treat it, not defer to ancestors"
 		);
+	}
+
+	#[test]
+	fn graphite_stop_extraction_keeps_real_stops_and_linearizes_their_colors() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art">
+			<defs>
+				<linearGradient id="ramp">
+					<stop stop-color="#000000" graphite:midpoint="0.3" />
+					<stop offset="0.25" stop-color="#404040" />
+					<stop offset="0.5" stop-color="#808080" stop-opacity="0.5" graphite:midpoint="0.5" />
+					<stop offset="1" stop-color="#ffffff" graphite:midpoint="0.5" />
+				</linearGradient>
+			</defs>
+		</svg>"##;
+
+		let stops = extract_graphite_gradient_stops(svg);
+		let gradient = stops.get("ramp").expect("the tagged gradient should be recovered");
+
+		// The untagged stop is baked approximation residue, not authored data
+		assert_eq!(gradient.len(), 3, "only stops tagged with a midpoint should survive");
+		assert_eq!(gradient.positions(false), vec![0., 0.5, 1.]);
+		assert_eq!(gradient.midpoints(), vec![0.3, 0.5, 0.5]);
+
+		// Hex stop bytes are gamma-encoded, so the recovered color must lift them to linear light
+		assert_eq!(gradient.color(1), Some(Color::from_gamma_srgb_channels(128. / 255., 128. / 255., 128. / 255., 0.5)));
 	}
 
 	#[test]

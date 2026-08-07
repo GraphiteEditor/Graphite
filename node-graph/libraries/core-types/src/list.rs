@@ -65,6 +65,9 @@ pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
 /// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the
 /// hue wheel the stops interpolate when the gradient space is polar.
 pub const ATTR_GRADIENT_HUE_DIRECTION: &str = "gradient_hue_direction";
+/// Gradient's `GradientInterpolation` (`Stepped`, `Linear`, or `Smooth`), the path its stops interpolate along
+/// and thus whether the ramp jumps, turns corners, or flows smoothly through them.
+pub const ATTR_GRADIENT_INTERPOLATION: &str = "gradient_interpolation";
 /// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
 /// interpolates from the last stop through the 1|0 boundary back to the first.
 pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";

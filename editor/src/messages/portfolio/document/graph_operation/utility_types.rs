@@ -18,7 +18,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientSpace, GradientSpread, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 
@@ -432,30 +432,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(fill_value, false), false);
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn fill_gradient_set(
-		&mut self,
-		gradient: Gradient,
-		gradient_form: GradientForm,
-		gradient_spread: GradientSpread,
-		gradient_space: GradientSpace,
-		gradient_cyclic: bool,
-		gradient_hue_direction: GradientHueDirection,
-		transform: DAffine2,
-	) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
-		let ramp = GradientRamp::from(gradient);
-		let ramp = GradientRamp {
-			gradient_spread,
-			gradient_space,
-			gradient_cyclic,
-			gradient_hue_direction,
-			..ramp
-		};
+		let ramp = GradientRamp::from(gradient).with_settings(settings);
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run
@@ -794,7 +777,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
 
-	/// Set the cyclic wrap flag on the chain's gradient value, which is where the ramp carries it.
+	/// Set the cyclic wrap flag on the chain's gradient value, which is where the ramp carries it. This holds the existing
+	/// stops in place by reading their positions under the old flag, so batch it before any stops write rather than after one,
+	/// or it would reinterpret incoming stops already authored under the new flag.
 	pub fn gradient_cyclic_set(&mut self, gradient_cyclic: bool) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
@@ -802,7 +787,20 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
 
-		let ramp = GradientRamp { gradient_cyclic, ..ramp };
+		let ramp = ramp.with_cyclic(gradient_cyclic);
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
+	}
+
+	/// Set the interpolation on the chain's gradient value, which is where the ramp carries it.
+	pub fn gradient_interpolation_set(&mut self, gradient_interpolation: GradientInterpolation) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+			return;
+		};
+		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
+
+		let ramp = GradientRamp { gradient_interpolation, ..ramp };
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}
