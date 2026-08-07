@@ -1236,8 +1236,8 @@ impl Gradient {
 		self.evaluator(settings).evaluate(t)
 	}
 
-	/// Prepares the gradient for repeated sampling: the stop normalization and any Smooth spline construction, each
-	/// O(n) in the stop count, happen once here rather than on every [`GradientEvaluator::evaluate`] call.
+	/// Prepares the gradient for repeated sampling: the stop normalization and any Smooth spline construction, together
+	/// O(n log n) in the stop count, happen once here rather than on every [`GradientEvaluator::evaluate`] call.
 	pub fn evaluator(&self, settings: GradientSettings) -> GradientEvaluator {
 		let stops = self.normalized_stops(settings.cyclic);
 		// A spline through fewer than two stops has nothing to curve between, leaving those ramps to linear evaluation
