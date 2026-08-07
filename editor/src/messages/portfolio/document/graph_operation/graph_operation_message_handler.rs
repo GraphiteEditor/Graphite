@@ -729,7 +729,7 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
 	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
 	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
-	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+	Some(Color::from_gamma_srgb_channels(r, g, b, opacity))
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -1046,6 +1046,31 @@ mod tests {
 			Some(&GradientSpace::RgbGamma),
 			"auto should mean gamma like browsers treat it, not defer to ancestors"
 		);
+	}
+
+	#[test]
+	fn graphite_stop_extraction_keeps_real_stops_and_linearizes_their_colors() {
+		let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art">
+			<defs>
+				<linearGradient id="ramp">
+					<stop stop-color="#000000" graphite:midpoint="0.3" />
+					<stop offset="0.25" stop-color="#404040" />
+					<stop offset="0.5" stop-color="#808080" stop-opacity="0.5" graphite:midpoint="0.5" />
+					<stop offset="1" stop-color="#ffffff" graphite:midpoint="0.5" />
+				</linearGradient>
+			</defs>
+		</svg>"##;
+
+		let stops = extract_graphite_gradient_stops(svg);
+		let gradient = stops.get("ramp").expect("the tagged gradient should be recovered");
+
+		// The untagged stop is baked approximation residue, not authored data
+		assert_eq!(gradient.len(), 3, "only stops tagged with a midpoint should survive");
+		assert_eq!(gradient.positions(false), vec![0., 0.5, 1.]);
+		assert_eq!(gradient.midpoints(), vec![0.3, 0.5, 0.5]);
+
+		// Hex stop bytes are gamma-encoded, so the recovered color must lift them to linear light
+		assert_eq!(gradient.color(1), Some(Color::from_gamma_srgb_channels(128. / 255., 128. / 255., 128. / 255., 0.5)));
 	}
 
 	#[test]
