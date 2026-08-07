@@ -13,6 +13,8 @@ core_types::attribute! {
 	/// Gradient's `bool` (implicit default `false`) for treating the stop list as a cycle, where a wrapped interval
 	/// interpolates from the last stop through the 1|0 boundary back to the first.
 	pub GradientCyclic("gradient_cyclic"): bool;
+	/// Gradient's `GradientInterpolation` (`Stepped`, `Linear`, or `Smooth`), how the color progresses across each interval.
+	pub GradientInterpolation("gradient_interpolation"): crate::gradient::GradientInterpolation;
 	/// Gradient's shape (`Linear` or `Radial`).
 	pub GradientForm("gradient_form"): crate::gradient::GradientForm;
 	/// Optional `Vector` that overrides the item's own geometry for click-target generation.
@@ -29,6 +31,7 @@ core_types::named_value! {
 	for crate::gradient::GradientForm;
 	for crate::gradient::GradientSpace;
 	for crate::gradient::GradientHueDirection;
+	for crate::gradient::GradientInterpolation;
 }
 
 pub const ATTR_GRADIENT_SPREAD: &str = GradientSpread::NAME;
@@ -36,6 +39,7 @@ pub const ATTR_GRADIENT_FORM: &str = GradientForm::NAME;
 pub const ATTR_GRADIENT_CYCLIC: &str = GradientCyclic::NAME;
 pub const ATTR_GRADIENT_SPACE: &str = GradientSpace::NAME;
 pub const ATTR_GRADIENT_HUE_DIRECTION: &str = GradientHueDirection::NAME;
+pub const ATTR_GRADIENT_INTERPOLATION: &str = GradientInterpolation::NAME;
 pub const ATTR_EDITOR_CLICK_TARGET: &str = EditorClickTarget::NAME;
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { SpectrumInputUpdate, SpectrumMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { GradientInterpolation, SpectrumInputUpdate, SpectrumMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
@@ -14,6 +14,7 @@
 	export let trackStartCSS: string;
 	export let trackEndCSS: string;
 	export let trackCyclic = false;
+	export let trackInterpolation: GradientInterpolation = "Linear";
 	export let markers: SpectrumMarker[];
 	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
@@ -363,8 +364,9 @@
 
 	// Map midpoint pairs to absolute track positions for rendering the diamond markers.
 	// A rendered diamond's index is the index of the interval's left marker, which for the cyclic wrapped interval's diamond is the last marker.
-	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean): number[] {
-		if (!showMidpoints || markers.length < 2) return [];
+	function diamondPositions(markers: SpectrumMarker[], showMidpoints: boolean, trackCyclic: boolean, trackInterpolation: GradientInterpolation): number[] {
+		// A stepped ramp jumps at its stops, so no midpoint has anything to bias
+		if (!showMidpoints || trackInterpolation === "Stepped" || markers.length < 2) return [];
 		const positions = markers.slice(0, -1).map((marker, i) => marker.position + marker.midpoint * (markers[i + 1].position - marker.position));
 
 		// The wrapped interval's diamond may land on either side of the 1|0 boundary
@@ -377,7 +379,7 @@
 
 		return positions;
 	}
-	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic);
+	$: midpointPositions = diamondPositions(markers, showMidpoints, trackCyclic, trackInterpolation);
 
 	onMount(() => {
 		document.addEventListener("keydown", deleteShortcut);
