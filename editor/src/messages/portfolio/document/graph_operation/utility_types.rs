@@ -804,7 +804,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let Some(ramp) = self.gradient_value_ramp(gradient_value_id) else { return };
 
-		let ramp = GradientRamp { gradient_cyclic, ..ramp };
+		let ramp = ramp.with_cyclic(gradient_cyclic);
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp), false), false);
 	}

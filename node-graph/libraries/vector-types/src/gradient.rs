@@ -270,6 +270,24 @@ impl GradientRamp {
 	pub fn black_to_white() -> Self {
 		Self::from(Gradient::black_to_white())
 	}
+
+	/// Sets the cyclic flag, holding the stops at the positions they already occupy.
+	///
+	/// The ramp owns this rather than leaving it to the runtime type's elision, since an absent `position`
+	/// attribute means a different even distribution in each mode and flipping the flag alone would relocate
+	/// every stop that was still riding the default.
+	pub fn with_cyclic(mut self, gradient_cyclic: bool) -> Self {
+		if self.gradient_cyclic == gradient_cyclic {
+			return self;
+		}
+
+		let mut gradient = Gradient::from(self.stops);
+		gradient.rebase_positions_for_cyclic(self.gradient_cyclic, gradient_cyclic);
+
+		self.stops = (&gradient).into();
+		self.gradient_cyclic = gradient_cyclic;
+		self
+	}
 }
 
 impl From<List<Color>> for Gradient {
@@ -1020,6 +1038,18 @@ impl Gradient {
 		if self.has_midpoint_attribute() && self.nondefault_midpoints().is_none() {
 			self.0.remove_attribute(ATTR_MIDPOINT);
 		}
+	}
+
+	/// Pins the stops to the positions they currently occupy under `from_cyclic`, then re-elides against
+	/// `to_cyclic`, so flipping the flag leaves them where they are instead of snapping to the other mode's
+	/// even distribution.
+	pub fn rebase_positions_for_cyclic(&mut self, from_cyclic: bool, to_cyclic: bool) {
+		if from_cyclic == to_cyclic {
+			return;
+		}
+
+		self.materialize_default_positions(from_cyclic);
+		self.elide_default_attributes(to_cyclic);
 	}
 
 	/// Writes the whole `position` attribute from the effective values, since the even-distribution default is index-dependent and can't be produced by cell-wise padding.
@@ -1841,6 +1871,33 @@ mod tests {
 		assert!(
 			linear.attribute::<GradientSpace>(ATTR_GRADIENT_SPACE).is_none(),
 			"the default Linear must stay absent rather than materialize"
+		);
+	}
+
+	#[test]
+	fn toggling_cyclic_leaves_the_stops_where_they_are() {
+		// A ramp still riding the elided default is the case that would otherwise snap, since the two modes
+		// spread the same stop count differently
+		let elided = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]));
+		assert_eq!(Gradient::from(&elided).positions(false), vec![0., 0.5, 1.]);
+
+		let cyclic = elided.clone().with_cyclic(true);
+		assert!(cyclic.gradient_cyclic);
+		assert_eq!(Gradient::from(&cyclic).positions(true), vec![0., 0.5, 1.], "toggling cyclic on must not move the stops");
+
+		// And back again, landing on the original elided form rather than the cyclic distribution
+		let restored = cyclic.with_cyclic(false);
+		assert_eq!(Gradient::from(&restored).positions(false), vec![0., 0.5, 1.], "toggling cyclic off must not move the stops");
+		assert_eq!(restored, elided, "returning to the original mode should restore the canonical elided form");
+
+		// A ramp already sitting on the cyclic even distribution keeps it, and elides once the flag agrees
+		let mut thirds = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+		thirds.set_positions(&[0., 1. / 3., 2. / 3.]);
+		let ramp = GradientRamp::from(thirds).with_cyclic(true);
+		assert_eq!(Gradient::from(&ramp).positions(true), vec![0., 1. / 3., 2. / 3.]);
+		assert!(
+			!Gradient::from(&ramp).has_position_attribute(),
+			"matching the new mode's distribution should elide back to the canonical form"
 		);
 	}
 

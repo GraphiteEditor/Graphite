@@ -229,9 +229,17 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.send_layouts(responses);
 			}
 			ColorPickerMessage::SetGradientCyclic { gradient_cyclic } => {
-				let Some(gradient) = &self.gradient else { return };
+				if self.gradient.is_none() {
+					return;
+				}
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
-				self.gradient_cyclic = gradient_cyclic;
+
+				let previous_cyclic = std::mem::replace(&mut self.gradient_cyclic, gradient_cyclic);
+				if let Some(gradient) = &mut self.gradient {
+					gradient.rebase_positions_for_cyclic(previous_cyclic, gradient_cyclic);
+				}
+
+				let Some(gradient) = &self.gradient else { return };
 				responses.add(FrontendMessage::ColorPickerColorChanged {
 					value: FillChoice::Gradient(GradientRamp {
 						gradient_spread: self.gradient_spread,
