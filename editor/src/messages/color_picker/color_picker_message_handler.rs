@@ -765,22 +765,6 @@ impl ColorPickerMessageHandler {
 			]));
 		}
 
-		// Gradient color space (only present when the picker is in gradient mode)
-		if self.gradient.is_some() {
-			let entries = MenuListEntry::sections_from_choice_type(|gradient_space| ColorPickerMessage::SetGradientSpace { gradient_space }.into());
-
-			groups.push(LayoutGroup::row(vec![
-				TextLabel::new("Space").tooltip_label("Gradient Space").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				DropdownInput::new(entries)
-					.selected_index(Some(self.gradient_space as u32))
-					.disabled(self.disabled)
-					.tooltip_label("Gradient Space")
-					.tooltip_description(SPACE_DESCRIPTION)
-					.widget_instance(),
-			]));
-		}
-
 		// Gradient interpolation (only present when the picker is in gradient mode)
 		if self.gradient.is_some() {
 			let entries = MenuListEntry::sections_from_choice_type(|gradient_interpolation| ColorPickerMessage::SetGradientInterpolation { gradient_interpolation }.into());
@@ -796,6 +780,22 @@ impl ColorPickerMessageHandler {
 					.disabled(self.disabled)
 					.tooltip_label("Gradient Interpolation")
 					.tooltip_description(INTERPOLATION_DESCRIPTION)
+					.widget_instance(),
+			]));
+		}
+
+		// Gradient color space (only present when the picker is in gradient mode)
+		if self.gradient.is_some() {
+			let entries = MenuListEntry::sections_from_choice_type(|gradient_space| ColorPickerMessage::SetGradientSpace { gradient_space }.into());
+
+			groups.push(LayoutGroup::row(vec![
+				TextLabel::new("Space").tooltip_label("Gradient Space").tooltip_description(SPACE_DESCRIPTION).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				DropdownInput::new(entries)
+					.selected_index(Some(self.gradient_space as u32))
+					.disabled(self.disabled)
+					.tooltip_label("Gradient Space")
+					.tooltip_description(SPACE_DESCRIPTION)
 					.widget_instance(),
 			]));
 		}
