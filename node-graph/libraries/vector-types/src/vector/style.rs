@@ -361,19 +361,6 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_dash_lengths(mut self, dash_lengths: &str) -> Option<Self> {
-		dash_lengths
-			.split(&[',', ' '])
-			.filter(|x| !x.is_empty())
-			.map(str::parse::<f64>)
-			.collect::<Result<Vec<_>, _>>()
-			.ok()
-			.map(|lengths| {
-				self.dash_lengths = lengths;
-				self
-			})
-	}
-
 	pub fn with_dash_offset(mut self, dash_offset: f64) -> Self {
 		self.dash_offset = dash_offset;
 		self
