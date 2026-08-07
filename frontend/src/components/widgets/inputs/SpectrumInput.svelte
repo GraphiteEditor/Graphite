@@ -239,7 +239,7 @@
 		}
 
 		// The wrapped interval's diamond (cyclic only) belongs to the last marker and spans through the 1|0 boundary to the first.
-		// Its pointer ratio stays unclamped so overdragging past the strip's right edge keeps tracking, the diamond wrapped a full strip width behind the pointer.
+		// Its pointer ratio stays unclamped so overdragging past the strip's right or left edge keeps tracking after the 1|0 wrap.
 		const isWrappedInterval = trackCyclic && activeMarkerIndex === markers.length - 1;
 		const absolute = pointerPosition(e, !isWrappedInterval);
 		if (absolute === undefined) return;
@@ -250,9 +250,9 @@
 		const range = right - left;
 		if (range <= 0) return;
 
-		// The dead zone between the first and last stops splits so each half saturates against the wrapped interval's
-		// nearer end, except when an outermost stop leaves no room on its side of the boundary, where the one-sided
-		// interval skips the split and saturates like any other
+		// The dead zone between the first and last stops splits so each half saturates against the wrapped interval's nearer end,
+		// except when an outermost stop leaves no room on its side of the boundary, where the one-sided interval skips the split
+		// and saturates like any other
 		let deadZoneSplit = Number.NEGATIVE_INFINITY;
 		if (isWrappedInterval) {
 			const first = markers[0].position;

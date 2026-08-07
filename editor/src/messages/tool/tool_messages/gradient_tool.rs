@@ -502,8 +502,8 @@ fn wrapped_interval_span(gradient: &Gradient) -> (f64, f64) {
 	(gradient.position(gradient.len() - 1, true), gradient.position(0, true) + 1.)
 }
 
-/// The gradient's visible midpoint diamonds as `(owning stop index, position along the gradient line)`, omitting
-/// intervals whose stops are too closely packed. A cyclic gradient's wrapped interval adds a final diamond owned by the last stop.
+/// The gradient's visible midpoint diamonds as `(owning stop index, position along the gradient line)`, omitting intervals
+/// whose stops are too closely packed. A cyclic gradient's wrapped interval adds a final diamond owned by the last stop.
 fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_length: f64) -> Vec<(usize, f64)> {
 	let mut diamonds = Vec::with_capacity(gradient.len());
 
@@ -528,9 +528,9 @@ fn midpoint_diamonds(gradient: &Gradient, gradient_cyclic: bool, viewport_line_l
 	diamonds
 }
 
-/// Maps a pointer's unclamped position along the gradient line to a midpoint ratio within the interval owned by the stop
-/// at `index`, or `None` when that interval has no width. The wrapped interval continues past the line's end, so overdragging
-/// keeps tracking with the line's length as an offset.
+/// Maps a pointer's unclamped position along the gradient line to a midpoint ratio within the interval owned by the
+/// stop at `index`, or `None` when that interval has no width. The wrapped interval continues past the line's end,
+/// so overdragging keeps tracking with the line's length as an offset.
 fn midpoint_ratio_at(gradient: &Gradient, index: usize, gradient_cyclic: bool, position_along_line: f64) -> Option<f64> {
 	let is_wrapped_interval = gradient_cyclic && index + 1 == gradient.len();
 	let (left, right) = if is_wrapped_interval {
@@ -2109,6 +2109,8 @@ enum GradientDragHintState {
 
 #[cfg(test)]
 mod test_gradient {
+	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
+	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
 	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -2124,10 +2126,6 @@ mod test_gradient {
 	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::style::{GradientForm, GradientSpread, build_transform_with_y_preservation};
 	use graphene_std::vector::{Gradient, GradientRamp, GradientStop, fill};
-
-	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
-
-	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
 
 	/// A line long enough that no interval in these tests trips the closely-packed-stops hiding rule.
 	const UNCROWDED_LINE_LENGTH: f64 = 10_000.;

@@ -71,9 +71,8 @@ pub const ATTR_GRADIENT_CYCLIC: &str = "gradient_cyclic";
 /// Gradient stop's `f64` position from 0 to 1 along the gradient, on the `List<Color>` inside a `Gradient`.
 /// When the attribute is absent, stops distribute evenly across the 0 to 1 range.
 pub const ATTR_POSITION: &str = "position";
-/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance
-/// to the next stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored
-/// unless the gradient is cyclic, where it times the wrapped interval.
+/// Gradient stop's `f64` midpoint (implicit default `0.5`, linear), a factor from 0 to 1 across the distance to the next
+/// stop, on the `List<Color>` inside a `Gradient`. The final stop's midpoint is ignored if "gradient_cyclic" is false.
 pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";

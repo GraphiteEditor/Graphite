@@ -793,8 +793,6 @@ impl Gradient {
 	}
 
 	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the `gradient_spread` determines how the gradient extends.
-	/// When `gradient_cyclic`, the flat caps before the first stop and after the last are replaced by a wrapped interval
-	/// interpolating from the last stop through the 1|0 boundary back to the first, timed by the last stop's midpoint.
 	pub fn evaluate(&self, t: f64, gradient_spread: GradientSpread, gradient_cyclic: bool, gradient_space: GradientSpace, gradient_hue_direction: GradientHueDirection) -> Color {
 		let t = match gradient_spread {
 			GradientSpread::Pad => t.clamp(0., 1.),
