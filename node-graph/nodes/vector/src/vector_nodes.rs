@@ -148,6 +148,7 @@ where
 	};
 	let element = gradient.into_element();
 	let gradient = if reverse { element.reversed(settings.cyclic) } else { element };
+	let evaluator = gradient.evaluator(settings);
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
@@ -163,7 +164,7 @@ where
 				},
 			};
 
-			let color = gradient.evaluate(factor, settings);
+			let color = evaluator.evaluate(factor);
 			let paint = List::new_from_element(color).into_graphic_list();
 
 			if fill {

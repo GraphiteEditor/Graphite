@@ -23,13 +23,13 @@ async fn gradient_map<T: Adjust<Color> + Send>(
 ) -> Item<T> {
 	let mut image = image;
 	let settings = vector_types::GradientSettings::from(&gradient);
-	let gradient = gradient.into_element();
+	let evaluator = gradient.into_element().evaluator(settings);
 	let reverse = reverse.into_element();
 
 	image.element_mut().adjust(|color| {
 		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64, settings)
+		evaluator.evaluate(intensity as f64)
 	});
 
 	image

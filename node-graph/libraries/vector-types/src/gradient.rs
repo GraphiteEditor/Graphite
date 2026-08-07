@@ -1230,30 +1230,19 @@ impl Gradient {
 	}
 
 	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the spread determines how the gradient extends.
+	///
+	/// Each call rebuilds the sampling state, so loops over many `t` values should hold a [`Gradient::evaluator`] instead.
 	pub fn evaluate(&self, t: f64, settings: GradientSettings) -> Color {
-		let t = match settings.spread {
-			GradientSpread::Pad => t.clamp(0., 1.),
-			GradientSpread::Repeat => t.rem_euclid(1.),
-			GradientSpread::Reflect => {
-				let cycle = t.rem_euclid(2.);
-				if cycle > 1. { 2. - cycle } else { cycle }
-			}
-			GradientSpread::Clear => {
-				if !(0. ..=1.).contains(&t) {
-					return Color::TRANSPARENT;
-				}
-				t
-			}
-		};
+		self.evaluator(settings).evaluate(t)
+	}
 
+	/// Prepares the gradient for repeated sampling: the stop normalization and any Smooth spline construction, each
+	/// O(n) in the stop count, happen once here rather than on every [`GradientEvaluator::evaluate`] call.
+	pub fn evaluator(&self, settings: GradientSettings) -> GradientEvaluator {
 		let stops = self.normalized_stops(settings.cyclic);
-
-		match settings.interpolation {
-			GradientInterpolation::Stepped => stepped_color(&stops, t, settings.cyclic),
-			GradientInterpolation::Smooth if stops.len() >= 2 => SmoothPath::new(&stops, settings).evaluate(t),
-			// A spline through fewer than two stops has nothing to curve between
-			GradientInterpolation::Linear | GradientInterpolation::Smooth => linear_color(&stops, t, settings),
-		}
+		// A spline through fewer than two stops has nothing to curve between, leaving those ramps to linear evaluation
+		let smooth_path = (settings.interpolation == GradientInterpolation::Smooth && stops.len() >= 2).then(|| SmoothPath::new(&stops, settings));
+		GradientEvaluator { stops, settings, smooth_path }
 	}
 
 	pub fn sort(&mut self, gradient_cyclic: bool) {
@@ -1499,6 +1488,40 @@ impl Gradient {
 			GradientStop { position, midpoint: 0.5, color }
 		});
 		Gradient::new(stops)
+	}
+}
+
+/// A gradient prepared for repeated sampling by [`Gradient::evaluator`], holding the normalized stops and any
+/// prebuilt Smooth spline so each sample pays only the per-evaluation cost.
+pub struct GradientEvaluator {
+	stops: Vec<GradientStop>,
+	settings: GradientSettings,
+	smooth_path: Option<SmoothPath>,
+}
+
+impl GradientEvaluator {
+	/// Samples the gradient's color at `t`. Given a `t` outside the 0 to 1 range, the spread determines how the gradient extends.
+	pub fn evaluate(&self, t: f64) -> Color {
+		let t = match self.settings.spread {
+			GradientSpread::Pad => t.clamp(0., 1.),
+			GradientSpread::Repeat => t.rem_euclid(1.),
+			GradientSpread::Reflect => {
+				let cycle = t.rem_euclid(2.);
+				if cycle > 1. { 2. - cycle } else { cycle }
+			}
+			GradientSpread::Clear => {
+				if !(0. ..=1.).contains(&t) {
+					return Color::TRANSPARENT;
+				}
+				t
+			}
+		};
+
+		match &self.smooth_path {
+			Some(path) => path.evaluate(t),
+			None if self.settings.interpolation == GradientInterpolation::Stepped => stepped_color(&self.stops, t, self.settings.cyclic),
+			None => linear_color(&self.stops, t, self.settings),
+		}
 	}
 }
 

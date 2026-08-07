@@ -48,10 +48,10 @@ mod blend_std {
 			let mut combined_stops = self.positions(false).into_iter().chain(under.positions(false)).collect::<Vec<_>>();
 			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+			let over_evaluator = self.evaluator(Default::default());
+			let under_evaluator = under.evaluator(Default::default());
 			let stops = combined_stops.into_iter().map(|position| {
-				let over_color = self.evaluate(position, Default::default());
-				let under_color = under.evaluate(position, Default::default());
-				let color = blend_fn(over_color, under_color);
+				let color = blend_fn(over_evaluator.evaluate(position), under_evaluator.evaluate(position));
 				GradientStop { position, midpoint: 0.5, color }
 			});
 
