@@ -24,7 +24,7 @@ use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
-use graphene_std::vector::style::{DashPattern, FillChoice, GradientForm, GradientRamp, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientRamp, GradientSpace, GradientSpread, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
@@ -215,6 +215,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<GradientForm>,
 		List<GradientSpread>,
 		List<GradientSpace>,
+		List<GradientHueDirection>,
 		List<DashPattern>,
 		List<BoxCorners>,
 		List<StrokeJoin>,
@@ -269,6 +270,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<GradientForm>,
 		Item<GradientSpread>,
 		Item<GradientSpace>,
+		Item<GradientHueDirection>,
 		Item<DashPattern>,
 		Item<BoxCorners>,
 		Item<StrokeJoin>,
@@ -1006,6 +1008,7 @@ impl_table_item_layout_for_choice_enum!(
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
+	GradientHueDirection,
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
@@ -1219,6 +1222,7 @@ macro_rules! known_item_types {
 			GradientForm,
 			GradientSpread,
 			GradientSpace,
+			GradientHueDirection,
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
